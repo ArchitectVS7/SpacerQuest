@@ -133,6 +133,39 @@ edit second, and neither is improvised inside a measurement task. (T-148)
 
 ---
 
+**LD-21 — F-137-1 is CLOSED by the OPENING LATTICE (§16.2 shape (b)), not by the dealer's
+fallback (shape (a)).** (T-160, 2026-08-02, `docs/LIARS-DICE_REDESIGN.md` §17)
+
+*Shipped:* an opening claim must EXCEED what the bidder holds of the claimed face —
+`minOpeningQuantity(own) = own + 1`, enforced in `isLatticeMove`'s `bid` arm through a new
+REQUIRED `ownOfClaimedFace` parameter (the T-146 `maxQuantity` precedent, so every call site is a
+compile error until it is updated). Measured: openers guaranteed true **100.00% → 0.00%** on both
+pools, player win rate 80.30% → **61.07%**, EV/hand +565.8 → **+197.3 cr** (n = 101,616).
+
+*Not chosen, and logged as such per D1/D7:* **shape (a), the dealer's fallback** — make
+`dealerMove`'s terminal fallback the cheapest legal raise and reserve CHALLENGE for the surplus
+test. Implemented in full, simulated on identical seeds, and it **lost on two pre-committed
+criteria**: (i) it cannot remove the risk-free opener at all — openers stayed **100.00%**
+guaranteed true on both pools, because the defect is in the CLAIM and (a) only changes the ANSWER
+to it; (ii) its win rate **73.04%** fell outside the pre-committed 55–70% band. It is also scoped
+to `dealerMove`, i.e. pool B, so it left the 57% of hands that are pool A untouched. **(a) is not
+dead:** it is an independent lever that remains available on top of the shipped (b) — see F-160-2
+— and would need its own bakeoff.
+
+*Explicitly NOT a candidate, at T-137's own ruling and still:* §16.2's third shape, teaching
+`planDareMove` to open above its own count. It moves the measurement without moving the game. The
+planner DOES now open one higher, but because the RULE moved under it — `isLatticeMove` refuses
+`quantity <= own(face)` for every actor, human included — and the planner still makes the smallest
+claim the lattice permits.
+
+**LD-22 — the challenger-won split's ≤20 pp criterion was not met by EITHER shape, and it was
+reported as a miss rather than softened.** (T-160) Shipped: dealer-as-challenger 40.73% vs
+player-as-challenger 82.43%, 41.7 pp apart (T-137: 5.32% vs 94.92%). The residual has a named
+cause the criterion did not price — the player's planner challenges selectively while the dealer
+challenges by default — so a gap is expected. **No threshold was edited.** Filed as F-160-2.
+
+---
+
 ## 5. Open owner call
 
 **LD-20 — F-148-1, F-148-3 and F-137-1 are ONE owner call, not three, and its order is
@@ -141,6 +174,14 @@ only *then* look at the archetypes. **Explicitly rejected as first moves:** retu
 `BAD_CREDULITY` or `archetypeMove` — the policies do what they are specified to do, so
 retuning papers over F-137-1 — and reweighting the four tone mixes toward the *harder* seat,
 which is circular, because `bad` is only harder *because of* F-137-1. (T-148)
+
+> **T-160 (2026-08-02) discharged the FIRST step of LD-20's fixed order and nothing further.**
+> F-137-1 is closed (LD-21), Arm 2 was re-run at 101,616 hands, and the archetypes were
+> re-measured without being touched. **The inversion survived** — `optimal` 64.48% vs `bad`
+> 51.98%, z = −21.02 — so it is only partly downstream of F-137-1 and is refiled as **F-160-1**.
+> LD-20's remaining two steps (F-148-1 and F-148-3) are still the owner's, and the two things it
+> explicitly rejected as first moves remain rejected: no `BAD_CREDULITY` / `archetypeMove` retune
+> and no reweighting of the four tone mixes happened here.
 
 Ladder pacing (`LIARS_DICE_UNLOCK_GAMES`), the `CONQUEROR` renown threshold and the
 instrument's own seating rule are owner-gated and covered in

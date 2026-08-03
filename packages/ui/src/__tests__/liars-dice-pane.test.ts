@@ -3,11 +3,24 @@ import {
   applyPlayerAction,
   createInitialState,
   legalDareMoves,
+  minOpeningQuantity,
   startDay,
   wagerBandFor,
   type GameEvent,
   type GameState,
+  type PlayerAction,
 } from '@spacerquest/engine';
+
+/**
+ * T-160 · A LEGAL OPENING CLAIM on `face`, DERIVED FROM THE HAND THE SEED ROLLED
+ * (`docs/LIARS-DICE_REDESIGN.md` §16.2 shape (b), the F-137-1 fix). An opening
+ * claim must now EXCEED what the bidder holds of the claimed face, so a hardcoded
+ * literal is a function of the player's hidden dice and passes only by luck.
+ */
+function openingBid(state: GameState, face: number): Extract<PlayerAction, { type: 'Dare' }> {
+  const own = state.dareHand!.playerDice.filter((d) => d === face).length;
+  return { type: 'Dare', move: 'bid', face, quantity: minOpeningQuantity(own) };
+}
 import { LIARS_DICE_OPPONENTS, LIARS_DICE_RAISED_CEILING_MULT } from '@spacerquest/content';
 import {
   dareRevealFrom,
@@ -124,10 +137,11 @@ describe('T-136 · the pane asks the engine what is legal, it never decides', ()
 
   it('follows the engine after a bid lands — challenge becomes legal', () => {
     const { state } = openHand(dayOneAtSun3(3));
-    const after = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 2, face: 3 });
+    const opening = openingBid(state, 3);
+    const after = applyPlayerAction(state, opening);
     const view = dareScene(after.state);
     if (view === null) {
-      // The dealer answered a 2×3 opening claim by challenging or folding, which
+      // The dealer answered the opening claim by challenging or folding, which
       // settles the hand inside the same action (§9.4). A legal arm, not a miss.
       expect(after.events.some((e) => e.type === 'DareHandResolved')).toBe(true);
       return;
@@ -138,7 +152,12 @@ describe('T-136 · the pane asks the engine what is legal, it never decides', ()
     expect(view.legalMoves).toContain('challenge');
     expect(view.legalMoves).not.toContain('bid');
     expect(view.history.length).toBeGreaterThan(0);
-    expect(view.history[0]).toMatchObject({ actor: 'player', move: 'bid', quantity: 2, face: 3 });
+    expect(view.history[0]).toMatchObject({
+      actor: 'player',
+      move: 'bid',
+      quantity: opening.quantity,
+      face: 3,
+    });
   });
 
   it('reports the escrow and the headroom the engine actually holds', () => {
@@ -198,7 +217,7 @@ describe('T-136 · the settled frame comes off the event, never off state', () =
 
   it('a CHALLENGE reveals all four — and the count the engine actually found', () => {
     const { state } = openHand(dayOneAtSun3(1));
-    const bid = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 2, face: 3 });
+    const bid = applyPlayerAction(state, openingBid(state, 3));
     // The dealer may already have ended it inside that action; if not, call it.
     const settled = bid.state.dareHand
       ? applyPlayerAction(bid.state, { type: 'Dare', move: 'challenge' })
@@ -331,9 +350,7 @@ describe('T-145 · obligation 26 — the reveal carries the win/lose line', () =
       for (let step = 0; step < 24 && state.dareHand; step += 1) {
         const out = applyPlayerAction(
           state,
-          state.dareHand.bid === null
-            ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
-            : { type: 'Dare', move: 'challenge' },
+          state.dareHand.bid === null ? openingBid(state, 3) : { type: 'Dare', move: 'challenge' },
         );
         state = out.state;
         events = out.events;
@@ -481,12 +498,7 @@ describe('T-146 · the scene shows the engine’s Read-the-Table line at open', 
 
   it('survives the whole hand — it is read off the log, not off a transient beat', () => {
     const opened = openHand(atLadder(1, 20));
-    const bid = applyPlayerAction(opened.state, {
-      type: 'Dare',
-      move: 'bid',
-      quantity: 2,
-      face: 3,
-    });
+    const bid = applyPlayerAction(opened.state, openingBid(opened.state, 3));
     if (bid.state.dareHand) {
       expect(dareScene(bid.state)!.opponentRead).toBe(dareScene(opened.state)!.opponentRead);
     }

@@ -19,8 +19,10 @@ import {
   dicePerSideForTier,
   headroomFor,
   legalDareMoves,
+  isLatticeMove,
   legalMovesFrom,
   maxQuantityForDice,
+  minOpeningQuantity,
   resolveChallenge,
   seedLiarsDicePurses,
 } from '../liarsDiceRules.js';
@@ -37,6 +39,79 @@ import { DareOutcome, DawnHand, DayPhase, GameEvent, GameState, PlayerAction } f
 // dealer-blindness test, which has to VARY HIDDEN INFORMATION to prove the dealer
 // cannot read it. That is setting up the experiment, not driving the scene.
 // ---------------------------------------------------------------------------
+
+/**
+ * T-160 · A LEGAL OPENING CLAIM on `face`, DERIVED FROM THE HAND THE SEED ROLLED
+ * (`docs/LIARS-DICE_REDESIGN.md` §16.2 shape (b), the F-137-1 fix).
+ *
+ * The opening floor makes any hardcoded opening literal a function of the
+ * player's hidden dice, so a literal that passes today passes by luck. These two
+ * ask the ENGINE's own `minOpeningQuantity` for the floor and then take `atLeast`
+ * on top, so a test that needs room UNDER the claim (the pinned-quantity
+ * refusals, which probe `quantity - 1`) still gets it — without chasing seeds
+ * until some literal happens to be legal.
+ */
+function openingQuantity(hand: NonNullable<GameState['dareHand']>, face: number, atLeast = 1) {
+  return Math.max(atLeast, minOpeningQuantity(hand.playerDice.filter((d) => d === face).length));
+}
+function openingBid(state: GameState, face: number, atLeast = 1): PlayerAction {
+  return {
+    type: 'Dare',
+    move: 'bid',
+    face,
+    quantity: openingQuantity(state.dareHand!, face, atLeast),
+  };
+}
+
+/**
+ * T-160 · The two BLINDNESS experiments below open at a FIXED public claim while
+ * varying the player's hidden dice, because a claim DERIVED from those dice would
+ * change the dealer's INPUT and the experiment would prove nothing.
+ *
+ * T-160's opening floor makes that harder than it was: a fixed claim must clear
+ * `own(face) + 1` for EVERY variant, and a claim tall enough to clear a variant
+ * that holds two of the face is tall enough for the dealer to CALL on move one —
+ * which would leave the dealer with a single decision and make the experiment
+ * vacuous (the witness at the end of (b) is what catches that). The resolution is
+ * to vary the hidden hand over the five faces that are NOT the claimed one, so
+ * `own(3) = 0` on every variant, the floor is 1 on every variant, and the public
+ * claim `(1, 3)` is both fixed and minimal. Thirty variants, up from twenty.
+ */
+const BLIND_OPEN_QUANTITY = 1;
+const BLIND_OPEN_FACE = 3;
+/**
+ * The variant table for both experiments: `a` over the five faces that are NOT
+ * {@link BLIND_OPEN_FACE}, crossed with six tails that hold no threes either.
+ * Thirty hidden hands spanning the other five faces, every one of them holding
+ * `own(3) = 0` — which is what lets the PUBLIC claim stay fixed at the floor.
+ */
+function blindVariants(): number[][] {
+  const variants: number[][] = [];
+  for (const a of [1, 2, 4, 5, 6]) {
+    for (const rest of [
+      [1, 1, 1],
+      [4, 5, 6],
+      [6, 6, 6],
+      [2, 2, 6],
+      [1, 2, 4],
+      [5, 5, 5],
+    ]) {
+      variants.push([a, ...rest]);
+    }
+  }
+  return variants;
+}
+/** Proves the fixed claim really is legal — and really is the FLOOR — for every
+ *  variant, so a later edit to the table cannot quietly re-break the experiment
+ *  in either direction (an illegal claim, or a claim tall enough to be called on
+ *  move one, which is what the vacuity witness below would then catch). */
+function assertBlindOpenIsLegal(variants: readonly number[][]): void {
+  for (const dice of variants) {
+    const own = dice.filter((d) => d === BLIND_OPEN_FACE).length;
+    expect(own, JSON.stringify(dice)).toBe(0);
+    expect(BLIND_OPEN_QUANTITY, JSON.stringify(dice)).toBe(minOpeningQuantity(own));
+  }
+}
 
 const DEALER = 'npc-iron-vex'; // cast index 0 — starts co-located at Sun-3 (id 1).
 const SUN_3 = 1;
@@ -241,7 +316,7 @@ describe('T-135 · a full hand plays through startDay/applyPlayerAction', () => 
     }).state;
     expect(state.dareHand).not.toBeNull();
 
-    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    state = applyPlayerAction(state, openingBid(state, 1)).state;
     while (state.dareHand) {
       state = applyPlayerAction(state, { type: 'Dare', move: 'challenge' }).state;
     }
@@ -278,7 +353,7 @@ describe('T-135 · the bid lattice refuses, never clamps (the closed exploit)', 
     // rule are testable: `quantity - 1` and `face - 1` are still inside the
     // lattice, so a refusal below is about the RULE and not about a bound.
     let state = openHand(hangoutState(222)).state;
-    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 3, face: 2 }).state;
+    state = applyPlayerAction(state, openingBid(state, 2, 3)).state;
     // The DEALER answered inside that same call (§9.4), so the standing bid the
     // refusals below are measured against is the dealer's, which is exactly the
     // state a player is ever asked to move from.
@@ -342,7 +417,7 @@ describe('T-135 · the bid lattice refuses, never clamps (the closed exploit)', 
 
   it('a second OPEN against a standing bid is refused', () => {
     const state = withStandingBid();
-    const step = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 4, face: 4 });
+    const step = applyPlayerAction(state, openingBid(state, 4, 4));
     expect(step.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
       failReason: 'illegal-dare-move',
     });
@@ -380,7 +455,7 @@ describe('T-135 · FOLD forfeits exactly the seed plus the antes paid', () => {
     const seedWager = state.dareHand!.seedWager;
     const ante = state.dareHand!.ante;
 
-    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    state = applyPlayerAction(state, openingBid(state, 1)).state;
     let bid = state.dareHand!.bid!;
     state = applyPlayerAction(state, {
       type: 'Dare',
@@ -441,7 +516,7 @@ describe('T-135 · FOLD forfeits exactly the seed plus the antes paid', () => {
   it('the dusk timeout fold is a player fold in every respect (§6.2)', () => {
     const build = () => {
       let s = openHand(hangoutState(222)).state;
-      s = applyPlayerAction(s, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+      s = applyPlayerAction(s, openingBid(s, 1)).state;
       return s;
     };
     const forFold = build();
@@ -469,7 +544,7 @@ describe('T-135 · FOLD forfeits exactly the seed plus the antes paid', () => {
 
   it('NO reachable state carries a hand into the next dawn', () => {
     let state = openHand(hangoutState(222)).state;
-    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 2, face: 2 }).state;
+    state = applyPlayerAction(state, openingBid(state, 2, 2)).state;
     const next = startDay(endDay(state).state);
     expect(next.state.dareHand).toBeNull();
   });
@@ -490,7 +565,7 @@ describe('T-135 · the three disposition arms apply exactly as settled', () => {
     // The seed-222 script from the full-hand block above, which lands on a
     // challenge-WIN — asserted, not hoped for, so this test cannot pass vacuously.
     let state = openHand(hangoutState(222)).state;
-    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    state = applyPlayerAction(state, openingBid(state, 1)).state;
     for (const move of ['raise-face', 'raise-both', 'raise-quantity'] as const) {
       const bid = state.dareHand!.bid!;
       const quantity = move === 'raise-face' ? bid.quantity : bid.quantity + 1;
@@ -512,7 +587,7 @@ describe('T-135 · the three disposition arms apply exactly as settled', () => {
     // An (8,6) claim needs all eight dice showing 6 — arithmetically almost
     // impossible, so this is a deterministic player loss whichever side calls it.
     let state = openHand(hangoutState(222)).state;
-    const step = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 8, face: 6 });
+    const step = applyPlayerAction(state, openingBid(state, 6, 8));
     state = step.state;
     let evts = step.events;
     if (state.dareHand) {
@@ -532,7 +607,7 @@ describe('T-135 · the three disposition arms apply exactly as settled', () => {
   it('player-fold and timeout-fold read the NEW dispositionOnFold arm', () => {
     for (const kind of ['player-fold', 'timeout-fold'] as const) {
       let state = openHand(hangoutState(222)).state;
-      state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+      state = applyPlayerAction(state, openingBid(state, 1)).state;
       const step =
         kind === 'player-fold'
           ? applyPlayerAction(state, { type: 'Dare', move: 'fold' })
@@ -556,7 +631,7 @@ describe('T-135 · the three disposition arms apply exactly as settled', () => {
 
   it('no new DispositionChanged reason — every arm reports `dare` (§7.4)', () => {
     let state = openHand(hangoutState(222)).state;
-    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    state = applyPlayerAction(state, openingBid(state, 1)).state;
     const step = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
     for (const e of step.events) {
       if (e.type === 'DispositionChanged') expect(e.reason).toBe('dare');
@@ -570,7 +645,7 @@ describe('T-135 · the three disposition arms apply exactly as settled', () => {
     let state = hangoutState(222);
     dealerOf(state).disposition = 10;
     state = openHand(state).state;
-    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    state = applyPlayerAction(state, openingBid(state, 1)).state;
     const step = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
     expect(resolvedOf(step.events)!.outcome).toBe('player-fold');
     // The event still REPORTS the delta that was passed; the applied one is zero.
@@ -584,7 +659,7 @@ describe('T-135 · the three disposition arms apply exactly as settled', () => {
     // is what keeps T-125's interceptor measurement comparable.
     let state = openHand(hangoutState(222)).state;
     const all: GameEvent[] = [];
-    let step = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 });
+    let step = applyPlayerAction(state, openingBid(state, 1));
     state = step.state;
     all.push(...step.events);
     while (state.dareHand) {
@@ -633,18 +708,9 @@ describe('T-135 · the dealer policy cannot read the player’s hand', () => {
     // one of these. Every move goes through the REAL applyPlayerAction — the one
     // legitimate poke is writing the hidden hand BEFORE the first move, which is
     // setting up the experiment rather than driving the scene.
-    const variants: number[][] = [];
-    for (let a = 1; a <= 6; a += 1) {
-      for (const rest of [
-        [1, 1, 1],
-        [3, 4, 5],
-        [6, 6, 6],
-        [2, 2, 6],
-      ]) {
-        variants.push([a, ...rest]);
-      }
-    }
+    const variants = blindVariants();
     expect(variants.length).toBeGreaterThanOrEqual(20);
+    assertBlindOpenIsLegal(variants);
 
     const signatures = variants.map((playerDice) => {
       let state = openHand(hangoutState(222)).state;
@@ -664,7 +730,11 @@ describe('T-135 · the dealer policy cannot read the player’s hand', () => {
         const move = script[i];
         const bid = state.dareHand.bid;
         const quantity =
-          move === 'bid' ? 2 : move === 'raise-face' ? bid!.quantity : bid!.quantity + 1;
+          move === 'bid'
+            ? BLIND_OPEN_QUANTITY
+            : move === 'raise-face'
+              ? bid!.quantity
+              : bid!.quantity + 1;
         const face = move === 'bid' ? 3 : move === 'raise-quantity' ? bid!.face : bid!.face + 1;
         state = applyPlayerAction(state, { type: 'Dare', move, quantity, face }).state;
       }
@@ -779,7 +849,7 @@ describe('T-135 · the dealer’s dice never enter the log before a reveal', () 
   it('a folded hand never reveals them, anywhere in the event log', () => {
     let state = openHand(hangoutState(222)).state;
     const dealerDice = [...state.dareHand!.dealerDice];
-    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    state = applyPlayerAction(state, openingBid(state, 1)).state;
     const fold = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
 
     // The WHOLE persisted log, not just this batch's events.
@@ -794,7 +864,7 @@ describe('T-135 · the dealer’s dice never enter the log before a reveal', () 
   it('a challenged hand reveals them on DareHandResolved and nowhere earlier', () => {
     let state = openHand(hangoutState(222)).state;
     const before = state.eventLog.length;
-    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 8, face: 6 }).state;
+    state = applyPlayerAction(state, openingBid(state, 6, 8)).state;
     let log = state.eventLog.slice(before);
     if (state.dareHand) {
       state = applyPlayerAction(state, { type: 'Dare', move: 'challenge' }).state;
@@ -911,7 +981,7 @@ describe('T-135 · the ante clamp closes the raising game, never the hand', () =
     let state = openHand(fixture, 900).state;
     expect(state.dareHand!.seedWager).toBe(900);
     expect(state.player.credits).toBe(10);
-    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    state = applyPlayerAction(state, openingBid(state, 1)).state;
     expect(state.dareHand).not.toBeNull();
     expect(state.player.credits).toBeLessThan(ante);
 
@@ -1080,7 +1150,7 @@ describe('T-135 · the hand survives serialization', () => {
     let state = openHand(hangoutState(222, [10, 20, 10, 10, 10])).state;
     state = applyPlayerAction(state, { type: 'Dare', move: 'peek', spendDie: 1 }).state;
     expect(state.dareHand!.peekedDealerDie).not.toBeNull();
-    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    state = applyPlayerAction(state, openingBid(state, 1)).state;
     expect(state.dareHand).not.toBeNull();
     const bid = state.dareHand!.bid!;
     state = applyPlayerAction(state, {
@@ -1255,9 +1325,7 @@ function playRosterHand(
   } else {
     for (let step = 0; step < 24 && state.dareHand; step += 1) {
       const action: PlayerAction =
-        state.dareHand.bid === null
-          ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
-          : { type: 'Dare', move: 'challenge' };
+        state.dareHand.bid === null ? openingBid(state, 3, 2) : { type: 'Dare', move: 'challenge' };
       const r = applyPlayerAction(state, action);
       state = r.state;
       events.push(...r.events);
@@ -1492,9 +1560,7 @@ describe('T-145 · obligation 19a — a beaten roster opponent is recorded EXACT
     for (let step = 0; step < 24 && state.dareHand; step += 1) {
       state = applyPlayerAction(
         state,
-        state.dareHand.bid === null
-          ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
-          : { type: 'Dare', move: 'challenge' },
+        state.dareHand.bid === null ? openingBid(state, 3, 2) : { type: 'Dare', move: 'challenge' },
       ).state;
     }
     // The rematch is LEGAL and PAYS — it simply records nothing (§1 rule 3a).
@@ -1536,7 +1602,7 @@ describe('T-145 · obligation 19a — a beaten roster opponent is recorded EXACT
         attempt = applyPlayerAction(
           attempt,
           attempt.dareHand.bid === null
-            ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
+            ? openingBid(attempt, 3, 2)
             : { type: 'Dare', move: 'challenge' },
         ).state;
       }
@@ -1559,7 +1625,7 @@ describe('T-145 · obligation 20a — a ROAMING win never touches liarsDiceBeate
         state = applyPlayerAction(
           state,
           state.dareHand.bid === null
-            ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
+            ? openingBid(state, 3, 2)
             : { type: 'Dare', move: 'challenge' },
         ).state;
       }
@@ -1656,18 +1722,9 @@ describe('T-145 · obligation 7(b) — the roster policy cannot read the player�
     // are fixed; only the hidden player dice vary. The one poke is writing the
     // hidden hand BEFORE the first move — setting up the experiment, not driving
     // the scene.
-    const variants: number[][] = [];
-    for (let a = 1; a <= 6; a += 1) {
-      for (const rest of [
-        [1, 1, 1],
-        [3, 4, 5],
-        [6, 6, 6],
-        [2, 2, 6],
-      ]) {
-        variants.push([a, ...rest]);
-      }
-    }
+    const variants = blindVariants();
     expect(variants.length).toBeGreaterThanOrEqual(20);
+    assertBlindOpenIsLegal(variants);
 
     for (const opponentId of SUN3_ROSTER) {
       const signatures = variants.map((playerDice) => {
@@ -1685,7 +1742,11 @@ describe('T-145 · obligation 7(b) — the roster policy cannot read the player�
           const move = script[i];
           const bid = state.dareHand.bid;
           const quantity =
-            move === 'bid' ? 2 : move === 'raise-face' ? bid!.quantity : bid!.quantity + 1;
+            move === 'bid'
+              ? BLIND_OPEN_QUANTITY
+              : move === 'raise-face'
+                ? bid!.quantity
+                : bid!.quantity + 1;
           const face = move === 'bid' ? 3 : move === 'raise-quantity' ? bid!.face : bid!.face + 1;
           state = applyPlayerAction(state, { type: 'Dare', move, quantity, face }).state;
         }
@@ -1760,7 +1821,7 @@ describe('T-145 · obligation 4/5 — the v14→v15 migration', () => {
     // escrow on both sides, a used peek and a non-empty history.
     let live = openHand(hangoutState(222, [10, 20, 10, 10, 10])).state;
     live = applyPlayerAction(live, { type: 'Dare', move: 'peek', spendDie: 1 }).state;
-    live = applyPlayerAction(live, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    live = applyPlayerAction(live, openingBid(live, 1)).state;
     const bid = live.dareHand!.bid!;
     live = applyPlayerAction(live, {
       type: 'Dare',
@@ -1813,7 +1874,7 @@ describe('T-145 · obligation 4/5 — the v14→v15 migration', () => {
 
   it('a full save envelope round-trips a roster mid-hand scene', () => {
     let live = openRosterHand(hangoutState(5), 'ld-1-2', 250).state;
-    live = applyPlayerAction(live, { type: 'Dare', move: 'bid', quantity: 2, face: 3 }).state;
+    live = applyPlayerAction(live, openingBid(live, 3, 2)).state;
     if (!live.dareHand) return; // the dealer ended it; the no-hand case is covered above
     const loaded = loadSave(createSave(live, 5));
     expect(loaded.state.dareHand).toEqual(live.dareHand);
@@ -1828,5 +1889,171 @@ describe('T-145 · obligation 4/5 — the v14→v15 migration', () => {
     expect(restored.player.liarsDiceGamesPlayed).toBe(0);
     expect(Object.keys(restored.liarsDicePurses)).toHaveLength(42);
     expect(restored.liarsDicePurses['ld-11-3']).toBe(24_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-160 · §16.2 SHAPE (b) — THE OPENING FLOOR, fixing finding F-137-1
+// (`docs/LIARS-DICE_REDESIGN.md` §16.2 / §17)
+//
+// The defect these tests pin: `resolveChallenge` counts the claimed face across
+// ALL the dice in play, so `actualCount >= own(face)` ALWAYS. An opening claim at
+// or under `own(face)` therefore could not be false, and T-137 measured 15,235 of
+// 15,235 openers (100.00%) guaranteed true. `minOpeningQuantity` closes it at the
+// one entrance the §5.2 pin left open.
+// ---------------------------------------------------------------------------
+
+describe('T-160 · the opening floor (§16.2 shape (b), fixing F-137-1)', () => {
+  it('is the arithmetic §16.2 asked for: own + 1', () => {
+    for (let own = 0; own <= 6; own += 1) {
+      expect(minOpeningQuantity(own)).toBe(own + 1);
+    }
+  });
+
+  it('refuses an opening claim at or under what the bidder holds, and accepts own+1', () => {
+    // Directly against the rule, at every shipped dice-per-side (§4.6's 4 | 5 | 6),
+    // so the fix is proven on the ladder and not only at tier 0.
+    for (const dicePerSide of [4, 5, 6]) {
+      const maxQuantity = maxQuantityForDice(dicePerSide);
+      for (let own = 0; own <= dicePerSide; own += 1) {
+        for (let quantity = 1; quantity <= own; quantity += 1) {
+          expect(
+            isLatticeMove(null, 'bid', quantity, 3, maxQuantity, own),
+            `dice ${dicePerSide}, own ${own}, claim ${quantity}`,
+          ).toBe(false);
+        }
+        expect(
+          isLatticeMove(null, 'bid', minOpeningQuantity(own), 3, maxQuantity, own),
+          `dice ${dicePerSide}, own ${own}, floor`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('TOTALITY: every face still has a legal opening, even holding all six', () => {
+    // The worst case the rule can be handed — six dice showing all six faces, so
+    // `own(f) = 1` on every face and the floor is 2 everywhere. The proof is
+    // `own(f) <= dicePerSide` ⇒ `own(f) + 1 <= dicePerSide + 1 <= 2 × dicePerSide
+    // = maxQuantity`; this is that proof, executed.
+    const allSix = [1, 2, 3, 4, 5, 6];
+    const maxQuantity = maxQuantityForDice(6);
+    for (let face = 1; face <= 6; face += 1) {
+      const own = allSix.filter((d) => d === face).length;
+      expect(own).toBe(1);
+      const floor = minOpeningQuantity(own);
+      expect(floor).toBeLessThanOrEqual(maxQuantity);
+      expect(isLatticeMove(null, 'bid', floor, face, maxQuantity, own), `face ${face}`).toBe(true);
+    }
+    // …and at four dice, where a captain can hold all four of one face.
+    const allOnes = [1, 1, 1, 1];
+    const maxFour = maxQuantityForDice(4);
+    const ownOnes = allOnes.filter((d) => d === 1).length;
+    expect(minOpeningQuantity(ownOnes)).toBeLessThanOrEqual(maxFour);
+    expect(isLatticeMove(null, 'bid', minOpeningQuantity(ownOnes), 1, maxFour, ownOnes)).toBe(true);
+  });
+
+  it('the resolver REFUSES a risk-free opener and SPENDS NOTHING', () => {
+    let state = openHand(hangoutState(222)).state;
+    const hand = state.dareHand!;
+    // The face the captain holds most of — the exact claim `planDareMove` used to
+    // make, and the one F-137-1 is about.
+    let bestFace = 1;
+    for (let face = 1; face <= 6; face += 1) {
+      if (
+        hand.playerDice.filter((d) => d === face).length >=
+        hand.playerDice.filter((d) => d === bestFace).length
+      )
+        bestFace = face;
+    }
+    const own = hand.playerDice.filter((d) => d === bestFace).length;
+    expect(
+      own,
+      'four d6 over six faces always leaves a modal face of at least one',
+    ).toBeGreaterThanOrEqual(1);
+
+    const creditsBefore = state.player.credits;
+    const potPlayerBefore = hand.potPlayer;
+    const potDealerBefore = hand.potDealer;
+    const diceBefore = JSON.stringify(state.player.dawnHand);
+
+    const step = applyPlayerAction(state, {
+      type: 'Dare',
+      move: 'bid',
+      quantity: own,
+      face: bestFace,
+    });
+    expect(step.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+      failReason: 'illegal-dare-move',
+    });
+    // A REFUSAL SPENDS NOTHING: credits, both escrow pots and the dawn hand are
+    // byte-identical, and the hand is still open with no claim on it.
+    expect(step.state.player.credits).toBe(creditsBefore);
+    expect(step.state.dareHand!.potPlayer).toBe(potPlayerBefore);
+    expect(step.state.dareHand!.potDealer).toBe(potDealerBefore);
+    expect(JSON.stringify(step.state.player.dawnHand)).toBe(diceBefore);
+    expect(step.state.dareHand!.bid).toBeNull();
+
+    // …and the claim ONE higher is accepted, so the refusal is the rule and not a
+    // bound.
+    state = applyPlayerAction(state, {
+      type: 'Dare',
+      move: 'bid',
+      quantity: minOpeningQuantity(own),
+      face: bestFace,
+    }).state;
+    expect(state.dareHand === null || state.dareHand.history.length > 0).toBe(true);
+  });
+
+  it('THE DEFECT IS GONE AT ITS SOURCE: openers are no longer true by construction', () => {
+    // The headline F-137-1 measured, re-measured. `resolveChallenge` counts across
+    // ALL the dice in play, so an opener is GUARANTEED TRUE iff
+    // `quantity <= own(face)`. Over a large sample of real hands opened through
+    // the real loop, that must now be ZERO — and the FALSE-opener rate must be
+    // strictly positive, or the rule would have moved nothing but the arithmetic.
+    let openers = 0;
+    let guaranteedTrue = 0;
+    let actuallyFalse = 0;
+    for (let seed = 1; seed <= 2000; seed += 1) {
+      const opened = openHand(hangoutState(seed)).state;
+      const hand = opened.dareHand;
+      if (!hand) continue;
+      let bestFace = 1;
+      for (let face = 1; face <= 6; face += 1) {
+        if (
+          hand.playerDice.filter((d) => d === face).length >=
+          hand.playerDice.filter((d) => d === bestFace).length
+        )
+          bestFace = face;
+      }
+      const own = hand.playerDice.filter((d) => d === bestFace).length;
+      const quantity = minOpeningQuantity(own);
+      openers += 1;
+      if (quantity <= own) guaranteedTrue += 1;
+      const actual = [...hand.playerDice, ...hand.dealerDice].filter((d) => d === bestFace).length;
+      if (actual < quantity) actuallyFalse += 1;
+    }
+    expect(openers).toBeGreaterThanOrEqual(2000);
+    expect(guaranteedTrue, 'T-137 measured 15,235 / 15,235 here').toBe(0);
+    expect(actuallyFalse, 'an opening claim is now a real claim that can be false').toBeGreaterThan(
+      0,
+    );
+  });
+
+  it('the DEALER is unaffected: it is never asked to open (§9.9 ruling 1)', () => {
+    // Asserted rather than argued in prose. Both house policies throw on a null
+    // bid, which is what makes "the dealer never opens" a property of the code.
+    expect(() =>
+      dealerMove({
+        dealerDice: [1, 2, 3, 4],
+        dicePerSide: 4,
+        bid: null,
+        bidder: null,
+        dealerGuile: 0,
+        ante: 10,
+        headroom: 1000,
+        dealerCredits: 1000,
+        roll: 0,
+      }),
+    ).toThrow(/no standing bid/);
   });
 });

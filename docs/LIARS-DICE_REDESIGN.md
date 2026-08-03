@@ -1777,8 +1777,22 @@ it, in the player's favour, and by roughly **5×** on EV.
 
 ### 16.2 FINDING F-137-1 · The dealer challenges a claim that is true by construction
 
-**Status: REPORTED, NOT FIXED. This is a fresh owner call, and it is M4e's (T-144–T-148) natural
-home because it is a dealer-policy question.** No constant was touched.
+**Status: FIXED AT T-160 (2026-08-02) — shipped shape (b), THE OPENING LATTICE.** See **§17** for
+the bakeoff, the numbers and the findings it filed. In one line: `isLatticeMove`'s `bid` arm now
+requires `quantity > own(face)` via the new `minOpeningQuantity`
+(`packages/engine/src/liarsDiceRules.ts`), so an opening claim can no longer be made risk-free.
+**Measured post-fix: openers guaranteed true 100.00% → 0.00%** (n = 101,616 hands), player win rate
+80.30% → 61.07%, EV/hand +565.8 → +197.3 cr.
+
+**The NOT-CHOSEN shape, logged per the D1/D7 precedent: (a) the dealer's fallback** — make
+`dealerMove`'s terminal fallback the cheapest legal *raise* and reserve CHALLENGE for the surplus
+test. It was implemented in full and simulated on identical seeds. It lost on two pre-committed
+criteria: it **cannot remove the risk-free opener at all** (openers stayed 100.00% guaranteed true
+on both pools, because the defect is in the *claim*, not in the answer to it), and its win rate
+**73.04%** landed outside the pre-committed 55–70% band. It is scoped to `dealerMove`, i.e. pool B
+alone, so it left pool A — **57%** of hands actually played — untouched. §17.3 carries the full
+three-arm table. *(The original T-137 text is preserved below, unedited, as the record of what was
+measured then.)*
 
 The 94.66% is not noise and not a lucky arm. It has a single mechanical cause, and both halves
 of it are individually defensible:
@@ -2078,3 +2092,295 @@ not happen: `DARE_ANTE_BAND_FRACTION` 0.03 · `DARE_PEEK_DC` 12 · `DARE_WIN_DIS
    CHALLENGE by construction. Whether that is acceptable — a fold that is never the better
    credit play, whose only positive payoff is `+1` disposition and whose stated concealment
    benefit is inert against a memoryless dealer — is a design question, not a constant.
+
+---
+
+## §17 · T-160 capstone — F-137-1 closed, the bakeoff that closed it (2026-08-02)
+
+**What this section is.** T-137 filed **F-137-1** (§16.2) as an owner call with three candidate
+shapes and fixed none of them. T-148 confirmed it survived the roster and the ladder untouched
+(100.00% of openers still guaranteed true, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.2). T-160 was
+scheduled by the owner to run **before** the T-158 UAT halt, because UAT's purpose is the owner's
+first honest read of pacing and dice-tension and the bar as shipped distorted that read. This is
+the bakeoff, the shipped fix, and every number owed.
+
+### 17.0 Method, and the four ground-truth corrections this task made first
+
+| | |
+| --- | --- |
+| Base commit | `d9b3a1bc` on `redesign/explore-hangout` |
+| Bakeoff rig | three **git worktrees** off the same commit — `control` (no change), `cand-a`, `cand-b` — each with its own `node_modules/@spacerquest/*` symlinks so a build in one cannot leak into another. **The main tree was byte-clean through the whole bakeoff** (`git status` verified before and after). |
+| Bakeoff arm | `gambler`, seeds 1..200 × 120 days, per arm. **33,636 / 33,965 / 34,008 hands** — past the `n ≥ 1,000 hands` sizing rule in every archetype cell. |
+| Capstone arms | **Arm 1** = seeds 1..120 × 120 days × 8 policies (960 careers, 20,397 hands) — the like-for-like shape §12.6's interceptor column uses. **Arm 2** = `gambler`, seeds 1..600 × 120 days (600 careers, **101,616 hands**) — depth. |
+| Probe | `.scratch/t160-postfix.ts`, **REBUILT and declared as rebuilt**: the T-137/T-148 probe lived in `.scratch/`, which was never committed (`git log --all -- .scratch` is empty), so this is not a verbatim descendant. It re-implements `runCampaign`'s day loop because `runCampaign` returns a summary and all four owed numbers are per-HAND facts. |
+| Fidelity | The probe loop is checked against `runCampaign` on **six channels** (`finalCredits`, `deedCount`, `dares`, `daresWon`, `netCredits`, `dareGuardHits`) over 5 (seed, policy) pairs — **PASS on every arm**. Gates asserted to **zero on every arm**: `dareGuardHits`, hands left open, `timeout-fold`, unresolved hands, per-`handId` join misses, interceptor reconstruct misses. |
+
+**Four corrections to the task's own framing, made before anything ran.** The task block was
+authored against T-148 HEAD; four things had moved.
+
+1. The **baseline of record is `docs/balance/baseline-t182-reroll-fix.json`**, not
+   `baseline-t148-roster-ladder.json` — T-150 and T-182 both moved `gambler` in between. §17.5
+   diffs against **both**: t182 is the pair that *attributes* the mechanic, t148 is the
+   *economic* read §16.2's cost table compares to.
+2. The named source anchors had drifted: `planDareMove` is `packages/sim/src/index.ts:3699`
+   (branch (b) at :3706-3722), not `:3593-3607`; `dealerMove` is
+   `packages/engine/src/liarsDiceRules.ts:638` (fallback at :727-732), not `:345-350`.
+3. **The sweep cannot answer any of the four owed numbers.** `SeedRow`
+   (`packages/sim/src/balance/aggregate.ts`) carries no dare field at all. Win rate, EV/hand,
+   dealer-challenge share and the challenger-won split come from the **probe**; "against
+   `baseline-t148…`" means "against §12.2's T-148 figures", and that is what §17.3 compares to.
+4. **No save-shape change is owed.** Neither candidate touches `DareHandState` or any persisted
+   shape, so there is no migration and **`CURRENT_SAVE_VERSION` stays at 15** (the constraint
+   sheet's "12" is itself stale — the shipped value at HEAD is 15, asserted by
+   `liarsDiceAchievements.test.ts`).
+
+### 17.1 Predictions, recorded BEFORE the first run
+
+Written down before the probe or the sweep executed, so they can be scored rather than
+rationalised.
+
+| # | Prediction | Outcome |
+| --- | --- | --- |
+| 1 | **Moved sweep rows: `gambler` and `fleet` only**; the other seven byte-identical | ✅ §17.5 |
+| 2 | `rulesFingerprint` **moves** under both shapes; `instrumentFingerprint` moves under (b), not under (a); `docsFingerprint` moves either way | ✅ |
+| 3 | `gambler.finalCredits.median` **falls** from its t182 level; `tourOneClearRate`, `portOwnershipRate` fall; `survival.shipsLost` falls | ✅ §17.5 |
+| 4 | **F-137-2's wronged share FALLS** — pre-committed as EXPECTED (§16.8 item 2), not a regression. The lift over uniform must not collapse | ✅ §17.6 |
+| 5 | `liars_dice_grand_slam` becomes **less** reachable, not more | ✅ §17.7 |
+| 6 | Shape (b) **un-inverts** the archetype ordering (F-148-1); shape (a) does not | ❌ **WRONG — the inversion survives both shapes.** Filed as **F-160-1** (§17.8) |
+
+### 17.2 Arbitration criteria, pre-committed BEFORE the runs
+
+| # | Criterion | Pass condition |
+| --- | --- | --- |
+| **C1** | the conjunction is broken | openers guaranteed true → 0.00%, **or** the dealer's challenge share of its own decisions falls far below 90.48% **and** its challenge-win rate rises off 5.32%. **Reported per pool.** |
+| **C2** | win rate in a defensible band | **55–70%** player win rate, EV/hand well under +558 cr. Anchors: §1.3's discarded opposed-d20 Dare at 57.3%, T-137 94.66%, T-148 80.07%. **Disqualifies; does not pick.** |
+| **C3** | the challenger-won split is no longer lopsided | the two rows within **≈20 pp** of each other (T-137: 5.32% vs 94.92%) |
+| **C4** | F-137-2 re-read | wronged share falls (EXPECTED); the **lift over uniform** must not collapse from 2.875× |
+| **C5** | blast radius / test churn | **REPORT ONLY. MUST NOT BREAK A TIE.** |
+| **C6** | archetype ordering un-inverts | `optimal` vs `bad` win rate, with SE and z, on both arms |
+
+**HALT rule:** if both shapes passed C1–C4 and C6 and the residual was taste, HALT and escalate.
+**It did not trigger** — the numbers arbitrated on two named criteria and (b) lost none.
+
+### 17.3 The bakeoff — three arms, identical seeds, `gambler` 1..200 × 120 days
+
+**Rig validation, on predictions the rig did not produce.** Before any candidate number was
+believed, the `control` arm was checked against T-148's published figures. It reproduced the
+*structural* fact exactly and the *sampled* facts to within ~0.5 pp:
+
+| | T-148 (§12.2) | **control arm** |
+| --- | --- | --- |
+| openers guaranteed true | 100.00% | **100.00%** (33,636 / 33,636) — exact, as a structural fact must be |
+| player win rate | 80.07% | 80.30% |
+| EV / hand | +558.00 cr | +565.8 cr |
+| roaming (pool B) | 76.91% | 77.60% |
+| roster `optimal` | 84.69% | 84.51% |
+| roster `bad` | 68.78% | 69.13% |
+| F-137-2 wronged share / lift | 26.19% / 2.875× | 26.63% / 2.933× |
+| `liars_dice_grand_slam` | 0 / 720 | 0 / 200 |
+
+**The three arms.** `n` on every cell.
+
+| | **control** (n=33,636) | **(a) dealer's fallback** (n=33,965) | **(b) opening lattice** (n=34,008) |
+| --- | --- | --- | --- |
+| **openers guaranteed true — ALL** | 100.00% | **100.00%** | **0.00%** |
+| — pool B (roaming) | 100.00% (n=14,507) | 100.00% (n=14,694) | **0.00%** (n=14,483) |
+| — pool A (roster) | 100.00% (n=19,129) | 100.00% (n=19,271) | **0.00%** (n=19,525) |
+| player win rate | 80.30% ±0.22 | **73.04%** ±0.24 | **60.88%** ±0.26 |
+| EV / hand | +565.8 cr | +434.1 cr | **+196.0 cr** |
+| bids / hand | 1.980 | 2.351 | 1.301 |
+| dealer challenge share of its decisions — ALL | 60.18% | 48.25% | 81.92% |
+| — pool B | 56.35% | **33.16%** | 81.67% |
+| — pool A | 63.25% | **62.71%** | 82.10% |
+| challenger = DEALER won | 18.46% (n=28,970) | 28.98% (n=25,612) | **40.87%** (n=31,131) |
+| challenger = PLAYER won | 70.84% (n=3,803) | 79.09% (n=7,462) | 82.22% (n=2,019) |
+| **split (pp)** | 52.4 | 50.1 | **41.4** |
+| F-137-2 wronged share / lift | 26.63% / 2.933× | 19.53% / 2.959× | 20.08% / **3.085×** |
+| `optimal` vs `bad` (z) | −15.38 pp, z = −16.96 | −14.54 pp, z = −16.09 | −13.59 pp, z = −13.21 |
+| `finalCredits` median | 97,594 | 87,311 | 68,518 |
+| grand slams | 0 / 200 | 0 / 200 | 0 / 200 |
+| files touched (C5, report only) | — | 1 engine file | 3 engine/sim + 1 UI + tests |
+
+**Scoring against the pre-committed criteria.**
+
+- **C1 — decisive, and it decided the bakeoff.** Shape (a) leaves the risk-free opener at
+  **100.00% on both pools**: it changes the *answer* to the claim, never the claim. Its second
+  limb does move — pool B's challenge share 56.35% → 33.16% and the dealer's challenge-win rate
+  22.32% → 55.51% — but it is scoped to `dealerMove`, so **pool A, which is 57% of hands actually
+  played (§12.3), is untouched** (63.25% → 62.71%, 15.71% → 15.53%). Shape (b) takes
+  openers-guaranteed-true to **0.00% on both pools**, which is the defect removed at its source.
+  **(b) passes; (a) fails.**
+- **C2 — (a) is disqualified by the band it was measured against.** 73.04% is outside the
+  pre-committed 55–70%. (b)'s 60.88% is inside it, and close to §1.3's discarded opposed-d20
+  Dare at 57.3%. **(b) passes; (a) fails.**
+- **C3 — NEITHER shape meets the pre-committed ≤20 pp, and that is reported as a miss, not
+  softened.** (b) improves it most (52.4 → 41.4 pp) and moves the number the criterion was really
+  about — the dealer's own challenge-win rate — from T-137's **5.32%** through control's 18.46% to
+  **40.87%**, i.e. from a guaranteed loss to close to a coin flip. The residual asymmetry has a
+  named cause: the *player* challenges selectively (only when the claim outruns the evidence)
+  while the dealer challenges by default, so a gap is expected and the threshold was set without
+  pricing it. **Filed as F-160-2** (§17.8) rather than absorbed.
+- **C4 — both pass; see §17.6.**
+- **C6 — NEITHER shape un-inverts the ordering.** This was prediction 6 and it was **wrong**.
+  Filed as **F-160-1** (§17.8).
+- **C5 — reported and explicitly not used.** (b) is the wider change. The task forbids picking on
+  taste, and cost is taste.
+
+**Verdict: shape (b), the opening lattice.** It wins C1 and C2 outright and loses none. The HALT
+rule did not fire because the difference is not taste — it is two pre-committed criteria.
+
+**§16.2's third shape (teach `planDareMove` to open above its own count) was never a candidate**
+and is still not one. The distinction matters and is stated at the call site: the *rule* moved, so
+`isLatticeMove` refuses `quantity <= own(face)` for **every** actor including a human, and
+`planDareMove` opening at `minOpeningQuantity(own(bestFace))` is the minimum legal adaptation
+forced by that refusal. The planner still makes the smallest claim the lattice permits.
+
+### 17.4 The shipped shape, grep-able at its named site
+
+```
+packages/engine/src/liarsDiceRules.ts   export function minOpeningQuantity(ownOfClaimedFace: number): number
+packages/engine/src/liarsDiceRules.ts   isLatticeMove(…, maxQuantity, ownOfClaimedFace)
+                                        if (move === 'bid') return bid === null && quantity >= minOpeningQuantity(ownOfClaimedFace);
+```
+
+`ownOfClaimedFace` is a **required** parameter, by the T-146 `maxQuantity` precedent: it turns the
+sweep of call sites into compile errors so no site can silently skip the rule. All four were
+updated — `actions/dare.ts` (the resolver's refusal, still `illegal-dare-move` and still spending
+nothing), `sim/protocol.ts` (the advertised `quantity.min`), `ui/App.tsx` (`claimOk` plus the
+opening composer's seed), and `sim/index.ts` (`planDareMove` branch (b)).
+
+**Totality, proven not asserted.** `own(f) ≤ dicePerSide` for every face, so
+`own(f) + 1 ≤ dicePerSide + 1 ≤ 2 × dicePerSide = maxQuantity` at every tier. An opening bid is
+still legal on **every** face at **every** tier, including a six-dice hand showing all six faces
+(floor 2, ceiling 12). `liarsDice.test.ts`'s `TOTALITY` case executes that proof on the two worst
+inputs the rule can be handed. **The dealer is unaffected** — §9.9 ruling 1, now asserted by a test
+rather than argued in prose: `dealerMove` and `archetypeMove` both throw on `bid === null`, so
+neither ever opens.
+
+**Extraction before addition.** The signature widening landed first with the `bid` arm still
+`return bid === null` — behaviour-preserving, whole engine suite green, every behavioural golden
+unmoved — and the predicate was flipped only after. (`rulesFingerprint` moved at that first step
+because it is a hash of source bytes; that is inherent to any engine edit and is not a behavioural
+golden.)
+
+**Adjacent staleness found while reading, and fixed because the fix was free.**
+`sim/protocol.ts` advertised the dare `quantity.max` as a hardcoded `8` rather than
+`hand.maxQuantity`, which under-advertises the domain at every tier ≥ 1 (where it is 10 or 12). It
+sat on the same object literal the opening floor had to be threaded through, so it was fixed in
+place rather than filed. `protocol.test.ts` now derives both bounds from the hand.
+
+### 17.5 The 8,000-row capstone sweep
+
+`rulesFingerprint` moves, so this task takes its own capstone: implement + re-pin in ONE task.
+`npm run format` ran BEFORE extraction.
+
+See §17.9 for the command block actually run and the diff output.
+
+### 17.6 F-137-2 re-read — the fall was PRE-COMMITTED and is not a regression
+
+§16.8 item 2 says outright that whoever closes F-137-1 "should expect this to fall back and must
+not read that as a regression". Prediction 4 restated it before the run. It fell, as predicted.
+
+**Arm 1, `gambler`, 120 careers — the like-for-like column §12.6 uses:**
+
+| | §10.4 AFTER | T-137 | T-148 | **control (T-160 rig)** | **T-160 shipped** |
+| --- | --- | --- | --- | --- | --- |
+| chosen at disposition < 0 | 29.28% | **47.50%** | 26.19% | 26.63%¹ | **19.82%**² |
+| analytic uniform expectation | 9.904% | 18.108% | 9.108% | 9.078%¹ | 6.639%² |
+| **wronged-captain lift** | 2.956× | 2.623× | **2.875×** | **2.933×**¹ | **2.985×**² |
+| mean disposition of CHOSEN | −1.378 | −2.453 | −1.237 | −1.302¹ | −0.823² |
+| mean disposition of their POOL | −0.294 | −0.764 | −0.330 | −0.326¹ | −0.158² |
+| reconstruct misses | — | 0 / 5,801 | 0 / 886 | **0 / 1,457** | **0 / 4,491** |
+
+¹ gambler-only, 200 careers (the bakeoff arm). ² gambler-only, 600 careers (capstone Arm 2).
+
+**Fleet column (960 careers, Arm 1, control vs shipped on identical seeds):**
+
+| fleet | §10.4 AFTER | T-137 | T-148 | **control** | **T-160 shipped** |
+| --- | --- | --- | --- | --- | --- |
+| interceptions | 23,100 | 23,037 | 23,013 | 22,915 | 23,001 |
+| of which named | 24.70% | 25.18% | 25.23% | 25.05% (5,741) | 25.02% (5,756) |
+| inertness | 69.56% | 67.83% | 70.79% | 72.15% | 72.38% |
+| chosen at disposition < 0 | 10.13% | 12.65% | 9.44% | 8.87% | **7.66%** |
+| analytic uniform expectation | 4.223% | 5.326% | 3.966% | 3.612% | 3.171% |
+| **wronged-captain lift** | 2.398× | 2.376× | 2.379× | 2.455× | **2.416×** |
+| reconstruct misses | — | 0 / 5,801 | 0 / 886 | **0 / 5,741** | **0 / 5,756** |
+
+**The reading, stated the way §16.6 asked for it.** The wronged *share* fell (gambler 26.63% →
+19.82%, fleet 8.87% → 7.66%) because there are fewer soured captains to draw from — the player
+wins 61% of hands instead of 80%, so `DARE_WIN_DISPOSITION` fires less often. **The number that
+measures the weighting rather than the roster's mood — the lift over uniform — did NOT collapse.**
+It *rose* on the gambler arm (2.933× → **2.985×**, above T-148's 2.875× and above T-125's 2.956×)
+and is flat on the fleet arm (2.455× → 2.416×, still above T-148's 2.379×). **C4 passes.** The
+interceptor draw is doing at least as much of the work as it was, against a milder pool. No
+disposition constant and no port's `dare` arms were touched.
+
+### 17.7 FOLD, the clamp, and grand-slam reachability — restated post-fix
+
+**FOLD (§16.8 item 6). Still weakly dominated by CHALLENGE, and that is a derivation this fix does
+not touch.** §16.3's argument is unchanged: the escrow is debited at contribution time, a fold
+forfeits it with certainty, CHALLENGE costs nothing, so
+`EV_challenge − EV_fold = P_false · (potPlayer + potDealer) ≥ 0` at every reachable state. What
+moved is the *rate*: at Arm 2 (n = 101,616) FOLD is legal at **100.00%** of the 18,678 post-bid
+player decision points and taken at **3.51%** — up from control's 0.91% and T-137's 0.32%. Hand-
+level player-fold rate 0.50% → **0.65%**; dealer-fold 2.07% → 1.95%. Pre-bid folds: **0** on every
+arm (the planner always opens). So FOLD is measurably *less* dead than at T-137, but it is still
+never the better credit play. **FILED as a finding for the owner (F-160-3, §17.8), not redesigned
+here** — the task is explicit that a still-dead FOLD is a finding to file, not a licence.
+
+**The player-side ante clamp (§16.5 / §16.8 item 5).** §16.5 said the player-side 0.00% was a
+selection effect downstream of F-137-1 and had to be re-measured "once hands run longer than 1.19
+bids". Re-measured, and the answer is that the premise is gone in the other direction: **shape (b)
+makes hands SHORTER**, not longer — bids/hand 1.980 → **1.301** — because a taller opening claim
+trips `dealerMove`'s surplus test immediately (challenge share 60.18% → 81.92%). Measured clamp
+rate at Arm 2: **player 0 of 11,950 raise contributions, dealer 0 of 18,678** — both `< 0.01%`, and
+control measured 0 on both as well. The clamp is not firing at all at these bankrolls and tiers,
+on either side, before or after the fix. That is a cleaner statement than §16.5's, and it removes
+the F-137-1 confound the old figure carried.
+
+**`liars_dice_grand_slam` (F-148-2), restated on the post-fix arm.** T-148: 0 in 720 careers.
+Post-fix: **0 in 600 careers (Arm 2), 0 in 960 careers (Arm 1)**, and it got **harder**, exactly as
+predicted — seats-beaten median **29 → 26** (max 36 → 33 of 42), ports-cleared median **3 → 1**
+(max 8 → 6 of 14). The owner should read that next to F-148-2's eventual ruling: the gauntlet was
+already uncompletable at 120 days and is now further from completion.
+
+### 17.8 Findings filed by T-160
+
+**F-160-1 · The archetype ordering (F-148-1) SURVIVES the F-137-1 fix. Prediction 6 was wrong.**
+§12.2 traced the inversion to F-137-1 and said "close F-137-1 … and re-measure; if the inversion
+survives that, the archetypes are the finding". It survives, on all three arms:
+
+| arm | `optimal` | `bad` | bad − optimal | z |
+| --- | --- | --- | --- | --- |
+| control | 84.51% (n=14,091) | 69.13% (n=2,925) | −15.38 pp | **−16.96** |
+| (a) | 84.70% (n=14,211) | 70.17% (n=2,886) | −14.54 pp | −16.09 |
+| (b) shipped, bakeoff | 64.54% (n=14,694) | 50.96% (n=2,769) | −13.59 pp | −13.21 |
+| **(b) shipped, Arm 2** | **64.48%** (n=43,733) | **51.98%** (n=8,288) | **−12.50 pp** | **−21.02** |
+
+The gap narrowed (15.38 → 12.50 pp) but did not close or flip; at Arm 2's sample |z| is 21. So the
+inversion is **only partly** downstream of F-137-1, and the residual belongs to `archetypeMove` /
+`BAD_CREDULITY`. **Nothing was tuned** — §12.9 and §3.8 both forbid touching them here, and doing
+so inside the task that removed the confound would have papered over the result. Per LD-20's own
+ordering the owner now has what it asked for: F-137-1 is closed and the archetypes re-measured.
+Note the one thing that *did* change qualitatively: `optimal` (64.48%) is no longer softer than the
+roaming dealer (56.94%) by nearly the old margin, but it is still softer.
+
+**F-160-2 · The challenger-won split does not reach the pre-committed ≤20 pp under either shape.**
+Shipped: dealer-as-challenger 40.73%, player-as-challenger 82.43% — 41.7 pp apart at Arm 2. The
+mechanism is named and is not the dealer's: the *player's* planner challenges selectively
+(`bid.quantity > own(face) + dicePerSide/6 + 1.5`), the dealer challenges by default from its
+terminal fallback, and a selective challenger should beat a default one. The criterion was set
+without pricing that. **Reported, not tuned around.** Whoever revisits it should note that shape
+(a) — the not-chosen shape — is exactly the lever that makes the dealer's default *not* a
+challenge, and that (a) and (b) are not mutually exclusive: (a) remains available as a second,
+independent change on top of the shipped (b), and would need its own bakeoff.
+
+**F-160-3 · FOLD is still never the better credit play.** §17.7. Rate up (0.32% → 3.51% of post-bid
+decision points), dominance unchanged, because the dominance is a derivation about escrow and not a
+constant. Its only positive payoff remains `+1` disposition, and its stated concealment benefit is
+still inert against a memoryless dealer. A design question for the owner.
+
+### 17.9 The gate, and the baseline re-pin
+
+See `TASKS.md`'s T-160 Delivered note for the command block, the merge row count, the diff output
+and the four re-pin sites.

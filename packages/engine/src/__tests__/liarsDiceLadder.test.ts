@@ -16,10 +16,23 @@ import {
   liarsDiceTier,
   maxQuantityForDice,
   readTheTableLine,
+  minOpeningQuantity,
 } from '../liarsDiceRules.js';
 import { opponentCredits } from '../actions/dare.js';
 import { CURRENT_SAVE_VERSION, MIGRATIONS, createSave, loadSave } from '../save.js';
 import { DareOutcome, DawnHand, DayPhase, GameEvent, GameState, PlayerAction } from '../types.js';
+
+/**
+ * T-160 · A LEGAL OPENING CLAIM on `face`, DERIVED FROM THE HAND THE SEED ROLLED
+ * (`docs/LIARS-DICE_REDESIGN.md` §16.2 shape (b), the F-137-1 fix). The opening
+ * floor makes any hardcoded opening literal a function of the player's hidden
+ * dice, so a literal that passes today passes by luck. This asks the ENGINE's own
+ * `minOpeningQuantity` and then takes `atLeast` on top.
+ */
+function openingBid(state: GameState, face: number, atLeast = 1): PlayerAction {
+  const own = state.dareHand!.playerDice.filter((d) => d === face).length;
+  return { type: 'Dare', move: 'bid', face, quantity: Math.max(atLeast, minOpeningQuantity(own)) };
+}
 
 // ---------------------------------------------------------------------------
 // T-146 · THE UNLOCK LADDER (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4).
@@ -422,7 +435,7 @@ function assertSolventThroughout(
     const legal = legalDareMoves(current.dareHand, 'player', current.player.credits);
     const action: PlayerAction =
       current.dareHand.bid === null
-        ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
+        ? openingBid(current, 3, 2)
         : legal.includes('raise-quantity')
           ? {
               type: 'Dare',
@@ -574,7 +587,7 @@ describe('T-146 · obligation 27 — exactly one increment per SETTLED hand', ()
       for (let step = 0; step < 24 && state.dareHand; step += 1) {
         const action: PlayerAction =
           state.dareHand.bid === null
-            ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
+            ? openingBid(state, 3, 2)
             : { type: 'Dare', move: 'challenge' };
         const result = applyPlayerAction(state, action);
         const resolved = resolvedOf(result.events);
@@ -597,7 +610,7 @@ describe('T-146 · obligation 27 — exactly one increment per SETTLED hand', ()
       for (let step = 0; step < 24 && state.dareHand; step += 1) {
         const action: PlayerAction =
           state.dareHand.bid === null
-            ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
+            ? openingBid(state, 3, 2)
             : { type: 'Dare', move: 'challenge' };
         const result = applyPlayerAction(state, action);
         outcome = resolvedOf(result.events)?.outcome ?? outcome;

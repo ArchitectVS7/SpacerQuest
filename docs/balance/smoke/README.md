@@ -92,10 +92,12 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t182-reroll-fix.json`, re-pinned at T-182
-2026-08-02 — the F-156-1 `spendDie` capstone, which moved `rulesFingerprint` and moved NO
-number, `balance:diff` from `n13-shipped` reporting NOTHING MOVED;
-before that `baseline-n13-shipped.json` at T-156,
+exactly like drift. The current baseline (`baseline-t160-dealer-fix.json`, re-pinned at T-160
+2026-08-02 — the F-137-1 capstone, which shipped the Liar's Dice OPENING FLOOR and moves
+exactly the `gambler` and `fleet` rows against `t182-reroll-fix`;
+before that `baseline-t182-reroll-fix.json` at T-182 — the F-156-1 `spendDie` capstone, which
+moved `rulesFingerprint` and moved NO number, `balance:diff` from `n13-shipped` reporting
+NOTHING MOVED; before that `baseline-n13-shipped.json` at T-156,
 `baseline-t150-postfix.json` at T-150, `baseline-t148-roster-ladder.json` at T-148
 and `baseline-t137-liars-dice.json` at T-137, and this line was left stale at
 `baseline-t125-hangout.json` through T-131 and T-133 before being corrected at T-137) used

@@ -968,6 +968,32 @@ const UNCHANGED_POLICIES = [
  *    pins are re-derived because the input to the hash changed — the only
  *    admissible reason — and the calibration was chosen for mean-neutrality at the
  *    roster's median stat before the capstone was taken, not after a red band.
+ *
+ *    ENTRY 28 (T-160 — THE OPENING FLOOR, `docs/LIARS-DICE_REDESIGN.md` §16.2
+ *    shape (b), fixing finding F-137-1). EXACTLY ONE ROW MOVES: `gambler`.
+ *
+ *    WHAT MOVED. An opening Liar's Dice claim must now EXCEED what the bidder
+ *    holds of the claimed face (`isLatticeMove`'s `bid` arm + the new
+ *    `minOpeningQuantity`). F-137-1 measured the hole it closes: 100.00% of the
+ *    baseline planner's opening bids were TRUE BY CONSTRUCTION, because
+ *    `resolveChallenge` counts the face across all the dice in play, so a claim at
+ *    or under `own(face)` cannot be false. `planDareMove` branch (b) opens at the
+ *    engine's new floor as the minimum legal adaptation — the RULE moved under the
+ *    planner; the planner was not taught to bluff.
+ *
+ *    WHY THE OTHER SIX CANNOT MOVE, and this is the containment claim: the engine
+ *    rule is only reachable through an OPEN Liar's Dice hand, a hand only opens on
+ *    `VisitHangout{venue:'dare'}`, and `planDare` is queued by `gamblerPolicy` and
+ *    by nothing else (one call site in `packages/sim/src/index.ts`). No other
+ *    policy ever sits at a table, so no other policy's rng stream can re-phase.
+ *    The six unmoved rows are the proof, not the assumption — and this is the same
+ *    containment shape entry 26 made and entry 27 could not.
+ *
+ *    NO BAND, THRESHOLD, GOLDEN OR CONSTANT WAS EDITED. The one pin below is
+ *    re-derived because the input to the hash changed, which is the only
+ *    admissible reason for a re-pin. The task that made the change owns an 8,000-
+ *    row capstone re-pin in the same commit, and PREDICTED this row (and `fleet`)
+ *    as the only movers before the sweep ran.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
@@ -1098,7 +1124,10 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // feel it. The second hand of a day is no longer planned against a dealer the
   // first hand would have drained below the port's floor.
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
-  gambler: 'f2b995349354f178',
+  // Entry 28 (T-160): re-derived a NINTH time, and once again the ONLY row that
+  // moves — the opening floor is reachable only through a hand only `planDare`
+  // opens (see the header).
+  gambler: '050ef21fdeefe922',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   greedy: 'eacbf64644ccde5c',
 };

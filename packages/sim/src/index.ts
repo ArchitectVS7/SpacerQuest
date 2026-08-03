@@ -44,6 +44,7 @@ import {
   wagerBandFor,
   liarsDiceOpponentsAt,
   legalDareMoves,
+  minOpeningQuantity,
   applyPlayerAction,
   weaponVolleyDamage,
   SeededRng,
@@ -3669,11 +3670,16 @@ export const DARE_MAX_MOVES_PER_HAND = 32;
  * returned state is always player-to-act):
  *   (a) no hand              → `null`; the loop's condition is already false.
  *   (b) a hand, no bid       → an OPENING BID is always legal: any held face is in
- *                              1..6, `max(1, own(F*))` is in `1..dicePerSide` ⊆
- *                              `1..maxQuantity` (T-146: `maxQuantity` is
- *                              `2 × dicePerSide`, so the held count can never
- *                              exceed it at ANY tier), and an opening bid costs no
- *                              ante, so neither headroom nor credits can refuse it.
+ *                              1..6, and T-160's opening floor
+ *                              `minOpeningQuantity(own(F*)) = own(F*) + 1` is in
+ *                              `1..dicePerSide + 1` ⊆ `1..maxQuantity` (T-146:
+ *                              `maxQuantity` is `2 × dicePerSide`, and
+ *                              `dicePerSide + 1 ≤ 2 × dicePerSide` for every
+ *                              `dicePerSide ≥ 1`, so the floor can never exceed
+ *                              the ceiling at ANY tier — including a six-dice
+ *                              hand showing all six faces). An opening bid costs
+ *                              no ante, so neither headroom nor credits can
+ *                              refuse it either.
  *   (c) a hand, a bid stands → CHALLENGE is legal unconditionally (its single
  *                              precondition is `bid !== null`, it costs nothing,
  *                              and no clamp applies), and the fallback reaches it
@@ -3703,11 +3709,13 @@ export function planDareMove(state: GameState): PlayerAction | null {
   const own = (face: number) => hand.playerDice.filter((d) => d === face).length;
   const legal = legalDareMoves(hand, 'player', state.player.credits);
 
-  // (b) No bid stands — open truthfully on the face we hold most of.
+  // (b) No bid stands — open at the engine's OPENING FLOOR on the face we hold
+  // most of.
   if (hand.bid === null) {
     let bestFace = 1;
     // Ascending, with `>=`, so ties go to the HIGHER face: a claim on a taller
-    // face leaves the opponent fewer face-raise steps to answer with.
+    // face leaves the opponent fewer face-raise steps to answer with. UNCHANGED
+    // at T-160 — the selection rule is not what moved.
     for (let face = 1; face <= 6; face += 1) {
       if (own(face) >= own(bestFace)) bestFace = face;
     }
@@ -3715,7 +3723,19 @@ export function planDareMove(state: GameState): PlayerAction | null {
       type: 'Dare',
       move: 'bid',
       face: bestFace,
-      quantity: Math.max(1, own(bestFace)),
+      // T-160 · `minOpeningQuantity(own(bestFace))`, asked of the ENGINE rather
+      // than restated as `own + 1` here — the same mirror discipline the raise
+      // branches keep by filtering through `legalDareMoves`.
+      //
+      // THIS IS NOT §16.2'S BANNED THIRD SHAPE. The banned shape was "teach
+      // `planDareMove` to open above its own count" as the FIX — moving the
+      // measurement while the rule stayed put, so a human opening truthfully
+      // would still play the old, broken game. Here the RULE moved underneath
+      // the planner: `isLatticeMove` now REFUSES `quantity <= own(face)` for
+      // every actor, human included, and this line is the minimum legal
+      // adaptation forced by that refusal. The planner is still not bluffing —
+      // it makes the smallest claim the lattice permits and nothing taller.
+      quantity: minOpeningQuantity(own(bestFace)),
     };
   }
 

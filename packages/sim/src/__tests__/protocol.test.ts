@@ -10,6 +10,7 @@ import {
   quoteShipyard,
   rollDawnHand,
   liarsDiceOpponentsAt,
+  minOpeningQuantity,
   shipyardFailure,
   startDay,
   travelPreview,
@@ -678,8 +679,44 @@ describe('legal-actions enumerator', () => {
     // before any bid the hand offers open / peek / fold and nothing else.
     const dare = legal.actions.find((action) => action.type === 'Dare');
     expect(dare?.params.move).toEqual({ kind: 'enum', choices: ['bid', 'peek', 'fold'] });
-    expect(dare?.params.quantity).toEqual({ kind: 'int', min: 1, max: 8 });
+    // T-160 · THE OPENING FLOOR, advertised (§16.2 shape (b), fixing F-137-1).
+    // `quantity` and `face` are advertised INDEPENDENTLY, so the honest per-param
+    // floor is the one that holds for EVERY face — `1 + min over faces of
+    // own(face)` — DERIVED from the hand rather than pinned to a literal, because
+    // a literal here would be a second definition of the rule.
+    const hand = opened.dareHand!;
+    const leanestFaceCount = Math.min(
+      ...Array.from(
+        { length: 6 },
+        (_unused, i) => hand.playerDice.filter((d) => d === i + 1).length,
+      ),
+    );
+    expect(dare?.params.quantity).toEqual({
+      kind: 'int',
+      min: minOpeningQuantity(leanestFaceCount),
+      // T-160 · the ceiling is the hand's FROZEN `maxQuantity`, not a literal 8 —
+      // the literal under-advertised the domain at every tier >= 1.
+      max: hand.maxQuantity,
+    });
     expect(dare?.params.face).toEqual({ kind: 'int', min: 1, max: 6 });
+    // …and the advertised floor is REAL: a claim one under it is refused.
+    if (minOpeningQuantity(leanestFaceCount) > 1) {
+      const leanFace =
+        1 +
+        Array.from(
+          { length: 6 },
+          (_unused, i) => hand.playerDice.filter((d) => d === i + 1).length,
+        ).indexOf(leanestFaceCount);
+      const refused = applyPlayerAction(opened, {
+        type: 'Dare',
+        move: 'bid',
+        quantity: leanestFaceCount,
+        face: leanFace,
+      });
+      expect(refused.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+        failReason: 'illegal-dare-move',
+      });
+    }
   });
 
   it('after a bid stands, the advertised move domain follows the lattice', () => {
@@ -687,7 +724,9 @@ describe('legal-actions enumerator', () => {
     const bid = applyPlayerAction(opened, {
       type: 'Dare',
       move: 'bid',
-      quantity: 2,
+      // T-160 · derived from the hand, never a literal — the opening floor makes a
+      // hardcoded claim a function of the player's hidden dice.
+      quantity: minOpeningQuantity(opened.dareHand!.playerDice.filter((d) => d === 3).length),
       face: 3,
     }).state;
     // The dealer answered inside that same call; if it ended the hand there is

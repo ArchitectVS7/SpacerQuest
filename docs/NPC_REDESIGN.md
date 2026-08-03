@@ -103,7 +103,23 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
-> **BASELINE OF RECORD RE-PINNED AT T-182 (2026-08-02)** to
+> **BASELINE OF RECORD RE-PINNED AT T-160 (2026-08-02)** to
+> `docs/balance/baseline-t160-dealer-fix.json` — the **F-137-1** capstone
+> (`docs/LIARS-DICE_REDESIGN.md` §17). An opening Liar's Dice claim must now EXCEED what the
+> bidder holds of the claimed face (§16.2 shape (b), the winner of a three-arm bakeoff), which
+> takes openers-guaranteed-true from **100.00% to 0.00%** and the player's win rate at the
+> tables from 80.30% to **61.07%**. `rulesFingerprint` `d0388cb50b0f9a11` -> `fbcfe11ab7772555`,
+> `instrumentFingerprint` `e81bc730c94b1fce` -> `70d2ccbad279ff08` (the planner's opening claim
+> and `protocol.ts`'s advertised bounds are instrument sources), `docsFingerprint` ->
+> `e2efb468b7e8bcba`. **EXACTLY TWO ROWS MOVE — `gambler` and `fleet` — and that was PREDICTED
+> IN WRITING BEFORE THE SWEEP RAN** (§17.1): the rule is reachable only through an open Liar's
+> Dice hand, and `planDare` is queued by `gamblerPolicy` and by nothing else. `gambler`
+> `finalCredits.median` 97,930 -> **67,716** (-30.9%), `tourOneClearRate` 0.9690 -> 0.9020,
+> `portOwnershipRate` 0.9870 -> 0.9100, `survival.shipsLost` 22 -> 16 — all four directions
+> predicted in advance. No band, threshold, golden or fingerprint was edited to reach it.
+> `CURRENT_SAVE_VERSION` does NOT move (15): no persisted shape changed.
+>
+> Before that, **T-182 (2026-08-02)** pinned
 > `docs/balance/baseline-t182-reroll-fix.json` — the F-156-1 capstone. `dice.ts` `spendDie`
 > stopped dropping `rerollsRemaining` from the hand it returns, which moves
 > `rulesFingerprint` (`50f24146a366b558` -> `d0388cb50b0f9a11`) and therefore obliges a
@@ -2316,12 +2332,14 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t182-reroll-fix.json`** (1,000 seeds ×
-   > 120 days × 8 policies = 8,000 runs, re-pinned at T-182 2026-08-02 — the F-156-1
+   > **Baseline of record is `docs/balance/baseline-t160-dealer-fix.json`** (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at T-160 2026-08-02 — the F-137-1
+   > capstone; the Liar's Dice OPENING FLOOR ships, which moves exactly the `gambler` and
+   > `fleet` rows against `t182-reroll-fix` — predicted in writing before the sweep ran).
+   > `baseline-t182-reroll-fix` (re-pinned at T-182 2026-08-02 — the F-156-1
    > `spendDie` capstone; `rulesFingerprint` moved, so a capstone was owed, but
-   > `balance:diff` from `n13-shipped` reports NOTHING MOVED, so this file and
-   > `n13-shipped` describe the same 8,000 careers and differ only in which one
-   > describes HEAD).
+   > `balance:diff` from `n13-shipped` reports NOTHING MOVED, so that file and
+   > `n13-shipped` describe the same 8,000 careers).
    > `baseline-n13-shipped` (re-pinned at T-156 2026-08-02 — the N13
    > dawn-hand-parity capstone; the cast's checks now spend from a virtual hand, which
    > moves ALL NINE rows against `t150-postfix`, so that file no longer describes HEAD).

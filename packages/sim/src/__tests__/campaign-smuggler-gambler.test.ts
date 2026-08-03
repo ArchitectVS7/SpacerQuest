@@ -15,7 +15,9 @@ import {
   applyPlayerAction,
   createInitialState,
   endDay,
+  isLatticeMove,
   legalDareMoves,
+  minOpeningQuantity,
   SeededRng,
   startDay,
   wagerBandFor,
@@ -274,18 +276,33 @@ describe('T-1601b smuggler & gambler policies', () => {
 
     const state = openGamblerHand(1);
     // (b) a hand with NO bid: an opening bid is always legal — any held face is in
-    // 1..6, `max(1, own(F*))` is in 1..4 ⊆ 1..8, and an opening bid costs no ante,
-    // so neither headroom nor credits can refuse it.
+    // 1..6, T-160's floor `own(F*) + 1` is in `1..dicePerSide + 1` ⊆ `1..2 ×
+    // dicePerSide` = `1..maxQuantity`, and an opening bid costs no ante, so
+    // neither headroom nor credits can refuse it.
     const opening = planDareMove(state);
     expect(opening).not.toBeNull();
     expect(opening).toMatchObject({ type: 'Dare', move: 'bid' });
     expect(legalDareMoves(state.dareHand!, 'player', state.player.credits)).toContain(
       (opening as { move: string }).move,
     );
-    // …and it is TRUTHFUL: the claim is exactly what the player holds.
+    // T-160 · …and it EXCEEDS what the player holds by exactly one, which is the
+    // engine's opening floor and the fix for F-137-1. The old assertion here read
+    // "it is TRUTHFUL: the claim is exactly what the player holds" — that WAS the
+    // defect (`resolveChallenge` counts the face across all the dice in play, so a
+    // claim at or under `own(face)` could not be false), and it is now refused by
+    // `isLatticeMove`. The planner still makes the SMALLEST claim the lattice
+    // permits; it is not bluffing.
     const face = (opening as { face: number }).face;
     const quantity = (opening as { quantity: number }).quantity;
-    expect(quantity).toBe(Math.max(1, state.dareHand!.playerDice.filter((d) => d === face).length));
+    const own = state.dareHand!.playerDice.filter((d) => d === face).length;
+    expect(quantity).toBe(minOpeningQuantity(own));
+    expect(quantity).toBeGreaterThan(own);
+    expect(quantity).toBeLessThanOrEqual(state.dareHand!.maxQuantity);
+    // And the claim is a REAL claim: it is not true by construction any more.
+    expect(
+      isLatticeMove(null, 'bid', own, face, state.dareHand!.maxQuantity, own),
+      'a claim of exactly what the player holds is now refused at its source',
+    ).toBe(false);
 
     // (c) a hand with a standing bid, at the LATTICE CEILING and with ZERO
     // headroom — the tightest reachable corner, where every raise is illegal.

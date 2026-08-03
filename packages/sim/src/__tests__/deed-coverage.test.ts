@@ -251,8 +251,27 @@ import { deedHunterPolicy, HUNTER_TARGET_DEED_IDS } from './support/deed-hunter.
  * and re-pricing Explore or the pod supply to flatter this file would be exactly
  * the metric-gaming the standing constraints forbid. It is recorded as finding
  * F-115-B for T-116, which owns the milestone's measurement.
+ * T-160 · WIDENED 1..65 -> 1..76, and it is a WIDENING, not a re-pin and not a
+ * loosened threshold. Every number in this file is byte-identical; only the range
+ * moved. T-160 ships `docs/LIARS-DICE_REDESIGN.md` §16.2 shape (b) — an opening
+ * Liar's Dice claim must EXCEED what the bidder holds of the claimed face, which
+ * removes the risk-free opener finding F-137-1 measured. The deed hunter plays the
+ * tables, so every career after the first dice hand re-phases; the property this
+ * file guards did not move, but WHICH seeds are individually total did.
+ *
+ * RE-SWEPT over seeds 1..160 of this exact driver at this exact horizon:
+ *   · THE UNION IS STILL 44/44 with nothing missing — no coverage regression;
+ *   · TEN careers are individually total: seeds 8, 76, 89, 94, 99, 110, 125, 127,
+ *     139 and 147. That is MORE total careers per 160 seeds than T-115's sweep
+ *     found (two), so the slate got EASIER to complete in one life, not harder;
+ *   · the long pole is unchanged and is still `slipped_the_scan` (21 of the 31
+ *     one- and two-deed misses), exactly as F-115-B named it. No dice deed is a
+ *     near-miss pole, which is the direct check that this widening is about
+ *     trajectory re-phasing and not about the dice getting harder.
+ * 1..76 is the SHORTEST CONTIGUOUS RANGE holding two total careers (8 and 76),
+ * which is what the `>= 2` count needs. MEASURED COST: 76 careers in ~36s.
  * ========================================================================== */
-const COVERAGE_SEEDS = Array.from({ length: 65 }, (_, index) => index + 1);
+const COVERAGE_SEEDS = Array.from({ length: 76 }, (_, index) => index + 1);
 /** See SWEEP PROVENANCE above. */
 const HORIZON = 300;
 
@@ -304,7 +323,7 @@ describe('T-1504d deed coverage + Conqueror reachability (pinned seeds)', () => 
     // The union alone would pass if forty-four careers each earned one deed. This
     // is the health check that a whole slate is winnable in ONE life — asserted
     // as a COUNT of total careers, never as which seed, so a diverging trajectory
-    // cannot red it while the property holds. Measured at 3 of these 8.
+    // cannot red it while the property holds. T-160: measured at 2 of these 76.
     const totals = COVERAGE_SEEDS.filter((seed) =>
       ALL_DEED_IDS.every((id) => earnedIds(RUNS.get(seed)!).has(id)),
     );

@@ -1993,6 +1993,20 @@ Recommendation: **do not touch `archetypeMove` or `BAD_CREDULITY` first.** Close
 guaranteed-true opener) and re-measure; if the inversion survives that, the archetypes are the
 right place to look. **Left for an owner call — the same one F-137-1 is waiting on.**
 
+> **RE-CHECKED AT T-160 (2026-08-02) — THE INVERSION SURVIVES, and it is now its own finding.**
+> F-137-1 was closed by `docs/LIARS-DICE_REDESIGN.md` §16.2 shape (b) (an opening claim must
+> exceed what the bidder holds), openers-guaranteed-true went 100.00% → **0.00%**, and this was
+> re-measured on the same instrument. The gap NARROWED but did not close or flip:
+> `optimal` **64.48%** (n = 43,733) vs `bad` **51.98%** (n = 8,288) — bad − optimal = **−12.50 pp,
+> SE 0.59, z = −21.02** at Arm 2 (101,616 hands); the T-160 control arm reproduced the pre-fix
+> figure at −15.38 pp / z = −16.96. So the inversion is only PARTLY downstream of F-137-1 and the
+> residual belongs to `archetypeMove` / `BAD_CREDULITY`. Per this finding's own instruction
+> ("if the inversion survives that, the archetypes are the right place to look") it is refiled as
+> **F-160-1** (`docs/LIARS-DICE_REDESIGN.md` §17.8). **Nothing was tuned at T-160** — §12.9 and
+> §3.8 both forbid touching those two here. One thing did change qualitatively: `optimal`
+> (64.48%) is no longer softer than the roaming dealer by the old margin (56.94% post-fix), but it
+> is still softer.
+
 **F-148-2 · The gauntlet is played but never completed; `liars_dice_grand_slam` is unreachable
 through play.** Status: REPORTED, NOT FIXED. A maximal dice career beats **29 of 42** seats and
 clears **3 of 14** ports in 120 days; the grand slam fired **0 times in 720 careers**. Mechanism
@@ -2004,6 +2018,15 @@ question — a human hunting the deed would seat deliberately, and the deed's re
 human is therefore **unmeasured by this rig**. Either give `planDare` a set-completion preference
 (an instrument change, which owes its own inert-first commit) or accept the deeds as
 deliberate-play rewards and say so in the spec. **Left for an owner call.**
+
+> **RESTATED AT T-160 (2026-08-02) ON THE POST-FIX ARM, so the owner gets the number next to the
+> ruling it will need.** Closing F-137-1 makes the grand slam **less** reachable, not more —
+> predicted before the run and confirmed. Post-fix: **0 grand slams in 600 careers** (Arm 2,
+> `gambler` × 120 days) and **0 in 960 careers** (Arm 1, eight policies), against T-148's 0 in 720.
+> Seats beaten median **29 → 26** (max 36 → 33 of 42); ports cleared median **3 → 1** (max 8 → 6
+> of 14). The mechanism F-148-2 names is unchanged — `planDare` still has no idea a set exists —
+> but the gauntlet is now further from completion than when the finding was filed. `planDare`'s
+> selection rule was NOT changed.
 
 **F-148-3 · The roster is the softer and richer pool, which is backwards for a gauntlet.** Status:
 REPORTED, NOT FIXED. Pool A supplies 57.04% of hands, 60.23% of the money, a win rate 5.5 pp higher

@@ -425,7 +425,19 @@ export function resolveDare(
   // T-146 · the ceiling is the hand's FROZEN `maxQuantity` (§8 row 21), never the
   // `DARE_MAX_QUANTITY` constant and never a live tier — a hand opened at 4 dice
   // still refuses a claim of 9 even if the player's 10th game settled mid-scene.
-  if (!isLatticeMove(hand.bid, move, action.quantity, action.face, hand.maxQuantity)) {
+  if (
+    !isLatticeMove(
+      hand.bid,
+      move,
+      action.quantity,
+      action.face,
+      hand.maxQuantity,
+      // T-160 · the opening floor's input (§16.2 shape (b)). Counted off the
+      // hand's OWN dice, which is the only place the rule may read it from — the
+      // resolver holds the hidden hand, and no other site does.
+      hand.playerDice.filter((die) => die === action.face).length,
+    )
+  ) {
     return refuse(nextState, 'illegal-dare-move');
   }
 

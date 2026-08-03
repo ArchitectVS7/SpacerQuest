@@ -26,6 +26,7 @@ import {
   type HangoutVenueId,
 } from '@spacerquest/content';
 import {
+  DARE_MAX_FACE,
   DayPhase,
   FIGHT_FUEL_COST,
   RUN_FUEL_COST,
@@ -50,6 +51,7 @@ import {
   wagerBandFor,
   liarsDiceOpponentsAt,
   legalDareMoves,
+  minOpeningQuantity,
   type Edition,
   type GameEvent,
   type GameState,
@@ -558,16 +560,39 @@ export function legalActions(state: GameState): LegalActions {
     const moveChoices = legalDareMoves(hand, 'player', player.credits).filter(
       (move) => move !== 'peek' || hasDie,
     );
+    // T-160 · THE OPENING FLOOR, advertised (§16.2 shape (b)). `quantity` and
+    // `face` are advertised INDEPENDENTLY, so the honest per-param floor for an
+    // opening is the floor that holds for EVERY face the driver might pick —
+    // `1 + min over faces of own(face)`, i.e. the engine's own
+    // `minOpeningQuantity` at its weakest input. A driver that picks a face it
+    // holds more of still needs a taller claim, which the `note` says and the
+    // resolver refuses; a per-param spec cannot express a cross-param rule, and
+    // over-advertising a floor would forbid legal claims.
+    const openingFloor = hand.bid
+      ? hand.bid.quantity
+      : minOpeningQuantity(
+          Math.min(
+            ...Array.from(
+              { length: DARE_MAX_FACE },
+              (_unused, index) => hand.playerDice.filter((die) => die === index + 1).length,
+            ),
+          ),
+        );
     const params: LegalActionSpec['params'] = {
       move: { kind: 'enum', choices: moveChoices },
-      quantity: { kind: 'int', min: hand.bid ? hand.bid.quantity : 1, max: 8 },
-      face: { kind: 'int', min: hand.bid ? hand.bid.face : 1, max: 6 },
+      // T-160 · the ceiling is the HAND'S FROZEN `maxQuantity` (§8 row 5), not the
+      // literal 8 that stood here — a literal 8 under-advertises the domain at
+      // every tier >= 1, where `maxQuantity` is 10 or 12. Found while threading
+      // the opening floor through this same object; fixed here because the fix is
+      // one token on a line already being edited.
+      quantity: { kind: 'int', min: openingFloor, max: hand.maxQuantity },
+      face: { kind: 'int', min: hand.bid ? hand.bid.face : 1, max: DARE_MAX_FACE },
     };
     if (hasDie) params.spendDie = dieParam;
     actions.push({
       type: 'Dare',
       params,
-      note: "One move in the open Liar's Dice hand. quantity/face are required for bid and the raises; a face raise moves the face up by exactly one and leaves quantity unchanged; a quantity raise leaves the face unchanged. spendDie applies to 'peek' only.",
+      note: "One move in the open Liar's Dice hand. quantity/face are required for bid and the raises; an OPENING bid must claim MORE of the face than you hold of it (quantity > your own count of that face); a face raise moves the face up by exactly one and leaves quantity unchanged; a quantity raise leaves the face unchanged. spendDie applies to 'peek' only.",
     });
     return {
       phase,

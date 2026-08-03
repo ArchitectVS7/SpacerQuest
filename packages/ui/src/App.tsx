@@ -34,6 +34,7 @@ import {
   DARE_MAX_FACE,
   DARE_MAX_QUANTITY,
   isLatticeMove,
+  minOpeningQuantity,
   type DareMoveKind,
   type GameState,
   type CheckResult,
@@ -2548,8 +2549,14 @@ function LiarsDiceScene({
       setQuantity(Math.min(bid.quantity + 1, view?.maxQuantity ?? DARE_MAX_QUANTITY));
       setFace(bid.face);
     } else {
-      setQuantity(1);
+      // T-160 · The OPENING composer seeds at the engine's own opening floor
+      // (§16.2 shape (b)): `minOpeningQuantity(own(face))`, not the literal 1. A
+      // seed of 1 would open the pane on a claim the engine now refuses whenever
+      // the captain holds a one — which is most hands — and the pane would read as
+      // broken rather than as a rule. The FLOOR is the engine's function; the pane
+      // only counts its own dice and asks.
       setFace(1);
+      setQuantity(minOpeningQuantity((view?.playerDice ?? []).filter((die) => die === 1).length));
     }
   }, [bidKey]);
 
@@ -2607,8 +2614,18 @@ function LiarsDiceScene({
   const canMove = (m: DareMoveKind) => legal.includes(m);
   // T-146 · the engine's lattice, asked with the HAND's frozen ceiling. Still no
   // arithmetic here deciding what may be claimed.
+  // T-160 · plus the opening floor's input (§16.2 shape (b)). `own` is a COUNT the
+  // engine's own rule consumes, not a rule of the pane's — the pane still decides
+  // nothing about what may be claimed.
   const claimOk = (m: DareMoveKind, q: number, f: number) =>
-    isLatticeMove(bid, m, q, f, view?.maxQuantity ?? DARE_MAX_QUANTITY);
+    isLatticeMove(
+      bid,
+      m,
+      q,
+      f,
+      view?.maxQuantity ?? DARE_MAX_QUANTITY,
+      (view?.playerDice ?? []).filter((die) => die === f).length,
+    );
 
   return (
     <div

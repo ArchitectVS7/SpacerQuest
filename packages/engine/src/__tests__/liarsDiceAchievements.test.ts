@@ -2,8 +2,21 @@ import { describe, it, expect } from 'vitest';
 import { LIARS_DICE_OPPONENTS, Stat } from '@spacerquest/content';
 import { createInitialState } from '../state.js';
 import { applyPlayerAction } from '../day.js';
+import { minOpeningQuantity } from '../liarsDiceRules.js';
 import { CURRENT_SAVE_VERSION, createSave, loadSave } from '../save.js';
 import { DawnHand, DayPhase, GameEvent, GameState, PlayerAction } from '../types.js';
+
+/**
+ * T-160 · A LEGAL OPENING CLAIM on `face`, DERIVED FROM THE HAND THE SEED ROLLED
+ * (`docs/LIARS-DICE_REDESIGN.md` §16.2 shape (b), the F-137-1 fix). The opening
+ * floor makes any hardcoded opening literal a function of the player's hidden
+ * dice, so a literal that passes today passes by luck. This asks the ENGINE's own
+ * `minOpeningQuantity` and then takes `atLeast` on top.
+ */
+function openingBid(state: GameState, face: number, atLeast = 1): PlayerAction {
+  const own = state.dareHand!.playerDice.filter((d) => d === face).length;
+  return { type: 'Dare', move: 'bid', face, quantity: Math.max(atLeast, minOpeningQuantity(own)) };
+}
 
 // ---------------------------------------------------------------------------
 // T-147 · THE COMPLETION SIGNAL AND ITS FIFTEEN DEEDS
@@ -17,11 +30,15 @@ import { DawnHand, DayPhase, GameEvent, GameState, PlayerAction } from '../types
 // purse, a credit balance, an odometer — which is exactly what the shipped
 // Liar's Dice suites already do.
 //
-// THE HAND SCRIPT IS DERIVED, NOT HOPED FOR. Seed 1 at Sun-3 against every one of
-// the three authored seats resolves to `challenge-win` under the fixed script
-// `bid(2,3)` → (challenge if a bid still stands), with `liarsDiceGamesPlayed`
-// pinned at 0 so the hand is dealt at ladder tier 0 (four dice a side). Every
-// fixture below therefore pins `liarsDiceGamesPlayed: 0` EXPLICITLY: the tier is
+// THE HAND SCRIPT IS DERIVED, NOT HOPED FOR — and at T-160 so is the WIN.
+// The script is `bid(face 3, at the engine's opening floor)` → (challenge if a
+// bid still stands). Before T-160 that opening claim was true by construction
+// (finding F-137-1), so seed 1 won against every seat and a literal seed was a
+// safe pin. §16.2 shape (b) removed the guarantee deliberately, so `playWonHand`
+// now SEARCHES for a winning seed and throws if none exists — the assertion these
+// tests make is about the set-closure signal, never about dice.
+//
+// `liarsDiceGamesPlayed` is pinned at 0 in every fixture EXPLICITLY: the tier is
 // frozen at open and drives `dicePerSide`, so an unpinned odometer would silently
 // re-deal the hand and the script would stop being reproducible.
 // ---------------------------------------------------------------------------
@@ -77,13 +94,38 @@ function playHand(
   for (let step = 0; step < 24 && current.dareHand; step += 1) {
     const move: PlayerAction =
       current.dareHand.bid === null
-        ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
+        ? openingBid(current, 3, 2)
         : { type: 'Dare', move: 'challenge' };
     const result = applyPlayerAction(current, move);
     events.push(...result.events);
     current = result.state;
   }
   return { state: current, events };
+}
+
+/**
+ * T-160 · Play the derived script until it actually WINS, and say so if it never
+ * does.
+ *
+ * Before T-160 the script's opening claim was TRUE BY CONSTRUCTION (finding
+ * F-137-1), so seed 1 won against every seat and the header could pin "seed 1
+ * resolves to challenge-win". The opening floor (§16.2 shape (b)) removed that
+ * guarantee on purpose: an opening claim is now a real claim that can be false,
+ * so whether a given seed wins is dice. These tests are about the SET-CLOSURE
+ * SIGNAL, not about dice, so the win is now DERIVED — searched for and asserted —
+ * rather than hoped for from a literal. `build` takes the seed so the whole hand
+ * (the eight d6 and every dealer roll) is re-dealt each attempt.
+ */
+function playWonHand(
+  build: (seed: number) => GameState,
+  opponentId: string,
+  spendDie = 0,
+): { state: GameState; events: GameEvent[] } {
+  for (let seed = 1; seed <= 400; seed += 1) {
+    const played = playHand(build(seed), opponentId, spendDie);
+    if (playerWon(played.events)) return played;
+  }
+  throw new Error(`no seed in 1..400 won a hand against ${opponentId} under the derived script`);
 }
 
 function clearedOf(events: readonly GameEvent[]) {
@@ -113,7 +155,10 @@ function playerWon(events: readonly GameEvent[]): boolean {
 
 describe('T-147 · a port set closes exactly once', () => {
   it('beating the LAST of a port’s three seats fires that port’s deed, once', () => {
-    const { state, events } = playHand(tableState([SUN3_BAD, SUN3_MIXED]), SUN3_OPTIMAL);
+    const { state, events } = playWonHand(
+      (seed) => tableState([SUN3_BAD, SUN3_MIXED], seed),
+      SUN3_OPTIMAL,
+    );
     expect(playerWon(events), 'the derived script must win this hand').toBe(true);
 
     const cleared = clearedOf(events);
@@ -138,7 +183,7 @@ describe('T-147 · a port set closes exactly once', () => {
   });
 
   it('files a real citation with the day substituted, not a template', () => {
-    const { state } = playHand(tableState([SUN3_BAD, SUN3_MIXED]), SUN3_OPTIMAL);
+    const { state } = playWonHand((seed) => tableState([SUN3_BAD, SUN3_MIXED], seed), SUN3_OPTIMAL);
     const filed = state.player.registry.earned.find(
       (deed) => deed.id === 'liars_dice_cleared_sun_3',
     )!;
@@ -149,7 +194,7 @@ describe('T-147 · a port set closes exactly once', () => {
   });
 
   it('two of three is NOT a set — the second win fires nothing', () => {
-    const { state, events } = playHand(tableState([SUN3_BAD]), SUN3_MIXED);
+    const { state, events } = playWonHand((seed) => tableState([SUN3_BAD], seed), SUN3_MIXED);
     expect(playerWon(events)).toBe(true);
     expect(state.player.liarsDiceBeaten).toContain(SUN3_MIXED);
     expect(clearedOf(events)).toHaveLength(0);
@@ -161,9 +206,11 @@ describe('T-147 · once means once — the rematch and the roaming pool', () => 
   it('a REMATCH against an already-beaten seat is silent', () => {
     // T-145 §6.2 step 1's `includes` guard is the whole mechanism; there is no
     // de-dup bookkeeping downstream to test, which is exactly the point.
-    const closed = tableState([SUN3_BAD, SUN3_MIXED, SUN3_OPTIMAL]);
-    const before = closed.player.liarsDiceBeaten.length;
-    const { state, events } = playHand(closed, SUN3_OPTIMAL);
+    const before = 3;
+    const { state, events } = playWonHand(
+      (seed) => tableState([SUN3_BAD, SUN3_MIXED, SUN3_OPTIMAL], seed),
+      SUN3_OPTIMAL,
+    );
     expect(playerWon(events)).toBe(true);
     expect(clearedOf(events)).toHaveLength(0);
     // The generic gambling deeds (`dare_first`/`dare_won`) legitimately fire off
@@ -180,8 +227,7 @@ describe('T-147 · once means once — the rematch and the roaming pool', () => 
     // THE ACCEPTANCE'S "not once per remaining game against the roaming pool".
     // Pool B respawns its willingness to play every dusk, so a roaming win that
     // counted would turn a finite gauntlet into a grind timer.
-    const state = tableState([SUN3_BAD, SUN3_MIXED]);
-    const played = playHand(state, ROAMER);
+    const played = playWonHand((seed) => tableState([SUN3_BAD, SUN3_MIXED], seed), ROAMER);
     expect(playerWon(played.events)).toBe(true);
     expect(clearedOf(played.events)).toHaveLength(0);
     expect(played.state.player.liarsDiceBeaten).toEqual([SUN3_BAD, SUN3_MIXED]);
@@ -195,7 +241,7 @@ describe('T-147 · the whole roster closes exactly once, alongside its port', ()
 
   it('the 42nd win fires PORT then ROSTER, in that order, both once', () => {
     expect(ALL_BUT_ONE).toHaveLength(ALL_ROSTER_IDS.length - 1);
-    const { state, events } = playHand(tableState(ALL_BUT_ONE), SUN3_OPTIMAL);
+    const { state, events } = playWonHand((seed) => tableState(ALL_BUT_ONE, seed), SUN3_OPTIMAL);
     expect(playerWon(events)).toBe(true);
 
     const cleared = clearedOf(events);
@@ -216,7 +262,7 @@ describe('T-147 · the whole roster closes exactly once, alongside its port', ()
   });
 
   it('playing on after the clear emits nothing further, at either pool', () => {
-    const closed = playHand(tableState(ALL_BUT_ONE), SUN3_OPTIMAL).state;
+    const closed = playWonHand((seed) => tableState(ALL_BUT_ONE, seed), SUN3_OPTIMAL).state;
     expect(clearedOf(closed.eventLog)).toHaveLength(2);
 
     const again = playHand(closed, SUN3_BAD, 1);
@@ -250,7 +296,10 @@ describe('T-147 · the event round-trips through eventLog without a version move
     // THIS is what proves the `schema.ts` variant is real: the union parses in
     // STRIP mode, so a missing member would silently drop every key of the event
     // (or fail the load outright) rather than announcing itself.
-    const played = playHand(tableState([SUN3_BAD, SUN3_MIXED]), SUN3_OPTIMAL).state;
+    const played = playWonHand(
+      (seed) => tableState([SUN3_BAD, SUN3_MIXED], seed),
+      SUN3_OPTIMAL,
+    ).state;
     const logged = clearedOf(played.eventLog);
     expect(logged).toHaveLength(1);
 

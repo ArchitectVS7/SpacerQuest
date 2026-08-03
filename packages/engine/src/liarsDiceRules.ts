@@ -284,7 +284,9 @@ export function readTheTableLine(
  * is 8 at tier 0 and 10 / 12 above it. The FACE ceiling is the constant 6 at every
  * tier (§4.3).
  *
- *   - OPEN            — `bid === null`. Any `(q', f')` in `1..Q × 1..6`. Costs 0.
+ *   - OPEN            — `bid === null`. Any `(q', f')` in `1..Q × 1..6` with
+ *                       `q' > own(f')` — T-160's OPENING FLOOR, see
+ *                       {@link minOpeningQuantity}. Costs 0.
  *   - RAISE FACE      — `f' = f + 1` EXACTLY, `q' = q` EXACTLY. Costs `ante`.
  *   - RAISE QUANTITY  — `f' = f` EXACTLY, `q < q' <= Q`. Costs `ante`.
  *   - RAISE BOTH      — `f' = f + 1` EXACTLY **and** `q < q' <= Q`. Costs `2×ante`.
@@ -300,6 +302,11 @@ export function readTheTableLine(
  * guarantees, i.e. risk-free — and chain it across every face they hold. Pinning
  * `q` and fixing the face step at exactly one removes both the claim and the
  * search for a face on which it would still work.
+ *
+ * T-160 · THE SAME ARGUMENT NOW GOVERNS THE OPEN. §5.2's pin closed the risk-free
+ * claim on every RAISE and left it wide open on the OPENING bid, which is exactly
+ * the hole F-137-1 measured (100.00% of openers true by construction).
+ * {@link minOpeningQuantity} closes it at the one remaining entrance.
  *
  * `actorCredits` is the raiser's purse. Legality is a function of the hand, the
  * side and that purse — never of anyone's dice, which is what lets the dealer's
@@ -365,6 +372,33 @@ export function legalMovesFrom(
 }
 
 /**
+ * T-160 · THE OPENING FLOOR (`docs/LIARS-DICE_REDESIGN.md` §16.2 shape (b), the
+ * fix for finding F-137-1). An OPENING claim must exceed what the bidder already
+ * holds of the claimed face.
+ *
+ * WHY, in the same terms §5.2 already pins quantity on a face raise: a claim of
+ * dice you are HOLDING is risk-free. `resolveChallenge` counts the claimed face
+ * across ALL the dice in play, so `actualCount >= own(face)` **always** — a claim
+ * at or under `own(face)` cannot be false, and the opponent's dice can only add to
+ * it. F-137-1 measured the consequence: 100.00% of the baseline planner's 15,235
+ * opening bids were true by construction, and a bidding game whose opening claim
+ * can be made risk-free has no bluffing in it at all.
+ *
+ * TOTALITY, so a later reader cannot fear an unplayable hand: `own(f) <=
+ * dicePerSide` for every face, so `own(f) + 1 <= dicePerSide + 1 <= 2 *
+ * dicePerSide = maxQuantity` at every tier (`dicePerSide` is 4, 5 or 6). **An
+ * opening bid is therefore still legal on EVERY face at EVERY tier, including a
+ * six-dice hand showing all six faces** — where every face floors at 2 and the
+ * ceiling is 12.
+ *
+ * The DEALER is not affected: §9.9 ruling 1 — the dealer is never asked to move
+ * before the player's opening bid, so it never opens.
+ */
+export function minOpeningQuantity(ownOfClaimedFace: number): number {
+  return ownOfClaimedFace + 1;
+}
+
+/**
  * Is the proposed `(quantity, face)` a well-formed instance of `move` against the
  * standing bid? Separated from {@link legalDareMoves} because that answers "which
  * KINDS of move may this actor make", while this answers "is THIS one on the
@@ -382,6 +416,15 @@ export function isLatticeMove(
   /** T-146 · The hand's FROZEN claim ceiling (§8 row 5). A caller with a hand
    *  passes `hand.maxQuantity`; nothing here reads a live tier (§4.6). */
   maxQuantity: number,
+  /**
+   * T-160 · How many dice of the CLAIMED FACE the bidder holds — the input to
+   * {@link minOpeningQuantity}, and read ONLY on the `bid` arm (an opening claim
+   * is the only move this rule governs; every raise is already pinned by the
+   * lattice). REQUIRED rather than optional, deliberately and by the T-146
+   * `maxQuantity` precedent: a required parameter turns the sweep of call sites
+   * into compile errors, so no site can silently skip the rule.
+   */
+  ownOfClaimedFace: number,
 ): boolean {
   if (move === 'challenge' || move === 'fold' || move === 'peek') return true;
   if (quantity === undefined || face === undefined) return false;
@@ -395,7 +438,10 @@ export function isLatticeMove(
   // over 1..6.
   if (face < 1 || face > DARE_MAX_FACE) return false;
 
-  if (move === 'bid') return bid === null;
+  // T-160 · THE OPENING FLOOR (§16.2 shape (b), fixing F-137-1). An opening claim
+  // must EXCEED what the bidder holds of the face they are claiming — see
+  // `minOpeningQuantity` for the argument and the totality proof.
+  if (move === 'bid') return bid === null && quantity >= minOpeningQuantity(ownOfClaimedFace);
   if (bid === null) return false;
   if (move === 'raise-face') return face === bid.face + 1 && quantity === bid.quantity;
   if (move === 'raise-quantity') return face === bid.face && quantity > bid.quantity;
