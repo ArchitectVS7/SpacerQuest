@@ -297,9 +297,14 @@ item, put it in the section where comparable work already lives.
   check for policies outside `GATE_COMPETENT_POLICIES`.** It is documented at
   `docs/BALANCE-POLICY.md` D.2a, but `assertNoIncomeStall` in
   `packages/sim/src/balance/gate.ts` returns `[]` for `veteran` and `greedy` by design, which is
-  exactly how F-159-1 sat unmeasured behind a stale "6-8 days" exemption comment. Either widen
-  the gate's membership (T-161 is scheduled to decide veteran's) or write a check that every
-  gated policy filter carries one of D.2a's two fallback shapes regardless of gate membership.
+  exactly how F-159-1 sat unmeasured behind a stale "6-8 days" exemption comment. **T-161 made
+  the membership call and it was NO:** with the relaxation landed the veteran's worst streak
+  falls 31 → 13 but 197 of 200 seeds are still ≥ 5 (mechanism F-161-1), and seeds 1..60 — the
+  exact CI `gate` sample — still hold five stalling veteran seeds (1, 18, 26, 34, 58), so it
+  stays exempt on a re-justified note. That leaves the SECOND option as the live one and it is
+  now the only one: write a check that every gated policy filter carries one of D.2a's two
+  fallback shapes regardless of gate membership. T-161 is exactly the case for it — the
+  relaxation was the last missing instance and nothing but a human audit found it.
   [harvested: T-159/d2a-check-for-gate-excluded-policies]
 
 - **No fresh CI run was ever captured on the post-T-159 tree.** The T-153 session does not push
@@ -489,14 +494,25 @@ item, put it in the section where comparable work already lives.
   freeze it at spawn. Deferred alongside the Explore and VisitHangout rows already awaiting the
   same owner. [harvested: T-151/npc-parity-row]
 
-- **F-159-1 is ALREADY TRACKED as T-161** (status TODO, `after: T-159`) and recorded at
-  `docs/BALANCE-POLICY.md` D.2a: `veteranPolicy` (`packages/sim/src/index.ts:~4903-4909`) is the
-  last un-relaxed contract filter in the file — filters `rankedContracts` to
-  `ship.maxFuel * SIGN_FUEL_FRACTION` and `net > 0` with no second pass, structurally identical
-  to the fighter defect T-159 repaired. Measured seeds 1..200 × 35 days: longest zero-income
-  streak 31, 197 of 200 seeds ≥ 5, materially worse than the "6-8 consecutive zero-income days"
-  its exemption note in `packages/sim/src/balance/gate.ts` `GATE_COMPETENT_POLICIES` claims. No
-  new entry is needed unless T-161 is dropped. [harvested: T-159/F-159-1]
+- **F-159-1 — CLOSED by T-161 (2026-08-02).** `veteranPolicy` now carries the T-1104 full-tank
+  relaxation (`packages/sim/src/index.ts:4956`). Re-measured seeds 1..200 × 35 days: longest
+  zero-income streak **31 → 13**; the nine seeds that each held a 31-day strand fall to 5-10 and
+  are pinned live in `packages/sim/src/__tests__/sweep-gate.test.ts`. The stale "6-8 days"
+  exemption note in `packages/sim/src/balance/gate.ts` `GATE_COMPETENT_POLICIES` was
+  re-justified and re-numbered against the measurement. Full record at
+  `docs/BALANCE-POLICY.md` D.2a. [harvested: T-159/F-159-1]
+
+- **F-161-1 (NEW, opened by T-161): `veteranPolicy` takes EVERY offered storylet as a standalone
+  day** (`packages/sim/src/index.ts:4936`), where `smugglerPolicy`, `gamblerPolicy` and
+  `explorerPolicy` all resolve a die-free choice INLINE and let the trade day continue. On a
+  port with a live storylet queue the veteran never reaches its contract block at all — which is
+  why **197 of 200 seeds still stall at ≥ 5** even after F-159-1's fix. The ported three-line
+  split closes most of it (197 → 18 seeds ≥ 5) but regresses the deed slate:
+  `deed-coverage.test.ts`'s "the slate is earnable by a single career" goes **2 → 0** full slates
+  over seeds 1..76 × 300 days, because the Liar's Dice ROSTER TOUR errand in
+  `__tests__/support/deed-hunter.ts` needs idle days. So it needs a task that owns the
+  deed-hunter instrument and may re-pin `deed-coverage.test.ts`. Full record, including the
+  16-of-18 credit-starvation residual behind it, at `docs/BALANCE-POLICY.md` D.2a.
 
 - **Write the check that catches stale CI-state claims in docs:** `docs/TESTING-STRATEGY.md`
   Part D carried "the `gate` job is **red until it lands**" for a day after T-159 landed the fix,

@@ -994,6 +994,42 @@ const UNCHANGED_POLICIES = [
  *    admissible reason for a re-pin. The task that made the change owns an 8,000-
  *    row capstone re-pin in the same commit, and PREDICTED this row (and `fleet`)
  *    as the only movers before the sweep ran.
+ *
+ *    ENTRY 29 (T-161 — THE VETERAN'S FULL-TANK RELAXATION, fixing finding
+ *    F-159-1). EXACTLY ONE ROW MOVES: `veteran`.
+ *
+ *    WHAT MOVED. `veteranPolicy`'s contract filter gained the T-1104 full-tank
+ *    second pass — `if (reachable.length === 0) reachable =
+ *    signableWithin(ship.maxFuel)` — the branch `traderPolicy`, `smugglerPolicy`,
+ *    `gamblerPolicy`, `explorerPolicy` and (from entry 27's sibling task, T-159)
+ *    `fighterPolicy` have all carried for some time. The veteran was the LAST
+ *    un-relaxed filter in `index.ts`. Parked at a rim port where every leg on the
+ *    board exceeds 0.6 of the tank, the filter came back empty, `idx` fell through
+ *    to -1, and the grinder signed nothing and never travelled; refuel, repair,
+ *    yard, overhead and debt still queued, so the ship looked busy while earning
+ *    nothing (none of those is an `isIncomeAction`).
+ *
+ *    PROVED INERT FIRST, as entries 26 and 27 were. The inline filter chain was
+ *    extracted to a `signableWithin(cap)` closure shaped exactly like the
+ *    trader's and called once at the old cap; with the relaxation NOT yet added
+ *    this fingerprint came back as `8db1029399f20ed8` — the pre-T-161 value, byte
+ *    for byte — with the whole suite green. Only then was the second pass added.
+ *
+ *    WHY THE OTHER SIX CANNOT MOVE, and this is the containment claim: the edit
+ *    is inside `veteranPolicy` and touches nothing shared. `signableWithin` is a
+ *    local closure, not the planner five policies share, and no other policy
+ *    calls into the veteran. The six unmoved rows are the proof, not the
+ *    assumption — verified by running this suite before the re-pin and confirming
+ *    exactly one failing row: `trader`, `fighter`, `explorer`, `smuggler`,
+ *    `gambler` and `greedy` all came back byte for byte.
+ *
+ *    NO BAND, THRESHOLD, GOLDEN OR CONSTANT WAS EDITED. `rulesFingerprint` did
+ *    NOT move (`fbcfe11ab7772555` before and after) — the change is sim-side, so
+ *    `docs/balance/smoke/tiers.json`'s capstone branch never fires and the
+ *    documented remedy is a plain re-extract, which is what was done. One
+ *    seed-pin moved for the same re-phasing reason and is documented at its own
+ *    site: `campaign-reach.test.ts`'s T-1307 port-purchase seed (3 -> 8), swept
+ *    over seeds 1..80 and WIDENED rather than re-thresholded.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
@@ -1049,7 +1085,35 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   explorer: 'e95dc20a64a47039',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
-  veteran: '8db1029399f20ed8',
+  //
+  // Entry 29 (T-161): re-derived, and the ONLY row that moves — which is the
+  // cross-check that this was a veteran change and nothing else: `trader`,
+  // `fighter`, `explorer`, `smuggler`, `gambler` and `greedy` all came back byte
+  // for byte.
+  //
+  // THE CAUSE, STATED BEFORE THE NUMBER. `veteranPolicy` gained the T-1104
+  // full-tank relaxation at its contract filter (finding F-159-1) — the branch
+  // the other five gated policies already carried, and the last one missing in
+  // this file. It fires only on a day where NOTHING fits the SIGN_FUEL_FRACTION
+  // re-flight margin, i.e. a day the veteran would otherwise have signed nothing
+  // at all, so it cannot displace a run; but a day that used to be a Wait is now
+  // a sign+travel, and from there the career re-phases (different port, different
+  // board, different dusk rng draws).
+  //
+  // MEASURED across these exact five seeds x 40 days, before -> after:
+  //     zero-income days (all seeds)   159  ->  149
+  //     longest zero-income streak      36  ->   10
+  //     credits at day 40, summed   18,373  -> 34,322
+  //     deeds, summed                   64  ->   77
+  //     fuel-starvation days             0  ->    0
+  // Deeds and credits both RISE here, which is the honest direction for a policy
+  // that used to strand: a veteran that keeps flying keeps earning and keeps
+  // banking deeds. NOTHING WAS TUNED IN RESPONSE. On the powered sample — seeds
+  // 1..200 x 35 days — the worst zero-income streak falls 31 -> 13; the COUNT of
+  // seeds at or over the stall limit barely moves (198 -> 197) because the
+  // residual is a different, separately-filed defect (F-161-1, the un-split
+  // storylet branch), and no threshold was touched to hide that.
+  veteran: '1ea78f2d77530961',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
   // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
   // through the shorter hand on a band-3/4 board rather than through the payout.

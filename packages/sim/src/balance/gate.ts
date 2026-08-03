@@ -187,11 +187,28 @@ export const INCOME_STALL_LIMIT = 5;
  *   - `veteran` — EXEMPT AT ITS OWN DEFINITION SITE, in those words: "It is NOT
  *     in COMPETENT_POLICIES: it is an endgame grinder, not a lean balance
  *     baseline, so it is exempt from the poverty-trap sweep" (`../index.ts`
- *     `veteranPolicy`). It is a `DEFAULT_POLICIES` member and it does stall — the
+ *     `veteranPolicy`). It is a `DEFAULT_POLICIES` member and it does stall.
+ *
+ *     RE-JUSTIFIED AND RE-NUMBERED AT T-161 (2026-08-02), because the note that
+ *     stood here was wrong in BOTH the number and the mechanism and an exemption
+ *     whose stated figure is off by 4x is not an exemption. It used to read "the
  *     first run of this gate measured 6-8 consecutive zero-income days on every
  *     seed of a 35-day arm, which is the grinder banking dice for a gated refit
- *     doing exactly what it is built to do. Including it would have failed the
- *     sweep for a policy the repo already ruled out of scope.
+ *     doing exactly what it is built to do." Re-measured over seeds 1..200 x 35
+ *     days on the pre-fix tree: worst streak **31**, with **198 of 200** seeds at
+ *     or over the limit. And it was never dice-banking — the veteran was the last
+ *     policy in `../index.ts` whose contract filter had no full-tank second pass
+ *     (finding F-159-1), so at a rim port it signed nothing at all.
+ *
+ *     T-161 ported that relaxation. Post-fix on the same rig: worst streak **13**
+ *     (the nine seeds that held the 31-day strand fall to 5-10), but still **197
+ *     of 200** seeds at or over the limit — so the veteran DOES NOT join this
+ *     list. The residual is a second, separately-filed defect (F-161-1,
+ *     `docs/BALANCE-POLICY.md` D.2a): `veteranPolicy` takes EVERY offered
+ *     storylet as a standalone day where three sibling policies resolve a
+ *     die-free choice inline, so on a port with a live storylet queue it never
+ *     reaches its contract block. That is the honest mechanism; when F-161-1 is
+ *     closed, re-measure and revisit membership rather than assuming either way.
  *   - `greedy` — the naive CONTROL. It is in `DEFAULT_POLICIES` precisely so the
  *     memo can say what playing badly costs, and it clears Tour One at 0.00 in
  *     `docs/balance/baseline-t150-postfix.json`. Gating on it would fail the

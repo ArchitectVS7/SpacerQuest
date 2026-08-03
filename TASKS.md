@@ -513,7 +513,7 @@ criteria.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only `.scratch/`, `docs/`, `packages/` present), so I grounded the plan directly in `docs/LIARS-D · attempts=1/4.
 
-### T-161 · Fix F-159-1: veteranPolicy's un-relaxed contract filter — the last of the class — `status: TODO` · `coder: opus` · `after: T-159`
+### T-161 · Fix F-159-1: veteranPolicy's un-relaxed contract filter — the last of the class — `status: DONE` · `coder: opus` · `after: T-159`
 
 **Scheduled 2026-08-02 (owner-directed).** F-159-1 (filed at T-159, recorded at
 `docs/BALANCE-POLICY.md` D.2a): `veteranPolicy` (`packages/sim/src/index.ts:~4903-4909`) is the
@@ -542,6 +542,29 @@ before-numbers (31 days / 197 of 200 ≥ 5); the `gate.ts` exemption comment mat
 reality, with veteran either joining the gate or carrying a re-justified exemption; F-159-1's
 record in `docs/BALANCE-POLICY.md` updated to fixed; the exact CI sweep-gate invocation PASS on
 all legs; only the veteran fingerprint row moves; gate green.
+
+**Delivered (2026-08-02):** ported the T-1104 full-tank relaxation into `veteranPolicy`
+(`packages/sim/src/index.ts`) — the same `signableWithin(cap)` two-pass pattern the other five
+gated policies already carry — closing F-159-1, the last un-relaxed contract filter in the file.
+Re-measured seeds 1..200 × 35 days: worst zero-income streak fell 31 → 13 (the nine seeds that
+held the 31-day strand drop to 5-10), and the count at ≥ 5 barely moved, 198 → 197, because a
+second candidate branch (the fighter's anti-idle homeward burn) was tried and measured, not
+assumed, and rejected — it moved the worst streak 13 → 11 but seeds ≥ 5 the wrong way, 18 → 19,
+so it was reverted. `balance/gate.ts`'s exemption comment was corrected from the stale,
+unmeasured "6-8 days" to the re-measured pre-/post-fix figures, and the veteran deliberately
+stays exempt rather than joining `GATE_COMPETENT_POLICIES` — the residual 197-of-200 is a
+second, separately-filed defect (F-161-1: the un-split storylet branch takes every offered
+storylet as a standalone day, eating dawns before the contract block is ever reached), recorded
+in `docs/BALANCE-POLICY.md` D.2a as open rather than folded into this fix. **Deliberate scope
+boundary:** a trial fix for F-161-1 (porting the gambler's die-free-inline split) was measured
+and explicitly NOT landed — it closes seeds ≥ 5 197 → 18 but costs the deed slate
+(`deed-coverage.test.ts` full slates 2 → 0 over seeds 1..76), so closing it is left to a task
+that owns the deed-hunter instrument, per this task's own scope line. Fingerprint discipline
+held: only the veteran row of `campaign-degraded.test.ts` `PINNED_FINGERPRINTS` moved (the
+extract-then-relax step was proven inert first, byte-identical at `8db1029399f20ed8`); all
+other archetypes byte-identical.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked); oriented directly from `packages/sim/src/index.ts`, `balance/gate.ts`, `docs/BALANCE-POLICY.md`  · attempts=1/4.
 
 ### T-158 · CHECKPOINT — human UAT, plus recorded rulings on Combat's chosen branch and F-150-1 — `status: TODO` · `coder: sonnet` · `after: T-150, T-153, T-157, T-140, T-141, T-160` · `[BLOCKED BY = Human UAT]`
 **`after:` gained T-160 (2026-08-02, owner-directed):** UAT must be played against the fixed

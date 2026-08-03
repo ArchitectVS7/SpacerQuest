@@ -4834,6 +4834,16 @@ const VETERAN_RESERVE = 3000;
  * encounter deeds, a low-fuel arrival for the fuel-fumes deed), then trades to
  * fund the fit. It is NOT in COMPETENT_POLICIES: it is an endgame grinder, not
  * a lean balance baseline, so it is exempt from the poverty-trap sweep.
+ *
+ * T-161 · THE EXEMPTION IS NARROWER THAN IT USED TO SOUND, and the honest number
+ * lives here and in `GATE_COMPETENT_POLICIES` (`balance/gate.ts`) rather than in
+ * a rationale nobody measured. Being out of scope for the gate never licensed a
+ * missing fallback: the full-tank relaxation below is the same branch every other
+ * gated policy carries, and this policy was the last in the file without it
+ * (finding F-159-1). What is still open after that fix is F-161-1 — the storylet
+ * branch a few lines down takes EVERY offered storylet as a standalone day, so on
+ * a port with a live queue the grinder never reaches the contract block at all.
+ * That, not dice-banking and not reachability, is what the residual stall is.
  */
 export const veteranPolicy: SimPolicy = ({ state }) => {
   const ledger = dieLedger(state);
@@ -4901,16 +4911,30 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
     return withReroll(state, planPacifistCombat(state, ledger));
   }
 
-  // A storylet in the queue is taken as a standalone day (matches the other
-  // policies) so its die spend never collides with the trade-day ledger — this
-  // is how beacon_keeper and chained storylets progress.
-  const storyletAction = chooseStoryletAction(state);
-  if (storyletAction) return withReroll(state, [storyletAction]);
-
   const actions: PlayerAction[] = [];
   const ship = state.player.ship;
   const from = state.player.currentSystemId;
   const board = state.market.manifestBoard;
+
+  // A storylet in the queue is taken as a standalone day so its die spend never
+  // collides with the trade-day ledger — this is how beacon_keeper and chained
+  // storylets progress.
+  //
+  // F-161-1 (OPEN, measured at T-161, `docs/BALANCE-POLICY.md` D.2a) · THIS
+  // BRANCH DOES NOT "MATCH THE OTHER POLICIES", as the comment here used to
+  // claim. `smugglerPolicy`, `gamblerPolicy` and `explorerPolicy` all SPLIT it:
+  // a choice that spends no die resolves INLINE and the trade day continues
+  // around it; only a die-spending choice takes the day, because only that can
+  // collide with the ledger — which is the reason this comment itself gives for
+  // a rule it then applies far too widely. Taking the whole day for a free
+  // narrative beat is what leaves the veteran's residual stall at 197 of 200
+  // seeds even after the F-159-1 relaxation below: a `Storylet` is not an income
+  // action (`isIncomeAction`, ~L1660). NOT fixed here — T-161's scope is the
+  // contract filter, and the ported split is measured to cost the deed slate
+  // (`deed-coverage.test.ts` full slates 2 -> 0 over seeds 1..76), so it needs a
+  // task that owns the deed-hunter instrument. See F-161-1 for the numbers.
+  const storyletAction = chooseStoryletAction(state);
+  if (storyletAction) return withReroll(state, [storyletAction]);
 
   // T-1205: repair a hull the enemy has chipped down enough to collapse the fuel
   // ceiling, before it strands the grinder and starves its deed income.
@@ -4923,11 +4947,54 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   // upgrade — pinned at the junker hull for the whole 500-day campaign.
   const fuelDepotPrice = state.market.localFuelPrice || 5;
   const ranked = rankedContracts(state);
-  const reachable = ranked
-    .filter((c) => c.fuel <= ship.maxFuel * SIGN_FUEL_FRACTION)
-    .map((c) => ({ ...c, net: c.payment - c.fuel * fuelDepotPrice }))
-    .filter((c) => c.net > 0)
-    .sort((a, b) => b.net - a.net || a.index - b.index);
+  const signableWithin = (cap: number) =>
+    ranked
+      .filter((c) => c.fuel <= cap)
+      .map((c) => ({ ...c, net: c.payment - c.fuel * fuelDepotPrice }))
+      .filter((c) => c.net > 0)
+      .sort((a, b) => b.net - a.net || a.index - b.index);
+  let reachable = signableWithin(ship.maxFuel * SIGN_FUEL_FRACTION);
+  // T-161: the T-1104 full-tank RELAXATION, ported (not invented) from the five
+  // policies that already carry it verbatim — `traderPolicy`, `smugglerPolicy`,
+  // `gamblerPolicy`, `explorerPolicy` and (from T-159) `fighterPolicy`. The
+  // veteran was the LAST un-relaxed contract filter in this file (finding
+  // F-159-1, `docs/BALANCE-POLICY.md` D.2a), and the omission cost exactly what
+  // the fighter's did: parked at a RIM port where every leg on the board exceeds
+  // 0.6 of the tank, `reachable` comes back empty every dawn, `idx` falls through
+  // to -1, and the grinder signs nothing and never travels.
+  //
+  // Why the streak climbs instead of self-correcting: refuel, crippled repair,
+  // cargo pods, component tiers, special equipment, captain overhead and debt
+  // payment all still QUEUE below, so the ship looks busy — but none of them is
+  // an income action (`isIncomeAction`, this file, ~L1660), so a busy,
+  // earning-nothing day is still a zero-income day.
+  //
+  // Measured before this line on this tree (seeds 1..200 x 35 days): the
+  // veteran's longest zero-income streak was 31 against a limit of 5, with 198 of
+  // 200 seeds at or over the limit — every other gated policy sat at 2-4 (bar the
+  // fighter's one F-159-2 strand at seed 157). Seed 4 is the picture: parked at
+  // system 18 from day 5 on a FULL 300 tank with 2,825cr and a live 2-4 offer
+  // board it could not sign from, debt compounding 20,727 -> 22,886 by day 36.
+  //
+  // Measured AFTER this line, same rig: worst streak 31 -> 13, and the nine seeds
+  // that held the 31-day strand (4, 10, 56, 62, 82, 91, 135, 155, 185) fall to
+  // 5-10. The COUNT of seeds at or over the limit barely moves (198 -> 197), and
+  // that is not this branch failing — it is F-161-1, the un-split storylet branch
+  // above, which on a busy port eats the whole day before the code here is ever
+  // reached. Depth is what the relaxation owns, and depth is what it fixed.
+  //
+  // The trade this accepts is the SAME one T-1104 argued for in the trader: a
+  // full-tank run leaves a thinner re-flight margin after an interrupted
+  // delivery. Taking the completable run beats idling at the rim. The `net > 0`
+  // filter stays in the relaxed pass (as it does for trader/smuggler/gambler) —
+  // dropping it would be new behaviour, not a port — and the existing
+  // `availableFuel >= primaryFuelNeed` sign guard below still refuses a relaxed
+  // pick the purse cannot fuel.
+  //
+  // Readers: `assertNoIncomeStall` / `INCOME_STALL_LIMIT` in `balance/gate.ts`.
+  if (reachable.length === 0) {
+    reachable = signableWithin(ship.maxFuel);
+  }
   const reachableByFullTank = (dest: number): boolean =>
     playerJumpFuel(state, systemDistance(from, dest)) <= ship.maxFuel;
 

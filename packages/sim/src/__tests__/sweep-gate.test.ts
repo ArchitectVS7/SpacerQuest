@@ -52,7 +52,7 @@ import { fileURLToPath } from 'node:url';
 import { JOB_POOL_BOARD_SIZE } from '@spacerquest/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import type { CampaignStatsReport, SimPolicyName } from '../index.js';
+import { runCampaign, type CampaignStatsReport, type SimPolicyName } from '../index.js';
 import { isCombatWin, type SeedRow } from '../balance/aggregate.js';
 import * as gateModule from '../balance/gate.js';
 import {
@@ -72,6 +72,7 @@ import {
   buildGateReport,
   checkExpectedEventRates,
   formatGateReport,
+  longestZeroIncomeStreak,
   type ExpectedEventRateResult,
   type GateReport,
   type SweepViolation,
@@ -339,6 +340,45 @@ describe('T-153 · seeded-bad fixtures, one per invariant class', () => {
       'gambler',
     ]);
   });
+
+  it('the veteran carries the T-1104 full-tank relaxation (F-159-1 regression pin)', () => {
+    // WHY A LIVE RUN AND NOT A HASH. `campaign-degraded.test.ts` pins the veteran's
+    // whole career to a fingerprint, which moves for any reason at all and so can
+    // never say WHICH branch landed. The Accept for T-161 asks for the relaxation
+    // to be grep-able; this is the behavioural half of that — it fails with the
+    // OLD NUMBER coming back if the `if (reachable.length === 0) reachable =
+    // signableWithin(ship.maxFuel)` second pass in `veteranPolicy` is removed.
+    //
+    // THE SEEDS ARE THE PRE-FIX WORST CASE, not a convenient sample. Over seeds
+    // 1..200 x 35 days on the pre-fix tree these nine each held a 31-day
+    // zero-income streak — the longest in the file, on a policy that was the last
+    // one without the second pass. Post-fix, measured on the same rig, they sit at
+    // 5-10 (seed 4: 10, seed 10: 7, seed 56: 7, seed 62: 5, seed 82: 7, seed 91: 5,
+    // seed 135: 6, seed 155: 9, seed 185: 10).
+    //
+    // THE BAR IS THE MEASUREMENT, not a round number and not INCOME_STALL_LIMIT.
+    // The veteran is EXEMPT from that limit and still stalls — see F-161-1 below —
+    // so asserting `< 5` here would be asserting a fix this task did not make. 10
+    // is the measured post-fix maximum over these nine seeds; a regression brings
+    // 31 straight back and reds this immediately.
+    const PRE_FIX_31_DAY_SEEDS = [4, 10, 56, 62, 82, 91, 135, 155, 185] as const;
+    const POST_FIX_MAX = 10;
+    const streaks = PRE_FIX_31_DAY_SEEDS.map((seed) => ({
+      seed,
+      streak: longestZeroIncomeStreak(runCampaign(seed, 35, 'veteran').daily),
+    }));
+    const worst = streaks.reduce((a, b) => (b.streak > a.streak ? b : a));
+    expect(
+      worst.streak,
+      `seed ${worst.seed} stalled ${worst.streak} days — pre-fix these nine seeds ` +
+        `held 31 each; the full-tank relaxation in veteranPolicy is the branch that ` +
+        `closed them`,
+    ).toBeLessThanOrEqual(POST_FIX_MAX);
+    // ...and the relaxation did not make the veteran a competent policy: it is still
+    // out of GATE_COMPETENT_POLICIES because F-161-1 keeps the residual above the
+    // limit. Asserted so a future reader cannot mistake the pin above for the gate.
+    expect([...GATE_COMPETENT_POLICIES]).not.toContain('veteran');
+  }, 60000);
 
   it('assertCombatRecordsWellFormed catches every malformed-record limb', () => {
     // PUSHED, not mutated: a seeded career need not have fought, and a fixture that

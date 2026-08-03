@@ -347,7 +347,27 @@ describe('T-1307 ports reachable through play', () => {
     // PINNED, NOT STEERED: only the seed changed; every assertion below is untouched,
     // the 150-day horizon is unmoved, and the sample was WIDENED rather than the
     // threshold.
-    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 3, 150);
+    //
+    // T-161 re-pin (seed 3 -> 8). MECHANISM: the same class again, this time inside
+    // the policy this test drives rather than out in the cast. `veteranPolicy` gained
+    // the T-1104 full-tank RELAXATION at its contract filter (finding F-159-1 — it was
+    // the last un-relaxed filter in `index.ts`), so on a day where every leg on the
+    // board exceeds 0.6 of the tank the veteran now signs the run it can actually
+    // complete instead of signing nothing. A day that used to be a `Wait` at a rim
+    // port is a sign+travel, and from there the whole 150-day trajectory re-phases —
+    // different ports on different days, so a different set of purchasable core ports
+    // is ever stood on with the price plus 5k headroom in hand.
+    // SWEEP EVIDENCE (seeds 1..80 of this exact committed test, run through a
+    // temporary in-file seed loop so the swept code IS the shipped code): 16 of 80
+    // qualify — 8, 10, 14, 21, 31, 33, 34, 38, 39, 45, 50, 51, 62, 71, 75, 78 — which
+    // is 20% against N13's 15% at the same sample, i.e. the pillar is EASIER to reach
+    // after the fix (the veteran strands less, so it banks the 25k more often) and the
+    // falling trend the T-1504a note warns about has still not resumed. Seed 8 is the
+    // first qualifier (1 purchase on day 102, 48 income accruals after it).
+    // PINNED, NOT STEERED: only the seed changed; every assertion below is untouched,
+    // the 150-day horizon is unmoved, and the sample was WIDENED rather than the
+    // threshold.
+    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 8, 150);
 
     // The purchase happened through legal play: a PortEvent{purchased} was logged
     // (ports are bought via the Port action, never injected).

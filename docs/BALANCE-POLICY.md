@@ -175,6 +175,11 @@ to a captain who accumulates nothing.
 encounter deeds, a deliberate low-fuel arrival for `fuel_fumes_arrival`), trading to fund the
 renown-gated fit up to `ASTRAXIAL_HULL`. **Deliberately excluded from `COMPETENT_POLICIES`**
 and exempt from the poverty-trap sweep — it is a reachability instrument, not a lean baseline.
+**T-161 narrows what that exemption ever meant**: out of scope for the gate never licensed a
+missing fallback. The veteran was the last policy in `index.ts` whose contract filter had no
+full-tank second pass (F-159-1, fixed at T-161); it still stalls, but for a *different* and
+separately-filed reason (F-161-1), and `balance/gate.ts` now carries the measured number
+instead of the dice-banking story it used to tell.
 
 ### D.2a The one-prime-focus property — a norm, not an observation (T-159)
 
@@ -192,7 +197,7 @@ against current source, not carried forward from a prior pass:
 | `smuggler` | `index.ts:3010` | contraband | ordinary rim runs, sealed pods sold to Ray, Guild remittance, upgrades, an idle-day Explore floor |
 | `explorer` | `index.ts:4396` | Explore sweeps | one funding contract run a day, decode storylets, a drives upgrade it buys **only** on a day that produced no income (`index.ts:3336`), arc pursuit to Polaris-1 |
 | `gambler` | `index.ts:3767` | the tables | a full trader working day planned FIRST, then the wagers; plus an explicit anti-idle travel-toward-Hangout (`index.ts:3899`) |
-| `veteran` | `index.ts:4817` | deed-registry steering | trades to fund a renown-gated fit — **exempt** from the stall gate at its own definition site (`balance/gate.ts:163-189`) |
+| `veteran` | `index.ts:4848` | deed-registry steering | trades to fund a renown-gated fit; the T-1104 full-tank relaxation from T-161 (`index.ts:4956`) — still **exempt** from the stall gate, on a re-justified and re-numbered note (`balance/gate.ts:187-211`) |
 | `greedy` | `index.ts:1579` | naive control | none, on purpose — it accumulates nothing, and it is excluded from the gate for exactly that reason |
 
 **Why this must hold, mechanically.** `isIncomeAction` (`packages/sim/src/index.ts:1659`)
@@ -206,9 +211,10 @@ not a style choice; it is a poverty trap with a rationale attached.
 non-empty fallback, and there are exactly two accepted shapes in this file:
 
 1. **A second-pass relaxation of the gate** — the T-1104 full-tank pattern, now carried by
-   all five gated policies (`trader`, `smuggler`, `gambler`, `explorer`, and, from T-159,
-   `fighter`): when nothing fits the `SIGN_FUEL_FRACTION` re-flight margin, relax to the
-   full tank and take the run the ship can actually complete.
+   all six contract-signing policies (`trader`, `smuggler`, `gambler`, `explorer`, from T-159
+   `fighter`, and from T-161 `veteran` — the last one that lacked it): when nothing fits the
+   `SIGN_FUEL_FRACTION` re-flight margin, relax to the full tank and take the run the ship
+   can actually complete.
 2. **An explicit anti-idle move** — the gambler's travel-toward-Hangout, the explorer's
    income-day-only drives refit, the fighter's homeward repositioning burn. Each fires only
    when the day has queued no income action at all, so it can never displace real work.
@@ -223,26 +229,60 @@ recorded here so it is a stated norm rather than a fact re-derived from source e
 is asked.
 
 **The two exclusions are deliberate and already stated elsewhere; do not re-litigate them
-here.** `veteran` is exempt at its own definition site (an endgame grinder banking dice for a
-gated refit — see `GATE_COMPETENT_POLICIES` in `balance/gate.ts`), and `greedy` is the naive
-control whose whole job is to show what playing badly costs.
+here — but the veteran's rationale was re-written at T-161 and the old wording is dead.**
+`veteran` is exempt at its own definition site, and it KEEPS that exemption after T-161
+because it still stalls; what changed is that the reason is now measured rather than
+asserted. It is *not* "an endgame grinder banking dice for a gated refit" — that story was
+wrong in both the number (6-8 days claimed, 31 measured) and the mechanism, and it is
+replaced in `GATE_COMPETENT_POLICIES` (`balance/gate.ts`) by the pre-fix/post-fix figures
+and by F-161-1, the defect that actually holds the residual up. `greedy` is unchanged: the
+naive control whose whole job is to show what playing badly costs.
 
-#### Findings opened by the T-159 audit — recorded, not fixed
+#### Findings opened by the T-159 audit — F-159-1 FIXED at T-161, F-159-2 still open
 
 **F-159-1 · `veteranPolicy` carries the last un-relaxed contract filter (reachability gap,
-NOT a monoculture).** `index.ts:4903-4909` filters `rankedContracts` to
+NOT a monoculture). — FIXED at T-161 (2026-08-02).** `index.ts` filtered `rankedContracts` to
 `ship.maxFuel * SIGN_FUEL_FRACTION` and `net > 0` with **no second pass** — structurally the
-identical defect T-159 repaired in the fighter. (`reachableByFullTank` exists two lines below
-but only vets a *deed-steered* pick; it never relaxes the default filter.) It is out of
-`GATE_COMPETENT_POLICIES` by recorded exemption, so it is not a gate failure. **Measured**
+identical defect T-159 repaired in the fighter. (`reachableByFullTank` sits two lines below
+but only vets a *deed-steered* pick; it never relaxed the default filter.) It was out of
+`GATE_COMPETENT_POLICIES` by recorded exemption, so it was never a gate failure. **Measured**
 over seeds 1..200 × 35 days on the post-T-159 tree: longest zero-income streak **31**, with
 **197 of 200 seeds at ≥ 5** — materially worse than the "6-8 consecutive zero-income days"
-the exemption comment records, which is itself a reason to look again rather than to widen
-anything. Say which kind of gap this is when citing it: a **reachability** gap, exactly like
-the fighter's, not a contradiction of D.2a — the veteran's secondary spread is present and
-healthy. Not fixed here because T-159's code scope is the fighter relaxation only; closing it
-belongs to a task allowed to move the veteran's day-loop fingerprint
-(`campaign-degraded.test.ts` `PINNED_FINGERPRINTS.veteran`) and re-extract alongside it.
+the exemption comment then recorded, which is itself why it was re-opened rather than widened.
+
+**The fix.** T-161 ported the T-1104 full-tank relaxation verbatim from the five policies that
+already carried it (`index.ts:4956`, `let reachable = signableWithin(...)` followed by
+`if (reachable.length === 0) reachable = signableWithin(ship.maxFuel)`), extracting the inline
+filter chain to a `signableWithin(cap)` closure first and **proving that extract inert** —
+`PINNED_FINGERPRINTS.veteran` came back at `8db1029399f20ed8` byte for byte — before adding
+the branch. `net > 0` is kept in the relaxed pass, as it is for trader/smuggler/gambler.
+
+**The re-measured streak table** (same rig, seeds 1..200 × 35 days, `--days 35`), restated
+against the before-numbers rather than carried forward from T-159:
+
+| policy | pre-fix worst streak | seeds ≥ 5 | post-fix worst streak | seeds ≥ 5 |
+| --- | --- | --- | --- | --- |
+| `trader` | 3 | 0 | 3 | 0 |
+| `fighter` | 19 | 1 (seed 157, F-159-2) | 19 | 1 |
+| `explorer` | 3 | 0 | 3 | 0 |
+| `smuggler` | 4 | 0 | 4 | 0 |
+| `gambler` | 2 | 0 | 2 | 0 |
+| `veteran` | **31** | **198 of 200** | **13** | **197 of 200** |
+
+Two honest notes on that row. (a) The pre-fix number on the T-161 tree is **198**, not the 197
+T-159 recorded — one seed of drift across T-154/T-156/T-160, re-measured rather than assumed.
+(b) The relaxation owns **depth**, and depth is what it fixed: the nine seeds that each held a
+31-day strand (4, 10, 56, 62, 82, 91, 135, 155, 185) fall to 5-10, pinned as a live-run
+regression test in `sweep-gate.test.ts`. The **count** of stalling seeds barely moves because
+the residual is a different defect — see F-161-1.
+
+**The second branch was measured, not assumed, and REJECTED.** T-159's brief was one branch
+short, so T-161 tested the obvious candidate: the fighter's anti-idle homeward burn, ported
+into `veteranPolicy` after the sign/travel block with all three guards intact. Measured on the
+same rig it moved the worst streak 13 → 11 but moved seeds ≥ 5 **the wrong way, 18 → 19**
+(re-phasing gained seeds 50 and 132 while closing 105). It cannot close the residual class
+because that class is not a travel problem, so it was reverted rather than landed. Recorded
+here so the next reader does not re-run the same experiment.
 
 **F-159-2 · A fuel-starvation strand no policy branch can escape (T-1004 mechanism).** On the
 post-T-159 tree, seed 157 × 35 days is the single remaining `fighter` stall at ≥ 5
@@ -257,6 +297,47 @@ tier that lifts the fuel ceiling or a port-side earner, and the day the ship arr
 its purse down to 400 credits on a component tier plus a debt payment. Outside the gate's
 seed range (1..60), so it does not fail CI. Filed for whoever owns the fighter's spend
 ordering under duress; not fixed here.
+
+#### Findings opened by T-161 — recorded, not fixed
+
+**F-161-1 · `veteranPolicy` takes EVERY offered storylet as a standalone day.**
+`index.ts:4936`. The branch reads `if (storyletAction) return withReroll(state,
+[storyletAction]);` under a comment claiming a standalone day "matches the other policies".
+**It does not.** `smugglerPolicy` (`index.ts:3026`), `gamblerPolicy` (`index.ts:3795`) and
+`explorerPolicy` (`index.ts:4455`) all carry the SPLIT: a choice that spends no die resolves
+**inline** and the trade day continues around it; only a die-spending choice takes the day,
+because only that can collide with the trade-day ledger — which is the reason the veteran's
+own comment gives for a rule it then applies far too widely.
+
+**This is what holds the veteran's residual stall up, and it is measured.** After F-159-1's
+relaxation the veteran's worst streak fell 31 → 13, but **197 of 200 seeds** are still at ≥ 5.
+The instrumented worst seed says why: on seed 89, from day 23 at Polaris-3, the policy never
+*reaches* the contract block at all. On every day it did reach it, `reachable` was four offers
+deep. The queue simply handed it a die-free storylet every dawn (`passenger.false-name.*`,
+`guild.pressure.*`, `chain.silk-dagger.*`, `veteran.*`, `alliance.confederation.*`) and each
+one ate the whole day. A `Storylet` is not an income action (`isIncomeAction`, `index.ts:1660`),
+so a career spent entirely on free narrative beats is a career of zero-income days.
+
+**A trial fix was measured and is NOT landed, and this is the reason.** Porting the three-line
+split verbatim from `gamblerPolicy` closes most of it — seeds ≥ 5 over 1..200 × 35 days fall
+**197 → 18** — but it costs the deed slate. `deed-coverage.test.ts`'s "the slate is earnable by
+a single career" measures full slates over seeds 1..76 × 300 days through `deedHunterPolicy`,
+which wraps `veteranPolicy`; measured **2 → 0**, with `liars_dice_grand_slam` missed 19 → 63
+times and `ray_s_ledger` 27 → 54, because the Liar's Dice ROSTER TOUR errand needs idle days
+and the split leaves almost none. (Control: F-159-1's relaxation alone moves that count **2 →
+3**, i.e. the relaxation is a strict improvement and the storylet split is the regression.)
+Closing F-161-1 therefore belongs to a task that owns the deed-hunter instrument and may
+re-pin `deed-coverage.test.ts` — the same shape of scope call T-159 made when it left F-159-1
+to T-161. Not fixed here.
+
+**Say which kind of gap this is when citing it.** It is neither a reachability gap (F-159-1,
+now closed) nor a fuel-starvation strand (F-159-2). Of the 18 seeds that still stall with the
+trial fix applied, **16 are a fourth mechanism again**: the purse is pinned at ≤ 163 credits
+with a large tank and 0 fuel, so the veteran picks the best-net contract on the board and then
+refuses it at the existing `availableFuel >= primaryFuelNeed` guard, never falling back to a
+cheaper leg it could fuel today. That is a spend-ordering-under-duress problem — the same
+family as F-159-2's closing sentence — and is recorded here rather than fixed, because no
+policy in this file carries an "afford it today" fallback to port from.
 
 ### D.3 What every matrix column measures
 
