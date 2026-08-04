@@ -191,6 +191,45 @@ export function contractIsUrgent(game: GameState, destination: number): boolean 
   return game.eraEvent?.affectedSystemIds.includes(destination) ?? false;
 }
 
+// ---- T-190 the manifest board as a physical, port-bound sheet -------------
+//
+// PRESENTATION ONLY. Every field below is a value the manifest header already
+// renders, or a plain identity read off the state — this selector derives no
+// rule, owns no threshold, and adds nothing to `MarketState` or `CargoContract`.
+// It exists so `App.tsx` stays render-only (T-189's precedent) and so the one
+// genuinely non-obvious value — `boardKey` — has a tested home.
+
+/** The manifest board's identity as a physical sheet pinned to a port's clip. */
+export interface ManifestSheet {
+  /** The port whose depot posted this board. */
+  portName: string;
+  /** How many offers are pinned to it right now. */
+  offerCount: number;
+  /** The day it was posted (the board is regenerated at dawn). */
+  day: number;
+  /**
+   * `${systemId}:${day}` — the React key the sheet element is mounted under.
+   *
+   * The board is regenerated per port at dawn (`generateManifestBoard`, engine
+   * `day.ts`), so a new (system, day) pair is a genuinely NEW sheet. Keying on
+   * it remounts the element, which is what fires the "re-post" animation. That
+   * is the only honest port-bound cue available while jumps are still instant
+   * (T-188 unruled) — a presentation cue, never a game rule.
+   */
+  boardKey: string;
+}
+
+/** Pure projection of the manifest board's sheet identity (display-only). */
+export function manifestSheet(game: GameState): ManifestSheet {
+  const systemId = game.player.currentSystemId;
+  return {
+    portName: systemName(systemId),
+    offerCount: game.market.manifestBoard.length,
+    day: game.day,
+    boardKey: `${systemId}:${game.day}`,
+  };
+}
+
 /** T-1402 · The engine's advisory fuel-purchase preview (cost, delivered, wasted,
  *  overspend, affordability), re-exported so the fuel depot can warn BEFORE the buy
  *  commits. A pure read — the engine still clamps the tank on resolve; this only

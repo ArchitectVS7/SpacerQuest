@@ -1643,7 +1643,7 @@ written into the spec rather than left implicit; no save-shape, engine, or conte
 kind shipped alongside it.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified `MISSING`); oriented from `TASKS.md`, `App.tsx`, `format.ts`, `theme.css`, and the e2e suite inst · attempts=2/4.
 
-### T-190 · Contract manifest should feel like a discrete, port-bound object, not a permanent fixture — `status: TODO` · `coder: opus` · `after: —`
+### T-190 · Contract manifest should feel like a discrete, port-bound object, not a permanent fixture — `status: DONE` · `coder: opus` · `after: —`
 
 Owner's read: "the contract manifest probably needs to be a clickable item, available only in a
 port. Story-wise, a contract should be taking a player from port to port, so there should not be a
@@ -1668,6 +1668,146 @@ if T-188 has been ruled AND the ruling produces an actual in-transit state; if T
 this task closes on (1) alone with (2) explicitly re-filed as a follow-up naming the T-188
 dependency; gate green.
 
+**DONE (2026-08-04).** The manifest is a clipboard bolted to the console.
+
+**Ask (1) shipped in full; ask (2) deliberately did NOT ship, and that is the accept clause's own
+instruction, not a downscope.** T-188 (`TASKS.md:1474`) is still `status: TODO` ·
+`[BLOCKED BY = Owner ruling]`, jumps are still instant, and there is therefore no in-transit state to
+be "not docked" during. Building the unavailable-while-not-docked half today would mean inventing a
+fake docking flag against an instant-jump model — the one thing T-190's accept explicitly forbids.
+No `player.docked` field was added, no board gate was written, and no engine state moved. It is
+re-filed verbatim as **T-192** below, naming T-188 as its dependency and reusing the stow render path
+this task already built, so the follow-up is presentation-free work once the ruling lands.
+
+**What shipped.** A pure selector `manifestSheet(game)` in `packages/ui/src/format.ts` (four fields:
+`portName`, `offerCount`, `day`, `boardKey`) feeds a rebuilt `Manifest` in `packages/ui/src/App.tsx`
+and a new `/* ---- T-190 · the manifest as an OBJECT ---- */` block in `theme.css`. The board is now:
+a brushed-metal **bulldog clip** overhanging the top edge (it hangs UP into the 12px `.screen` gap, so
+it costs the right column no layout height); **2px rounded board stock** on a lighter fibreboard
+ground — every other pane in the cockpit is a square 1px `--hair` hairline, so the silhouette alone
+separates it; two offset hairlines plus a cast shadow behind it for **thickness**; a **-0.45deg hang**;
+**two screw heads** in the bottom corners; a reverse-video **port stamp** (`SUN-3 DEPOT · 4 OFFERS`,
+the same words the old `.tag` carried) counter-rotated against the hang; and, clipped to it, a sheet
+of faintly-ruled **paper** with **punched holes** at the top and a **hand-torn bottom edge**
+(`clip-path` polygon). The header is one big `<button>` — the owner's "clickable item" — that
+**stows** the paper with `aria-expanded` and a rotating chevron.
+
+**Motion, both directions, both railed.** Opening/re-posting runs `@keyframes mb-post`; stowing runs
+`@keyframes mb-stow` on the stub line; the chevron transitions. All three sit inside
+`@media not (prefers-reduced-motion: reduce)` (or have an explicit reduced-motion `transition: none`),
+the house rule this file already keeps at theme.css:360/812/1288/2905/3101 — so the reduced-motion
+path is instant, never "animated then skipped", which is what keeps the e2e honest.
+
+**`boardKey` is the only non-obvious value, and it is the honest port-bound cue.** The engine
+regenerates the board per port at dawn (`generateManifestBoard`, engine `day.ts:144`), so
+`${systemId}:${day}` names one posting. `key={sheet.boardKey}` on `.mb-sheet` means a genuinely new
+board REMOUNTS and visibly re-posts itself, while an ordinary re-render (a die armed, a notice
+raised) does not. That is presentation keyed off engine state — never a rule, never a new field.
+
+**The stow is a player affordance, not game state.** It lives in component state, is not persisted,
+touches no engine call, and is **force-open for the whole of the scripted walkthrough**
+(`open = !stowed || walkthroughActive(state.walkthrough)`). That guard is load-bearing: step 3's
+rails allow ONLY the `manifest` region, so a stowed board there would be a tutorial blocking its own
+lesson, and `walkthrough.spec.ts:94` asserts a contract is visible from step 2 onward while the
+manifest is still rails-shut. `railsProps(state, 'manifest')` stays on the outermost `<section>`, so
+`inert`/`data-rails-off` semantics are byte-identical and the new toggle goes dead with everything
+else when the rails are up.
+
+**"SIGN/HAGGLE unchanged" is proved mechanically, not asserted.** Everything inside `.mb-sheet` — the
+contract rows, the flags, the SIGN row, the HAGGLE button, every `onClick`/`onDragOver`/`onDrop`
+handler and every `data-*` attribute — was moved verbatim into a wrapper; the wrap was landed and the
+suite run green BEFORE any styling was written, so the move was proved inert first. `git status` shows
+the ONLY new or changed file under `packages/ui/e2e/` is `manifest-object.spec.ts`: the nine existing
+specs that read the board directly (`dawn-hand`, `manifest-trade`, `onboarding`, `recovery`,
+`save-write-failure`, `smoke`, `storylet-delivery`, `tour-one-death`, `walkthrough`) **and** the
+shared `e2e/support/career.ts` contract picker, through which `tour-one-career` and every other
+career-driving spec signs jobs, all pass **UNMODIFIED** — 138/138. `CheckBreakdown` was deliberately
+left outside the sheet so stowing can
+never hide the result of a roll the player just paid a die for — asserted in the spec.
+
+**Palette discipline, because T-186 is still open.** T-186 (visual identity / colour) is BLOCKED on an
+owner ruling, so every value in the new CSS block stays inside the committed CRT-amber system
+(`--ember / --ember-hi / --amber / --amber-dim / --hair / --panel / --tube / --glow`) — one phosphor
+colour, emphasis by reverse video. No second hue was introduced and no shared rule (`.pane`,
+`.pane > header`, `.col`, `.contract`, `.flag`, the onboarding/walkthrough anchors) was touched:
+everything is additive under `.manifest-board`, so the whole treatment is revertible in one block if
+T-186 rules a different direction. The one `.pane` property that HAD to be overridden locally is
+`overflow: hidden` → `visible` on the section (it would otherwise slice the clip, the stacked shadows
+and the torn edge clean off); `.pane .body` keeps its own `overflow: auto`, so the scroller is
+unchanged. The section's dead `style={{ flex: 1 }}` was dropped and is named here rather than left
+silent: the parent `.col` is a **grid**, so that flex shorthand had no effect on layout — removing it
+is inert, and `.col` itself was not restructured.
+
+**No fingerprint, no sweep, no migration — and here is the argument, not the assertion.**
+`computeRulesFingerprint` (`packages/sim/src/balance/rules-fingerprint.ts`) hashes `packages/engine/src`
++ `packages/content/src` wholesale, and `computeInstrumentFingerprint` hashes `packages/sim/src`.
+`packages/ui` is in **neither**, and this change touched only `packages/ui` — so no capstone sweep and
+no re-extract are owed, and no balance fixture is staled. No save-shape change, so no migration:
+`CURRENT_SAVE_VERSION` is UNMOVED — it reads **15** in `packages/engine/src/save.ts:509`, not the 12
+the T-190 task block quoted at track start, and this task did not move it either way. (T-189's block
+above is the precedent this mirrors.)
+
+**Tests added.** `packages/ui/src/__tests__/manifest-board.test.ts` — 10 selector tests over
+`format.ts`, never over `../store` (which runs `init()` at module load and reaches for storage and
+sound): the header values re-read the same engine numbers, `boardKey` is stable across an unrelated
+re-render and MOVES on both a day change and a port change, twelve (port, day) pairs give twelve
+distinct keys, a dark board (`manifestBoard = []`) yields `offerCount: 0` and a well-formed key with
+no `NaN`/`undefined` reaching a rendered attribute, and purity (two calls agree, the state is
+deep-equal to a pre-call clone, and the sheet has exactly four keys — a guard against the UI quietly
+starting to own state). The fixture calls `startDay(createInitialState(...))`, not
+`createInitialState` alone, because the board is generated at dawn — a bare initial state has an
+empty board and the count assertions would be testing nothing. **The stow itself is NOT unit-testable
+here** — there is no `@testing-library/react` in this repo — and that reasoning is written into the
+spec beside the assertions rather than left implicit; it is covered by real clicks in
+`packages/ui/e2e/manifest-object.spec.ts` (7 tests, everything through the UI, no `ApiValidator`, no
+`fetch`, no store pokes): the object's parts exist and the trade pane has none of them, with a
+**computed-style divergence** (2px vs 1px border, a real box-shadow vs `none`, a real transform matrix
+vs `none`, `overflow: visible` vs `hidden`) and a bounding-box check that the clip actually overhangs
+the frame; default-open with 4 contracts; the stow/un-stow round trip returning the same offer count;
+SIGN through the restyled board; HAGGLE still surfacing a visible TRADE DC-12 check and staying
+visible while stowed; and the walkthrough force-open guard driven from a genuine first-time boot.
+
+**Screenshot pass, read and judged — and it took two passes.** Four PNGs into the gitignored
+`packages/ui/test-results/`: `T-190-manifest-open.png`, `T-190-manifest-stowed.png`,
+`T-190-manifest-vs-ledger.png` (the right column, because "distinct from the thing next to it" is a
+comparison, not a property of one element) and `T-190-cockpit.png` (the full screen — an
+element-scoped shot crops exactly the overhanging clip that proves it is an object). A baseline of the
+pre-change cockpit was captured for comparison by stashing the diff, not by memory. **Pass 1 failed
+its own judgement on two counts**: the board stock was only a shade off `--panel` so it still read as a
+pane, and the sheet's padding had eaten ~12px, pushing the second contract's headline below the fold —
+theming that costs the player information is worse than no theming. Pass 2 warmed the board stock to a
+visibly lighter fibreboard, rounded the corners, widened the clip to a brushed-metal 124px, added the
+corner screws and the ruled paper, and tightened the header/sheet padding back to **baseline
+information parity** (the second offer's headline is visible in both). **Judgement on pass 2: yes** —
+the bright clip breaking the top edge, the rounded lighter board, the punched-hole row, the corner
+screws and the reverse-video stamp make it read as a physical clipboard, and side by side the Port
+Ledger is unmistakably a flat square pane. That iteration is the deliverable, not a footnote. No
+raster art and no new binary: `git status` shows only `.ts` / `.tsx` / `.css` / `TASKS.md`.
+
+**Height risk checked by hand, not assumed** (T-189's gate went red on exactly this class of problem):
+the clip overhangs upward and costs the column nothing, and the screenshot test ends by *clicking*
+`debt-amount` / `pay-debt` in the trade pane below and asserting the debt chip moves — `click()` fails
+on an occluded or offscreen control, so those two lines ARE the below-the-fold assertion.
+
+**Gate green:** `npx tsc -b` clean, `npm run lint` clean, `npm test` **2,281/2,281** across all five
+workspaces (0 failures), `npm run test:e2e -w @spacerquest/ui` **138/138**,
+`npm run test:e2e -w @spacerquest/desktop` **8/8**, `npm run format` run BEFORE this write-up then
+`npm run format:check` clean. No sweep run, by the fingerprint argument above. No fingerprint, band,
+threshold or golden was edited.
+
+**Delivered (2026-08-04):** the contract manifest now reads as a discrete physical object rather than
+a second copy of the pane beside it — a pure `manifestSheet(game)` selector in `format.ts` feeding a
+rebuilt `Manifest` in `App.tsx` (clip, port stamp, punched paper, torn edge, screw-mounted rounded
+board, a header button that stows the paper, and a `boardKey`-driven re-post whenever the engine
+posts a new board), with all motion railed behind `prefers-reduced-motion` and all colour held inside
+the committed CRT-amber system because T-186 owns the palette decision. Unit coverage
+(`manifest-board.test.ts`, 10 tests) and a UI-driven e2e spec (`manifest-object.spec.ts`, 7 tests)
+both landed, and the eleven existing contract-reading specs pass untouched. The deliberate scope
+boundary: the owner's "available only in a port" half was NOT built and no docking flag was invented,
+because T-188 has not been ruled and jumps are still instant — re-filed as **T-192**, blocked on
+T-188, reusing this task's stow render path so it needs no new visual work.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified missing); oriented from `TASKS.md`, `packages/ui/src/App.tsx`, `theme.css`, `format.ts`, `walkthr · attempts=1/4.
+
 ### T-191 · The lower-right menus read as flat and interchangeable — `status: TODO` · `coder: opus` · `after: —`
 
 Owner's read: "other menus on lower right just need to be more interesting... Overall the page does
@@ -1684,6 +1824,36 @@ a fourth instance of the same panel chrome; no functional behavior changes; a sc
 comparing all four quadrants side by side is attached to the commit so "differentiated" is a visible
 claim, not an assertion; gate green. If this proves entangled with T-186's (still-open) color ruling,
 say so explicitly rather than quietly reaching into palette territory T-186 owns.
+
+### T-192 · The manifest's "not docked" state — the half of T-190 that needs a travel duration to exist — `status: TODO` · `coder: opus` · `after: T-188` · `[BLOCKED BY = T-188 ruling]`
+
+T-190 shipped the visual-object half of the owner's M15 manifest note: the board is now a clipboard
+bolted to the console, with a clickable header that stows and un-stows the paper. The other half of
+that note — "available only in a port… there should not be a persistent always-on manifest" — was
+**deliberately not built**, and this block is where it lives until it can be.
+
+**Why it could not ship with T-190.** T-188 (`TASKS.md:1474`) is `status: TODO` ·
+`[BLOCKED BY = Owner ruling]`. Jumps are still resolved synchronously with no occupiable duration, so
+the player is ALWAYS at a system: there is no in-transit state to make the manifest unavailable
+during. Building it now would mean inventing a fake docking flag (a `player.docked` field, or a UI
+predicate pretending to be one) against an instant-jump model — which T-190's own accept clause
+explicitly forbids, and which would roll up as technical debt the moment T-188's real travel state
+landed beside it. Nothing in T-190 reaches for it: no engine state moved, no save shape changed
+(`CURRENT_SAVE_VERSION` is unmoved at **15**, `packages/engine/src/save.ts:509`), and the manifest
+gates on nothing.
+
+**Accept:** ships **only** after T-188's ruling produces an actual, occupiable in-transit state. Then:
+the manifest stows itself while in transit and re-posts on arrival, **reusing T-190's existing stow
+render path** (`data-manifest-open="0"` + the `.mb-stowed-line` stub and its `mb-stow` keyframe) — no
+new visual work is owed, only the wiring of the real travel state into `open`, and the stowed copy
+changing from "BOARD STOWED" to whatever the ruling makes diegetically true (e.g. "IN TRANSIT · NO
+DEPOT"). The stow must remain a player affordance while docked, and the walkthrough force-open guard
+must survive. An e2e test drives a real jump **through the UI** (never a store poke) and asserts the
+board is unavailable in transit and posted again on arrival, and the eleven existing
+board-reading specs (and `e2e/support/career.ts`'s contract picker) must still pass unmodified. If
+T-188's ruling produces feedback that
+is NOT an occupiable state (e.g. a stamped ship's-log entry only), say so explicitly and close this
+task as moot rather than manufacturing a state to gate on; gate green.
 
 ---
 

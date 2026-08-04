@@ -151,6 +151,7 @@ import {
   storyletChoiceNeedsDie,
   storyletChoiceLock,
   deedRegistry,
+  manifestSheet,
   factionStanding,
   nemesisFile,
   crossingStatus,
@@ -4461,131 +4462,208 @@ function ComponentRow({
   );
 }
 
+/**
+ * T-190 · THE MANIFEST IS AN OBJECT, NOT A PANE.
+ *
+ * The owner's read: "the contract manifest probably needs to be a clickable item,
+ * available only in a port… Make it stand out as distinct from everything else."
+ * That is two asks, and only ONE of them can honestly ship today:
+ *
+ *  (1) VISUAL DISTINCTNESS — shipped here. The board is dressed as a physical
+ *      clipboard bolted to the console: a bulldog clip above the header, a
+ *      reverse-video port stamp, a 2px frame with stacked-paper shadows, a slight
+ *      physical tilt, punched holes and a torn bottom edge on the paper itself,
+ *      and it STOWS when you click its header (the "clickable item"). The paper
+ *      also re-posts itself — `key={sheet.boardKey}` remounts the sheet whenever
+ *      (port, day) changes, i.e. exactly when the engine regenerates the board.
+ *
+ *  (2) "UNAVAILABLE WHILE NOT DOCKED" — deliberately NOT shipped. There is no
+ *      in-transit state to gate on: jumps are instant, and the design decision
+ *      that would give travel an occupiable duration is T-188, which is still
+ *      BLOCKED on an owner ruling. Faking a docking flag against an instant-jump
+ *      model is exactly what T-190's own accept clause forbids. Re-filed as T-192,
+ *      which reuses the stow render path below and adds no new visual work.
+ *
+ * The stow is a PLAYER AFFORDANCE, never game state — it lives in component
+ * state, is not persisted, and is force-open for the whole of the scripted
+ * first-turn walkthrough (step 3's rails allow ONLY the manifest region, so a
+ * stowed board there would be a soft-lock, and `walkthrough.spec.ts` asserts a
+ * contract is visible from step 2 onward while the manifest is still rails-shut).
+ *
+ * Everything inside the sheet — the contract rows, the flags, the SIGN row, the
+ * HAGGLE button and every handler and `data-*` attribute — is UNCHANGED. The
+ * mechanical proof is that every existing e2e spec which reads the board — nine of
+ * them directly, plus `e2e/support/career.ts`'s shared contract picker — passes
+ * with zero edits.
+ */
 function Manifest({ state }: { state: CockpitState }) {
   const board = state.game.market.manifestBoard;
   const here = state.game.player.currentSystemId;
   const armed = state.selectedDie !== null;
   const dieVal =
     state.selectedDie !== null ? state.game.player.dawnHand?.dice[state.selectedDie] : undefined;
+  const sheet = manifestSheet(state.game);
+  const [stowed, setStowed] = useState(false);
+  const open = !stowed || walkthroughActive(state.walkthrough);
   return (
-    <section className="pane" style={{ flex: 1 }} {...railsProps(state, 'manifest')}>
+    <section
+      className="pane manifest-board"
+      data-testid="manifest-board"
+      data-manifest-open={open ? '1' : '0'}
+      data-board-key={sheet.boardKey}
+      {...railsProps(state, 'manifest')}
+    >
+      {/* The bulldog clip: what makes the frame read as a board you could lift
+          off the console rather than a rectangle in a CSS grid. Pure chrome. */}
+      <div className="mb-clip" aria-hidden="true">
+        <span className="mb-clip-jaw" />
+      </div>
       <header>
-        <h2>Manifest Board</h2>
-        <span className="tag">
-          {systemName(here)} DEPOT · {board.length} OFFERS
-        </span>
+        <h2>
+          <button
+            type="button"
+            className="mb-toggle"
+            data-testid="manifest-toggle"
+            aria-expanded={open}
+            title={open ? 'Stow the manifest board' : 'Take the manifest board down again'}
+            onClick={() => setStowed((v) => !v)}
+          >
+            <span className="mb-title">Manifest Board</span>
+            {/* Same words the `.tag` carried before — a port stamp, not a label. */}
+            <span className="mb-stamp">
+              {systemName(here)} DEPOT · {board.length} OFFERS
+            </span>
+          </button>
+        </h2>
       </header>
-      <div className="body">
-        {board.length === 0 && (
-          <p style={{ color: 'var(--amber)' }}>The board is dark. Rest, or move on.</p>
-        )}
-        {board.map((c, i) => {
-          const contraband = CARGO_TYPES[c.cargoType]?.isContraband ?? false;
-          // Display-only flags derived from existing engine/content state (see
-          // format.ts): URGENT = destination repriced by the active era event;
-          // STORYLET = this cargo has a content storylet keyed to it. The UI
-          // reads these; it never owns the rule, and CargoContract gains no field.
-          const urgent = contractIsUrgent(state.game, c.destination);
-          const storylet = cargoHasStorylet(c.cargoType);
-          // T-1402 · A REAL engine number for the destination line — the previewed
-          // jump fuel cost — replaces the fabricated `jumpsBetween` "jumps" count no
-          // engine rule ever read.
-          const preview = routePreview(state.game, c.destination);
-          return (
-            <div
-              className={armed ? 'contract pickable' : 'contract'}
-              key={i}
-              data-testid="contract"
-              // T-1602a · STRUCTURED reads of the numbers this row already renders
-              // as prose, so a caller can decide from the DOM instead of parsing
-              // "▸ Pollux-7 · 72 fuel · 10 pods". Every value is the SAME engine
-              // number rendered below (`preview` / the contract itself) — nothing
-              // new is derived here, so the UI still owns no route or pricing rule.
-              // READER: e2e/tour-one-career.spec.ts via e2e/support/career.ts —
-              // its contract picker filters on `data-contraband` / `data-dc` /
-              // `data-fuel-cost` and ranks on `data-payment`; `data-destination-id`
-              // is the starmap node it then clicks, and `data-pods` rides the run
-              // report's day log. (Same precedent as `data-system-id` /
-              // `data-reachable` on the starmap nodes.)
-              data-destination-id={c.destination}
-              data-payment={c.payment}
-              data-fuel-cost={preview.fuelCost}
-              data-dc={preview.dc}
-              data-pods={c.pods}
-              data-contraband={contraband ? '1' : '0'}
-              onClick={() => signContract(i)}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.currentTarget.classList.add('dropready');
-              }}
-              onDragLeave={(e) => e.currentTarget.classList.remove('dropready')}
-              onDrop={(e) => {
-                e.currentTarget.classList.remove('dropready');
-                dropDie(e, () => signContract(i));
-              }}
-            >
-              <div className="row1">
-                <span className="goods">
-                  {cargoName(c.cargoType)}
-                  {contraband && <span className="flag shady">CONTRABAND</span>}
-                  {urgent && (
-                    <span className="flag urgent" data-testid="flag-urgent">
-                      URGENT
+      {!open && (
+        <div className="body">
+          <p className="mb-stowed-line" data-testid="manifest-stowed">
+            BOARD STOWED · {sheet.offerCount} OFFERS PINNED AT {sheet.portName.toUpperCase()}
+          </p>
+        </div>
+      )}
+      {open && (
+        <div className="body">
+          {/* `key` is the whole point: a new (port, day) is a genuinely new sheet,
+              so React remounts this node and the re-post animation fires. */}
+          <div className="mb-sheet" key={sheet.boardKey}>
+            <div className="mb-punches" aria-hidden="true" />
+            {board.length === 0 && (
+              <p style={{ color: 'var(--amber)' }}>The board is dark. Rest, or move on.</p>
+            )}
+            {board.map((c, i) => {
+              const contraband = CARGO_TYPES[c.cargoType]?.isContraband ?? false;
+              // Display-only flags derived from existing engine/content state (see
+              // format.ts): URGENT = destination repriced by the active era event;
+              // STORYLET = this cargo has a content storylet keyed to it. The UI
+              // reads these; it never owns the rule, and CargoContract gains no field.
+              const urgent = contractIsUrgent(state.game, c.destination);
+              const storylet = cargoHasStorylet(c.cargoType);
+              // T-1402 · A REAL engine number for the destination line — the previewed
+              // jump fuel cost — replaces the fabricated `jumpsBetween` "jumps" count no
+              // engine rule ever read.
+              const preview = routePreview(state.game, c.destination);
+              return (
+                <div
+                  className={armed ? 'contract pickable' : 'contract'}
+                  key={i}
+                  data-testid="contract"
+                  // T-1602a · STRUCTURED reads of the numbers this row already renders
+                  // as prose, so a caller can decide from the DOM instead of parsing
+                  // "▸ Pollux-7 · 72 fuel · 10 pods". Every value is the SAME engine
+                  // number rendered below (`preview` / the contract itself) — nothing
+                  // new is derived here, so the UI still owns no route or pricing rule.
+                  // READER: e2e/tour-one-career.spec.ts via e2e/support/career.ts —
+                  // its contract picker filters on `data-contraband` / `data-dc` /
+                  // `data-fuel-cost` and ranks on `data-payment`; `data-destination-id`
+                  // is the starmap node it then clicks, and `data-pods` rides the run
+                  // report's day log. (Same precedent as `data-system-id` /
+                  // `data-reachable` on the starmap nodes.)
+                  data-destination-id={c.destination}
+                  data-payment={c.payment}
+                  data-fuel-cost={preview.fuelCost}
+                  data-dc={preview.dc}
+                  data-pods={c.pods}
+                  data-contraband={contraband ? '1' : '0'}
+                  onClick={() => signContract(i)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.add('dropready');
+                  }}
+                  onDragLeave={(e) => e.currentTarget.classList.remove('dropready')}
+                  onDrop={(e) => {
+                    e.currentTarget.classList.remove('dropready');
+                    dropDie(e, () => signContract(i));
+                  }}
+                >
+                  <div className="row1">
+                    <span className="goods">
+                      {cargoName(c.cargoType)}
+                      {contraband && <span className="flag shady">CONTRABAND</span>}
+                      {urgent && (
+                        <span className="flag urgent" data-testid="flag-urgent">
+                          URGENT
+                        </span>
+                      )}
+                      {storylet && (
+                        <span className="flag storylet" data-testid="flag-storylet">
+                          STORYLET
+                        </span>
+                      )}
+                      {c.haggled && <span className="flag shady">HAGGLED</span>}
                     </span>
-                  )}
-                  {storylet && (
-                    <span className="flag storylet" data-testid="flag-storylet">
-                      STORYLET
-                    </span>
-                  )}
-                  {c.haggled && <span className="flag shady">HAGGLED</span>}
-                </span>
-                <span className="pay">{c.payment.toLocaleString()}cr</span>
-              </div>
-              <div className="dest">
-                &#9656; {systemName(c.destination)} · {preview.fuelCost} fuel · {c.pods} pods
-              </div>
-              {/* T-1402 · Signing SPENDS a die — it is not a TRADE check. The engine
+                    <span className="pay">{c.payment.toLocaleString()}cr</span>
+                  </div>
+                  <div className="dest">
+                    &#9656; {systemName(c.destination)} · {preview.fuelCost} fuel · {c.pods} pods
+                  </div>
+                  {/* T-1402 · Signing SPENDS a die — it is not a TRADE check. The engine
                   (resolveTrade) burns the die and never rolls or reads its value, so
                   the manifest must render signing as a die COST, not a "+ TRADE" check.
                   (HAGGLE below is the real TRADE DC-12 roll.) */}
-              <div className="check" data-testid="sign-row">
-                <span className="lbl">SIGN</span>
-                <span className={dieVal !== undefined ? 'slot ready' : 'slot'}>
-                  {dieVal ?? '—'}
-                </span>
-                <span className="mono">costs 1 die</span>
-                <span className="arrow">&rarr;</span>
-                <span className="mono">{armed ? 'commit to sign' : 'assign a die'}</span>
-                {/* Kept ENABLED even once haggled: a second haggle is an engine
+                  <div className="check" data-testid="sign-row">
+                    <span className="lbl">SIGN</span>
+                    <span className={dieVal !== undefined ? 'slot ready' : 'slot'}>
+                      {dieVal ?? '—'}
+                    </span>
+                    <span className="mono">costs 1 die</span>
+                    <span className="arrow">&rarr;</span>
+                    <span className="mono">{armed ? 'commit to sign' : 'assign a die'}</span>
+                    {/* Kept ENABLED even once haggled: a second haggle is an engine
                     refusal that spends no die, and the store surfaces it as a
                     visible notice. Disabling it here would make that failure a
                     silent dead click — the exact silence the accept criterion
                     (UGT Finding 4's lesson) forbids. */}
-                <button
-                  className={c.haggled ? 'haggle done' : 'haggle'}
-                  data-testid="haggle"
-                  title={
-                    c.haggled
-                      ? 'The broker will not renegotiate this contract again.'
-                      : armed
-                        ? 'Roll TRADE vs DC 12 to bump the payment'
-                        : 'Pick a die first, then haggle'
-                  }
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    haggleContract(i);
-                  }}
-                >
-                  HAGGLE
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+                    <button
+                      className={c.haggled ? 'haggle done' : 'haggle'}
+                      data-testid="haggle"
+                      title={
+                        c.haggled
+                          ? 'The broker will not renegotiate this contract again.'
+                          : armed
+                            ? 'Roll TRADE vs DC 12 to bump the payment'
+                            : 'Pick a die first, then haggle'
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        haggleContract(i);
+                      }}
+                    >
+                      HAGGLE
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="mb-tear" aria-hidden="true" />
+          </div>
+        </div>
+      )}
       {/* The manifest owns the haggle check only — filter by context so a
-          storylet check (any stat) surfaces in its own panel, not here. */}
+          storylet check (any stat) surfaces in its own panel, not here. It sits
+          OUTSIDE the sheet on purpose: it is the haggle readout, and stowing the
+          paper must never hide the result of a roll the player just paid for. */}
       <CheckBreakdown state={state} exclude={Stat.PILOT} context="haggle" />
     </section>
   );

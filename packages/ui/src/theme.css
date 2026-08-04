@@ -1066,6 +1066,302 @@ body {
   color: var(--ember);
 }
 
+/* ---- T-190 · the manifest as an OBJECT ---------------------------------
+   The owner's note: the manifest "needs to be a clickable item… Make it stand
+   out as distinct from everything else." It was a second instance of `.pane`
+   sitting in the same grid as the port ledger, and it read as one.
+
+   It is now a CLIPBOARD BOLTED TO THE CONSOLE: a bulldog clip overhanging the
+   frame, a 2px board stock with two offset hairlines behind it so it has
+   THICKNESS, a slight crooked hang, a reverse-video port stamp, and a sheet of
+   paper on it with punched holes at the top and a torn bottom edge. Clicking
+   the header STOWS the paper; the board itself stays bolted on.
+
+   PALETTE DISCIPLINE: T-186 (the visual-identity/colour ruling) is still open
+   and the owner owns it, so every value below stays inside the committed
+   CRT-amber system — one phosphor colour, emphasis by REVERSE VIDEO. No second
+   hue is introduced here, and no shared rule (`.pane`, `.pane > header`, `.col`,
+   `.contract`, `.flag`) is touched: everything is additive under
+   `.manifest-board`, so the treatment is revertible in one block.
+
+   MOTION: opening/re-posting animates, and every animation is wrapped in
+   `@media not (prefers-reduced-motion: reduce)` — the house rule this file keeps
+   throughout, and the rail that keeps the e2e suite honest. */
+.manifest-board {
+  position: relative;
+  /* REQUIRED: `.pane` sets `overflow: hidden`, which would clip the clip bar,
+     the stacked-paper shadows and the torn edge. `.pane .body` keeps its own
+     `overflow: auto`, so the scroller is unchanged. */
+  overflow: visible;
+  /* 2px board stock, ROUNDED — every other pane in the cockpit is a square 1px
+     hairline, so the silhouette alone separates this one at a glance. */
+  border: 2px solid var(--amber-dim);
+  border-radius: 4px;
+  background:
+    /* fibreboard grain */
+    repeating-linear-gradient(0deg, rgba(255, 176, 0, 0.03) 0 2px, rgba(0, 0, 0, 0) 2px 4px),
+    repeating-linear-gradient(90deg, rgba(255, 176, 0, 0.018) 0 3px, rgba(0, 0, 0, 0) 3px 6px),
+    linear-gradient(180deg, #26180a 0, #17100a 55%, #0e0905 100%);
+  /* Thickness: two offset hairlines behind the board, then a cast shadow. */
+  box-shadow:
+    3px 4px 0 -1px #100b05,
+    4px 5px 0 -1px var(--hair),
+    9px 11px 20px rgba(0, 0, 0, 0.55);
+  /* A board on a hook hangs crooked. Deliberately under 0.5deg: Playwright
+     centre-clicks a rotated box fine, but a large angle degrades the hit areas
+     and the `dropDie` drag targets on `.contract`. */
+  transform: rotate(-0.45deg);
+}
+/* Bolted to the console — two screw heads in the bottom corners. Chrome only. */
+.manifest-board::before,
+.manifest-board::after {
+  content: '';
+  position: absolute;
+  bottom: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--amber) 0 35%, #241708 60%, #0d0904 100%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+.manifest-board::before {
+  left: 6px;
+}
+.manifest-board::after {
+  right: 6px;
+}
+/* The bulldog clip. Overhangs UPWARD into the 12px `.screen` gap above `.main`,
+   so it costs the column no layout height (the right column's rows are auto and
+   the trade pane's controls must stay above the fold). */
+.mb-clip {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 124px;
+  height: 19px;
+  border-radius: 3px 3px 0 0;
+  /* Brushed metal, read in one phosphor: a hot specular band across the top
+     third, falling away to shadow at the jaw. */
+  background: linear-gradient(
+    180deg,
+    #3a2409 0,
+    var(--ember) 22%,
+    #8a5710 42%,
+    var(--amber-dim) 62%,
+    #221506 100%
+  );
+  border: 1px solid var(--amber);
+  border-bottom: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 225, 166, 0.55),
+    0 3px 7px rgba(0, 0, 0, 0.7);
+  z-index: 2;
+}
+/* The jaw: the pressure bar the paper is bitten under, plus two pivot rivets. */
+.mb-clip-jaw {
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  bottom: 3px;
+  height: 5px;
+  border-radius: 1px;
+  background: linear-gradient(180deg, #100a04, #2a1a07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 176, 0, 0.3),
+    -42px -7px 0 -1px var(--ember-hi),
+    42px -7px 0 -1px var(--ember-hi);
+}
+/* The header is one big control — the owner's "clickable item". */
+.manifest-board > header {
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--amber-dim);
+}
+.manifest-board > header h2 {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mb-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mb-toggle:focus-visible {
+  outline: 1px solid var(--ember);
+  outline-offset: 3px;
+}
+.mb-title {
+  color: var(--ember);
+  text-shadow: var(--glow);
+  white-space: nowrap;
+}
+.mb-toggle:hover .mb-title {
+  color: var(--ember-hi);
+}
+/* The open/stowed chevron. Purely decorative — `aria-expanded` on the button is
+   what actually announces the state. */
+.mb-toggle::after {
+  content: '\25BE';
+  flex: 0 0 auto;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ember);
+  text-shadow: var(--glow);
+  transition: transform 180ms ease;
+}
+.mb-toggle:hover::after {
+  color: var(--ember-hi);
+}
+.manifest-board[data-manifest-open='0'] .mb-toggle::after {
+  transform: rotate(-90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mb-toggle::after {
+    transition: none;
+  }
+}
+/* The port stamp: reverse video, counter-rotated against the board's hang so it
+   reads as ink pressed onto the board rather than a label typeset on it. */
+.mb-stamp {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--tube);
+  background: var(--ember);
+  padding: 2px 8px;
+  transform: rotate(1.1deg);
+  box-shadow:
+    0 0 0 1px var(--tube),
+    0 0 0 2px var(--amber-dim);
+}
+/* The paper on the board. Padding is kept TIGHT on purpose: the chrome must not
+   cost the player a visible offer — the pane's box is ~200px at the suite
+   viewport and the baseline showed a contract and a half, which this matches. */
+.manifest-board > .body {
+  padding: 7px 9px 10px;
+}
+.mb-sheet {
+  position: relative;
+  padding: 8px 9px 4px;
+  /* Paper, lighter than the board it is clipped to, faintly ruled like a form. */
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 176, 0, 0.045) 0 1px, rgba(0, 0, 0, 0) 1px 22px),
+    linear-gradient(180deg, #241809 0, #16100a 100%);
+  border: 1px solid var(--amber-dim);
+  border-bottom: none;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
+}
+/* Punched holes along the top of the sheet, where the clip bites it. */
+.mb-punches {
+  height: 9px;
+  margin: -3px -1px 5px;
+  background-image: radial-gradient(
+    circle at 6px 4px,
+    var(--tube) 0 3px,
+    rgba(255, 176, 0, 0.28) 3px 3.9px,
+    rgba(0, 0, 0, 0) 4.1px
+  );
+  background-size: 32px 9px;
+  background-repeat: repeat-x;
+}
+/* A hand-torn bottom edge. Bleeds past the sheet's padding so the paper ends
+   ragged instead of on a ruled border. */
+.mb-tear {
+  height: 9px;
+  margin: 6px -10px -4px;
+  background: linear-gradient(180deg, #150e07, #100a05);
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% 42%,
+    96% 100%,
+    92% 34%,
+    88% 96%,
+    84% 28%,
+    80% 100%,
+    76% 40%,
+    72% 92%,
+    68% 26%,
+    64% 100%,
+    60% 36%,
+    56% 94%,
+    52% 30%,
+    48% 100%,
+    44% 38%,
+    40% 90%,
+    36% 24%,
+    32% 100%,
+    28% 42%,
+    24% 96%,
+    20% 30%,
+    16% 100%,
+    12% 36%,
+    8% 92%,
+    4% 26%,
+    0 100%
+  );
+}
+/* Stowed: the board stays bolted to the console, the paper is off it. */
+.mb-stowed-line {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--amber);
+  border: 1px dashed var(--amber-dim);
+  padding: 9px 10px;
+  text-align: center;
+}
+@media not (prefers-reduced-motion: reduce) {
+  /* THE RE-POST. `key={sheet.boardKey}` remounts the sheet whenever (port, day)
+     changes — i.e. exactly when the engine regenerates the board at dawn — so
+     this fires on a genuinely new sheet and on every un-stow, and never on an
+     ordinary re-render. */
+  .mb-sheet {
+    animation: mb-post 220ms ease-out both;
+    transform-origin: top center;
+  }
+  @keyframes mb-post {
+    from {
+      opacity: 0;
+      transform: translateY(-7px) rotate(0.5deg);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) rotate(0deg);
+    }
+  }
+  /* The close beat: the paper comes off, the stub settles onto the empty board. */
+  .mb-stowed-line {
+    animation: mb-stow 200ms ease-out both;
+  }
+  @keyframes mb-stow {
+    from {
+      opacity: 0;
+      transform: scaleY(0.6);
+    }
+    to {
+      opacity: 1;
+      transform: scaleY(1);
+    }
+  }
+}
+
 /* ---- T-305 trade pane (fuel depot / debt ledger / active contract) ---- */
 .pane.trade {
   margin-top: 12px;
