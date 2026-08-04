@@ -36,6 +36,11 @@ import {
   type SuccessionSummary,
 } from './format';
 import * as sound from './sound';
+// T-185 · The procedural score. A CLIENT of `sound.ts` (it borrows that module's
+// context and `music` bus, and owns no rule) and a CLIENT of this store's state:
+// `moodForState` is a pure function of `CockpitState`, so NO `if` about audio
+// lives in this file. Inert without a `window`, exactly like `sound.ts`.
+import * as music from './music';
 // T-1702a · The Steam achievement mirror. Like `sound.ts`, a pure CLIENT of the
 // event stream the store already scans — the engine emits nothing new for it,
 // and no `GameState` field or `GameEvent` was added. See `steam.ts`'s header.
@@ -421,6 +426,32 @@ let state: CockpitState = init();
 // contract and is a no-op with no shell, so it cannot throw out of module init
 // where no error boundary could catch it.
 steam.syncPresence(state.game);
+// T-185 · Start the ambient drive-hum bed for the BOOTED career, on exactly the
+// argument the `syncPresence` line above carries: a career restored from the
+// autosave is in the cockpit before the player touches anything, so it owes the
+// same presence the fresh one gets.
+//
+// THE BUG THIS FIXES (measured, F-185-1). `setDriveHum(true)` had exactly two
+// call sites — `newGame` and `endDay` — and neither is on the path a RETURNING
+// player takes: `init()` here and `loadSlot` both left the bed off. A Playwright
+// probe tapping `ctx.destination` measured a peak of EXACTLY 0.000 on a plain
+// boot, i.e. a returning captain heard nothing but sub-100 ms blips until they
+// happened to end a day. That is most of the owner's "there is just zero
+// feedback" on its own.
+//
+// Safe at MODULE SCOPE for the same reason `syncPresence` is: `startHum` defers
+// itself via `pendingHum` until the first gesture unlocks the AudioContext (so
+// no autoplay-policy error), is a no-op with no `window` or no `AudioContext`
+// (so node-side tooling that imports this module is unaffected), and early-
+// returns when the bed is already running — which is what keeps `newGame`'s and
+// `endDay`'s existing calls harmless rather than duplicative. It cannot throw
+// out of module init, where no error boundary could catch it.
+sound.setDriveHum(true);
+// T-185 · And the score, for the same booted career. `syncScene` is idempotent
+// and defers itself through `sound.onUnlock`, so this is the same autoplay-safe
+// shape as the line above. See the `set()` call site for why the score is
+// reconciled at the store's one choke point rather than per action.
+music.syncScene(state);
 const listeners = new Set<() => void>();
 
 // T-1605a · `init()` runs at MODULE SCOPE, outside React, so an error boundary
@@ -709,6 +740,17 @@ function set(patch: Partial<CockpitState>): void {
   // reason `reactToEvents` is unwrapped: a wrapper would hide a real regression.
   // No `CockpitState` field is added for it.
   steam.syncPresence(state.game);
+  // T-185 · The score's mood, at the SAME one state-update choke point and for
+  // the identical argument the two comments above make: reconciling it at ~20
+  // action call sites would be twenty places to forget, and the mood must change
+  // the instant an encounter opens rather than on the next action. `syncScene`
+  // derives the mood with a pure function and returns immediately when it has
+  // not changed, so an ordinary UI-only patch costs one string compare and never
+  // touches the audio graph. It never throws by contract (see `music.ts`), so it
+  // is deliberately UNWRAPPED here for the same reason `reactToEvents` and
+  // `syncPresence` are: a wrapper would hide a real regression. No
+  // `CockpitState` field is added for it.
+  music.syncScene(state);
   emit();
 }
 

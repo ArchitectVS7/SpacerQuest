@@ -103,7 +103,7 @@ receives — which is the copy the OFL and the MIT licence require.
 
 | ID | Item | Status | Evidence / open question |
 | --- | --- | --- | --- |
-| B1 | Every shipped dependency, font and sound is credited | ✅ DONE | `packages/ui/src/credits.ts` (7 rows); dev-only tooling deliberately excluded, with the reason stated in `docs/CREDITS.md` |
+| B1 | Every shipped dependency, font and sound is credited | ✅ DONE | `packages/ui/src/credits.ts` (8 rows — the count was stale at 7 from T-136's GSAP row; corrected at T-185, which amended the audio row to cover the score too); dev-only tooling deliberately excluded, with the reason stated in `docs/CREDITS.md` |
 | B2 | `docs/CREDITS.md` cannot drift from the constant | ✅ DONE | `credits.test.ts` → "docs/CREDITS.md is the constant, row for row" (the `STEAM-ACHIEVEMENTS.md` precedent) |
 | B3 | The credits reach the player, not just the repo | ✅ DONE | `App.tsx`'s `CreditsPanel`; asserted in the web cockpit (`settings-saves.spec.ts`) and in a real packaged binary (`packaged.spec.ts`) |
 | B4 | "Zero audio assets" is true of the tree, not just claimed | ✅ DONE | `credits.test.ts` walks `packages/ui` and asserts no `.mp3/.ogg/.wav/.m4a/.flac/.aac` exists |

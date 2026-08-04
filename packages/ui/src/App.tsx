@@ -247,8 +247,9 @@ const EffectsLayer = memo(function EffectsLayer() {
   return <div className="fx" aria-hidden="true" />;
 });
 
-// The audio mixer (T-310, folded into Settings by T-1406). Three master/SFX/
-// ambient sliders + a mute toggle, reflecting the persisted mixer state through
+// The audio mixer (T-310, folded into Settings by T-1406). Four master/SFX/
+// music/ambient sliders (T-185 added `music`) + a mute toggle, reflecting the
+// persisted mixer state through
 // the sound module's own external store. It is a pure client of `sound.ts`: it
 // never touches the AudioContext — the context unlocks on the first gesture
 // inside the manager (a global capture-phase listener, not this component's
@@ -278,6 +279,10 @@ function AudioMixer() {
     <div className="audio-mixer" data-testid="audio-mixer">
       {slider('master', 'Master', 'vol-master')}
       {slider('sfx', 'SFX', 'vol-sfx')}
+      {/* T-185 · The procedural score's own fader, between the one-shots and the
+          bed it sits between in the mix. `music.ts` synthesizes it; this row is
+          a pure client of `sound.ts`'s mixer exactly as the other three are. */}
+      {slider('music', 'Music', 'vol-music')}
       {slider('ambient', 'Ambient', 'vol-ambient')}
       <button
         className={mixer.muted ? 'audio-mute on' : 'audio-mute'}

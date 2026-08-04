@@ -13,11 +13,17 @@ import type { GameEvent } from '@spacerquest/engine';
  *   CREDITS: All cues are original procedural WebAudio synthesis by the Spacer
  *   Quest project (no third-party samples). Released CC0 with the project.
  *
- * This module is the SOLE owner of audio and a pure CLIENT of the rules: it is
- * driven by the `GameEvent` stream the store already receives (see
- * `cuesForEvents`) plus a few UI-gesture cues. It never imports or calls the
- * engine, and the engine emits nothing new for it. Under headless / SSR (no
- * `window`, no `AudioContext`) the whole module is inert.
+ * This module owns THE AUDIO GRAPH, THE MIXER and THE ONE-SHOT CUES, and is a
+ * pure CLIENT of the rules: it is driven by the `GameEvent` stream the store
+ * already receives (see `cuesForEvents`) plus a few UI-gesture cues. It never
+ * imports or calls the engine, and the engine emits nothing new for it. Under
+ * headless / SSR (no `window`, no `AudioContext`) the whole module is inert.
+ *
+ * T-185 · IT IS NO LONGER THE SOLE AUDIO MODULE. `music.ts` (the procedural
+ * score) is a CLIENT of this one: it never constructs a context and never
+ * touches `destination` — it asks for {@link musicBus} and hangs its voices off
+ * the `music` bus this file owns. Every rule about the context (construct only
+ * inside a gesture, defer intent until unlock) still lives HERE, once.
  *
  * ---------------------------------------------------------------------------
  *  AUDIO MAP — cue → bus → trigger → synthesis
@@ -33,17 +39,25 @@ import type { GameEvent } from '@spacerquest/engine';
  *  wire        sfx      new WireEntry (dusk)      band-passed noise crackle + squelch (throttled to 1)
  *  dawn        sfx      new day / new game        warm ascending phosphor chord
  *  fail        sfx      refused Trade / Shipyard   soft low buzz (throttled to 1)
- *  drive hum   ambient  setDriveHum(true)         ~57Hz sine + detuned layer, slow LFO on a lowpass
+ *  drive hum   ambient  setDriveHum(true)         57Hz sine pair + a 171Hz partial, slow LFO on a lowpass
+ *  the score   music    `music.ts` (its own file)  three moods, bar-quantised crossfades
  *
  * ---------------------------------------------------------------------------
  *  MIXER (persisted through `storage.ts`; read at init, applied on first gesture)
  *  — T-1701a: that seam is `localStorage` on the web build and an OS app-data
  *  file store under the Electron shell. Same keys, same synchronous API.
  * ---------------------------------------------------------------------------
- *  sq.vol.master   0..1  default 0.7   masterGain → destination
+ *  sq.vol.master   0..1  default 0.7   masterGain → softClip → destination
  *  sq.vol.sfx      0..1  default 0.6   sfxGain    → masterGain
  *  sq.vol.ambient  0..1  default 0.35  ambientGain→ masterGain
+ *  sq.vol.music    0..1  default 0.45  musicGain  → masterGain   (T-185)
  *  sq.audio.muted  bool  default false zeroes masterGain
+ *
+ *  T-185 · `masterGain` feeds a `WaveShaper` soft-clip (a plain `tanh`) before
+ *  `destination`. It is transparent below ~-10 dBFS — the level the loudest cue
+ *  reaches on its own — and only bends when a bed, a score and three one-shots
+ *  pile up in the same 50 ms. That headroom is what let the T-185 level pass
+ *  raise every cue without buying digital clipping with it.
  *
  * ---------------------------------------------------------------------------
  *  AUTOPLAY POLICY
@@ -54,6 +68,25 @@ import type { GameEvent } from '@spacerquest/engine';
  *  happen inside the gesture, the browser never logs the "AudioContext was not
  *  allowed to start" autoplay warning. Cues fired before that first gesture are
  *  simply dropped.
+ *
+ * ---------------------------------------------------------------------------
+ *  T-185 · WHAT THE AUDIBILITY INVESTIGATION MEASURED (2026-08-03)
+ * ---------------------------------------------------------------------------
+ *  Measured at `ctx.destination` through an `AnalyserNode` tap in a real
+ *  Chromium, driving the real cockpit through the real UI. Recorded here because
+ *  the numbers are the argument for every level in this file:
+ *
+ *   * the context is `running` on the FIRST gesture (created inside it) and the
+ *     first-ever cue rendered a 0.034 peak — cues were never being swallowed;
+ *   * a plain boot into an autosaved career rendered a peak of EXACTLY 0.000 —
+ *     `setDriveHum(true)` was only ever called by `newGame`/`endDay`, so a
+ *     returning player had no bed at all (fixed: `store.ts` module scope);
+ *   * the bed's spectrum was -39.9 dB at 20-100 Hz and -112.7 dB at 100-150 Hz,
+ *     i.e. ENTIRELY below the range a laptop or monitor speaker reproduces. It
+ *     was burning 0.25 of peak headroom that nobody could hear (fixed: the
+ *     171 Hz partial in `startHum`);
+ *   * one-shots landed at 0.034-0.05 peak at the destination — about -29 dBFS
+ *     (fixed: the level pass below, roughly +7 dB, plus the soft-clip).
  * ============================================================================
  */
 
@@ -76,12 +109,14 @@ export type Cue =
   | 'dawn'
   | 'fail';
 
-export type MixerBus = 'master' | 'sfx' | 'ambient';
+export type MixerBus = 'master' | 'sfx' | 'ambient' | 'music';
 
 export interface MixerState {
   master: number;
   sfx: number;
   ambient: number;
+  /** T-185 · The procedural score's bus (see `music.ts`). */
+  music: number;
   muted: boolean;
 }
 
@@ -90,9 +125,32 @@ export interface MixerState {
 const KEY_MASTER = 'sq.vol.master';
 const KEY_SFX = 'sq.vol.sfx';
 const KEY_AMBIENT = 'sq.vol.ambient';
+const KEY_MUSIC = 'sq.vol.music';
 const KEY_MUTED = 'sq.audio.muted';
 
-const DEFAULT_MIXER: MixerState = { master: 0.7, sfx: 0.6, ambient: 0.35, muted: false };
+/**
+ * T-185 · The persistence key per bus, as a TOTAL map rather than a ternary
+ * chain. `setVolume` used to pick its key with `bus === 'master' ? … : bus ===
+ * 'sfx' ? … : KEY_AMBIENT`, whose fall-through arm means every bus added after
+ * `ambient` silently writes ITS value into `sq.vol.ambient`. A `Record` keyed by
+ * `MixerBus` makes the compiler refuse the next omission instead.
+ */
+const BUS_KEY: Record<MixerBus, string> = {
+  master: KEY_MASTER,
+  sfx: KEY_SFX,
+  ambient: KEY_AMBIENT,
+  music: KEY_MUSIC,
+};
+
+const DEFAULT_MIXER: MixerState = {
+  master: 0.7,
+  sfx: 0.6,
+  ambient: 0.35,
+  // Under the one-shots by design: a score a player has to talk over is a score
+  // they mute, and the cues are the feedback the music is a bed for.
+  music: 0.45,
+  muted: false,
+};
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
@@ -150,6 +208,7 @@ let mixer: MixerState = {
   master: readNumber(KEY_MASTER, DEFAULT_MIXER.master),
   sfx: readNumber(KEY_SFX, DEFAULT_MIXER.sfx),
   ambient: readNumber(KEY_AMBIENT, DEFAULT_MIXER.ambient),
+  music: readNumber(KEY_MUSIC, DEFAULT_MIXER.music),
   muted: readBool(KEY_MUTED, DEFAULT_MIXER.muted),
 };
 
@@ -174,6 +233,7 @@ let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
 let sfxGain: GainNode | null = null;
 let ambientGain: GainNode | null = null;
+let musicGain: GainNode | null = null;
 let noiseBuffer: AudioBuffer | null = null;
 
 // Drive-hum state: `pendingHum` records intent expressed before the context
@@ -183,6 +243,13 @@ let humStop: (() => void) | null = null;
 
 let gesturesInstalled = false;
 
+// T-185 · Who wants to know the moment the context is genuinely unlocked. The
+// score cannot poll for it (it has no frame loop before it is running) and must
+// not install its own gesture listeners — there is exactly one autoplay policy
+// in this cockpit and it lives in this file.
+const unlockListeners = new Set<() => void>();
+let unlocked = false;
+
 /** Master gain target honours the mute flag. */
 function masterTarget(): number {
   return mixer.muted ? 0 : mixer.master;
@@ -190,11 +257,27 @@ function masterTarget(): number {
 
 /** Push the current mixer values onto the live gain nodes (short ramp, no zip). */
 function applyMixerToNodes(): void {
-  if (!ctx || !masterGain || !sfxGain || !ambientGain) return;
+  if (!ctx || !masterGain || !sfxGain || !ambientGain || !musicGain) return;
   const t = ctx.currentTime;
   masterGain.gain.setTargetAtTime(masterTarget(), t, 0.015);
   sfxGain.gain.setTargetAtTime(mixer.sfx, t, 0.015);
   ambientGain.gain.setTargetAtTime(mixer.ambient, t, 0.015);
+  musicGain.gain.setTargetAtTime(mixer.music, t, 0.015);
+}
+
+/**
+ * T-185 · The master soft-clip curve: a plain `tanh`, sampled once.
+ *
+ * Slope 1 at the origin, so it is transparent at the level a single cue reaches
+ * and does NOT act as a hidden makeup gain; asymptotic to ±1, so no sum of bed +
+ * score + one-shots can ever produce a sample outside range. This is the
+ * headroom that made the T-185 level pass safe.
+ */
+function softClipCurve() {
+  const n = 1024;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) curve[i] = Math.tanh((i / (n - 1)) * 2 - 1);
+  return curve;
 }
 
 /** Construct the context + bus graph on demand. Returns null when unavailable. */
@@ -204,9 +287,14 @@ function ensureContext(): AudioContext | null {
   if (!Ctor) return null;
   const c = new Ctor();
 
+  const shaper = c.createWaveShaper();
+  shaper.curve = softClipCurve();
+  shaper.oversample = '2x';
+  shaper.connect(c.destination);
+
   const master = c.createGain();
   master.gain.value = masterTarget();
-  master.connect(c.destination);
+  master.connect(shaper);
 
   const sfx = c.createGain();
   sfx.gain.value = mixer.sfx;
@@ -215,6 +303,13 @@ function ensureContext(): AudioContext | null {
   const ambient = c.createGain();
   ambient.gain.value = mixer.ambient;
   ambient.connect(master);
+
+  // T-185 · The score's bus. Created here with every other bus rather than
+  // lazily by `music.ts`, so the mixer slider is honoured from the first ramp
+  // and there is exactly one place that knows the bus topology.
+  const music = c.createGain();
+  music.gain.value = mixer.music;
+  music.connect(master);
 
   // One second of mono white noise, reused by every noise-based cue.
   const buf = c.createBuffer(1, c.sampleRate, c.sampleRate);
@@ -225,6 +320,7 @@ function ensureContext(): AudioContext | null {
   masterGain = master;
   sfxGain = sfx;
   ambientGain = ambient;
+  musicGain = music;
   noiseBuffer = buf;
   return ctx;
 }
@@ -237,7 +333,18 @@ function unlock(): void {
   const c = ensureContext();
   if (!c) return;
   if (c.state === 'suspended') void c.resume();
+  // Set BEFORE the deferred work below: `startHum` now refuses to run while
+  // `unlocked` is false (that guard is what keeps the context out of module
+  // load), so flipping the flag afterwards would defer the bed forever.
+  const first = !unlocked;
+  unlocked = true;
   if (pendingHum && !humStop) startHum();
+  // T-185 · Fire the deferred-intent listeners ONCE, after the bed, so a client
+  // (`music.ts`) that was asked to play before the first gesture starts now.
+  // Measured: a context CONSTRUCTED inside a gesture is already `running` here
+  // and `currentTime` starts at 0, so this is not a race — the investigation
+  // recorded a 0.034 peak from the very first cue.
+  if (first) for (const l of [...unlockListeners]) l();
 }
 
 /**
@@ -272,6 +379,26 @@ function installGestures(): void {
 
 if (hasWindow()) installGestures();
 
+/**
+ * T-185 · THE LEVEL PASS, in one constant.
+ *
+ * The investigation measured every one-shot arriving at `ctx.destination` at a
+ * 0.034-0.05 peak — roughly -29 dBFS, which is quiet enough that the owner's
+ * "there is just zero feedback" is a fair description of it even with the OS
+ * volume up. Every peak below is multiplied by this on the way into `pluck`.
+ *
+ * WHY A MULTIPLIER AND NOT NEW LITERALS: the relative balance between the cues
+ * was never the complaint, and it was mixed by ear once already. Moving all of
+ * them together by a measured amount keeps that balance exactly and makes the
+ * change one reviewable number. WHY NOT `DEFAULT_MIXER.sfx`: that value is
+ * PERSISTED — raising it would do nothing for the players who already have a
+ * `sq.vol.sfx` written, which is every player who ever opened Settings.
+ *
+ * 2.2x is +6.8 dB, landing the loudest cue near -12 dBFS. The `tanh` soft-clip
+ * on `masterGain` absorbs the pile-ups this makes possible (see the header).
+ */
+const CUE_GAIN = 2.2;
+
 // ---- synthesis helpers ----------------------------------------------------
 
 function noiseSource(c: AudioContext): AudioBufferSourceNode {
@@ -285,6 +412,11 @@ function noiseSource(c: AudioContext): AudioBufferSourceNode {
  * has already wired its audio chain INTO `gain` (source → [filters] → gain); this
  * only schedules the envelope, connects `gain → bus`, and starts/stops the source
  * node so it auto-frees.
+ *
+ * T-185 · This is the ONE envelope every one-shot cue goes through and nothing
+ * else uses it (the ambient bed builds its own sustained envelope), so it is
+ * where {@link CUE_GAIN} is applied — once, rather than at nineteen call sites
+ * where the twentieth would be the one that got missed.
  */
 function pluck(
   node: OscillatorNode | AudioBufferSourceNode,
@@ -296,7 +428,7 @@ function pluck(
   at: number,
 ): void {
   gain.gain.setValueAtTime(0.0001, at);
-  gain.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), at + attack);
+  gain.gain.exponentialRampToValueAtTime(Math.max(peak * CUE_GAIN, 0.0002), at + attack);
   gain.gain.exponentialRampToValueAtTime(0.0001, at + attack + decay);
   gain.connect(bus);
   node.start(at);
@@ -445,7 +577,44 @@ function synth(cue: Cue, c: AudioContext, sfx: GainNode, now: number): void {
 
 // ---- drive hum bed (ambient) ----------------------------------------------
 
+/**
+ * T-185 · The bed's audible partial.
+ *
+ * The original bed was a 57 Hz sine pair behind a 200 Hz lowpass, and the
+ * investigation measured its spectrum at the destination as -39.9 dB across
+ * 20-100 Hz and -112.7 dB across 100-150 Hz: essentially ALL of its energy sat
+ * below the range a laptop, a monitor speaker or a phone reproduces at all. It
+ * was loud in the meter (0.25 peak, the loudest thing in the mix) and silent in
+ * the room — a large part of an honest "there is just zero feedback" report.
+ *
+ * The cure is a partial, not a level: the third harmonic (171 Hz) at a low mix,
+ * routed AROUND the lowpass so the filter cannot undo it. It reads as the same
+ * drive, an octave-and-a-fifth up, on speakers that can pass it — and adds
+ * nothing on speakers that were already reproducing the fundamental.
+ */
+const HUM_FUNDAMENTAL_HZ = 57;
+const HUM_PARTIAL_HZ = HUM_FUNDAMENTAL_HZ * 3;
+const HUM_PARTIAL_MIX = 0.18;
+
 function startHum(): void {
+  // T-185 · DEFER UNTIL THE FIRST GESTURE, EXPLICITLY.
+  //
+  // This guard used to be implicit — `ensureContext()` returns null with no
+  // `AudioContext` constructor, which covered node and SSR but NOT a browser
+  // before the first click. In a browser `ensureContext()` happily CONSTRUCTS
+  // one, so the moment T-185 added a `setDriveHum(true)` at `store.ts`'s module
+  // scope (the fix for the silent returning-player boot), the context was being
+  // built at module load and Chromium logged "The AudioContext was not allowed
+  // to start" eight times over. `e2e/sound.spec.ts`'s console-cleanliness test
+  // and `e2e/sound-audible.spec.ts`'s cold-boot assertion both caught it.
+  //
+  // The autoplay rule in this file's header is now enforced rather than
+  // described: nothing constructs a context until `unlock()` runs inside a real
+  // gesture, and every caller before that just parks its intent in `pendingHum`.
+  if (!unlocked) {
+    pendingHum = true;
+    return;
+  }
   const c = ensureContext();
   if (!c || !ambientGain) {
     pendingHum = true;
@@ -466,10 +635,18 @@ function startHum(): void {
 
   const o1 = c.createOscillator();
   o1.type = 'sine';
-  o1.frequency.value = 57;
+  o1.frequency.value = HUM_FUNDAMENTAL_HZ;
   const o2 = c.createOscillator();
   o2.type = 'sine';
-  o2.frequency.value = 57 * 1.006; // slight detune → slow beat
+  o2.frequency.value = HUM_FUNDAMENTAL_HZ * 1.006; // slight detune → slow beat
+
+  // The audible partial (see above), on its own path so the lowpass — whose
+  // cutoff the LFO drags down to ~140 Hz — cannot swallow it again.
+  const o3 = c.createOscillator();
+  o3.type = 'sine';
+  o3.frequency.value = HUM_PARTIAL_HZ;
+  const partialGain = c.createGain();
+  partialGain.gain.value = HUM_PARTIAL_MIX;
 
   // Slow LFO wobbling the lowpass cutoff → a living, breathing bed.
   const lfo = c.createOscillator();
@@ -483,10 +660,13 @@ function startHum(): void {
   o1.connect(lp);
   o2.connect(lp);
   lp.connect(bedGain);
+  o3.connect(partialGain);
+  partialGain.connect(bedGain);
   bedGain.connect(ambientGain);
 
   o1.start(now);
   o2.start(now);
+  o3.start(now);
   lfo.start(now);
 
   humStop = () => {
@@ -495,6 +675,7 @@ function startHum(): void {
     const stopAt = t + 1.2;
     o1.stop(stopAt);
     o2.stop(stopAt);
+    o3.stop(stopAt);
     lfo.stop(stopAt);
     humStop = null;
   };
@@ -525,9 +706,41 @@ export function setVolume(bus: MixerBus, v: number): void {
   const value = clamp01(v);
   if (mixer[bus] === value) return;
   mixer = { ...mixer, [bus]: value };
-  writeString(bus === 'master' ? KEY_MASTER : bus === 'sfx' ? KEY_SFX : KEY_AMBIENT, String(value));
+  writeString(BUS_KEY[bus], String(value));
   applyMixerToNodes();
   notify();
+}
+
+/**
+ * T-185 · The score's ONE window onto the audio graph.
+ *
+ * `music.ts` gets the context (for its own `currentTime` and node factories) and
+ * the `music` bus to hang voices off — and nothing else. It never constructs a
+ * context, never reaches `destination`, never touches the mixer's gains: the
+ * autoplay policy and the bus topology stay owned by this file. Null before the
+ * first gesture, which is exactly when the score must not be running.
+ */
+export function musicBus(): { ctx: AudioContext; bus: GainNode } | null {
+  if (!ctx || !musicGain) return null;
+  return { ctx, bus: musicGain };
+}
+
+/**
+ * T-185 · Run `cb` once the AudioContext is genuinely unlocked, or immediately
+ * if it already is. Returns an unsubscribe.
+ *
+ * This exists so `music.ts` can express "start when you can" without installing
+ * a second set of gesture listeners — there is one autoplay policy in this
+ * cockpit and `installGestures` is it. Mirrors `pendingHum`'s deferral, which is
+ * the same shape for the ambient bed.
+ */
+export function onUnlock(cb: () => void): () => void {
+  if (unlocked) {
+    cb();
+    return () => {};
+  }
+  unlockListeners.add(cb);
+  return () => unlockListeners.delete(cb);
 }
 
 export function setMuted(m: boolean): void {

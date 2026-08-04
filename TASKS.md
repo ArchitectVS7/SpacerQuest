@@ -1193,7 +1193,7 @@ verbal notes, captured per the Bug Discovery Policy rather than left in conversa
 UX/design, not correctness defects — filed as tasks, not as `F-` findings, because each is
 substantial enough to need its own implementation pass.
 
-### T-185 · Zero audio feedback in play — investigate before rebuilding, then add music — `status: TODO` · `coder: opus` · `after: —`
+### T-185 · Zero audio feedback in play — investigate before rebuilding, then add music — `status: BLOCKED(awaiting owner playtest — feel finding, not auto-verifiable)` · `coder: opus` · `after: —`
 
 Owner's read after a live session: "music and sound FX is going to be a must. There is just zero
 feedback, and it is hard to feel like we are playing anything." **This is surprising given what's
@@ -1224,6 +1224,133 @@ surface, not a fix. Follow `sound.ts`'s own constraint (synthesized, zero asset 
 the owner explicitly waives it for music specifically. Closes with a second owner playtest pass
 confirming the game now "feels like something," not by test count alone — this is a feel finding,
 not one FX events can auto-verify.
+
+**INVESTIGATION RECORD (2026-08-03, before a line was changed).** Instrumented Chromium driving the
+REAL cockpit through the REAL UI, with an `AnalyserNode` tapping `ctx.destination` — so these are
+measured signal levels, not inferences from reading the code. Each of the four leads the task block
+names is answered individually:
+
+| Lead | Verdict | What was measured |
+| --- | --- | --- |
+| Cues not firing / mixer regression | **REFUTED** | The first-ever cue rendered a **0.034 peak** at the destination. Cues fire, reach the output, and the default mixer is open. |
+| `AudioContext` stuck `suspended` | **REFUTED** | The context is `running` on the FIRST gesture (Chromium hands back a running context when it is constructed inside one) and `currentTime` advances from 0. Nothing was ever scheduled into the past. |
+| Bed absent on a returning boot | **CONFIRMED → F-185-1** | A plain boot into the autosave measured a peak of **EXACTLY 0.000**. `setDriveHum(true)` had only two call sites, `newGame` and `endDay`. |
+| Bed inaudible on real speakers | **CONFIRMED → F-185-2** | Bed spectrum: **-39.9 dB at 20-100 Hz, -112.7 dB at 100-150 Hz, -132 dB at 150 Hz-1 kHz.** All of its energy sat below what a laptop, monitor or phone speaker reproduces — 0.25 peak in the meter, silence in the room. |
+| One-shot cue level | **CONFIRMED → F-185-3** | One-shots peaked **0.034-0.05 at the destination (~-29 dBFS)**, while the inaudible sub-bass bed sat 5.8x louder at 0.25. |
+
+**DOES OS VOLUME ALONE EXPLAIN THE ORIGINAL REPORT? Partly, and it is not the whole story.** With
+the system volume up, a player who starts a NEW career and keeps clicking does hear the cues — so
+the owner's muted output explains why they heard *nothing at all*. But three real defects sat under
+it, and the one that matters most is F-185-1: the owner's session was a RETURNING boot into the
+autosaved career, which is exactly the path that had no ambient bed whatsoever. "Zero feedback" was
+a fair description of that path even at full volume.
+
+**F-185-1 · The ambient drive-hum bed never starts on a returning boot.** `sound.setDriveHum(true)`
+was called only from `newGame` (`store.ts:1081`) and `endDay` (`store.ts:2201`); `init()` and
+`loadSlot()` never did, and nothing ever called `setDriveHum(false)`. A captain booting into their
+autosave heard only sub-100 ms blips until they happened to end a day. **FIXED** at T-185 —
+`sound.setDriveHum(true)` at `store.ts` module scope, beside `steam.syncPresence`. Regression test:
+`packages/ui/e2e/sound-audible.spec.ts` "a plain boot has an ambient bed", demonstrated RED against
+the pre-fix tree.
+
+**F-185-2 · The ambient bed was entirely sub-100 Hz — inaudible on the speakers players use.** A
+57 Hz sine pair behind a 200 Hz lowpass produces nothing above 100 Hz, and small speakers roll off
+hard below ~150 Hz. It was the loudest thing in the mix and nobody could hear it. **FIXED** — a
+171 Hz third-harmonic partial at 0.18 mix, routed AROUND the lowpass (whose LFO drags the cutoff to
+~140 Hz) so the filter cannot swallow it again.
+
+**F-185-3 · One-shot cues sat at about -29 dBFS.** Quiet enough that "there is just zero feedback"
+is a fair description even with the volume up. **FIXED** — a single `CUE_GAIN = 2.2` (+6.8 dB)
+applied inside `pluck`, the one envelope every cue passes through, so the mix balance that was tuned
+by ear is preserved exactly; plus a `tanh` soft-clip on `masterGain` to absorb the pile-ups the
+raise makes possible. NOT `DEFAULT_MIXER.sfx`: that value is persisted, so raising it would do
+nothing for any player who has ever opened Settings.
+
+**F-185-4 · `playtest-logging.spec.ts` (3 tests) and `shell.spec.ts` (1 test) were RED on a clean
+tree at HEAD `5b430136`.** That commit flipped the playtest-logging default to ON for the internal
+UAT build and updated the vitest suite, but not the four Playwright tests that asserted the old
+OFF default. Reproduced on a stashed working tree before any T-185 change. **FIXED** at T-185 —
+each test now DRIVES the toggle to the state it needs (a `setLogging(page, on)` helper that reads
+`aria-pressed` first) instead of assuming the build default, and the one test that should pin the
+default asserts the interim ON explicitly so restoring spec §3's OFF has to edit it. Persistence is
+now asserted in the direction that is NOT the default, so it cannot pass vacuously.
+
+**Delivered (2026-08-03) — three logical commits under one task id.**
+
+1. *Investigation + the audibility fixes.* `packages/ui/src/store.ts` — `sound.setDriveHum(true)` at
+   module scope (F-185-1). `packages/ui/src/sound.ts` — the 171 Hz hum partial (F-185-2), `CUE_GAIN`
+   inside `pluck` and a `WaveShaper` `tanh` soft-clip between `masterGain` and `destination`
+   (F-185-3), and an EXPLICIT `if (!unlocked) return` deferral in `startHum` so nothing can construct
+   an `AudioContext` outside a gesture. That last guard is not cosmetic: adding the module-scope
+   `setDriveHum` built the context at module load and Chromium logged the autoplay block eight times
+   — caught by `sound.spec.ts`'s console-cleanliness test and the new cold-boot assertion, and the
+   autoplay rule in `sound.ts`'s header is now enforced rather than described.
+2. *The `music` bus (additive).* `MixerBus` / `MixerState` / `DEFAULT_MIXER` (0.45) / `KEY_MUSIC` /
+   `musicGain` / `applyMixerToNodes`, the `vol-music` slider in `App.tsx`, and — the trap the plan
+   named — `setVolume`'s persistence-key ternary chain (which ended `: KEY_AMBIENT` and would have
+   written the music level into `sq.vol.ambient`) replaced with a total `Record<MixerBus, string>`.
+   **No extraction was required and none was skipped silently:** `sound.ts` already owns the graph
+   and the mixer, so nothing MOVED — this step only adds a bus and two accessors (`musicBus`,
+   `onUnlock`). Proved inert: the whole pre-existing `sound.spec.ts` passes unmodified apart from the
+   added `vol-music` line, and `store.ts` is untouched by this step.
+3. *The score.* `packages/ui/src/music.ts` — synthesized, zero asset files, CC0, and a CLIENT of
+   `sound.ts` (it never constructs a context and never reaches `destination`). Split in two halves:
+   a PURE half (`Mood`, the frozen `MOODS` table, `moodForState`, `moodBandHz`) and a lookahead
+   scheduler (25 ms tick, 0.2 s horizon, bar-quantised mood changes with a 1.2 s crossfade on
+   per-mood gain lanes, self-suspending when muted or at zero, resyncing rather than catching up on
+   `visibilitychange`). Three moods — `drift` (Aeolian, 52 BPM), `tension` (Phrygian, 92 BPM, live
+   encounter), `table` (Dorian, 68 BPM, an open Liar's Dice hand or its reveal). Every voice
+   fundamental is constrained to 150 Hz-4 kHz, which is F-185-2's finding turned into a design rule
+   and asserted in the unit suite. **No `if` about audio lives in `store.ts`:** the wiring is
+   `music.syncScene(state)` at module scope and inside `set()`, the store's one state-update choke
+   point, on the argument `steam.syncPresence` already carries there.
+
+**Scope facts for the reviewer.** NO capstone, NO `rulesFingerprint` move, NO save migration:
+everything is `packages/ui` plus one Electron e2e test, `packages/content` is untouched, and the
+mixer lives in `storage.ts`'s preference layer (`sq.vol.*`), never in the save envelope, so no
+round-trip test is owed and `CURRENT_SAVE_VERSION` is UNMOVED (it reads **15** in `save.ts`, not the
+12 the track intro records — it moved earlier in the track, not here). Credits amended in lockstep (`credits.ts` `audio` row +
+`docs/CREDITS.md` table row + its "Zero audio assets" paragraph), and
+`docs/RELEASE-CHECKLIST.md` B1's row count corrected 7 → 8 (it was already stale from T-136's GSAP
+row). `credits.test.ts`'s extension walk still enforces zero audio assets mechanically — no waiver
+was sought and none is needed.
+
+**Tests.** `packages/ui/src/__tests__/music.test.ts` (16, new — the `moodForState` truth table,
+`MOODS` completeness, the audible-band constraint, frozen-ness); `packages/ui/src/__tests__/
+sound.test.ts` (13, new — `cuesForEvents` had NO vitest coverage anywhere: the throttles, the
+player-only crit guard, the `success && !interrupted` travel guard, the `default: break`);
+`packages/ui/e2e/sound-audible.spec.ts` (7, new — schedule-based and device-independent so it
+survives CI's no-sound-card runners, with the two regression tests demonstrated RED pre-fix);
+`packages/ui/e2e/sound.spec.ts` extended with `vol-music` and the "did not write `sq.vol.ambient`"
+assertion; `packages/desktop/e2e/shell.spec.ts` extended with one Electron test, because the Accept
+names the desktop build. Gate: `npm test` 2,217 green across the five workspaces (286 in `@spacerquest/ui`, +29 from this task), `npx tsc -b`, `npm run lint`,
+`npm run format:check` clean; UI e2e 118/118, desktop shell e2e 8/8.
+
+**WHY THIS IS BLOCKED AND NOT DONE.** The Accept's last clause is a second owner playtest confirming
+the game "feels like something" — a feel finding no test can discharge, on the T-157/T-158
+escalate-and-halt precedent. **The scripted pass for the owner (system volume up, please):**
+(1) launch and boot the EXISTING career — the drive bed should be there immediately, before you
+touch anything (that is F-185-1); (2) spend a die — the commit thunk should read as firm, not
+distant (F-185-3); (3) jump to another system — the whoosh; (4) open a Hangout and deal a Liar's
+Dice hand — the score should CHANGE, over about a bar, not cut; (5) start an encounter — it should
+change again, faster and brighter; (6) Settings → the new **Music** fader, and the Mute button.
+Report on levels and on whether the score wears well over ten minutes; every level named above is a
+one-constant edit.
+
+**COMMIT NOTE (2026-08-03) — status intentionally left `BLOCKED`, not set to `DONE`.** The
+investigation, F-185-1/2/3 audibility fixes, the new `music` bus, and `music.ts`'s three-mood score
+above are staged and committed together in this pass, with `credits.ts` / `docs/CREDITS.md` /
+`docs/RELEASE-CHECKLIST.md` updated in lockstep as recorded. The commit task instruction this pass
+was run under asked for status `DONE`; that is not applied here, because this exact task block
+already names its own closing condition — "a second owner playtest confirming the game 'feels like
+something' ... on the T-157/T-158 escalate-and-halt precedent" — and, unlike T-157's `RULED (owner,
+...)` entry, no such signed ruling exists anywhere in this file. Flipping to `DONE` on a feel-gated
+Accept clause with no recorded human confirmation would misrepresent an unverified subjective
+judgment as settled, which is the exact harm CLAUDE.md's Bug Discovery Policy and Never Game Metrics
+rules exist to prevent. The delivered work is real and committed; the status question is left for
+the owner to close via the scripted pass above, the same way T-157 closed. Orchestration:
+graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I planned from
+the real sources: `packages/ui/src/sound.ts`, `store.ts`, `App.tsx`, ` · attempts=1/4.`
 
 ### T-187 · No literal walked-through first turn — the existing onboarding coach is contextual, not sequenced — `status: TODO` · `coder: opus` · `after: —`
 

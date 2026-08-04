@@ -19,7 +19,7 @@ page and the legal box on it.
 | --- | --- | --- | --- |
 | Chakra Petch | Cadson Demak | SIL Open Font License 1.1 | Loaded from Google Fonts by the web build; a packaged offline launch falls back to system-ui. No font binary is bundled. |
 | IBM Plex Mono | IBM Corp. | SIL Open Font License 1.1 | Loaded from Google Fonts by the web build; a packaged offline launch falls back to ui-monospace. No font binary is bundled. |
-| All sound cues | The Spacer Quest project | CC0 1.0 Universal | Original procedural WebAudio synthesis. There are zero audio asset files and zero third-party samples — see packages/ui/src/sound.ts. |
+| All sound cues and the score | The Spacer Quest project | CC0 1.0 Universal | Original procedural WebAudio synthesis and composition. There are zero audio asset files and zero third-party samples — see packages/ui/src/sound.ts (cues) and packages/ui/src/music.ts (the score). |
 | React and React-DOM 19 | Meta Platforms, Inc. and affiliates | MIT | Bundled into the cockpit on every build, web and desktop. |
 | GSAP 3.15.0 | GreenSock, Inc. | Standard "No Charge" GSAP License | Bundled into the cockpit on every build, web and desktop. The npm package ships no LICENSE file — its README names the licence and points at the URL above, which permits commercial use in a sold product and prohibits only building competing visual-animation tooling. |
 | Electron 43 | Electron contributors and the OpenJS Foundation | MIT | Desktop builds only. It carries Chromium (BSD-3-Clause) and Node.js (MIT) with it. |
@@ -41,9 +41,11 @@ Both of these are properties of the repository, so both are checked by a test
 (`credits.test.ts`) rather than trusted:
 
 - **Zero audio assets.** Every cue in the game is synthesized live in WebAudio
-  (`packages/ui/src/sound.ts` documents the full cue → bus → synthesis map).
-  There are no samples, no third-party recordings and no audio files of any
-  extension anywhere under `packages/ui`.
+  (`packages/ui/src/sound.ts` documents the full cue → bus → synthesis map), and
+  so is the score (`packages/ui/src/music.ts`, added by T-185 — three moods, no
+  loops, no stems, every note built from oscillators at play time). There are no
+  samples, no third-party recordings and no audio files of any extension
+  anywhere under `packages/ui`.
 - **Zero font binaries.** Chakra Petch and IBM Plex Mono are requested from
   Google Fonts by `packages/ui/index.html`; no `.woff`, `.woff2`, `.ttf` or
   `.otf` is committed. A packaged offline launch therefore falls back to the

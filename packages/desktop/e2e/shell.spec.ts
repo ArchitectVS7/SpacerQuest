@@ -640,13 +640,25 @@ test.describe('T-141 · opt-in playtest logging', () => {
     const { app, page } = await launch({ saveDir, userDataDir, logDir });
     await startCareer(page, 141);
 
-    // --- OFF BY DEFAULT, and off means NOTHING ON DISK ----------------------
+    // --- OFF means NOTHING ON DISK ------------------------------------------
+    // The OFF state is now ESTABLISHED through the real toggle rather than
+    // assumed from the build default. Found at T-185: the owner's 2026-08-03
+    // directive flipped the default to ON for the pre-public internal build
+    // (`packages/ui/src/playtestLog.ts`'s header; spec §3's OFF is to be
+    // restored before public release) and this test still asserted the old
+    // default, so it was red on a clean tree. Driving the control instead of
+    // trusting the default makes the claim — "off writes nothing" — true under
+    // either default, and it survives the revert unchanged.
+    await openSettings(page);
+    const toggle = page.getByTestId('set-playtest-logging');
+    if ((await toggle.getAttribute('aria-pressed')) === 'true') await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await closeSettings(page);
+
     await payDebt(page, 100);
     expect(existsSync(logDir)).toBe(false);
 
     await openSettings(page);
-    const toggle = page.getByTestId('set-playtest-logging');
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
     // The sentence is SPELLED OUT here rather than imported from
     // `packages/ui/src/playtestLog.ts`, unlike the web spec's copy: this package
     // must not grow a source dependency on the cockpit. A literal is safe
@@ -704,6 +716,124 @@ test.describe('T-141 · opt-in playtest logging', () => {
     const raw = readFileSync(join(logDir, file), 'utf8');
     expect(raw).not.toContain(userDataDir);
     expect(raw).not.toContain(saveDir);
+
+    await app.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-185 · THE SAME AUDIO CLAIM, INSIDE THE REAL ELECTRON RENDERER.
+//
+// The owner's UAT finding ("there is just zero feedback") came from a session in
+// the DESKTOP shell, and its Accept names the desktop build specifically — so the
+// claim is made here and not only against the browser (`packages/ui/e2e/
+// sound-audible.spec.ts`, which carries the full battery). Chromium in Electron
+// is not Chromium in Playwright: the shell sets its own switches, its own window
+// flags and `backgroundThrottling`, and the autoplay policy is exactly the kind
+// of thing an embedder changes.
+//
+// ONE test, deliberately: this suite is serial and slow.
+//
+// It observes the SCHEDULE, never the samples. CI runs this job under `xvfb-run`
+// on an ubuntu runner with no sound device at all, so anything reading real
+// audio output would be green here and a mystery there.
+// ---------------------------------------------------------------------------
+test.describe('T-185 · audio in the shell', () => {
+  test('the first gesture unlocks the context and schedules a real signal', async () => {
+    const saveDir = join(tempDir('saves'), 'saves');
+    const userDataDir = tempDir('userdata');
+
+    const { app, page } = await launch({ saveDir, userDataDir });
+    await windowShown(app);
+
+    // The recorder must be installed BEFORE the cockpit's modules run, and
+    // `launch()` hands back a window that has already loaded — so install, then
+    // reload. Prototype patches only; zero test hooks reach the cockpit itself,
+    // which is `src/main.ts`'s standing rule.
+    await page.addInitScript(() => {
+      const rec = {
+        ctx: null as AudioContext | null,
+        starts: 0,
+        peaks: [] as number[],
+        reachedDestination: false,
+      };
+      (window as unknown as { __sqAudio: typeof rec }).__sqAudio = rec;
+
+      const P = AudioParam.prototype as unknown as Record<string, (...a: never[]) => unknown>;
+      const origRamp = P.exponentialRampToValueAtTime;
+      P.exponentialRampToValueAtTime = function (this: AudioParam, ...args: never[]) {
+        if (typeof args[0] === 'number') rec.peaks.push(args[0]);
+        return origRamp.apply(this, args);
+      };
+
+      const AN = AudioNode.prototype as unknown as Record<string, (...a: never[]) => unknown>;
+      const origConnect = AN.connect;
+      AN.connect = function (this: AudioNode, ...args: never[]) {
+        const dest = args[0] as unknown;
+        if (rec.ctx && dest === rec.ctx.destination) rec.reachedDestination = true;
+        return origConnect.apply(this, args);
+      };
+
+      for (const name of ['OscillatorNode', 'AudioBufferSourceNode'] as const) {
+        const proto = (
+          window as unknown as Record<
+            string,
+            { prototype: Record<string, (...a: never[]) => unknown> }
+          >
+        )[name].prototype;
+        if (!Object.prototype.hasOwnProperty.call(proto, 'start')) continue;
+        const orig = proto.start;
+        proto.start = function (this: AudioScheduledSourceNode, ...args: never[]) {
+          rec.starts++;
+          return orig.apply(this, args);
+        };
+      }
+
+      const Ctor = window.AudioContext;
+      class Recorded extends Ctor {
+        constructor(...args: never[]) {
+          super(...(args as []));
+          rec.ctx = this;
+        }
+      }
+      (window as unknown as { AudioContext: unknown }).AudioContext = Recorded;
+    });
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+
+    const read = () =>
+      page.evaluate(() => {
+        const r = (
+          window as unknown as {
+            __sqAudio: {
+              ctx: AudioContext | null;
+              starts: number;
+              peaks: number[];
+              reachedDestination: boolean;
+            };
+          }
+        ).__sqAudio;
+        return {
+          state: r.ctx?.state ?? null,
+          starts: r.starts,
+          maxPeak: r.peaks.length ? Math.max(...r.peaks) : 0,
+          reachedDestination: r.reachedDestination,
+        };
+      });
+
+    // Nothing before the gesture — the autoplay policy `sound.ts` documents,
+    // and the invariant that broke when T-185 first added the boot-time bed.
+    expect((await read()).state, 'a context existed before any user gesture').toBeNull();
+
+    // One real click on a real control.
+    await page.getByTestId('die').first().click();
+    await page.waitForTimeout(600);
+
+    const after = await read();
+    expect(after.state, 'the AudioContext never reached `running` in the shell').toBe('running');
+    expect(after.starts, 'nothing was scheduled to play in the shell').toBeGreaterThan(0);
+    expect(after.maxPeak, 'every scheduled envelope peaked at zero').toBeGreaterThan(0.001);
+    expect(after.reachedDestination, 'nothing was connected to the output').toBe(true);
 
     await app.close();
   });
