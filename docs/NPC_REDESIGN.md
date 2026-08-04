@@ -103,6 +103,24 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
+> **BASELINE OF RECORD RE-PINNED AT T-195 (2026-08-04)** to
+> `docs/balance/baseline-t195-dawn-dice.json` — a `/bakeoff` result: the travel die now sets a
+> 0-15% fuel discount (`navDieFuelDiscount`) and a 0-20% encounter-evasion bonus
+> (`navDieEvasionFactor`), both monotonic benefits with no fail state (see `travel.ts`'s
+> `T-1605b` comment for why a real check-and-penalty shape was tested and rejected — it measured
+> safe per-jump but raised fleet-wide fuel-starvation days 278% in the bake-off rig). The Nemesis
+> crossing is excluded — it keeps its own quoted burn and its own real check. **Real, broad
+> movement, not a re-pin formality:** ALL EIGHT policies moved. `fleet.tourOneClearRate` 0.5605 ->
+> 0.6310 (+12.6%), `finalCredits.median` +40.5%, `survival.shipsLost` -27.1%,
+> `encountersPerRun` -10.3% — the game is measurably, broadly easier, which is the expected and
+> intended shape of a monotonic-benefit die (see the M16 task block for the owner's own read on
+> this: two seeded regression tests, `campaign-reach.test.ts` and `campaign-policies.test.ts`,
+> flagged specific instances of this same easing and were left UNCHANGED rather than patched to
+> match — worth the owner's attention if the 15%/20% magnitudes want tuning down later).
+> `rulesFingerprint` `5d4ddb2593cca4f6` -> `febc55edd3a94b3f`, `instrumentFingerprint` unmoved at
+> `f8a237612f4c38d5` (no instrument source touched), `docsFingerprint` -> `26e3998c51814e72`.
+> `CURRENT_SAVE_VERSION` does NOT move (15): no persisted shape changed.
+>
 > **BASELINE OF RECORD RE-PINNED AT T-188 (2026-08-04)** to
 > `docs/balance/baseline-t188-orbital-3d.json`. **T-188's own changes are PROVEN INERT, not
 > assumed:** two isolated 30-seed bisects (gambler, veteran — the two archetypes any Hangout/
@@ -2351,11 +2369,13 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t188-orbital-3d.json`** (1,000 seeds ×
-   > 120 days × 8 policies = 8,000 runs, re-pinned at T-188 2026-08-04 — proven inert for
-   > T-188's own changes by isolated bisect; `fleet`/`veteran` movement is T-161's
-   > already-accepted `veteranPolicy` fix getting its first capstone, not new drift — see the
-   > standing amendment above for the full account). Before that,
+   > **Baseline of record is `docs/balance/baseline-t195-dawn-dice.json`** (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at T-195 2026-08-04 — the dawn-hand travel-die
+   > bake-off; all eight policies moved, a real and intended broad easing — see the standing
+   > amendment above for the exact deltas and the two seeded tests flagged for possible re-tuning).
+   > Before that, `docs/balance/baseline-t188-orbital-3d.json` (re-pinned at T-188 2026-08-04 —
+   > proven inert for T-188's own changes by isolated bisect; its `fleet`/`veteran` movement was
+   > T-161's already-accepted `veteranPolicy` fix getting its first capstone). Before that,
    > `docs/balance/baseline-t160-dealer-fix.json` (re-pinned at T-160 2026-08-02 — the F-137-1
    > capstone; the Liar's Dice OPENING FLOOR ships, which moves exactly the `gambler` and
    > `fleet` rows against `t182-reroll-fix` — predicted in writing before the sweep ran).

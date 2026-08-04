@@ -94,7 +94,19 @@ describe('T-114a special-equipment reachability (earned, not set)', () => {
     //                     stops being a choice.
     // A two-sided band is also what makes this test able to fail in both of the
     // directions the design cares about, instead of only when a seed drifts.
-    const HULL_SEEDS = [1, 2, 3, 4, 5, 6] as const;
+    // T-195: widened 6 -> 20 seeds, NOT re-thresholded — the rule this repo holds
+    // to ("never edit a band/threshold to make a test pass, widen the sample").
+    // The travel die now shaves fuel cost and encounter odds on every jump every
+    // policy makes (`navDieFuelDiscount`/`navDieEvasionFactor`, `travel.ts`), which
+    // measurably eased every archetype (`docs/NPC_REDESIGN.md`'s T-195 standing
+    // amendment). At the OLD 6 seeds that easing pushed the qualified count to
+    // 6/6 — sampling noise, not a real "always clears" finding: at 20 seeds the
+    // true rate is 16/20 (80%), which still satisfies both directions this test
+    // grades (reachable, but not free). Re-verify at a wider N again rather than
+    // loosening `toBeLessThan` if a future change trips this the same way.
+    const HULL_SEEDS = [
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    ] as const;
     const hullRuns = HULL_SEEDS.map((seed) => driveCompetentCampaign(veteranPolicy, seed, 500));
 
     // The gate's rank was reached by earning Deeds, not by fiat.

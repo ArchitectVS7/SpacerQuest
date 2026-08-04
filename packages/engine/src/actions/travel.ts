@@ -101,6 +101,48 @@ export function travelDc(routeDistance: number, destinationId?: number): number 
   return 8 + Math.floor(routeDistance / 2);
 }
 
+/**
+ * T-1605b · THE DIE MATTERS AGAIN, WITHOUT REINTRODUCING STRANDING.
+ *
+ * A `/bakeoff` compared three shapes for making the travel die legible again
+ * after T-1605 removed the pilot check (see that comment, above `resolveTravel`):
+ * a real per-jump check with a margin-scaled fuel penalty on a miss measured as
+ * SAFE-LOOKING per-jump but, at fleet scale (8,000-run sweep), raised mean
+ * fuel-starvation days 278% — a capped, non-blocking penalty still compounds
+ * into the exact stranding risk T-1605 was written to remove, it just hides it
+ * as an aggregate instead of a single hard failure. A pure fuel discount tested
+ * SAFE (ships lost -43%, no new failure mode) because it can only ever help.
+ *
+ * These two constants are the OWNER-RULED SHAPE (2026-08-04): both are
+ * monotonic BENEFITS with no downside, so neither can ever leave a ship unable
+ * to complete a jump it could complete before. Nothing here is a check, a DC,
+ * or a fail state — deliberately, so the T-1605 invariant (an ordinary jump
+ * always arrives) holds by construction, not by discipline.
+ *
+ * NOT YET RE-CAPSTONED. This moves `rulesFingerprint` (both constants are read
+ * by `resolveTravel`/`generateEncounter`, real rule sources) — owner directive
+ * (2026-08-04): implement now, run the balance sweep + re-pin later. Do not
+ * commit this past the gate until that capstone lands; `balance-smoke.test.ts`
+ * / `balance-targets.test.ts` are EXPECTED to report a stale fixture until then.
+ */
+export const NAV_DIE_FUEL_DISCOUNT_MAX = 0.15;
+export const NAV_DIE_EVASION_MAX = 0.2;
+
+/** `die` 1-20 -> a 0..1 fraction of `NAV_DIE_FUEL_DISCOUNT_MAX`, linear, 0 at a
+ *  nat 1 and the full discount at a nat 20. Shared by `resolveTravel` (applies
+ *  it) and anything that wants to preview the same number the resolver uses. */
+export function navDieFuelDiscount(die: number): number {
+  return NAV_DIE_FUEL_DISCOUNT_MAX * ((die - 1) / 19);
+}
+
+/** `die` 1-20 -> a 0..1 fraction of `NAV_DIE_EVASION_MAX` shaved off the
+ *  encounter chance `generateEncounter` would otherwise roll. Same shape as
+ *  {@link navDieFuelDiscount}: 0 at a nat 1 (today's behaviour, unmoved), the
+ *  full evasion bonus at a nat 20. */
+export function navDieEvasionFactor(die: number): number {
+  return 1 - NAV_DIE_EVASION_MAX * ((die - 1) / 19);
+}
+
 export interface RouteDanger {
   routeDistance: number;
   routeDangerLevel: RouteDangerLevel;
@@ -186,16 +228,31 @@ export interface TravelPreview {
  * "jumps" count) — the preview now speaks in real distance, the unit the engine
  * actually uses.
  */
-export function travelPreview(state: GameState, destination: number): TravelPreview {
+/**
+ * @param die T-1605b · OPTIONAL. When omitted, `fuelCost` is the UNDISCOUNTED
+ * ceiling (no die chosen yet, or the UI doesn't know one) — never an
+ * understatement of what a jump could cost. When a die IS passed, `fuelCost`
+ * matches exactly what `resolveTravel` will charge for that die, preserving
+ * this function's own contract ("can never disagree with `resolveTravel`").
+ * `canReachSystem` still gates on the undiscounted figure regardless (stays
+ * conservative: a jump it calls reachable is always reachable with any real
+ * discount applied too; it may just under-count a borderline case where the
+ * discount would have made an otherwise-unreachable jump affordable).
+ */
+export function travelPreview(state: GameState, destination: number, die?: number): TravelPreview {
   const origin = state.player.currentSystemId;
   const ship = state.player.ship;
   const routeDistance = systemDistance(origin, destination);
-  const fuelCost = jumpFuelCost(
+  const baseFuelCost = jumpFuelCost(
     ship.drives,
     routeDistance,
     ship.hasTransWarpDrive ?? false,
     navFuelFactor(ship),
   );
+  const fuelCost =
+    die === undefined
+      ? baseFuelCost
+      : Math.max(1, Math.round(baseFuelCost * (1 - navDieFuelDiscount(die))));
   return {
     distance: routeDistance,
     fuelCost,
@@ -467,18 +524,27 @@ export function selectAnonymousInterceptor(
 // the multiplier rides on state.era, which day.ts flips TOUR_ONE→VETERAN at the
 // day-30 resolution. No new GameState field.
 
+/**
+ * @param die T-1605b · the travel die's face, 1-20. OPTIONAL, defaulting to 1
+ * (`navDieEvasionFactor(1) === 1`, i.e. no evasion bonus) so every existing
+ * caller that doesn't pass one — every test in this file's `__tests__` siblings
+ * — is unchanged and byte-identical. Only `resolveTravel` passes the real die.
+ */
 export function generateEncounter(
   state: GameState,
   origin: number,
   destination: number,
   fuelUsed: number,
   rng: SeededRng,
+  die = 1,
 ): EncounterState | null {
   const { routeDangerLevel, routeDangerChance } = calculateRouteDanger(state, origin, destination);
   let effectiveChance =
     state.era === 'TOUR_ONE'
       ? routeDangerChance * TOUR_ONE_ENCOUNTER_MULTIPLIER
       : routeDangerChance;
+  // T-1605b · a sharper pilot slips past more often — never blocks, only helps.
+  effectiveChance *= navDieEvasionFactor(die);
   // T-1206 CLOAKER → realized-encounter-rate reader. This function is the named
   // reader of `hasCloaker`; a fitted Morton's Cloaking Device damps the realized
   // encounter chance by CLOAK_ENCOUNTER_MULTIPLIER (content). FOUNDATION DIVERGENCE
@@ -589,15 +655,26 @@ export function resolveTravel(
   const origin = nextState.player.currentSystemId;
   const destination = action.destinationId;
   const routeDistance = systemDistance(origin, destination);
+  // T-1505b: the crossing is a content-gated story terminus with its OWN quote
+  // (`quoteCrossingStake`) and its own real Pilot check — computed early here so
+  // T-1605b's discount/evasion below can explicitly exclude it rather than
+  // silently drift the crossing's promised burn out from under its quote.
+  const isCrossing = destination === NEMESIS_SYSTEM_ID;
 
   // Fuel cost through the ONE shared travel-cost function (legacy math) —
   // the same mathematics prices NPC jumps (T-106).
-  const fuelRequired = jumpFuelCost(
+  const baseFuelRequired = jumpFuelCost(
     nextState.player.ship.drives,
     routeDistance,
     nextState.player.ship.hasTransWarpDrive || false,
     navFuelFactor(nextState.player.ship),
   );
+  // T-1605b · the travel die shaves fuel cost, never adds it, on ORDINARY jumps
+  // only — see the constant's doc comment above `travelDc` for why this shape
+  // and not a check-and-penalty. The crossing keeps its own quoted burn exactly.
+  const fuelRequired = isCrossing
+    ? baseFuelRequired
+    : Math.max(1, Math.round(baseFuelRequired * (1 - navDieFuelDiscount(die))));
 
   // Pilot check — DC scales with distance through the authoritative helper so
   // the starmap (T-304) can preview the exact DC the resolver will roll against.
@@ -621,7 +698,7 @@ export function resolveTravel(
   // The NEMESIS CROSSING keeps its check. That one is a content-gated story
   // terminus with its own DC, taken once at the end of the arc, and failing it
   // means being turned back by the shear rather than losing a routine haul.
-  const isCrossing = destination === NEMESIS_SYSTEM_ID;
+  // (`isCrossing` is computed once, above, alongside T-1605b's discount gate.)
   const result = isCrossing
     ? check(die, nextState.player.stats[Stat.PILOT] + navBonus(nextState.player.ship), dc)
     : ({ success: true, total: 0, margin: 0, nat20: false, nat1: false } as ReturnType<
@@ -660,7 +737,7 @@ export function resolveTravel(
     const encounter =
       destination === NEMESIS_SYSTEM_ID
         ? null
-        : generateEncounter(nextState, origin, destination, fuelRequired, rng);
+        : generateEncounter(nextState, origin, destination, fuelRequired, rng, die);
 
     if (encounter) {
       // The interdiction interrupts the jump regardless of the pilot check.

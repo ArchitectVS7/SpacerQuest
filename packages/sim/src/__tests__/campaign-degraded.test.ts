@@ -1032,6 +1032,16 @@ const UNCHANGED_POLICIES = [
  *    over seeds 1..80 and WIDENED rather than re-thresholded.
  * ---------------------------------------------------------------------------
  */
+// Entry 28 (T-195): ALL SEVEN re-derived together, not one-by-one — the cause is
+// shared, not per-policy. `resolveTravel` now applies `navDieFuelDiscount`/
+// `navDieEvasionFactor` (0-15% fuel discount, 0-20% encounter-evasion, both keyed
+// off the travel die) to EVERY jump every policy makes, so every career re-phases
+// (different fuel remaining, different encounter timing) from day 1 regardless of
+// archetype. This is the bake-off's own headline finding stated again here: ALL
+// EIGHT sim policies moved in the capstone diff (`docs/NPC_REDESIGN.md`'s T-195
+// standing amendment carries the exact deltas — tourOneClearRate +12.6%, credits
+// +40.5%, ships lost -27.1% fleet-wide). Nothing here was tuned to hit a target;
+// these are simply what the new formula produces on these exact seeds.
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
   // so the trader borrows and repays on the day it needs to rather than on the day
@@ -1043,7 +1053,7 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // itself is provably inert over these seeds.
   // Entry 23: re-derived — the new `dareGuardHits` report key ONLY (see above).
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
-  trader: '94a572d632425a4a',
+  trader: 'f39050653569260e',
   // Entry 27 (T-159): re-derived — and the ONLY row that moves, which is the
   // cross-check that this was a fighter change and nothing else: `trader`,
   // `explorer`, `veteran`, `smuggler`, `gambler` and `greedy` all came back byte
@@ -1073,7 +1083,7 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // whole rate table is unchanged to four decimals except `board-depth-mean`
   // (3.7822 -> 3.7820), and every invariant went from one violation to zero.
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
-  fighter: '9f6ba12170aeb321',
+  fighter: 'acfa7bcc4800e969',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
   // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4
@@ -1083,7 +1093,7 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // policy no longer queues an Explore on a day whose dawn carries an open salvage
   // op, so the die that used to buy a guaranteed refusal is spent elsewhere.
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
-  explorer: 'e95dc20a64a47039',
+  explorer: '94d773a9f90cbccb',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   //
   // Entry 29 (T-161): re-derived, and the ONLY row that moves — which is the
@@ -1113,12 +1123,12 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // seeds at or over the stall limit barely moves (198 -> 197) because the
   // residual is a different, separately-filed defect (F-161-1, the un-split
   // storylet branch), and no threshold was touched to hide that.
-  veteran: '1ea78f2d77530961',
+  veteran: 'f649dc33cd51a01e',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
   // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
   // through the shorter hand on a band-3/4 board rather than through the payout.
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
-  smuggler: '4f7889b339f76741',
+  smuggler: 'b52c468cf1ede8e9',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sol-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
@@ -1191,9 +1201,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // Entry 28 (T-160): re-derived a NINTH time, and once again the ONLY row that
   // moves — the opening floor is reachable only through a hand only `planDare`
   // opens (see the header).
-  gambler: '050ef21fdeefe922',
+  gambler: '4e89e7dad776577d',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
-  greedy: 'eacbf64644ccde5c',
+  greedy: 'bad42225b0cc469f',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

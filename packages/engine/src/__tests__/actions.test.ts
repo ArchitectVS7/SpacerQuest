@@ -82,6 +82,9 @@ describe('Player Actions', () => {
   it('uses starmap distance for travel fuel', () => {
     const state = createInitialState(123);
     state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
+    // T-1605b: pin the spent die to a nat 1 (navDieFuelDiscount(1) === 0) so this
+    // stays a pure distance-formula test, unaffected by the new die-value discount.
+    state.player.dawnHand.dice[0] = 1;
     state.player.currentSystemId = 1;
     state.player.ship.fuel = 1000;
     state.player.ship.drives = { strength: 21, condition: 10 };
