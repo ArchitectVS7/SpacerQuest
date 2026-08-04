@@ -9,6 +9,9 @@
  * reproducible — is a claim about `pilot.ts`, which is brain-agnostic by design.
  */
 
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import { makeSessionHandler } from '../protocol-stdio.js';
@@ -19,12 +22,17 @@ import type {
   ProtocolResponse,
 } from '../protocol.js';
 import type { PlayerAction } from '@spacerquest/engine';
+import { comparePilotRuns, parsePilotArgs } from '../pilot-cli.js';
 import {
+  actionSequence,
   enumerateCandidates,
+  firstDivergence,
   firstLegalBrain,
   paramValueIsLegal,
   parseJsonl,
+  randomBrain,
   recordedBrain,
+  runPassed,
   runPilot,
   specTypeOf,
   toJsonl,
@@ -352,6 +360,173 @@ describe('T-154 · a run is reproducible', () => {
     expect(steps(replay.entries).map((entry) => JSON.stringify(entry.action))).toEqual(
       steps(first.entries).map((entry) => JSON.stringify(entry.action)),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4b · T-155 · The volume brain, and the run report's claims as checks
+//
+// The run artifact (`docs/playtests/T-155-pilot-validation.md`) is evidence about
+// one afternoon; these are what keep it true. Part F's rule: "a committed,
+// re-runnable check, not a one-off manual confirmation."
+// ---------------------------------------------------------------------------
+
+describe('T-155 · the random brain is the volume leg the audit claim rests on', () => {
+  it('is deterministic across two independent runs of the same seed', async () => {
+    const run = async (): Promise<string[]> => {
+      const { entries } = await runPilot({
+        transport: spyTransport().transport,
+        brain: randomBrain(7),
+        seed: 7,
+        days: 30,
+        now: () => 1_700_000_000_000,
+        runId: 'test-random-determinism',
+      });
+      return actionSequence(entries);
+    };
+    const first = await run();
+    const second = await run();
+    expect(first.length).toBeGreaterThan(30);
+    expect(firstDivergence(first, second)).toBeNull();
+  });
+
+  it('is not first-legal in disguise — it exercises real verb breadth', async () => {
+    const { entries } = await runPilot({
+      transport: spyTransport().transport,
+      brain: randomBrain(3),
+      seed: 3,
+      days: 30,
+      now: () => 0,
+      runId: 'test-random-breadth',
+    });
+    const { entries: smoke } = await runPilot({
+      transport: spyTransport().transport,
+      brain: firstLegalBrain(),
+      seed: 3,
+      days: 30,
+      now: () => 0,
+      runId: 'test-first-legal-breadth',
+    });
+
+    const verbs = (log: readonly PilotLogEntry[]): Set<string> =>
+      new Set(steps(log).map((entry) => entry.chosen.specType));
+
+    // A FLOOR, not an exact set: content growth must not make this brittle, but a
+    // silent regression to "sign a contract, abandon it, end the day" must fail.
+    // Measured at 23 distinct specTypes on 2026-08-04; `first-legal` reaches 3.
+    expect(verbs(entries).size).toBeGreaterThanOrEqual(8);
+    expect(verbs(entries).size).toBeGreaterThan(verbs(smoke).size);
+  });
+
+  it('completes 30 days x 3 seeds with every counter at zero', async () => {
+    for (const seed of [1, 2, 3]) {
+      const { summary } = await runPilot({
+        transport: spyTransport().transport,
+        brain: randomBrain(seed),
+        seed,
+        days: 30,
+        now: () => 0,
+        runId: `test-volume-s${seed}`,
+      });
+      // T-155's Accept criterion 1, encoded — a regression fails CI rather than
+      // waiting for someone to re-read a markdown file.
+      expect(runPassed(summary)).toBe(true);
+      expect(summary.illegalAttempts).toBe(0);
+      expect(summary.blockedFromLegal).toBe(0);
+      expect(summary.protocolErrors).toBe(0);
+      expect(summary.diceBoundsViolations).toBe(0);
+      expect(summary.daysPlayed).toBe(30);
+      expect(summary.stoppedBy).toBe('days');
+      expect(summary.stepsApplied).toBeGreaterThan(30);
+    }
+  });
+});
+
+describe('T-155 · actionSequence normalises exactly the volatile fields, and no more', () => {
+  async function trail(runId: string, startedAt: number): Promise<PilotLogEntry[]> {
+    const { entries } = await runPilot({
+      transport: spyTransport().transport,
+      brain: randomBrain(5),
+      seed: 5,
+      days: 4,
+      now: () => startedAt,
+      runId,
+    });
+    return entries;
+  }
+
+  it('ignores runId, startedAt and latencyMs', async () => {
+    const a = await trail('run-a', 1_700_000_000_000);
+    const b = await trail('run-b', 1_900_000_000_000);
+    // The raw trails differ — that is the whole reason the normaliser exists.
+    expect(toJsonl(a)).not.toBe(toJsonl(b));
+    expect(actionSequence(a)).toEqual(actionSequence(b));
+  });
+
+  it('still diverges when a single action parameter changes', async () => {
+    const a = await trail('run-a', 0);
+    const mutated = parseJsonl(toJsonl(a));
+    const stepEntries = mutated.filter((entry): entry is PilotStepEntry => entry.type === 'step');
+    const index = stepEntries.findIndex((entry) => entry.action !== null);
+    expect(index).toBeGreaterThanOrEqual(0);
+    stepEntries[index].action = {
+      ...(stepEntries[index].action as object),
+      spendDie: 99,
+    } as PlayerAction;
+    expect(firstDivergence(actionSequence(a), actionSequence(mutated))).toBe(index);
+  });
+
+  it('reports a divergence index through the CLI --compare path', async () => {
+    const a = await trail('run-a', 0);
+    const mutated = parseJsonl(toJsonl(a));
+    const stepEntries = mutated.filter((entry): entry is PilotStepEntry => entry.type === 'step');
+    stepEntries[2].chosen.id = 'a99';
+
+    const same = comparePilotRuns(toJsonl(a), toJsonl(parseJsonl(toJsonl(a))));
+    expect(same.identical).toBe(true);
+    expect(same.report).toContain('IDENTICAL');
+
+    const different = comparePilotRuns(toJsonl(a), toJsonl(mutated));
+    expect(different.identical).toBe(false);
+    expect(different.report).toContain('DIVERGED at step index 2');
+  });
+});
+
+describe('T-155 · the CLI wires the new brain and the new mode', () => {
+  it('accepts --brain random', () => {
+    const parsed = parsePilotArgs(['--brain', 'random', '--seed', '4', '--days', '30']);
+    expect(parsed).toMatchObject({ mode: 'run', brain: 'random', seeds: [4], days: 30 });
+  });
+
+  it('anchors every relative path on the repo root, not on the workspace cwd (F-155-2)', () => {
+    // `npm run pilot` runs with cwd = packages/sim, while the DEFAULT out dir is
+    // built from REPO_ROOT. A relative `--out`/`--replay` used to mean a different
+    // directory from the default, so PILOT.md's own documented replay command
+    // could not find the file the documented run had just written.
+    const repoRoot = resolve(fileURLToPath(import.meta.url), '../../../../..');
+    const parsed = parsePilotArgs([
+      '--out',
+      'test-results/pilot/x',
+      '--brain',
+      'recorded',
+      '--replay',
+      'test-results/pilot/prior.jsonl',
+    ]);
+    expect(parsed).toMatchObject({
+      mode: 'run',
+      outDir: join(repoRoot, 'test-results/pilot/x'),
+      replay: join(repoRoot, 'test-results/pilot/prior.jsonl'),
+    });
+    const absolute = parsePilotArgs(['--out', join(repoRoot, 'elsewhere')]);
+    expect(absolute).toMatchObject({ outDir: join(repoRoot, 'elsewhere') });
+  });
+
+  it('rejects --compare mixed with run flags rather than ignoring them', () => {
+    expect(() => parsePilotArgs(['--compare', 'a.jsonl', 'b.jsonl'])).not.toThrow();
+    expect(() =>
+      parsePilotArgs(['--compare', 'a.jsonl', 'b.jsonl', '--brain', 'anthropic']),
+    ).toThrow(/--compare takes no other flags/);
+    expect(() => parsePilotArgs(['--compare', 'only-one.jsonl'])).toThrow(/two paths/);
   });
 });
 

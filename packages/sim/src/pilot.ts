@@ -40,6 +40,7 @@
 // ---------------------------------------------------------------------------
 
 import { MAX_DAWN_HAND_SIZE } from '@spacerquest/content';
+import { SeededRng } from '@spacerquest/engine';
 import type { Edition, GameEvent, PlayerAction } from '@spacerquest/engine';
 
 import type {
@@ -455,6 +456,53 @@ export function firstLegalBrain(): PilotBrain {
         candidateId: chosen.id,
         reason:
           acting === undefined ? 'nothing left to spend a die on' : 'first legal die-spending move',
+      });
+    },
+  };
+}
+
+/**
+ * Decorrelates the brain's stream from the engine's. The brain must NEVER share or
+ * advance `state.rngState` — if it did, "the same seed replays" would stop being a
+ * statement about the game and start being a statement about how many times the
+ * brain happened to roll.
+ */
+const RANDOM_BRAIN_SALT = 0x5f1c_0d3a;
+
+/**
+ * THE VOLUME BRAIN (T-155). A uniform pick over the step's candidate list, off a
+ * seeded stream of its own.
+ *
+ * WHY IT EXISTS, MEASURED RATHER THAN ASSERTED: `firstLegalBrain` above is a smoke
+ * check, and PILOT.md §7 says so in its own words. Its verb histogram over a real
+ * run is **three entries** — `Trade/sign-contract`, `Trade/abandon-contract`,
+ * `end-day` — because "the first die-costed move on offer" is a fixed point of the
+ * enumerator's ordering, not a tour of the game. Reporting "N sim-days, zero
+ * illegal actions" off that brain would be `docs/TESTING-STRATEGY.md` Part A's
+ * green-but-hollow failure one level up: a clean sheet over a game that was never
+ * played. This brain reaches Travel, Explore, Dare, the shipyard, the trade desk,
+ * Wait and the storylet choices in the same 30 days, so the clean sheet is about
+ * something. Do not "simplify" it back out.
+ *
+ * DETERMINISTIC ACROSS PROCESSES: seeded, no `Math.random`, no clock. That is what
+ * makes it usable as the same-seed determinism check's subject — an LLM brain
+ * cannot be that subject, and a brain that visits three verbs is not worth being
+ * one.
+ */
+export function randomBrain(seed: number): PilotBrain {
+  const rng = new SeededRng((seed ^ RANDOM_BRAIN_SALT) | 0);
+  return {
+    kind: 'random',
+    decide(context) {
+      const { candidates } = context;
+      if (candidates.length === 0) {
+        return Promise.resolve({ raw: '<no candidates>', reason: 'unparseable' as const });
+      }
+      // `next()` is [0, 1); the clamp is defence against a float landing on 1.
+      const index = Math.min(Math.floor(rng.next() * candidates.length), candidates.length - 1);
+      return Promise.resolve({
+        candidateId: candidates[index].id,
+        reason: `seeded uniform pick ${index + 1}/${candidates.length}`,
       });
     },
   };
@@ -1043,6 +1091,53 @@ export function parseJsonl(text: string): PilotLogEntry[] {
     .map((line) => line.trim())
     .filter((line) => line !== '')
     .map((line) => JSON.parse(line) as PilotLogEntry);
+}
+
+/**
+ * The comparable spine of a run: one line per decision, carrying WHAT was chosen
+ * and WHAT the engine did about it, and nothing else.
+ *
+ * WHY THIS IS NOT `sha256(the file)` — and this is load-bearing, not tidying.
+ * `pilot-cli.ts` builds `runId` from `Date.now()`, and `run-start.startedAt` and
+ * every step's `brain.latencyMs` are wall-clock readings. **Two independent CLI
+ * invocations can therefore NEVER produce byte-identical JSONL**, so a raw `diff`
+ * would report a divergence that says nothing about determinism. The in-process
+ * test at `__tests__/pilot.test.ts` gets byte-identity only because it pins both
+ * `runId` and `now` — a luxury two separate `node` processes do not have.
+ *
+ * So the volatile fields are normalized away, and ONLY those: the step ordinal, the
+ * chosen candidate's class and id, the action sent, and the state delta the engine
+ * returned all survive. Including `delta` is deliberate — it makes the claim "the
+ * same seed produced the same GAME", not merely "the brain named the same ids".
+ * A normalizer that dropped more than this would pass every determinism check
+ * forever, which is why `pilot.test.ts` asserts both halves: volatile fields are
+ * ignored AND a changed action parameter still diverges.
+ */
+export function actionSequence(entries: readonly PilotLogEntry[]): string[] {
+  return entries
+    .filter((entry): entry is PilotStepEntry => entry.type === 'step')
+    .map((entry) =>
+      [
+        `n=${entry.n}`,
+        `day=${entry.day}`,
+        `phase=${entry.phase}`,
+        `spec=${entry.chosen.specType}`,
+        `id=${entry.chosen.id}`,
+        `lifecycle=${entry.lifecycle ?? '-'}`,
+        `action=${JSON.stringify(entry.action)}`,
+        `response=${entry.response}`,
+        `delta=${JSON.stringify(entry.delta)}`,
+      ].join(' | '),
+    );
+}
+
+/** The first index at which two sequences differ, or `null` when they agree. */
+export function firstDivergence(left: readonly string[], right: readonly string[]): number | null {
+  const shared = Math.min(left.length, right.length);
+  for (let index = 0; index < shared; index += 1) {
+    if (left[index] !== right[index]) return index;
+  }
+  return left.length === right.length ? null : shared;
 }
 
 /** True when a run is clean on all four counters the CLI exits non-zero on. */

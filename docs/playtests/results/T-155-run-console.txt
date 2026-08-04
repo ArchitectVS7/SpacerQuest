@@ -1,0 +1,179 @@
+T-155 · pilot validation — full CLI transcript
+Date: 2026-08-04   Game commit: ddd0b8e6574723f911d6288b9d05e487b1be9ab3   Node: v24.13.1
+All commands run from the repo root. Reproduced verbatim below.
+
+==============================================================================
+LEG A · volume — the random brain, 5 seeds x 30 days
+$ npm run pilot -- --brain random --seed 1,2,3,4,5 --days 30 --out test-results/pilot/T-155-volume-random
+==============================================================================
+seed 1 · random
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-volume-random/random-s1-d30-1785864210384.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         230
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+seed 2 · random
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-volume-random/random-s2-d30-1785864210490.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         200
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+seed 3 · random
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-volume-random/random-s3-d30-1785864210564.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         232
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+seed 4 · random
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-volume-random/random-s4-d30-1785864210646.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         208
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+seed 5 · random
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-volume-random/random-s5-d30-1785864210719.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         243
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+exit 0
+
+==============================================================================
+LEG A · volume — the first-legal smoke brain, same 5 seeds x 30 days
+$ npm run pilot -- --brain first-legal --seed 1,2,3,4,5 --days 30 --out test-results/pilot/T-155-volume-firstlegal
+==============================================================================
+seed 1 · first-legal
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-volume-firstlegal/first-legal-s1-d30-1785864211220.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         150
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+seed 2 · first-legal
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-volume-firstlegal/first-legal-s2-d30-1785864211315.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         150
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+seed 3 · first-legal
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-volume-firstlegal/first-legal-s3-d30-1785864211386.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         150
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+seed 4 · first-legal
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-volume-firstlegal/first-legal-s4-d30-1785864211454.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         150
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+seed 5 · first-legal
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-volume-firstlegal/first-legal-s5-d30-1785864211521.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         150
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+exit 0
+
+==============================================================================
+LEG B · same-seed determinism — two INDEPENDENT node processes, seed 7
+$ npm run pilot -- --brain random --seed 7 --days 30 --out test-results/pilot/T-155-det-a
+$ npm run pilot -- --brain random --seed 7 --days 30 --out test-results/pilot/T-155-det-b
+==============================================================================
+seed 7 · random
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-det-a/random-s7-d30-1785864217214.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         218
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+exit 0
+seed 7 · random
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-det-b/random-s7-d30-1785864218161.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         218
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+exit 0
+
+-- raw JSONL file digests (they DIFFER, and must: runId/startedAt carry Date.now()) --
+557927c6f0ca45b9211388d666695e3693a22dcfe3d55a2214b4a324db3ab678  test-results/pilot/T-155-det-a/random-s7-d30-1785864217214.jsonl
+7a24334aca5c94f1e261353e2f9317ca3771b5ec3e092cab99024c93946b0b25  test-results/pilot/T-155-det-b/random-s7-d30-1785864218161.jsonl
+
+$ npm run pilot -- --compare <det-a>.jsonl <det-b>.jsonl
+compare
+  a  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-det-a/random-s7-d30-1785864217214.jsonl
+  b  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-det-b/random-s7-d30-1785864218161.jsonl
+  a  248 steps  sha256 b5df9dbc89525896cb9d5ec5fc380969205ce809350fbafc894c6d402e5ffe16
+  b  248 steps  sha256 b5df9dbc89525896cb9d5ec5fc380969205ce809350fbafc894c6d402e5ffe16
+  IDENTICAL — the two runs produced the same action sequence.
+exit 0
+
+==============================================================================
+LEG C · the reproducibility lever — replay det-a's trail through --brain recorded
+$ npm run pilot -- --brain recorded --replay <det-a>.jsonl --seed 7 --days 30 --out test-results/pilot/T-155-replay
+==============================================================================
+seed 7 · recorded
+  log                  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-replay/recorded-s7-d30-1785864225050.jsonl
+  daysPlayed           30 (stopped by days, final day 31)
+  stepsApplied         218
+  illegalAttempts      0
+  fallbacks            0
+  blockedFromLegal     0
+  protocolErrors       0
+  diceBoundsViolations 0
+exit 0
+
+$ npm run pilot -- --compare <det-a>.jsonl <replay>.jsonl
+compare
+  a  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-det-a/random-s7-d30-1785864217214.jsonl
+  b  /Users/vs7/Dev/Games/SpacerQuest/test-results/pilot/T-155-replay/recorded-s7-d30-1785864225050.jsonl
+  a  248 steps  sha256 b5df9dbc89525896cb9d5ec5fc380969205ce809350fbafc894c6d402e5ffe16
+  b  248 steps  sha256 b5df9dbc89525896cb9d5ec5fc380969205ce809350fbafc894c6d402e5ffe16
+  IDENTICAL — the two runs produced the same action sequence.
+exit 0
+
+==============================================================================
+LEG D · the live Anthropic brain — NOT RUN
+==============================================================================
+$ printenv | grep -c 'ANTHROPIC_API_KEY\|ANTHROPIC_AUTH_TOKEN'
+0
+$ command -v ant
+(no output — no ant binary on PATH)
+
+No credentials in this environment. No substitute brain was run in its place and
+no result is claimed for this leg. See finding F-155-1 in TASKS.md.

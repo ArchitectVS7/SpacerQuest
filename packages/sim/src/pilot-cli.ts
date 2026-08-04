@@ -22,15 +22,19 @@
  * §2 and `docs/TESTING-STRATEGY.md` Part D.
  */
 
+import { createHash } from 'node:crypto';
 import { closeSync, mkdirSync, openSync, readFileSync, writeSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { makeSessionHandler } from './protocol-stdio.js';
 import {
   DEFAULT_MAX_STEPS_PER_DAY,
+  actionSequence,
+  firstDivergence,
   firstLegalBrain,
   parseJsonl,
+  randomBrain,
   recordedBrain,
   runPassed,
   runPilot,
@@ -42,8 +46,25 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 /** `test-results/` is already gitignored — a run's trail is an artefact, not a source. */
 const DEFAULT_OUT_DIR = join(REPO_ROOT, 'test-results', 'pilot');
 
-type BrainName = 'first-legal' | 'anthropic' | 'recorded';
-const BRAIN_NAMES: BrainName[] = ['first-legal', 'anthropic', 'recorded'];
+/**
+ * T-155 · **F-155-2, found by running the documented command.** Every path flag
+ * anchors on the REPO ROOT, not on `process.cwd()`.
+ *
+ * `npm run pilot` is an npm workspace script (`packages/sim/package.json`), so its
+ * cwd is `packages/sim/` — while the default output directory above is built from
+ * `REPO_ROOT`. Before this, `--out test-results/pilot/x` (copied from the CLI's own
+ * help text) wrote to `packages/sim/test-results/...`, and PILOT.md §1's documented
+ * `--replay test-results/pilot/<runId>.jsonl` could never find the file the default
+ * run had just written. A relative path meant two different directories depending
+ * on which flag it was passed to, which makes a documented invocation a lie.
+ * Absolute paths are passed through untouched.
+ */
+function resolveFromRepoRoot(raw: string): string {
+  return isAbsolute(raw) ? raw : resolve(REPO_ROOT, raw);
+}
+
+type BrainName = 'first-legal' | 'random' | 'anthropic' | 'recorded';
+const BRAIN_NAMES: BrainName[] = ['first-legal', 'random', 'anthropic', 'recorded'];
 
 export interface PilotCliOptions {
   seeds: number[];
@@ -54,6 +75,18 @@ export interface PilotCliOptions {
   maxStepsPerDay: number;
   edition: 'full' | 'demo';
 }
+
+/**
+ * T-155 · The two things `npm run pilot` can be asked to do. `--compare` is a mode
+ * rather than a flag on a run because it takes no seed, no brain and no horizon —
+ * accepting those silently would let `--compare a b --brain anthropic` read as a
+ * paid run that never happened, which is the same class of mistake the `--brain`
+ * throw below already guards.
+ */
+export type PilotCliCommand =
+  | { mode: 'help' }
+  | { mode: 'compare'; left: string; right: string }
+  | ({ mode: 'run' } & PilotCliOptions);
 
 function usage(): string {
   return [
@@ -66,6 +99,11 @@ function usage(): string {
     '  --out <dir>           JSONL output directory. Default test-results/pilot.',
     `  --max-steps-per-day <n>  Forced end-day after this many steps. Default ${DEFAULT_MAX_STEPS_PER_DAY}.`,
     '  --edition full|demo   Licence to open the career on. Default full.',
+    '  --compare <a.jsonl> <b.jsonl>',
+    '                        T-155 determinism check: normalise both trails to their',
+    '                        action sequences (volatile runId/clock fields dropped),',
+    '                        print each digest, and report IDENTICAL or the first',
+    '                        diverging step. Exits 1 on divergence. Takes no other flag.',
     '  --help',
     '',
     'Exits non-zero when illegalAttempts, blockedFromLegal, protocolErrors or',
@@ -80,7 +118,7 @@ function parsePositiveInteger(flag: string, raw: string | undefined): number {
   return parsed;
 }
 
-export function parsePilotArgs(argv: readonly string[]): PilotCliOptions | { help: true } {
+export function parsePilotArgs(argv: readonly string[]): PilotCliCommand {
   const options: PilotCliOptions = {
     seeds: [],
     days: 30,
@@ -90,10 +128,23 @@ export function parsePilotArgs(argv: readonly string[]): PilotCliOptions | { hel
     maxStepsPerDay: DEFAULT_MAX_STEPS_PER_DAY,
     edition: 'full',
   };
+  let compare: { left: string; right: string } | null = null;
+  const runFlags: string[] = [];
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === '--help') return { help: true };
+    if (arg === '--help') return { mode: 'help' };
+    if (arg === '--compare') {
+      const left = argv[index + 1];
+      const right = argv[index + 2];
+      if (left === undefined || right === undefined || left.trim() === '' || right.trim() === '') {
+        throw new Error('--compare needs two paths: --compare <a.jsonl> <b.jsonl>');
+      }
+      compare = { left: resolveFromRepoRoot(left), right: resolveFromRepoRoot(right) };
+      index += 2;
+      continue;
+    }
+    runFlags.push(String(arg));
     if (arg === '--seed') {
       const raw = argv[index + 1];
       if (raw === undefined) throw new Error('Missing value for --seed');
@@ -120,12 +171,12 @@ export function parsePilotArgs(argv: readonly string[]): PilotCliOptions | { hel
     } else if (arg === '--replay') {
       const raw = argv[index + 1];
       if (raw === undefined || raw.trim() === '') throw new Error('Missing value for --replay');
-      options.replay = raw;
+      options.replay = resolveFromRepoRoot(raw);
       index += 1;
     } else if (arg === '--out') {
       const raw = argv[index + 1];
       if (raw === undefined || raw.trim() === '') throw new Error('Missing value for --out');
-      options.outDir = resolve(raw);
+      options.outDir = resolveFromRepoRoot(raw);
       index += 1;
     } else if (arg === '--edition') {
       const raw = argv[index + 1];
@@ -137,15 +188,56 @@ export function parsePilotArgs(argv: readonly string[]): PilotCliOptions | { hel
     }
   }
 
+  if (compare !== null) {
+    // Reject rather than ignore — the `--brain` precedent above, applied to the
+    // mode: silently dropping `--seed 7 --days 30` here would print a determinism
+    // verdict about two files while the operator believed a run had happened.
+    if (runFlags.length > 0) {
+      throw new Error(`--compare takes no other flags; got ${runFlags.join(' ')}`);
+    }
+    return { mode: 'compare', ...compare };
+  }
+
   if (options.seeds.length === 0) options.seeds.push(1);
   if (options.brain === 'recorded' && options.replay === null) {
     throw new Error('--brain recorded requires --replay <path.jsonl>');
   }
-  return options;
+  return { mode: 'run', ...options };
 }
 
-async function resolveBrain(options: PilotCliOptions): Promise<PilotBrain> {
+/**
+ * T-155 · The same-seed determinism check, as a command rather than a shell
+ * pipeline, so the normalisation it depends on is the one `pilot.ts` defines and
+ * `pilot.test.ts` proves — not an ad-hoc `diff` a reader has to trust.
+ */
+export function comparePilotRuns(
+  leftText: string,
+  rightText: string,
+): { identical: boolean; report: string } {
+  const left = actionSequence(parseJsonl(leftText));
+  const right = actionSequence(parseJsonl(rightText));
+  const digest = (sequence: readonly string[]): string =>
+    createHash('sha256').update(sequence.join('\n')).digest('hex');
+  const divergence = firstDivergence(left, right);
+  const lines = [
+    `  a  ${left.length} steps  sha256 ${digest(left)}`,
+    `  b  ${right.length} steps  sha256 ${digest(right)}`,
+  ];
+  if (divergence === null) {
+    lines.push('  IDENTICAL — the two runs produced the same action sequence.');
+    return { identical: true, report: lines.join('\n') };
+  }
+  lines.push(
+    `  DIVERGED at step index ${divergence} (0-based, step entries only):`,
+    `    a: ${left[divergence] ?? '<end of sequence>'}`,
+    `    b: ${right[divergence] ?? '<end of sequence>'}`,
+  );
+  return { identical: false, report: lines.join('\n') };
+}
+
+async function resolveBrain(options: PilotCliOptions, seed: number): Promise<PilotBrain> {
   if (options.brain === 'first-legal') return firstLegalBrain();
+  if (options.brain === 'random') return randomBrain(seed);
   if (options.brain === 'recorded') {
     const text = readFileSync(options.replay!, 'utf8');
     return recordedBrain(parseJsonl(text));
@@ -157,16 +249,24 @@ async function resolveBrain(options: PilotCliOptions): Promise<PilotBrain> {
 
 export async function runCli(argv: readonly string[]): Promise<number> {
   const parsed = parsePilotArgs(argv);
-  if ('help' in parsed) {
+  if (parsed.mode === 'help') {
     process.stdout.write(`${usage()}\n`);
     return 0;
+  }
+  if (parsed.mode === 'compare') {
+    const result = comparePilotRuns(
+      readFileSync(parsed.left, 'utf8'),
+      readFileSync(parsed.right, 'utf8'),
+    );
+    process.stdout.write(`compare\n  a  ${parsed.left}\n  b  ${parsed.right}\n${result.report}\n`);
+    return result.identical ? 0 : 1;
   }
 
   mkdirSync(parsed.outDir, { recursive: true });
   let failed = false;
 
   for (const seed of parsed.seeds) {
-    const brain = await resolveBrain(parsed);
+    const brain = await resolveBrain(parsed, seed);
     const runId = `${brain.kind}-s${seed}-d${parsed.days}-${Date.now()}`;
     const outPath = join(parsed.outDir, `${runId}.jsonl`);
     const handle = openSync(outPath, 'w');

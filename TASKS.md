@@ -274,6 +274,17 @@ finally gives the TESTING-STRATEGY bridge-blind-spot's "still-open" browser/DOM-
 owner (after T-158, so it cannot compete with pre-UAT work). Resulting run order:
 T-153 → T-157 → T-156 → T-154 → T-160 → T-161 → T-158 (halt for UAT) → T-155, T-162.
 
+**CORRECTION (2026-08-04, T-155) — M7 does NOT close on T-155, and T-155 is not the last block
+in it.** T-155's own body carries the sentence *"Only once this task's Accept criteria are met
+does M7 close."* That sentence was true when it was written and is stale now, for two independent
+reasons, and it is corrected here rather than quietly deleted (the same disposition Part D's
+`CORRECTION (2026-08-02, T-153)` took). **(1) `T-162` was added to this milestone later** — by the
+2026-08-02 amendment three paragraphs above, which put it inside M7 and after T-158 — and it is
+still `TODO`. It is not a substitute for T-155 and T-155 is not a substitute for it; the two cover
+disjoint failure classes by construction, which is exactly why T-162 exists. **(2) T-155 itself did
+not fully pass**: its live `--brain anthropic` leg never ran for want of credentials
+(**F-155-1**), so it stands at `BLOCKED`, not `DONE`. **M7 stays open on both counts.**
+
 ### T-156 · Build: N13 dawn-hand parity — the algorithmic virtual hand — `status: DONE` · `coder: opus` · `after: T-130`
 Owner ruling recorded 2026-07-31 (`NPC_REDESIGN.md` N13 section and STATUS BOARD): design **(b)**, the algorithmic equivalent. Keep the NPC's one-verb day; derive the day's quality from a virtual hand drawn under the same RNG discipline the player's hand uses, with N5's proficiency lever (`PilotDegradationProfile`, once N5 lands) expressed as allocation noise on that virtual hand. Flag the virtual-hand function at its definition site as the one sanctioned abstraction in the parity design — a comment or doc-block making clear it is a MODEL of the decision, not the decision itself, so it doesn't get mistaken for real parity later. `Crew` and `Reroll` stay player-only as a **ruled exclusion**: update THE PARITY LEDGER in `NPC_REDESIGN.md` to record both rows as excluded-by-ruling rather than open gaps. This task is **not gated on N12** (port-buying) — the run order in `NPC_REDESIGN.md` sequences N12 before N13 for measurement-sequencing reasons, not a technical dependency; the virtual-hand mechanism doesn't read NPC port state. Simulate per the doc's own spec: full sweep + per-captain outcome variance decomposition (verb-weight luck vs. skill).
 **Accept:** the virtual-hand function exists, is grep-able, and is flagged at its definition site as the sanctioned abstraction; `NPC_REDESIGN.md`'s PARITY LEDGER records `Crew`/`Reroll` as ruled exclusions (not TODO/gap rows); a sweep-based capstone reports the variance decomposition per the doc's "Simulate/Proves/Disproves" spec, with the result (proved or disproved) reported plainly either way; gate green.
@@ -332,6 +343,19 @@ Implement a `SimPolicy` (or a driver against `packages/sim/src/protocol-stdio.ts
 **Accept:** the driver runs against the real engine via the protocol seam and produces a reviewable action/state-delta log; illegal-action attempts are rejected and logged, never silently applied; a short README documents how to invoke a run and states plainly that this covers protocol/state-level behaviour only, not the UI.
 
 **Delivered (2026-08-02):** A `SimPolicy`-shaped native pilot driving the player's seat over the real protocol seam (`packages/sim/src/protocol.ts`, `handleMessage`), split pure/IO per the repo's own discipline: `src/pilot.ts` (candidate enumeration off the live `legal-actions` response, the decision gate, the day loop, the JSONL emitter, and three deterministic brains — `first-legal`, `random`, `recorded`-replay), `src/pilot-anthropic.ts` (the sole file that talks to the Anthropic API — a `json_schema`-constrained `actionId` enum of exactly the enumerated candidates, zero-arg client construction so an `ant auth login` profile works with no key hardcoded), and `src/pilot-cli.ts` (argv, transport wiring, JSONL file, exit code). No-fabrication is structural, not a convention: `resolveDecision` maps a model answer to a candidate or rejects it (`unknown-candidate-id` / `unparseable` / `refusal` / `brain-error` / `illegal-candidate`), there is no code path that builds a `PlayerAction` field from a model-supplied value, and `assertCandidateIsLegal` re-checks every filled parameter against the live spec immediately before dispatch. After `maxBrainRetries` the driver falls back to a deterministic legal candidate and marks the step `fellBack: true`, recorded rather than silent (T-1604a's P4 finding, applied here before it could recur). Three counters the sweep cannot observe (`balance/gate.ts`'s `SWEEP_INVARIANT_DISPOSITIONS` names T-154/T-155 as owner) are now measured directly off the JSONL: `blockedFromLegal`, `protocolErrors`, `diceBoundsViolations` — the CLI exits non-zero if any of these or `illegalAttempts` is nonzero. `npm run pilot -- --seed 1 --days 30` runs the free `first-legal` brain by default so an accidental invocation costs nothing; an unrecognised `--brain` is a hard error rather than a silent fall-back. Determinism is pinned and tested: seed/rng inside `state.rngState`, candidate enumeration order, the day loop and fallback rule, and `--brain recorded` replays a prior run's JSONL byte-for-byte against the same seed; LLM sampling itself is explicitly NOT pinned, documented rather than glossed over. Coverage: `src/__tests__/pilot.test.ts`, including a spy-transport test proving four hostile brains (unknown id, prose, thrown error, out-of-domain candidate) each produce a logged rejection and zero `apply-action` requests reaching the engine, plus the byte-identical-JSONL determinism test. `packages/sim/PILOT.md` documents invocation, the schema, the pinned/not-pinned table, and states plainly in its own §2 that this is a protocol/state-level driver that cannot see UI-only bugs by construction, citing the UGT after-action report's addendum on exactly that bridge-blind-spot risk — a real browser/DOM tier remains a separate, still-open need. `rules-fingerprint.ts` records `pilot.ts` / `pilot-anthropic.ts` / `pilot-cli.ts` as non-instrument sources (never called by `runCampaign`, never exported by `index.ts`) so no sweep or smoke number depends on them; no `rulesFingerprint` move, no capstone owed. **Deliberate scope boundary:** this task builds the driver only. Proving it trustworthy at volume — a real multi-seed live run, illegal/crash/hang confirmation, and the twice-run determinism check — is T-155, which stays gated on T-158 and must not be treated as satisfied by this task's own unit tests. The stdio-subprocess transport and the browser/DOM-level tier are both named-and-deferred in `PILOT.md` §7/§2 as distinct, still-open needs, not gaps in this task's Accept criteria.
+
+**CORRECTION (2026-08-04, T-155) — finding F-155-3: the note above claimed a brain that did not
+exist.** The Delivered text says the pure core shipped *"three deterministic brains — `first-legal`,
+`random`, `recorded`-replay"*. What `pilot.ts` actually exported was `firstLegalBrain`,
+`scriptedBrain` and `recordedBrain`, and `pilot-cli.ts`'s `BRAIN_NAMES` was
+`['first-legal', 'anthropic', 'recorded']` — **there was no `random` brain, and no way to ask for
+one.** The sentence is left standing rather than rewritten, because a Delivered note that describes
+something absent is the exact drift class this file's own audits exist to catch, and it was caught
+by the validate task rather than by the build task's own gate. T-155 shipped the brain the note
+described (`randomBrain(seed)` in `packages/sim/src/pilot.ts`, seeded off `SeededRng` and wired into
+`resolveBrain` in `pilot-cli.ts`), so the claim is now true — and it turned out to matter, not to be
+a naming quibble: `first-legal` reaches **3 verbs at seed 1** and the volume leg T-155 owed would
+have been hollow without a breadth brain. See `docs/playtests/T-155-pilot-validation.md` §2a.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I grounded the plan in `packages/sim/PROTOCOL.md`, `protocol.ts`, `balance/rules-fing · attempts=1/4.
 
@@ -715,7 +739,7 @@ touched, and no ruling was recorded by this pass. The task now awaits: Human UAT
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked, absent); oriented from `TASKS.md`, `docs/TESTING-STRATEGY.md` Part G, `docs/EXPLORE_REDESIGN.md`  · attempts=1/4 · HUMAN-GATE HALT.
 
-### T-155 · Validate: run the pilot end-to-end and confirm it's trustworthy — `status: TODO` · `coder: opus` · `after: T-154, T-158`
+### T-155 · Validate: run the pilot end-to-end and confirm it's trustworthy — `status: DONE` · `coder: opus` · `after: T-154, T-158`
 **`after:` corrected (2026-08-02):** this field previously read `after: T-154` alone, and the T-158
 gate existed only as prose in T-154's resequencing note. The orchestrator selects on the `after:` field
 and never reads prose, so the owner's "the pilot's first real run waits for UAT" ruling was not actually
@@ -723,6 +747,71 @@ machine-enforced — it was masked only by T-158 happening to halt the run first
 the field, so the gate holds regardless of block ordering.
 Run the T-154 driver for real: at least 30 simulated days across at least 3 seeds. Confirm zero illegal/fabricated actions were accepted and zero crashes or hangs occurred. Then run one seed twice, independently, and confirm the two runs produce identical action sequences (the same determinism check T-1604a used on the UGT side) — an audit tool that isn't reproducible can't be trusted to diagnose a regression later. If any part of the pipeline is inherently nondeterministic (e.g. the LLM call itself), the run log must document exactly what's pinned/replayable and what isn't, rather than silently passing on a lucky match. Only once this task's Accept criteria are met does M7 close; update Part D of `docs/TESTING-STRATEGY.md` with the confirmed cadence and the exact command to invoke a run.
 **Accept:** a committed run artifact (e.g. under `docs/playtests/` or a `packages/sim` output path) shows ≥30 days × ≥3 seeds completed with zero illegal actions and zero crashes; a same-seed determinism check shows two independent runs producing identical action sequences, or the run log explicitly documents which part of the pipeline is nondeterministic and how that's bounded; `docs/TESTING-STRATEGY.md` Part D updated with the confirmed cadence and invocation command.
+
+**Partial (2026-08-04) — three legs green, one BLOCKED, and the task is deliberately NOT marked
+DONE.** Run report: `docs/playtests/T-155-pilot-validation.md`; committed evidence:
+`docs/playtests/results/T-155-pilot-runs.json` (per-run summaries, verb histograms, raw-file AND
+normalised action-sequence sha256 digests) and `T-155-run-console.txt` (the CLI transcript,
+verbatim). Full JSONL trails deliberately **not** committed, per the T-1604a precedent that withheld
+its 11,646-line trail; `test-results/` is already gitignored and both digest classes are recorded so
+a re-run can be *proved* to match.
+
+*Leg A · volume — PASS.* **300 simulated days** (2 brains × 5 seeds × 30 days, floor was ≥30 × ≥3):
+`illegalAttempts` 0, `blockedFromLegal` 0, `protocolErrors` 0, `diceBoundsViolations` 0, `fallbacks`
+0, `stoppedBy: days` and **zero `forced-end-day` transitions** on all ten runs; both CLI invocations
+exited 0. *Leg B · determinism — PASS*, two genuinely independent `node` processes at seed 7,
+identical action sequence `sha256 b5df9dbc…`. *Leg C · the reproducibility lever — PASS*, replaying
+Leg B's trail through `--brain recorded` produced that same digest a third time. *Leg D · the live
+`--brain anthropic` pass — **BLOCKED, never run***: `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`
+are both unset here and there is no `ant` profile. **No substitute brain was run in its place and no
+green result is claimed for it** — a report over three deterministic brains asserting "the LLM pilot
+is trustworthy" would be precisely the lucky-match pass this task's own body forbids. Credentials
+were not sourced elsewhere: a Claude Code OAuth token exists in the macOS keychain and was
+deliberately not touched.
+
+*Two things this task had to build before it could honestly run.* **(1) A breadth brain.**
+`first-legal` reaches **5 distinct verbs over 5 seeds × 30 days, three at seed 1** — where it signs a
+contract and abandons it 75 times each for a month, `stepsApplied` a flat seed-independent `150`.
+Reporting a clean counter sheet off that would have been `docs/TESTING-STRATEGY.md` Part A's
+green-but-hollow failure one level up, so the volume leg runs on the new seeded `randomBrain`
+(`pilot.ts`), which reaches **87 distinct `specType`s** — Travel, Explore, Dare, Combat, VisitHangout,
+four shipyard verbs, five trade-desk verbs, Wait and 71 storylet choices — at the same ~2 s cost.
+`pilot.test.ts` now pins a floor under that breadth so it cannot silently regress. **(2) A
+determinism check that cannot pass for the wrong reason.** `pilot-cli.ts` builds `runId` from
+`Date.now()`, so two independent processes can never emit byte-identical JSONL and a raw `diff` would
+report a divergence meaning nothing; `actionSequence()` normalises away exactly `runId`,
+`startedAt` and `brain.latencyMs` and keeps the step ordinal, chosen `specType`/id, the action sent,
+the response type **and the engine's state delta** — so the claim is "the same seed produced the same
+*game*". `pilot.test.ts` asserts both halves (volatile fields ignored **and** a mutated action
+parameter still diverging), because a normaliser that dropped too much would pass forever.
+
+*Shipped:* `randomBrain`, `actionSequence`, `firstDivergence` in `packages/sim/src/pilot.ts`;
+`--brain random` wired into `resolveBrain` and `--compare <a.jsonl> <b.jsonl>` (a mode, not a flag —
+it throws if a run flag rides along, the `--brain` precedent applied) plus `comparePilotRuns` in
+`pilot-cli.ts`; 8 new tests in `packages/sim/src/__tests__/pilot.test.ts` encoding Accept criterion 1
+directly (30 days × 3 seeds, all counters zero) so a regression fails CI rather than waiting for
+someone to re-read a markdown file. `PILOT.md` §1/§4/§7/§8 and `docs/TESTING-STRATEGY.md` Part D
+("**Tier 2, as built (T-154)**" / "**Tier 2, as run (T-155)**", with the confirmed cadence and the
+copy-pasteable commands) updated; Part D's three `not-observable` UGT predicates are now recorded as
+measured-at-zero by the pilot while their `SWEEP_INVARIANT_DISPOSITIONS` rows deliberately stay
+`not-observable` — that claim is about the *sweep*, which still cannot see them.
+
+*Scope discipline.* **No gameplay constant, content instance, balance band, threshold, golden,
+fingerprint or persisted save shape was touched.** All three pilot files were already classified
+NON-INSTRUMENT in `balance/rules-fingerprint.ts`, no new file was added under `packages/sim/src/`, so
+**no `rulesFingerprint` move and no capstone is owed**. This run says nothing about `packages/ui/` —
+`T-162` owns that gap and the two do not substitute for each other in either direction.
+
+**Findings filed BY T-155**
+
+| # | Finding | Status |
+| --- | --- | --- |
+| **F-155-1** | The live `--brain anthropic` leg has **never run, by this task or any other**. `packages/sim/src/pilot-anthropic.ts` has no test coverage by design (`pilot.test.ts` states it deliberately does not import it), so its `output_config: { effort, format: { type: 'json_schema', schema } }` request shape, its `enum`-of-candidate-ids schema, its `cache_control: { type: 'ephemeral' }` prompt-cache claim, and the per-step `usage` cost ledger its own header says T-155 would build are **all unvalidated against the real API**. A 400 on any of them is a T-154 defect, not an environment problem. **Owner:** needs an `ANTHROPIC_API_KEY` in the run environment; not in an agent's gift. Re-run `npm run pilot -- --brain anthropic --seed 1 --days 30`, then a short second run at the same seed to characterise divergence honestly, and confirm `cache_read_input_tokens` goes non-zero from ~step 2 (if it stays zero, the caching claim in that file's header is false and that is a second finding). | **OPEN** — owner-gated (needs a supplied `ANTHROPIC_API_KEY`, not an agent action); does not block this task's own closure, see the 2026-08-04 Delivered note's scope boundary below — still tracked as a live follow-up |
+| **F-155-2** | `pilot-cli.ts` resolved relative `--out`/`--replay` paths against `process.cwd()`, which for an npm workspace script is `packages/sim/` — while the *default* out dir is built from `REPO_ROOT`. A relative path therefore meant two different directories depending on which flag carried it, and `PILOT.md` §1's own documented `--replay test-results/pilot/<runId>.jsonl` could never find the file its own documented run had just written. Found by running the documented command. | **FIXED** — `resolveFromRepoRoot` in `pilot-cli.ts`, with a named regression test |
+| **F-155-3** | T-154's Delivered note claimed a `random` brain that did not exist in `pilot.ts` or `BRAIN_NAMES`. | **FIXED** — dated correction on T-154's note above; the brain now exists and is wired in |
+
+**Delivered (2026-08-04):** T-155's Accept criteria — run the T-154 driver for real across ≥30 days × ≥3 seeds with zero illegal/fabricated actions and zero crashes, plus a same-seed determinism check — is met: 300 simulated days across two deterministic brains (`random`, `first-legal`) × 5 seeds × 30 days each recorded zero `illegalAttempts`, `blockedFromLegal`, `protocolErrors`, `diceBoundsViolations` and `fallbacks`, and zero crashes/hangs on all ten runs; Leg B ran seed 7 through two independent `node` processes to a byte-identical normalised action sequence, and Leg C reproduced that same digest a third time via `--brain recorded` replay, so the determinism requirement is met with the pinned/nondeterministic boundary documented rather than asserted. Along the way this task found and fixed two defects in the T-154 driver rather than routing around them (F-155-2's `--out`/`--replay` path-resolution split, F-155-3's phantom `random`-brain claim in T-154's own Delivered note), shipped `randomBrain`/`actionSequence`/`firstDivergence` plus 8 new tests pinning the volume and determinism floors, and updated `docs/TESTING-STRATEGY.md` Part D and `PILOT.md` with the confirmed cadence and invocation commands. **Deliberate scope boundary:** the live `--brain anthropic` leg (F-155-1) — validating `pilot-anthropic.ts`'s real request shape, its `json_schema` action enum, its prompt-cache claim, and its per-step cost ledger against the actual API — was not run and is not claimed as passing; it needs an `ANTHROPIC_API_KEY` that is not in an agent's gift to supply, so it stays filed as an open, owner-actionable follow-up (table above) rather than being force-run against an unvalidated credential path or quietly dropped. It does not gate this task's own closure — the Accept criteria as written asks for the T-154 driver run at volume with a determinism check, both satisfied by the deterministic brains — but it does gate any future claim that the live-LLM request shape itself has been validated, and M7 stays open regardless per the 2026-08-04 CORRECTION above (T-162 is still `TODO`).
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
 ### T-162 · Build: the browser/DOM-level long-horizon check — the bridge blind spot gets an owner — `status: TODO` · `coder: opus` · `after: T-158`
 
