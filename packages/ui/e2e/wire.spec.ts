@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 import {
   createInitialState,
   startDay,
@@ -43,6 +44,10 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
   // Settle the dawn roll + ticker so DOM reads are stable, not mid-animation.
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 /** Start a fresh, deterministic career on a chosen seed, entirely through the UI. */

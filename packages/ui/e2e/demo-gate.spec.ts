@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 import { DEMO_FINAL_DAY } from '@spacerquest/content';
 import { createInitialState, createSave, startDay, type GameState } from '@spacerquest/engine';
 // T-147 · The two denominators below are DERIVED from the manifest, not typed.
@@ -86,6 +87,10 @@ async function capstoneLock(page: Page): Promise<string | null> {
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 // ---------------------------------------------------------------------------

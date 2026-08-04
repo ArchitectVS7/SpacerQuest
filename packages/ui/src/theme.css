@@ -332,6 +332,14 @@ body {
   gap: 10px;
   align-content: start;
 }
+/* T-187 · The plot group (chart + route preview + Confirm jump) is one rails
+   region; the off-lane sweep beneath it is another. The wrapper repeats the
+   parent grid's own gap so the pane looks byte-identical to before it existed. */
+.sm-plot {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
 .smsvg {
   width: 100%;
   height: auto;
@@ -2701,6 +2709,169 @@ body {
   width: auto;
   margin-bottom: 12px;
   border-color: var(--ember);
+}
+
+/* ---- T-187 · the first-turn walkthrough (rails + step card) ----
+   Visually heavier than `.onboarding` above (opaque, 2px frame, a step counter,
+   role="dialog"), because the owner asked for "on rails and with the pop ups".
+   No backdrop and no focus trap: the RAILS do the constraining, and a trap would
+   break the always-open hand/chrome escape.
+
+   THE FRAME IS CLICK-THROUGH; ONLY ITS BUTTONS TAKE POINTER EVENTS. Measured, not
+   assumed: with `pointer-events: auto` on the whole card, the step-3 card sat over
+   the Manifest Board and swallowed the very click it was telling the player to
+   make — a tutorial blocking its own lesson. The card is anchored to the column
+   OPPOSITE its target as well (see the anchor rules below), so the two fixes are
+   belt and braces: it neither covers the affordance nor could intercept it if the
+   viewport ever made them overlap.
+
+   Same one-phosphor idiom as the rest of the file: emphasis is weight and glow,
+   never a second hue (the palette question belongs to T-186). */
+.walkthrough {
+  position: absolute;
+  /* Above the contextual coach (82) and the succession beat (84) — a scripted
+     step must never end up occluded mid-run. It is BELOW the combat overlay's
+     own frame only in the sense that it is not mounted at all while an encounter
+     stands (`railsSuspended`). */
+  z-index: 86;
+  width: min(400px, 86vw);
+  border: 2px solid var(--amber);
+  background: linear-gradient(180deg, #241706, #0e0a05);
+  box-shadow: var(--glow);
+  padding: 13px 15px;
+  display: grid;
+  gap: 6px;
+  /* Click-through frame — see the block comment above for the measurement. */
+  pointer-events: none;
+}
+.walkthrough .wt-acts button {
+  pointer-events: auto;
+}
+.wt-counter {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--amber-dim);
+}
+.wt-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.wt-what {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ember);
+  line-height: 1.45;
+}
+.wt-why {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--amber);
+  line-height: 1.4;
+  opacity: 0.86;
+}
+.wt-acts {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.wt-skip,
+.wt-next {
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+.wt-next {
+  border-color: var(--ember);
+  box-shadow: var(--glow);
+}
+.wt-skip:hover,
+.wt-next:hover {
+  border-color: var(--ember);
+  box-shadow: var(--glow);
+}
+/* Anchor the card BESIDE the affordance its step teaches — on the column
+   opposite it, never on top of it. The manifest and the port ledger live in the
+   right column, so their cards sit left; the starmap and the off-lane sweep live
+   in the left column, so their cards sit right. Only one card is ever mounted,
+   so these never collide with each other. */
+.walkthrough[data-walkthrough-anchor='hand'] {
+  left: 50%;
+  bottom: 150px;
+  transform: translateX(-50%);
+}
+.walkthrough[data-walkthrough-anchor='manifest'],
+.walkthrough[data-walkthrough-anchor='trade'] {
+  left: 26px;
+  top: 120px;
+}
+.walkthrough[data-walkthrough-anchor='starmap'] {
+  right: 26px;
+  top: 120px;
+}
+/* The Hangout launcher is on the bezel (top right) and its panel is centred at
+   the bottom — the top-left corner is clear of both. */
+.walkthrough[data-walkthrough-anchor='hangout'] {
+  left: 26px;
+  top: 66px;
+}
+@media (max-width: 720px) {
+  .walkthrough[data-walkthrough-anchor='manifest'],
+  .walkthrough[data-walkthrough-anchor='trade'],
+  .walkthrough[data-walkthrough-anchor='starmap'],
+  .walkthrough[data-walkthrough-anchor='hangout'] {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    top: auto;
+    bottom: 210px;
+  }
+}
+/* The rails themselves. `inert` already does the WORK (no pointer events, no
+   focus, no AX exposure); these two rules are purely how it READS. */
+[data-rails-off='1'] {
+  opacity: 0.26;
+}
+[data-rails-active='1'] {
+  outline: 1px solid var(--ember);
+  outline-offset: 2px;
+  box-shadow: var(--glow);
+}
+/* The pinned destination on step 4 — a slow pulse on the one node that will take
+   the click, motion-gated like every other animation in this file. */
+.smsys[data-rails-target='1'] .smdot {
+  fill: var(--ember-hi);
+}
+@media not (prefers-reduced-motion: reduce) {
+  .smsys[data-rails-target='1'] .smdot {
+    animation: wt-pulse 1.6s ease-in-out infinite;
+  }
+}
+@keyframes wt-pulse {
+  0%,
+  100% {
+    r: 5;
+    opacity: 1;
+  }
+  50% {
+    r: 8;
+    opacity: 0.55;
+  }
+}
+.smsys[data-rails-locked='1'] {
+  opacity: 0.3;
 }
 
 /* ---- guild-letter letterhead treatment ---- */

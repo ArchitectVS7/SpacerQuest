@@ -1352,7 +1352,7 @@ the owner to close via the scripted pass above, the same way T-157 closed. Orche
 graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I planned from
 the real sources: `packages/ui/src/sound.ts`, `store.ts`, `App.tsx`, ` · attempts=1/4.`
 
-### T-187 · No literal walked-through first turn — the existing onboarding coach is contextual, not sequenced — `status: TODO` · `coder: opus` · `after: —`
+### T-187 · No literal walked-through first turn — the existing onboarding coach is contextual, not sequenced — `status: DONE` · `coder: opus` · `after: —`
 
 **ORDERED ABOVE T-186 (2026-08-03) — same reason T-154 was moved above T-158.** T-186 is a human
 ruling gate and halts the whole run when reached; this task has no dependency on it, so it stays
@@ -1378,6 +1378,51 @@ does not remove or replace T-311's later contextual coaching (the two systems ca
 scoped to turn one/two only); an explicit "Skip tutorial" affordance exists for a returning/expert
 player load; and a fresh-profile playtest (owner or LLM pilot) confirms a first-time player reaches
 "collect the contract" and "play one Liar's Dice hand" without asking what to do next.
+
+**Delivered (2026-08-03).** `packages/ui/src/walkthrough.ts` — a NEW module (not an addition to
+`format.ts`), so "this did not replace T-311" is greppable. It owns `WALKTHROUGH_STEPS` (the seven
+scripted steps, each with a `what` AND a `why`), `railsAllows` / `railsSuspended` /
+`railsHighlights`, `nextWalkthroughFlags` and a TOTAL `parseWalkthrough`. Readers:
+`App.tsx`'s `WalkthroughCard` + `railsProps` (which stamps React 19's first-class `inert` on every
+non-scripted region — manifest, starmap plot, explore sweep, the four trade ledger blocks, the fuel
+depot, ship pane, Hangout switch + panel, wire), and `store.ts`'s `walkthrough` field with
+`ackWalkthroughStep` / `skipWalkthrough` / `restartWalkthrough`.
+
+Scope ruling honoured: **pure UI presentation** — `packages/ui` only, no engine, no content. So
+`rulesFingerprint` does not move and NO capstone / `balance:extract` / sweep is owed. The record is
+CLIENT meta-state (`sq.walkthrough.v1`), exactly like `onboardingSeen` — not `GameState`, so
+`CURRENT_SAVE_VERSION` stays 12 and no migration is owed (stated in the module header).
+
+Decisions worth carrying forward:
+- **Completion signals are monotone one-shot flags, never live predicates.** Deriving "signed" from
+  `player.activeContract != null` would regress the pointer to step 3 the instant delivery nulls the
+  contract. Guarded by a named unit test ("the trap").
+- **Step 5 is ack-only, with `delivered` recorded but NOT gating.** A patrol confiscation or a
+  forfeited hold means the jump landed and the delivery did not; gating would strand the player with
+  no action that could ever complete the step.
+- **`hand` and `chrome` are open on EVERY step**, and the rails go fully transparent whenever the
+  ENGINE has already constrained the player (`encounter` / `dareHand` / aftermath / succession /
+  patrol scan). There is no state the rails can create that the player cannot leave.
+- **The card's FRAME is click-through; only its two buttons take pointer events.** Measured, not
+  assumed: the first e2e run caught the step-3 card sitting over the Manifest Board and swallowing
+  the very click it was telling the player to make. The card is also anchored to the column opposite
+  its target now. Rails do the constraining; the popup does the instructing.
+- **Arming rule is the "returning/expert player" clause**: `init()` arms only with no save AND a
+  never-run record; `newGame` arms only from `off`; a slot load / import RETIRES a running one.
+  Settings → `set-replay-walkthrough` is the way back.
+
+Tests: `packages/ui/src/__tests__/walkthrough.test.ts` (39 vitest cases — script shape, monotone
+pointer, event folding, rails totality, dead-end escapes, suspension, total parse) and
+`packages/ui/e2e/walkthrough.spec.ts` (6 Playwright cases; test A IS the Accept's fresh-profile
+playtest, mechanised — virgin context, `goto('/')`, every action through the affordance the card
+names, reaching "collect the payout" and a played-out Liar's Dice hand, ending `status:"done"`).
+The rails changed what a virgin-profile boot looks like, so `e2e/support/career.ts` gained
+`skipFirstTurnWalkthrough(page)` and all 33 other specs declare they are not testing the first-time
+flow through it — one shared stamp, no copy-paste, no weakened assertions. Gate: `npm test`
+(447 engine + 325 ui), `npx tsc -b`, `npm run lint`, `npm run format:check`, 124/124 e2e and 4/4
+demo e2e, all green.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root; oriented directly from `TASKS.md`, `packages/ui/src/{App.tsx,format.ts,store.ts}` and the T-311 e2e. · attempts=1/4.
 
 ### T-186 · Visual identity reads as monochrome sameness — resolve the tension with the PRD's committed CRT-amber pillar — `status: TODO` · `coder: opus` · `after: —` · `[BLOCKED BY = Owner ruling]`
 

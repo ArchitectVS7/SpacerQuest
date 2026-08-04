@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 
 // T-308 acceptance, driven entirely through the cockpit (nothing calls the
 // engine directly): buy an upgrade and watch the manifest/fuel instruments
@@ -12,6 +13,10 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 async function spentCount(page: Page): Promise<number> {

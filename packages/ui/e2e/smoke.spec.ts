@@ -1,10 +1,15 @@
 import { test, expect } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 
 // T-301 boot-smoke: the cockpit boots to a playable day, the dawn roll is
 // visible, and the day-advance control actually advances the engine.
 test.beforeEach(async ({ page }) => {
   // Fresh career every run — clear any autosave the store may have persisted.
   await page.addInitScript(() => window.localStorage.clear());
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 test('cockpit boots to a playable day', async ({ page }) => {

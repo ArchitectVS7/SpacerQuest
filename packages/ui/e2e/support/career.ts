@@ -50,6 +50,38 @@ import { dirname, join } from 'node:path';
  *  day 1 and again on day 30 — nothing in a clean career pays it down early. */
 export const GUILD_MARKER = 25000;
 
+// ---- T-187 · the first-turn walkthrough stamp -----------------------------
+//
+// WHY EVERY SPEC IN THIS SUITE NEEDS THIS. T-187 arms a scripted, on-rails
+// seven-step walkthrough for a genuinely first-time player — no save in storage,
+// or a New Game on a profile that has never run it. That is EXACTLY the boot
+// almost every spec in `e2e/` uses, and while the rails are up the non-scripted
+// panes are `inert`, so a spec that goes straight for the manifest or the
+// shipyard would be clicking a dead subtree.
+//
+// The honest repair is to declare, per spec, that it is NOT testing the
+// first-time flow — one shared stamp rather than twenty copies of the same
+// literal. `e2e/walkthrough.spec.ts` deliberately does not use this: it is the
+// one suite that boots the walkthrough armed and drives it.
+//
+// Applied as an `addInitScript`, so it re-lands on `page.reload()` too; it writes
+// ONLY the walkthrough key, so a spec's own persisted save / onboarding record
+// survives the reboot untouched (the combat-spec gotcha).
+
+/** The key `store.ts` persists the walkthrough record under. */
+export const WALKTHROUGH_KEY = 'sq.walkthrough.v1';
+
+/** Declare this page a returning player's: the first-turn walkthrough is
+ *  retired before the app's module scope ever reads storage. Call it in
+ *  `beforeEach`, AFTER any `localStorage.clear()` init script (init scripts run
+ *  in the order they were added). */
+export async function skipFirstTurnWalkthrough(page: Page): Promise<void> {
+  await page.addInitScript(([key, value]) => window.localStorage.setItem(key, value), [
+    WALKTHROUGH_KEY,
+    JSON.stringify({ v: 1, status: 'skipped', acked: {}, flags: {} }),
+  ] as const);
+}
+
 // ---- the run report -------------------------------------------------------
 
 export interface DayRecord {

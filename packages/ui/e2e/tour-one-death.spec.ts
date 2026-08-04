@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 import {
   applyDisposition,
   applyReputation,
@@ -184,6 +185,10 @@ function wreckedCareer(seed: number, opts: { lifeSupportCritical?: boolean } = {
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 /** Every first-time coach id in `format.ts` ONBOARDING_PROMPTS. */

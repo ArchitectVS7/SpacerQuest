@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 import { DARE_MIN_WAGER } from '@spacerquest/content';
 
 // ---------------------------------------------------------------------------
@@ -247,6 +248,10 @@ test.beforeEach(async ({ page }) => {
   // A DEFAULT mixer for every test: these assert the shipped defaults produce
   // sound, so a leftover `sq.vol.master=0` from a sibling spec must not decide it.
   await page.addInitScript(() => window.localStorage.clear());
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 test('the AudioContext is running from the first genuine gesture', async ({ page }) => {

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 
 // T-303: the signature interaction. The dawn hand is honest and visible — a
 // specific die is assigned to a specific action, every check shows its full
@@ -11,6 +12,10 @@ test.beforeEach(async ({ page }) => {
   // Reduced motion settles the dawn roll immediately, so the displayed die face
   // equals the engine's dealt value the instant we read it (no scramble flake).
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 /** The visible face value of the die at index `i` (first span holds the number). */

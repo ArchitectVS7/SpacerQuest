@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 import { FIGHT_FUEL_COST } from '@spacerquest/content';
 
 // T-307 acceptance: the combat overlay is a full-screen instrument driven end to
@@ -97,6 +98,10 @@ test.beforeEach(async ({ page }) => {
   // Settle the dawn-roll scramble so a die's displayed face equals its dealt
   // value the instant we read it (same pattern as dawn-hand/starmap specs).
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 async function newGameSeed(page: Page, seed: number): Promise<void> {

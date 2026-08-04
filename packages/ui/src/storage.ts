@@ -231,9 +231,10 @@ export interface StorageWindow {
  */
 export const MIGRATION_MARKER_KEY = 'sq.migrated.from-localstorage.v1';
 
-/** Every cockpit key lives under this prefix — `store.ts`'s nine
+/** Every cockpit key lives under this prefix — `store.ts`'s ten
  *  (`sq.save.v1`, `sq.save.v1.corrupt`, `sq.save.seed`, `sq.fx`,
- *  `sq.onboarding.v1`, `sq.reduced-motion`, `sq.text-size`, `sq.slot.N.v1`,
+ *  `sq.onboarding.v1`, `sq.walkthrough.v1` (T-187), `sq.reduced-motion`,
+ *  `sq.text-size`, `sq.slot.N.v1`,
  *  `sq.slot.N.meta`) and `sound.ts`'s five (`sq.vol.*` — master/sfx/ambient and,
  *  since T-185, `music` — plus `sq.audio.muted`). The
  *  migration copies by prefix rather than by an enumerated list so a key added

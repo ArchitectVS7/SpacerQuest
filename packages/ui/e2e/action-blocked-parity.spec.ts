@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 
 // T-1604a · `ActionBlocked` UI/protocol parity — the `active-encounter` mirror.
 //
@@ -54,6 +55,10 @@ const BLOCKABLE = [
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 async function newGameSeed(page: Page, seed: number): Promise<void> {

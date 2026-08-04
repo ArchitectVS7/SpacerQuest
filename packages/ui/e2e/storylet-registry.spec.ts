@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 
 // T-309: the storylet & registry UX. Storylets present as a prose panel in the
 // cockpit, each choice showing its authored requirement/cost; a choice whose
@@ -10,6 +11,10 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
   // Reduced motion settles the dawn roll immediately (no scramble flake).
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 /** T-1406 · Open a storylet from its diegetic opener (a hold/manifest line, a

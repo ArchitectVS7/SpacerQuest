@@ -14,6 +14,11 @@
 - Then everything halts for the first full human playthrough: pacing, dice tension, and
   two open design calls (combat's depth, how long a grudge should last) get judged by
   feel, with the numbers laid out beside the controls
+- A brand-new captain is now walked through their first turn on rails: read the dawn
+  hand, arm a die, sign a job, make the jump, collect the payout, sweep off-lane and
+  play a hand of Liar's Dice — seven steps, each one explained and each one waiting
+  for you. Everything not in the script sits dark until it's your turn to use it, and
+  "Skip tutorial" is on every card if you'd rather just fly
 
 ## 0.5.2
 - Explore and Socialize redesign arc

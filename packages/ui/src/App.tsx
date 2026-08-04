@@ -71,6 +71,10 @@ import {
   dismissAftermath,
   dismissSuccession,
   dismissOnboarding,
+  // T-187 · the first-turn walkthrough's three player controls.
+  ackWalkthroughStep,
+  skipWalkthrough,
+  restartWalkthrough,
   dismissRecovery,
   standDown,
   toggleFx,
@@ -172,6 +176,20 @@ import {
   type WireLogEntry,
   type StoryletChoice,
 } from './format';
+// T-187 · The first-turn walkthrough's pure rules — the script, the rails
+// predicate and the card copy. All presentation; see the module header for why it
+// coexists with (and never replaces) T-311's contextual coach above.
+import {
+  currentWalkthroughStep,
+  railsAllows,
+  railsHighlights,
+  railsSuspended,
+  walkthroughActive,
+  walkthroughCardCopy,
+  walkthroughJumpTarget,
+  WALKTHROUGH_STEP_COUNT,
+  type RailsRegion,
+} from './walkthrough';
 // T-1701a · Which store the cockpit is actually running against, and where its
 // saves live. `storageBackend` selects the right noun in the two storage-failure
 // sentences ("this browser" vs "the game"); `saveLocation` is the path the
@@ -369,6 +387,28 @@ function SettingsPanel({ state, onClose }: { state: CockpitState; onClose: () =>
       <div className="set-section">
         <span className="set-head">Audio</span>
         <AudioMixer />
+      </div>
+
+      {/* T-187 · The walkthrough's escape hatch in the other direction. Resetting
+          the record to `off` is the ONE state `newGame` re-arms from, so this
+          promises a fresh career on rails rather than dropping rails over a
+          career already in flight — which is what the label says. */}
+      <div className="set-section">
+        <span className="set-head">Tutorial</span>
+        <div className="set-row">
+          <span className="set-label">Replay first-turn walkthrough</span>
+          <button
+            className="btn small"
+            data-testid="set-replay-walkthrough"
+            onClick={restartWalkthrough}
+          >
+            Arm
+          </button>
+        </div>
+        <span className="set-note">
+          Arms the seven-step walkthrough on your next New Game. Your current career is not
+          interrupted.
+        </span>
       </div>
 
       <StorageRow />
@@ -988,6 +1028,7 @@ export function App() {
               <button
                 className="hangout-launch"
                 data-testid="hangout-toggle"
+                {...railsProps(s, 'hangout')}
                 aria-expanded={hangoutPanelOpen}
                 onClick={() => setHangoutPanelOpen((v) => !v)}
               >
@@ -1018,7 +1059,7 @@ export function App() {
             <TradePane state={s} onOpenStorylet={setOpenStoryletId} />
           </div>
         </div>
-        <Wire game={s.game} onOpenStorylet={setOpenStoryletId} />
+        <Wire game={s.game} onOpenStorylet={setOpenStoryletId} railsOff={railsOff(s, 'wire')} />
         {/* T-1406 · Reachability audit node — a visually-hidden reflection of the
             engine's own live non-resolution offer set. NOT a metric stub: it is
             the same list the old launcher counted, rendered off-screen so the
@@ -1053,6 +1094,11 @@ export function App() {
             handles hand / manifest / starmap anchors. Only one prompt shows at a
             time (the selector guarantees it), so the two mounts never collide. */}
         <OnboardingCallout state={s} where="screen" />
+        {/* T-187 · The scripted first-turn walkthrough's step card. A SIBLING of
+            the contextual coach, never a replacement: it only ever renders on a
+            genuinely first-time career, and while it is up the coach above
+            stands down (see `OnboardingCallout`'s first line). */}
+        <WalkthroughCard state={s} />
         <CombatOverlay state={s} />
         {ceremony && <ResolutionCeremony state={s} view={ceremony} />}
         {/* T-1602b · The death beat. Mounted OUTSIDE the combat overlay on
@@ -1106,6 +1152,92 @@ function SaveWriteFailedNotice() {
   );
 }
 
+// ===========================================================================
+// T-187 · THE FIRST-TURN WALKTHROUGH — the rails and the step card.
+// ===========================================================================
+//
+// THE RAILS. `railsOff(state, region)` is the single predicate every guarded node
+// asks. A `true` answer puts React 19's first-class `inert` prop on that node,
+// which kills pointer events, keyboard focus AND accessibility-tree exposure for
+// the whole subtree — that is what "the player's next legal action is constrained
+// to the scripted one" actually means, and it is far more honest than a CSS
+// overlay that merely LOOKS unclickable. `data-rails-off="1"` rides along as the
+// CSS hook and the e2e's assertion target.
+//
+// NESTING IS LOAD-BEARING: an `inert` ancestor cannot be un-inerted by a
+// descendant, so the attribute goes on the narrowest node that matches a region —
+// never on `.pane.starmap` (which contains both the plot controls and the
+// off-lane sweep, two different regions) and never on the Trade pane's root
+// (whose fuel depot is a region of its own that steps 4 and 6 must be able to
+// open).
+function railsOff(state: CockpitState, region: RailsRegion): boolean {
+  return !railsAllows(state.walkthrough, state, region);
+}
+
+/** The attributes every rails-guarded node spreads: `inert` + the dim hook when
+ *  the region is closed, the highlight hook when it is the one the current step
+ *  is asking for, and NOTHING at all otherwise — so a cockpit with no walkthrough
+ *  running renders exactly the markup it always did. */
+function railsProps(
+  state: CockpitState,
+  region: RailsRegion,
+): { inert?: boolean; 'data-rails-off'?: '1'; 'data-rails-active'?: '1' } {
+  if (railsOff(state, region)) return { inert: true, 'data-rails-off': '1' };
+  if (railsHighlights(state.walkthrough, state, region)) return { 'data-rails-active': '1' };
+  return {};
+}
+
+/**
+ * The step popup — the "pop ups" half of the owner's ask.
+ *
+ * Visually heavier than `.onboarding` — opaque, 2px frame, a "STEP n OF 7"
+ * counter, `role="dialog"` — but there is NO backdrop, NO focus trap, and (as of
+ * the first e2e run) NO pointer capture on the frame itself: only its two buttons
+ * take clicks. That last one is a MEASURED fix, not a style preference — a card
+ * that swallows the click it is telling the player to make is a tutorial blocking
+ * its own lesson. The constraining is the RAILS' job, and the always-open
+ * `hand` / `chrome` regions are what keep this from ever soft-locking a career.
+ *
+ * Renders nothing when the walkthrough is not running, when the ENGINE has taken
+ * over the screen (`railsSuspended` — a live encounter, a hand at the tables, an
+ * aftermath, a death, a patrol scan), or when all seven steps are done.
+ */
+function WalkthroughCard({ state }: { state: CockpitState }) {
+  if (!walkthroughActive(state.walkthrough) || railsSuspended(state)) return null;
+  const step = currentWalkthroughStep(state.walkthrough);
+  if (!step) return null;
+  const copy = walkthroughCardCopy(state.walkthrough, step, state.game);
+  return (
+    <aside
+      className="walkthrough"
+      data-testid="walkthrough"
+      data-walkthrough-step={step.id}
+      data-walkthrough-index={step.index}
+      data-walkthrough-anchor={step.anchor}
+      role="dialog"
+      aria-live="polite"
+      aria-label="First-turn walkthrough"
+    >
+      <span className="wt-counter">
+        STEP {step.index} OF {WALKTHROUGH_STEP_COUNT}
+      </span>
+      <b className="wt-title">{step.title}</b>
+      <p className="wt-what">{copy.what}</p>
+      <p className="wt-why">{copy.why}</p>
+      <div className="wt-acts">
+        <button className="wt-skip" data-testid="walkthrough-skip" onClick={skipWalkthrough}>
+          Skip tutorial
+        </button>
+        {step.ack && (
+          <button className="wt-next" data-testid="walkthrough-next" onClick={ackWalkthroughStep}>
+            Next
+          </button>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 // The contextual onboarding coach (T-311). A NON-MODAL callout anchored to the
 // real affordance it teaches — no backdrop, no focus trap, nothing disabled, so
 // the player can act on the affordance while it is up (which auto-dismisses it).
@@ -1117,6 +1249,14 @@ function SaveWriteFailedNotice() {
 // (F-121-2) — so a prompt routed to a closed-panel mount can never claim a
 // different mount's slot and render nowhere.
 function OnboardingCallout({ state, where }: { state: CockpitState; where: OnboardingMount }) {
+  // T-187 · The ONE line of interaction between the two teaching systems: while
+  // the scripted first-turn walkthrough is on rails, the contextual coach stands
+  // down at every mount, because two coach cards on screen at once is the failure
+  // mode. Nothing else changes — `reconcileOnboarding` keeps running underneath,
+  // so the delivery-flow prompts auto-dismiss as the scripted actions land, and
+  // the moment the walkthrough finishes or is skipped this coach resumes for
+  // every prompt still unseen.
+  if (walkthroughActive(state.walkthrough)) return null;
   // The screen mount is suppressed while the combat overlay covers the cockpit,
   // so a lower-priority screen prompt can never render behind the overlay.
   if (where === 'screen' && state.game.encounter != null) return null;
@@ -2054,6 +2194,10 @@ function HangoutPanel({
       data-testid="hangout-panel"
       role="dialog"
       aria-label="Spacers Hangout"
+      // T-187 · Open only on step 7. `railsSuspended` covers a LIVE hand
+      // (`game.dareHand`), so once the cards are dealt the table is fully
+      // playable with no rails over it — which is what step 7 is asking for.
+      {...railsProps(state, 'hangout')}
     >
       <header className="hp-head">
         {/* T-132 (F-101-6) · The house's AUTHORED name, in place of the generic
@@ -3348,6 +3492,12 @@ function Starmap({ state }: { state: CockpitState }) {
     setTarget(null);
   };
 
+  // T-187 · On the walkthrough's step 4 the rails PIN the destination to the
+  // hold's own contract, so the scripted jump ends in a real payout for step 5 to
+  // point at rather than a jump to nowhere. Null on every other step and whenever
+  // the walkthrough is not running, which is the starmap's ordinary "no lock".
+  const railsTarget = walkthroughJumpTarget(state.walkthrough, game);
+
   return (
     <section className="pane starmap">
       <header>
@@ -3355,145 +3505,162 @@ function Starmap({ state }: { state: CockpitState }) {
         <span className="tag">{visited.size} CHARTED</span>
       </header>
       <div className="body">
-        <svg
-          className="smsvg"
-          viewBox={proj.viewBox}
-          role="img"
-          aria-label="Starmap"
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {hereNode && proj.ringUnits > 0 && (
-            <circle
-              className="fuel-ring"
-              data-testid="fuel-ring"
-              data-radius-units={proj.ringUnits}
-              cx={hereNode.sx}
-              cy={hereNode.sy}
-              r={proj.ringRadius}
-            />
-          )}
-          {/* Ring collapses to nothing at zero fuel — still expose the radius. */}
-          {hereNode && proj.ringUnits === 0 && (
-            <circle
-              className="fuel-ring empty"
-              data-testid="fuel-ring"
-              data-radius-units={0}
-              cx={hereNode.sx}
-              cy={hereNode.sy}
-              r={0}
-            />
-          )}
-          {hereNode && targetNode && showPreview && (
-            <line
-              className={preview.reachable ? 'route-line' : 'route-line blocked'}
-              x1={hereNode.sx}
-              y1={hereNode.sy}
-              x2={targetNode.sx}
-              y2={targetNode.sy}
-            />
-          )}
-          {proj.nodes.map((n) => {
-            const isHere = n.id === here;
-            const reachable = isHere ? true : routePreview(game, n.id).reachable;
-            const clickable = !isHere && reachable;
-            // T-1505b · The event horizon reads differently from a port. The node
-            // is only ever in `proj.nodes` at all once the crossing stake is paid
-            // (format.ts `starmapProjection`), so the tag doubles as the visible
-            // proof the gate lifted; everything else about it (reachability, the
-            // route preview, Confirm jump) is the ordinary travel path, reused.
-            const isCrossing = n.id === NEMESIS_SYSTEM_ID;
-            const cls = [
-              'smsys',
-              isHere ? 'here' : visited.has(n.id) ? 'visited' : 'unvisited',
-              n.isRim ? 'rim' : '',
-              isCrossing ? 'crossing' : '',
-              !isHere && !reachable ? 'unreachable' : '',
-              target === n.id ? 'sel' : '',
-            ]
-              .filter(Boolean)
-              .join(' ');
-            const pipCount = npcCounts.get(n.id) ?? 0;
-            return (
-              <g
-                key={n.id}
-                className={cls}
-                data-testid="starmap-system"
-                data-system-id={n.id}
-                data-crossing={isCrossing ? '1' : undefined}
-                data-reachable={reachable ? '1' : '0'}
-                data-visited={visited.has(n.id) ? '1' : '0'}
-                data-here={isHere ? '1' : '0'}
-                aria-label={n.name}
-                aria-disabled={clickable ? undefined : 'true'}
-                onClick={clickable ? () => setTarget(n.id) : undefined}
-                transform={`translate(${n.sx} ${n.sy})`}
-              >
-                <circle className="smdot" r={5} />
-                {eraSystems.has(n.id) && (
-                  <g className="era-badge" data-testid="era-badge" transform="translate(6 -6)">
-                    <title>{game.eraEvent?.defId ?? 'Era event'}</title>
-                    <rect x={-3} y={-3} width={6} height={6} rx={1} />
-                  </g>
-                )}
-                {Array.from({ length: pipCount }).map((_, i) => (
-                  <circle
-                    key={i}
-                    className="npc-pip"
-                    data-testid="npc-pip"
-                    cx={-6 + i * 4}
-                    cy={-9}
-                    r={1.6}
-                  />
-                ))}
-                <text className="smlabel" x={0} y={16}>
-                  {n.name}
-                </text>
-                <rect className="smhit" x={-hitW / 2} y={-12} width={hitW} height={32} />
-              </g>
-            );
-          })}
-        </svg>
+        {/* T-187 · The PLOT group — the chart and the route/commit readout — is
+            the `starmap` rails region. It is a wrapper INSIDE `.pane.starmap`
+            rather than the pane itself, deliberately: the off-lane sweep below is
+            a region of its own (step 6), and an `inert` ancestor could never be
+            un-inerted by it. */}
+        <div className="sm-plot" {...railsProps(state, 'starmap')}>
+          <svg
+            className="smsvg"
+            viewBox={proj.viewBox}
+            role="img"
+            aria-label="Starmap"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {hereNode && proj.ringUnits > 0 && (
+              <circle
+                className="fuel-ring"
+                data-testid="fuel-ring"
+                data-radius-units={proj.ringUnits}
+                cx={hereNode.sx}
+                cy={hereNode.sy}
+                r={proj.ringRadius}
+              />
+            )}
+            {/* Ring collapses to nothing at zero fuel — still expose the radius. */}
+            {hereNode && proj.ringUnits === 0 && (
+              <circle
+                className="fuel-ring empty"
+                data-testid="fuel-ring"
+                data-radius-units={0}
+                cx={hereNode.sx}
+                cy={hereNode.sy}
+                r={0}
+              />
+            )}
+            {hereNode && targetNode && showPreview && (
+              <line
+                className={preview.reachable ? 'route-line' : 'route-line blocked'}
+                x1={hereNode.sx}
+                y1={hereNode.sy}
+                x2={targetNode.sx}
+                y2={targetNode.sy}
+              />
+            )}
+            {proj.nodes.map((n) => {
+              const isHere = n.id === here;
+              const reachable = isHere ? true : routePreview(game, n.id).reachable;
+              const clickable = !isHere && reachable;
+              // T-1505b · The event horizon reads differently from a port. The node
+              // is only ever in `proj.nodes` at all once the crossing stake is paid
+              // (format.ts `starmapProjection`), so the tag doubles as the visible
+              // proof the gate lifted; everything else about it (reachability, the
+              // route preview, Confirm jump) is the ordinary travel path, reused.
+              const isCrossing = n.id === NEMESIS_SYSTEM_ID;
+              // T-187 · With a rails target pinned (step 4), every OTHER node is a
+              // dead click and says so in the DOM — the scripted jump is the
+              // contract's own destination or nothing.
+              const railsLocked = railsTarget !== null && n.id !== railsTarget;
+              const cls = [
+                'smsys',
+                isHere ? 'here' : visited.has(n.id) ? 'visited' : 'unvisited',
+                n.isRim ? 'rim' : '',
+                isCrossing ? 'crossing' : '',
+                !isHere && !reachable ? 'unreachable' : '',
+                target === n.id ? 'sel' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
+              const pipCount = npcCounts.get(n.id) ?? 0;
+              return (
+                <g
+                  key={n.id}
+                  className={cls}
+                  data-testid="starmap-system"
+                  data-system-id={n.id}
+                  data-crossing={isCrossing ? '1' : undefined}
+                  data-reachable={reachable ? '1' : '0'}
+                  data-visited={visited.has(n.id) ? '1' : '0'}
+                  data-here={isHere ? '1' : '0'}
+                  data-rails-locked={railsLocked ? '1' : undefined}
+                  data-rails-target={railsTarget === n.id ? '1' : undefined}
+                  aria-label={n.name}
+                  aria-disabled={clickable && !railsLocked ? undefined : 'true'}
+                  onClick={clickable && !railsLocked ? () => setTarget(n.id) : undefined}
+                  transform={`translate(${n.sx} ${n.sy})`}
+                >
+                  <circle className="smdot" r={5} />
+                  {eraSystems.has(n.id) && (
+                    <g className="era-badge" data-testid="era-badge" transform="translate(6 -6)">
+                      <title>{game.eraEvent?.defId ?? 'Era event'}</title>
+                      <rect x={-3} y={-3} width={6} height={6} rx={1} />
+                    </g>
+                  )}
+                  {Array.from({ length: pipCount }).map((_, i) => (
+                    <circle
+                      key={i}
+                      className="npc-pip"
+                      data-testid="npc-pip"
+                      cx={-6 + i * 4}
+                      cy={-9}
+                      r={1.6}
+                    />
+                  ))}
+                  <text className="smlabel" x={0} y={16}>
+                    {n.name}
+                  </text>
+                  <rect className="smhit" x={-hitW / 2} y={-12} width={hitW} height={32} />
+                </g>
+              );
+            })}
+          </svg>
 
-        {showPreview && (
-          <div className="route-preview" data-testid="route-preview">
-            <div className="rp-head">
-              PLOT &#9656; <b>{systemName(target!)}</b>
+          {showPreview && (
+            <div className="route-preview" data-testid="route-preview">
+              <div className="rp-head">
+                PLOT &#9656; <b>{systemName(target!)}</b>
+              </div>
+              <div className="rp-grid">
+                <span className="rp-k">DISTANCE</span>
+                <span className="rp-v" data-testid="route-distance">
+                  {preview.distance}
+                </span>
+                <span className="rp-k">FUEL</span>
+                <span className="rp-v" data-testid="route-fuel">
+                  {preview.fuelCost}
+                </span>
+                <span className="rp-k">PILOT DC</span>
+                <span className="rp-v" data-testid="route-dc">
+                  {preview.dc}
+                </span>
+                <span className="rp-k">DANGER</span>
+                <span className="rp-v" data-testid="route-danger">
+                  {preview.dangerLevel}
+                </span>
+              </div>
+              <button
+                className="btn"
+                data-testid="confirm-jump"
+                disabled={!dieArmed || !preview.reachable}
+                onClick={commit}
+              >
+                {dieArmed ? 'Confirm jump' : 'Pick a die to jump'}
+              </button>
             </div>
-            <div className="rp-grid">
-              <span className="rp-k">DISTANCE</span>
-              <span className="rp-v" data-testid="route-distance">
-                {preview.distance}
-              </span>
-              <span className="rp-k">FUEL</span>
-              <span className="rp-v" data-testid="route-fuel">
-                {preview.fuelCost}
-              </span>
-              <span className="rp-k">PILOT DC</span>
-              <span className="rp-v" data-testid="route-dc">
-                {preview.dc}
-              </span>
-              <span className="rp-k">DANGER</span>
-              <span className="rp-v" data-testid="route-danger">
-                {preview.dangerLevel}
-              </span>
-            </div>
-            <button
-              className="btn"
-              data-testid="confirm-jump"
-              disabled={!dieArmed || !preview.reachable}
-              onClick={commit}
-            >
-              {dieArmed ? 'Confirm jump' : 'Pick a die to jump'}
-            </button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* T-1403 · Off-lane sweep. The starmap is a pure client of the engine's
             Explore action: the DC / fuel cost / effective modifier are read from
             the engine+content (explorationPreview), the sweep routes through the
             store's single `explore()` verb, and the loot / nav-check outcome reads
             below via `explorationOutcome` + the shared PILOT CheckBreakdown. */}
-        <div className="explore-sweep" data-testid="explore-panel">
+        <div
+          className="explore-sweep"
+          data-testid="explore-panel"
+          {...railsProps(state, 'explore')}
+        >
           <div className="es-head">OFF-LANE SWEEP</div>
           <div className="es-cost" data-testid="explore-cost">
             PILOT DC {sweep.dc} · FUEL {sweep.fuelCost} · NAV{' '}
@@ -3569,7 +3736,7 @@ function ShipPane({ state }: { state: CockpitState }) {
   const salvagedFittings = fittedModuleRows(game);
 
   return (
-    <section className="pane ship" data-testid="ship-pane">
+    <section className="pane ship" data-testid="ship-pane" {...railsProps(state, 'ship')}>
       <header>
         <h2>Ship &amp; Yard · {ship.isAstraxialHull ? 'Astraxial' : 'Junker'}</h2>
         <span className="tag">
@@ -4034,7 +4201,7 @@ function Manifest({ state }: { state: CockpitState }) {
   const dieVal =
     state.selectedDie !== null ? state.game.player.dawnHand?.dice[state.selectedDie] : undefined;
   return (
-    <section className="pane" style={{ flex: 1 }}>
+    <section className="pane" style={{ flex: 1 }} {...railsProps(state, 'manifest')}>
       <header>
         <h2>Manifest Board</h2>
         <span className="tag">
@@ -4223,7 +4390,11 @@ function TradePane({
             focused panel. The TOTAL classifier's default lands here, so a newly
             authored storylet always has a door — the reachability guarantee. */}
         {portOffers.length > 0 && (
-          <div className="ledger-block port-dispatches" data-testid="port-dispatches">
+          <div
+            className="ledger-block port-dispatches"
+            data-testid="port-dispatches"
+            {...railsProps(state, 'trade')}
+          >
             <div className="lb-head">PORT DISPATCHES</div>
             {portOffers.map((o) => (
               <StoryletOpener key={o.storyletId} offer={o} onOpen={onOpenStorylet} />
@@ -4246,6 +4417,10 @@ function TradePane({
           // without having to re-derive either from the board it already left.
           data-destination-id={active?.destination}
           data-fuel-cost={active ? routePreview(game, active.destination).fuelCost : undefined}
+          // T-187 · `inert` blocks interaction and focus but NEVER hides content:
+          // the hold, its destination and its bill stay fully legible while the
+          // rails are on, which is the whole point of step 5 pointing at them.
+          {...railsProps(state, 'trade')}
         >
           <div className="lb-head">
             ACTIVE CONTRACT
@@ -4318,7 +4493,11 @@ function TradePane({
 
         {/* Fuel depot — buy-fuel consumes a die (PRD §7), so the control mirrors
             the manifest's "assign a die" affordance and is never a dead click. */}
-        <div className="ledger-block fuel-depot" data-testid="fuel-depot">
+        <div
+          className="ledger-block fuel-depot"
+          data-testid="fuel-depot"
+          {...railsProps(state, 'fuel')}
+        >
           <div className="lb-head">FUEL DEPOT</div>
           <div className="lb-row">
             <span className="mono">
@@ -4367,7 +4546,11 @@ function TradePane({
 
         {/* Debt ledger — pay-down needs NO die (a ledger transfer, PRD §7.3),
             with the Guild marker's due-day countdown. */}
-        <div className="ledger-block debt-ledger" data-testid="debt-ledger">
+        <div
+          className="ledger-block debt-ledger"
+          data-testid="debt-ledger"
+          {...railsProps(state, 'trade')}
+        >
           <div className="lb-head">GUILD DEBT</div>
           {p.debt > 0 ? (
             <>
@@ -4410,7 +4593,11 @@ function TradePane({
         {/* Port authority (T-1405) — buy the stake you stand in, then watch its
             launch-fee income tick at dusk. Buy costs a die (die-costed like the
             shipyard); the income ledger below is the "watch income tick" surface. */}
-        <div className="ledger-block port-authority" data-testid="port-authority">
+        <div
+          className="ledger-block port-authority"
+          data-testid="port-authority"
+          {...railsProps(state, 'trade')}
+        >
           <div className="lb-head">PORT AUTHORITY</div>
           {ledger.current ? (
             <div className="port-current" data-testid="port-current">
@@ -4604,7 +4791,17 @@ function CheckReadout({
 // The Galactic Wire (T-306): a scrolling ticker (unchanged) PLUS a browsable
 // day-by-day log opened from the cap. Both are pure reads of the event log via
 // format.ts — the ticker shows the freshest headlines, the log the full history.
-function Wire({ game, onOpenStorylet }: { game: GameState; onOpenStorylet: (id: string) => void }) {
+function Wire({
+  game,
+  onOpenStorylet,
+  railsOff: off,
+}: {
+  game: GameState;
+  onOpenStorylet: (id: string) => void;
+  /** T-187 · The wire's bulletins open storylets, which is not a scripted step —
+   *  the whole strip goes inert while the first-turn walkthrough is on rails. */
+  railsOff: boolean;
+}) {
   const [logOpen, setLogOpen] = useState(false);
   const lines = wireLines(game);
   const items = lines.length > 0 ? lines : ['The wire is quiet. Roll the day and make some news.'];
@@ -4624,7 +4821,7 @@ function Wire({ game, onOpenStorylet }: { game: GameState; onOpenStorylet: (id: 
     </>
   );
   return (
-    <div className="wire">
+    <div className="wire" inert={off || undefined} data-rails-off={off ? '1' : undefined}>
       <div className="cap">
         <span className="dot" />
         GALACTIC WIRE
@@ -4885,7 +5082,7 @@ function HandDock({ state }: { state: CockpitState }) {
           : 'Pick a die, then assign it to an action.';
 
   return (
-    <div className="dock" data-hand-spent={handSpent ? '1' : '0'}>
+    <div className="dock" data-hand-spent={handSpent ? '1' : '0'} {...railsProps(state, 'hand')}>
       <div className="dlabel">
         Dawn Hand
         {mods.floor > 0 && (

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 
 // T-310 sound design. These tests exercise the mixer + autoplay policy through
 // the real UI (never the audio API directly). Playwright's Chromium has WebAudio,
@@ -15,6 +16,10 @@ test.beforeEach(async ({ page }) => {
       window.sessionStorage.setItem('sq.test.cleared', '1');
     }
   });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 test('no autoplay-policy console errors on first interaction', async ({ page }) => {

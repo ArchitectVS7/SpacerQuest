@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 import { createInitialState, startDay, createSave, type GameState } from '@spacerquest/engine';
 import { FENCE_REP_FLAG, PURCHASABLE_PORTS_BY_SYSTEM } from '@spacerquest/content';
 
@@ -63,6 +64,10 @@ test.beforeEach(async ({ page }) => {
   // the instant we read it. Each test injects its own fixture (Playwright gives
   // every test an isolated context, so localStorage starts empty — no clear needed).
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 /** Boot the store straight into a scenario via the save envelope, then navigate. */

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 // T-141 · The settled copy, imported from the SOURCE constant rather than
 // re-typed — the `settings-saves.spec.ts` / `credits.ts` precedent. A spec that
 // duplicated the sentence would go on passing after the sentence drifted from
@@ -74,6 +75,10 @@ test.describe('T-141 opt-in playtest logging', () => {
         window.sessionStorage.setItem('sq.test.cleared', '1');
       }
     });
+    // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+    // first-turn walkthrough BEFORE the first navigation, or its rails would make
+    // the panes below inert. See `support/career.ts`.
+    await skipFirstTurnWalkthrough(page);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     await newGameSeed(page, 424242);

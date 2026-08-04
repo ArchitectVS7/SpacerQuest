@@ -65,6 +65,19 @@ import * as playtest from './playtestLog';
 // engine's `promoteEdition` so the BUILD — never the save — decides which rules
 // apply. See `edition.ts`.
 import { BUILD_EDITION } from './edition';
+// T-187 · The first-turn walkthrough. Like `onboardingSeen`, its record is CLIENT
+// meta-state persisted beside the save and NEVER inside it — see the module
+// header for why no save migration is owed. The store is the only writer.
+import {
+  armedWalkthrough,
+  ackWalkthroughStep as ackWalkthroughRecord,
+  nextWalkthroughFlags,
+  parseWalkthrough,
+  serializeWalkthrough,
+  settleWalkthrough,
+  walkthroughActive,
+  type WalkthroughRecord,
+} from './walkthrough';
 
 /**
  * React to an action's emitted event stream — the store's ONE presentation-side
@@ -89,6 +102,26 @@ function reactToEvents(events: GameEvent[], committed: boolean): void {
   if (committed) sound.play('commit');
   for (const cue of sound.cuesForEvents(events)) sound.play(cue);
   steam.unlock(steam.achievementsForEvents(events, BUILD_EDITION));
+  // T-187 · THE THIRD CLIENT, folded in here for exactly the reason the two above
+  // are: this is the ONE funnel every one of the ~22 action thunks already calls,
+  // so the walkthrough's completion signals cost one edit rather than twenty-two
+  // and cannot be forgotten at a new call site. It runs AFTER the thunk's own
+  // `set()`, and only issues a second `set()` when the record actually changed —
+  // the honest cost of a single choke point.
+  advanceWalkthrough(events);
+}
+
+/**
+ * T-187 · Fold an action's events into the walkthrough record and persist/publish
+ * it if anything landed. A no-op unless the walkthrough is running.
+ */
+function advanceWalkthrough(events: GameEvent[]): void {
+  if (!walkthroughActive(state.walkthrough)) return;
+  const folded = nextWalkthroughFlags(events, state.walkthrough);
+  if (folded === state.walkthrough) return;
+  const next = settleWalkthrough(folded);
+  writeWalkthrough(next);
+  set({ walkthrough: next });
 }
 
 /**
@@ -117,6 +150,11 @@ function mirrorEarned(game: GameState): void {
 const SAVE_KEY = 'sq.save.v1';
 const FX_KEY = 'sq.fx';
 const ONBOARDING_KEY = 'sq.onboarding.v1';
+// T-187 · The first-turn walkthrough record. The `sq.` prefix is LOAD-BEARING:
+// the desktop shell's one-time migration copies web-profile keys BY PREFIX
+// (`storage.ts`), so this key rides along with the save and the settings for
+// free rather than needing its own migration clause.
+const WALKTHROUGH_KEY = 'sq.walkthrough.v1';
 const DEFAULT_SEED = 424242;
 
 // ---- T-312 settings & save-slot keys ------------------------------------
@@ -303,6 +341,27 @@ export interface CockpitState {
    */
   onboardingSeen: Record<string, true>;
   /**
+   * T-187 · The first-turn walkthrough — the scripted, on-rails seven-step run a
+   * brand-new career opens with (see `walkthrough.ts` for the whole decision
+   * record, including why it coexists with T-311's contextual coach above rather
+   * than replacing it).
+   *
+   * Like `onboardingSeen` / `fx` / `patrolScan` / `saveWriteFailed`, this is
+   * CLIENT presentation meta-state, NOT GameState — so a JSON round-trip of game
+   * state is unaffected, `CURRENT_SAVE_VERSION` does not move and NO save
+   * migration is owed. Persisted under `sq.walkthrough.v1`.
+   *
+   * ARMED ONLY FOR A GENUINELY FIRST-TIME PLAYER: `init()` arms it when there is
+   * no save at all AND the record has never run; `newGame` arms it when the
+   * record has never run. A booted save, a slot load and an imported career never
+   * arm it — that is the Accept's "returning/expert player" clause, discharged by
+   * the arming rule rather than by a button the veteran has to find.
+   *
+   * READERS: `App.tsx`'s `WalkthroughCard` (the step popup) and its `railsOff`
+   * helper (which `inert`s every non-scripted region).
+   */
+  walkthrough: WalkthroughRecord;
+  /**
    * T-312/T-1002. The current career's seed — the reader for the bezel display
    * AND the reproducibility metadata. Now persisted in the versioned save
    * envelope (engine `createSave`), recovered on load via `loadSave().seed`, with
@@ -473,6 +532,16 @@ function init(): CockpitState {
   // where no error boundary could catch it. On a fresh career this is an empty
   // list.
   mirrorEarned(game);
+  // T-187 · ARM THE FIRST-TURN WALKTHROUGH — but only on a genuinely virgin
+  // profile: the record has never run (`off`) AND `readSaveResult` found no save
+  // at all, which is exactly the boot that lands on the fresh DEFAULT_SEED career
+  // above. A player booting back into their autosave is by definition not a
+  // first-time player, so their cockpit is untouched. Persisted immediately so a
+  // reload mid-walkthrough resumes on the same step.
+  const storedWalkthrough = readWalkthrough();
+  const walkthrough =
+    storedWalkthrough.status === 'off' && loaded == null ? armedWalkthrough() : storedWalkthrough;
+  if (walkthrough !== storedWalkthrough) writeWalkthrough(walkthrough);
   return {
     game,
     selectedDie: null,
@@ -491,6 +560,7 @@ function init(): CockpitState {
     socialOutcome: null,
     patrolScan: null,
     onboardingSeen: readOnboarding(),
+    walkthrough,
     seed,
     reducedMotion: readReducedMotion(),
     textSize: readTextSize(),
@@ -965,6 +1035,36 @@ function readSlots(): SlotSummary[] {
 
 // ---- T-311 onboarding-seen persistence ----------------------------------
 
+// ---- T-187 first-turn walkthrough persistence ---------------------------
+// Guarded exactly like the onboarding pair above: storage may be blocked, and a
+// missing tutorial record is never worth a lost turn. `parseWalkthrough` is TOTAL
+// over any input (see its contract), so a corrupt value degrades to `off` rather
+// than throwing out of `init()`, which runs at module scope.
+
+function readWalkthrough(): WalkthroughRecord {
+  try {
+    return parseWalkthrough(storage.getItem(WALKTHROUGH_KEY));
+  } catch {
+    return parseWalkthrough(null);
+  }
+}
+function writeWalkthrough(record: WalkthroughRecord): void {
+  try {
+    storage.setItem(WALKTHROUGH_KEY, serializeWalkthrough(record));
+  } catch {
+    /* storage unavailable — non-fatal for play */
+  }
+}
+/** Retire a running walkthrough (a slot load / import replaced the career it was
+ *  scripting). `skipped`, not `off`: the player has played before, so it must not
+ *  re-arm on their next New Game either. A no-op when nothing was running. */
+function retireWalkthrough(): WalkthroughRecord {
+  if (!walkthroughActive(state.walkthrough)) return state.walkthrough;
+  const next: WalkthroughRecord = { ...state.walkthrough, status: 'skipped' };
+  writeWalkthrough(next);
+  return next;
+}
+
 function readOnboarding(): Record<string, true> {
   try {
     const raw = storage.getItem(ONBOARDING_KEY);
@@ -1052,6 +1152,14 @@ export function newGame(seed: number): void {
   // A fresh career re-teaches Tour One: wipe the onboarding-seen record so the
   // contextual prompts fire again from the top.
   writeOnboarding({});
+  // T-187 · A fresh career re-arms the first-turn walkthrough ONLY if it has
+  // never run. Once the player has finished it or skipped it, New Game does NOT
+  // put them back on rails — a captain rolling their fourth seed is not a
+  // first-time player, and re-teaching them would be the "modal tutorial wall"
+  // T-311 exists to avoid. The Settings row (`restartWalkthrough`) is the
+  // deliberate way back.
+  const walkthrough = readWalkthrough().status === 'off' ? armedWalkthrough() : readWalkthrough();
+  writeWalkthrough(walkthrough);
   set({
     game,
     seed,
@@ -1069,6 +1177,7 @@ export function newGame(seed: number): void {
     socialOutcome: null,
     patrolScan: null,
     onboardingSeen: {},
+    walkthrough,
     // T-1605a: the boot's corrupt-save notice is stale the moment the player
     // deliberately starts a career of their own — the fallback career it was
     // explaining no longer exists. The quarantined blob is untouched.
@@ -1088,10 +1197,25 @@ export function newGame(seed: number): void {
 export function selectDie(index: number): void {
   const hand = state.game.player.dawnHand;
   if (!hand || hand.spent[index]) return;
+  const armingDie = state.selectedDie !== index;
+  // T-187 · Arming a die is a store-local selection — the engine emits no event
+  // for it, so the walkthrough's step-2 signal cannot come through
+  // `reactToEvents` and is folded in here instead. Set only when a die is
+  // actually being ARMED (clicking the armed die again disarms it, which is not
+  // the taught action), and only while the walkthrough is running.
+  const walkthrough =
+    armingDie && walkthroughActive(state.walkthrough) && !state.walkthrough.flags.dieAssigned
+      ? settleWalkthrough({
+          ...state.walkthrough,
+          flags: { ...state.walkthrough.flags, dieAssigned: true },
+        })
+      : state.walkthrough;
+  if (walkthrough !== state.walkthrough) writeWalkthrough(walkthrough);
   // A fresh selection resets the resolved-check readout AND any prior sweep
   // outcome, so a stale off-lane summary never lingers next to a new action.
   set({
     selectedDie: state.selectedDie === index ? null : index,
+    walkthrough,
     notice: null,
     lastCheck: null,
     explorationOutcome: null,
@@ -2309,6 +2433,11 @@ export function loadSlot(n: number): void {
     // the player since T-312 — see the `Slot N is corrupt` notice above.)
     recovery: null,
     // Do NOT reset onboardingSeen — loading a mid-career save shouldn't re-teach.
+    // T-187 · An active walkthrough is scripting a career that no longer exists,
+    // so a slot load RETIRES it rather than pointing at panes belonging to a
+    // different day. Skipped, not reset: the player has demonstrably played
+    // before, so it must not re-arm on their next New Game either.
+    walkthrough: retireWalkthrough(),
   });
   // T-1702a · A slot can hold a career earned long before this build (or on the
   // web build), so its Registry is reconciled the same way the autosave's is.
@@ -2432,6 +2561,9 @@ export async function importCareer(file: File): Promise<void> {
     // The boot recovery notice (if any) described the career this one replaces.
     recovery: null,
     // Do NOT reset onboardingSeen — importing a mid-career save shouldn't re-teach.
+    // T-187 · Same reasoning as `loadSlot`: the imported career is not the one
+    // the walkthrough was scripting, and its owner is not a first-time player.
+    walkthrough: retireWalkthrough(),
   });
   // The imported Registry may have been earned on another install entirely.
   mirrorEarned(game);
@@ -2612,6 +2744,43 @@ export function dismissOnboarding(id: string): void {
   const seen: Record<string, true> = { ...state.onboardingSeen, [id]: true };
   writeOnboarding(seen);
   set({ onboardingSeen: seen });
+}
+
+// ---- T-187 first-turn walkthrough actions --------------------------------
+
+/**
+ * Acknowledge the current step — the card's "Next" button, and the ONLY way the
+ * two reading steps (1 · the dawn hand, 5 · the payout) advance. Flips the
+ * record to `done` when that was the last step.
+ */
+export function ackWalkthroughStep(): void {
+  const next = ackWalkthroughRecord(state.walkthrough);
+  if (next === state.walkthrough) return;
+  writeWalkthrough(next);
+  set({ walkthrough: next });
+}
+
+/**
+ * "Skip tutorial" — the Accept's explicit escape, on every card. Retires the run
+ * for good: every region un-inerts on the next render and the card unmounts. A
+ * player who wants it back uses the Settings row below.
+ */
+export function skipWalkthrough(): void {
+  if (state.walkthrough.status === 'skipped') return;
+  const next: WalkthroughRecord = { ...state.walkthrough, status: 'skipped' };
+  writeWalkthrough(next);
+  set({ walkthrough: next });
+}
+
+/**
+ * Settings → "Replay first-turn walkthrough". Resets the record to `off`, which
+ * is the ONE state `newGame` re-arms from — so the replay lands on a fresh
+ * career at step 1 rather than dropping rails over a career already in flight.
+ */
+export function restartWalkthrough(): void {
+  const next: WalkthroughRecord = { v: 1, status: 'off', acked: {}, flags: {} };
+  writeWalkthrough(next);
+  set({ walkthrough: next });
 }
 
 export function dayIsOver(): boolean {
