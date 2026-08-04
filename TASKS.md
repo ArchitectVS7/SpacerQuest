@@ -1029,7 +1029,7 @@ policies/costs outside this task's own gate violations — and are carried forwa
 with their risk-of-deferral analysis recorded above rather than being silently dropped.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only `docs/` and `packages/` are indexed by hand) · attempts=1/4.
 
-### T-162 · Build: the browser/DOM-level long-horizon check — the bridge blind spot gets an owner — `status: TODO` · `coder: opus` · `after: T-158`
+### T-162 · Build: the browser/DOM-level long-horizon check — the bridge blind spot gets an owner — `status: DONE` · `coder: opus` · `after: T-158`
 
 **Scheduled 2026-08-02 (owner-directed): until now, no task owned this.**
 `docs/TESTING-STRATEGY.md`'s bridge-blind-spot warning calls "a real browser/DOM-level check" a
@@ -1058,6 +1058,83 @@ invariant set named and green (or any violation filed as a finding, not skipped 
 invocation and its cadence (CI, nightly, or manual — stated which, with the reason) are
 documented; `docs/TESTING-STRATEGY.md`'s bridge-blind-spot paragraph points at this task instead
 of calling the need still-open; the not-chosen shape is logged; gate green.
+
+**Findings — filed 2026-08-04 by the first 30-day run of the mechanism this task built, before the
+run continued (Bug Discovery Policy rule 1), plus F-162-5 filed by this task's own gate run.
+F-162-1…4 are UI-only; F-162-5 is confined to `packages/sim`'s test layer. **Nothing here touches
+`packages/engine` or `packages/content`, so no fingerprint moves and no capstone is owed.**
+
+| ID | Finding | Status |
+| --- | --- | --- |
+| **F-162-1** | **An unaffordable fuel purchase left the whole cockpit falsely "armed", turning every die-gated control into a dead click.** `resolveTrade`'s `buy-fuel` branch spends the die BEFORE the affordability gate (`packages/engine/src/actions/trade.ts:23`), so a "Not enough credits" refusal still burns it — but `store.ts`'s `buyFuel` inferred the spend from the refusal (`selectedDie: notice ? die : null`, with the comment "On refusal the engine spent no die"). The selection therefore stayed pointing at a die the engine had already consumed, and `armed` is `state.selectedDie !== null` at all six of its definitions in `App.tsx` — so one unaffordable fill left the manifest's SIGN/HAGGLE rows, the shipyard's repair/upgrade/pods/equipment buttons, the crew bench, the port desk, the Hangout's lend desk and social venues, `explore-sweep` and `confirm-jump` ALL rendering enabled, and every one of those clicks threw the raw engine string `Die already spent` (`packages/engine/src/dice.ts:241`) into the notice bar. Nine sibling handlers (`explore`, `shipyard`, `crew`, `port`, `hangout`, `loan`, …) already read the authoritative `next.player.dawnHand.spent[die]`; `buyFuel` was the one that did not. **Found by:** `inv_no_dead_affordance`, 8 of 12 hits on the first seed-1 30-day run, all reading `notice … "Die already spent"`. | **FIXED** — `buyFuel` now reads the authoritative spent flag, and `signContract` / `abandonContract` were hardened to the same read so the assumption is removed rather than restated. Regression: `packages/ui/e2e/dead-affordance.spec.ts` |
+| **F-162-2** | **A repeated identical refusal changed nothing on screen at all.** The notice banner rendered `{state.notice}` with no identity, so a second refusal whose words matched the first ("Not enough credits to make that payment." twice, "Debt payment failed: no credits to send." twice) produced a byte-identical DOM — the player pressed the control, the engine refused, and the cockpit looked inert rather than refusing again. **Found by:** `inv_no_dead_affordance`, the remaining hits on the same run, which is also why the invariant could not tell "no feedback" from "the same feedback twice" until this was fixed. | **FIXED** — `CockpitState.noticeKey` is bumped at the store's single `set()` choke point whenever a notice is RAISED (the same device and the same argument as the existing `lastCheckKey`), and the banner carries it as its React `key` (so the reveal replays) and as `data-notice-key` (so it is assertable). Regression: `packages/ui/e2e/dead-affordance.spec.ts` |
+| **F-162-3** | **Six e2e specs sat RED on this branch before T-162 started, and nothing had noticed.** Baselined by stashing this task's own `packages/ui/src` changes and re-running: the same six fail without them, so they are **not** caused by this task. Root cause is **T-195** (`8ba4e83a`, "travel die matters again"), which shipped `navDieFuelDiscount` (0–15% off a jump's fuel for the armed die) and `navDieEvasionFactor` (up to 20% off the encounter chance) into `resolveTravel` / `generateEncounter` without re-running `npm run test:e2e`. Three classes: (a) three specs pinned a literal post-jump tank (`fuel-hold` "240") that the discount moved to 241 — `manifest-trade.spec.ts`, `port-ledger.spec.ts` ×2; (b) two specs pinned a literal drain point — `combat.spec.ts`'s `B_OFFLINE_FUEL = 30` (actual 45) and `starmap.spec.ts`'s "five 60-fuel jumps drain 300 → 0" loop, which now strands with ~23 fuel: a non-zero ring the loop cannot spend, so the next click lands on an `aria-disabled` node and the test hangs to timeout; (c) `tour-one-death.spec.ts`'s succession fixture jumps on the HIGHEST die — i.e. at maximum evasion — so seed 192 stopped drawing an interception at all and the test waited forever for an overlay that would never mount. **This is exactly the gap `T-163` describes** (`ci.yml` pushes only on `[main, rimward-redesign]` and skips same-repo PRs, so a rule change on a working branch gets no e2e at all) and exactly the failure mode that left 7 of 95 specs red from 2026-07-28 until T-112 tripped over them. | **FIXED (all six)** — and by the repo's own rules, never by lowering a gate: **(a)+(b1)** the literals are gone, replaced by reads of the live readout, because the tank after a discounted jump is a rules-owned number those tests never claimed to own (their claims — "a real purchase moves the readout and the key", "the band names the shortfall" — are asserted more strongly than before); **(b2)+(c)** the two genuinely seed-dependent fixtures were **RE-HUNTED offline against the built engine**, replaying each test's exact decision rule: `starmap.spec.ts` seed 9 → **70** (five clean jumps, 300→244→186→127→68→8, ring 0, no encounter), `tour-one-death.spec.ts` seed 192 → **12** ("Zero Risk" takes the ship on round 3, hand still in hand). Sweep scripts and provenance are recorded in each spec's header comment. |
+| **F-162-4** | **The route preview shows a fuel bill the resolver will not charge.** `travelPreview(state, destination, die?)` documents its no-die default as the UNDISCOUNTED ceiling ("never an understatement"), and `App.tsx:3500` calls `routePreview(game, target)` with **no die** — while `resolveTravel` applies `navDieFuelDiscount` for the armed die. So the cockpit previews 60 fuel and charges 59. It is safe-direction and deliberate at the engine boundary, but it makes T-195's headline feature invisible: a player who commits a better die is never shown the cheaper jump they are buying. The UI *does* know the armed die (`dieArmed`/`state.selectedDie` is in the same component). | **OPEN — deferred, with the written risk analysis the Bug Discovery Policy requires.** (a) **Out of scope:** this is a T-195/M17 feature-visibility question about how the nav die is surfaced, not a Tier-3 testing question, and the engine explicitly documents the omitted-die preview as an intentional conservative default — changing it is an owner call on `docs/DAWN-HAND-REDESIGN.md`'s action-economy rewrite, not an incidental edit. (b) **Deferring does not compound:** nothing builds on the previewed figure. The three specs that did pin it no longer do (F-162-3), the long-haul sweep reads the depot readout rather than the preview, and `travelPreview`'s contract guarantees the preview is never an *under*statement — so no downstream work can route around it or inherit a wrong number. **Owner action:** decide whether the starmap preview should pass the armed die (making the discount visible) or stay a ceiling, and say which in `DAWN-HAND-REDESIGN.md`. |
+| **F-162-5** | **The sweep gate's own negative-path fixtures printed production-shaped `[gate] … FAIL` text into the shared `npm test` log — and it was believed.** `reportGate` (`packages/sim/src/balance/sweep.ts:502`) writes `formatGateReport(...)` to stderr unconditionally, and `sweep-gate.test.ts` deliberately drives it with seeded-bad reports (`report.daily[3].credits = -40`) to prove the gate CATCHES things. So every green `npm test` emitted `[gate] t153-invariant · shard 1/1 · 104 rows · FAIL` / `assertNoNegativeResources · trader · 1` / `seed 1 day 5 · credits -40`, and a second `[gate] t153-bad · merged · 104 rows · FAIL`, out of a suite in which all 37 of that file's tests PASSED and the process exited 0. Nothing marked the text as a fixture: the label prefix `t153` is the only tell, and it reads as a sweep label, not a fixture flag. **This is not hypothetical noise** — T-162's fix-round-1 gate reported `npm test` as FAILED with "trader archetype went to -40 credits at seed 1, day 5" and stopped before `tsc -b`, `lint` and `format:check` ran, on the strength of these lines alone. The repo's own CI evidence step for the gate is a `grep '\[gate\]'` (see the "keeps a failure GREP-ABLE" test), so a fixture that prints in the production format into the shared log is a false alarm aimed squarely at the one reader designed to trust it. | **FIXED** — never by weakening a gate or deleting an assertion: the four `withTempDir` legs that route through `reportGate`/`main()` now **capture** stderr and hand it to the test as `gateOutput()`, and each leg **asserts the printed table** it used to merely emit (the FAIL header, the offending rate id, the `assertNoNegativeResources · trader · 1` row and its `credits -40` example; the two clean legs assert `PASS` and `not.toContain('· FAIL')`). That is strictly MORE coverage than the leak bought — the CLI legs previously asserted only the JSON report, never the human-readable text. The capture is bounded by the same `finally` that already restored `process.exitCode`, and **replays its buffer to the real stderr if the run throws**, so it can never swallow a genuine crash; both halves are pinned by a new test, "the stderr capture is bounded, and a real break still gets its output". `archetype-coverage.test.ts`'s own `withTempDir` is deliberately left alone: its leg is a PASS case, so its output cannot be misread as a failure. |
+
+**Delivered (2026-08-04):** Tier 3 exists and has an owner. **Shape (b) was chosen** — a long-horizon
+invariant sweep in Playwright — and **shape (a) (driving the T-154 pilot's choices through the DOM)
+is logged as not-chosen** in `docs/playtests/T-162-dom-longhaul.md` §5 and in the new
+`docs/TESTING-STRATEGY.md` "Tier 3, as built" block, with the four reasons: it needs a
+hand-maintained protocol-action → cockpit-control map that nothing forces anyone to update (the
+drift surface Part B warns against); its only interesting brain is still unvalidated against the
+real API (**F-155-1**), paid per step and non-reproducible; blanket invariants fit the
+unanticipated-crash bug class better than judged play does; and shape (b) reuses a harness that
+already works. What (a) would have bought — *judged* play deep into a career — stays available at
+the protocol seam via `npm run pilot`.
+
+**Shipped:** `packages/ui/e2e/support/longhaul-invariants.ts` (the battery: eight named claims as
+pure functions, no Playwright import, so it is testable without a browser) ·
+`packages/ui/e2e/long-haul-invariants.spec.ts` (one seeded-bad fixture **per** invariant, each a
+single named mutation off a clean baseline, asserting that invariant fires, that every violation
+carries its own name, and that exactly one fires — plus a totality guard, the T-153 discipline) ·
+`packages/ui/e2e/support/longhaul.ts` (the driver: one `page.evaluate()` snapshot, a
+parameterized move table, a modal resolver, overlay scoping, the once-per-day hittability sweep,
+the artifact writer and the non-vacuity guards) · `packages/ui/e2e/long-haul.spec.ts` ·
+`packages/ui/e2e/dead-affordance.spec.ts` (the two findings, encoded) ·
+`test:e2e:longhaul` in `packages/ui/package.json` · a `long-haul-run-report` upload step in the
+existing `e2e` job of `.github/workflows/ci.yml` (no new job, no new trigger).
+
+**Measured — the committed wide run** (`LONGHAUL_SEEDS=1,2,3,4,5 LONGHAUL_DAYS=35 npm run
+test:e2e:longhaul -w @spacerquest/ui`, artifacts `docs/playtests/results/T-162-longhaul-runs.json`
++ `T-162-run-console.txt`): **176 in-game days** across 5 seeds (35/35/35/35/36), **2,826 steps
+dispatched**, **22,608 invariant checks** (`steps × 8`, asserted not narrated), **36 distinct verbs**,
+**0 violations**, **0 hittability failures**, **0 idle-digest instability**, 244.8 s total wall
+clock (~48 s a seed, 53 s for the whole sweep at five workers). Nine of the table's verbs did not
+fire on these seeds and the report says so by name rather than implying coverage it does not have.
+
+**Cadence, with the reason:** per-push CI = **one seed × 30 days** inside the existing `e2e` job,
+because the failure class is a *regression* class — a client crash introduced today should fail
+today's build, not tomorrow's cron (and per **F-153-1** a `cron:` job would not fire off a
+non-default branch anyway). Seed **breadth** is bought on demand instead, which is where a
+randomized sweep actually finds the unanticipated. **Stated gap, not claimed coverage:**
+`ci.yml` triggers `push` only on `[main, rimward-redesign]` and skips same-repo PRs, so on
+`redesign/explore-hangout` the `e2e` job does not run at all — this spec inherits that gap exactly
+as the other 111 specs do, and it is cited as **T-163** rather than re-discovered.
+
+**Two defects found and fixed** (F-162-1, F-162-2), both filed before the run continued and both
+proven by a regression test that was confirmed to FAIL against the pre-fix code and pass after —
+not by assertion. Both are UI-only.
+
+**Six pre-existing red e2e specs found and repaired** (F-162-3), baselined as *not* this task's
+(stashing this task's `packages/ui/src` changes reproduces all six) and traced to T-195's nav-die
+fuel discount and evasion factor shipping without an e2e run — the T-163 gap, live. Four had
+pinned a rules-owned literal they never claimed to own and now read the live value; the two
+genuinely seed-dependent fixtures were re-hunted offline against the built engine rather than
+having their assertions loosened. One further observation (F-162-4, the route preview showing a
+fuel bill the resolver will not charge) is deferred to the M17 owner **with** the written
+out-of-scope / does-not-compound analysis the Bug Discovery Policy requires for a deferral.
+
+**No fingerprint moves and no capstone is owed.** `packages/sim/src/balance/rules-fingerprint.ts`
+hashes `packages/engine` + `packages/content` (rules) and `packages/sim/src` (instrument);
+**`packages/ui` is not hashed at all**, and this task touched only `packages/ui/**`, `docs/**` and
+`.github/workflows/ci.yml`. **No CHANGELOG edit is needed either:** the 0.5.3 entry already reads
+"*a browser-level long-haul check watches for the crashes scripted tests can't anticipate*"
+(`CHANGELOG.md:12-13`) — it anticipated this task, so a second line would be a duplicate.
+
+**Gate:** `npm test`, `npx tsc -b`, `npm run lint`, `npm run format:check` and the **full**
+`npm run test:e2e -w @spacerquest/ui` all green.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only `docs/`, `packages/`, and `scripts/`). · attempts=2/4.
 
 ---
 

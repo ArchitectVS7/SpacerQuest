@@ -52,6 +52,11 @@ async function armDie(page: Page): Promise<void> {
 }
 
 /** Read a handful of computed properties off an element, the T-190 pattern. */
+/** The tank half of the depot's `N/M` hold readout. */
+function fuelInTank(hold: string): number {
+  return Number(hold.split('/')[0].replace(/[^\d]/g, ''));
+}
+
 async function styles(locator: ReturnType<Page['locator']>) {
   return locator.evaluate((el) => {
     const cs = getComputedStyle(el);
@@ -161,29 +166,39 @@ test('a real fuel purchase moves the depot readout AND the depot key', async ({ 
   // `manifest-trade.spec.ts` does — the die-free debt payment first (T-1103, it
   // advances the RNG so the jump lands clean), then the value-3 die at hand
   // index 4, which fails the pilot check for Aldebaran-1 and leaves the ship at
-  // Sol having spent the 60-fuel bill.
+  // Sol having spent the jump's fuel bill.
+  //
+  // T-195 (repaired at T-162) · THE BILL IS NO LONGER A LITERAL, AND IS NOT THIS
+  // TEST'S CLAIM: `navDieFuelDiscount` made it a function of the ARMED DIE (0–15%
+  // off), so the pinned `240` went stale when that shipped. The claim here is
+  // that a REAL purchase moves the readout AND the animation key, so the burn
+  // only has to make headroom — the resulting tank is READ, not pinned, and the
+  // purchase below is asserted against it. See `F-162-4`.
   await page.getByTestId('debt-amount').fill('500');
   await page.getByTestId('pay-debt').click();
   await page.getByTestId('die').nth(4).click();
   await page.locator('[data-testid="starmap-system"][data-system-id="2"]').click();
   await page.getByTestId('confirm-jump').click();
-  await expect(page.getByTestId('fuel-hold')).toContainText('240');
+  await expect
+    .poll(async () => fuelInTank(await page.getByTestId('fuel-hold').innerText()))
+    .toBeLessThan(290);
 
   const depot = page.getByTestId('fuel-depot');
   const keyBefore = await depot.getAttribute('data-fuel-key');
   const holdBefore = await page.getByTestId('fuel-hold').innerText();
-  expect(keyBefore).toBe('240/300');
+  const afterJump = fuelInTank(holdBefore);
+  expect(keyBefore).toBe(`${afterJump}/300`);
 
   await armDie(page);
   await page.getByTestId('fuel-amount').fill('10');
   await page.getByTestId('buy-fuel').click();
 
   await expect(page.getByTestId('fuel-hold')).not.toHaveText(holdBefore);
-  await expect(page.getByTestId('fuel-hold')).toContainText('250');
+  await expect(page.getByTestId('fuel-hold')).toHaveText(`${afterJump + 10}/300`);
   // The animation is keyed off this attribute, and under `reducedMotion: reduce`
   // the paint is deliberately off — so the KEY is the mechanically checkable
   // proof that the motion is wired to the state change rather than to a timer.
-  await expect(depot).toHaveAttribute('data-fuel-key', '250/300');
+  await expect(depot).toHaveAttribute('data-fuel-key', `${afterJump + 10}/300`);
   expect(await depot.getAttribute('data-fuel-key')).not.toBe(keyBefore);
 });
 
@@ -276,12 +291,17 @@ test('screenshot pass · all four quadrants, side by side', async ({ page }) => 
   await page.getByTestId('pay-debt').click();
   await page.getByTestId('die').nth(4).click();
   await page.locator('[data-testid="starmap-system"][data-system-id="2"]').click();
+  // T-195 (repaired at T-162) · read, not pinned — the nav die now buys a 0–15%
+  // fuel discount. See the note at the depot-readout test above.
   await page.getByTestId('confirm-jump').click();
-  await expect(page.getByTestId('fuel-hold')).toContainText('240');
+  await expect
+    .poll(async () => fuelInTank(await page.getByTestId('fuel-hold').innerText()))
+    .toBeLessThan(290);
+  const shotAfterJump = fuelInTank(await page.getByTestId('fuel-hold').innerText());
   await armDie(page);
   await page.getByTestId('fuel-amount').fill('10');
   await page.getByTestId('buy-fuel').click();
-  await expect(page.getByTestId('fuel-hold')).toContainText('250');
+  await expect(page.getByTestId('fuel-hold')).toHaveText(`${shotAfterJump + 10}/300`);
   await page
     .getByTestId('trade-pane')
     .screenshot({ path: 'test-results/T-191-fuel-buy-after.png' });

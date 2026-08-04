@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:demo": "playwright test --config playwright.demo.config.ts",
+    "test:e2e:longhaul": "playwright test long-haul",
     "flake:measure": "tsx e2e/support/flake-measure.ts",
     "flake:report": "tsx e2e/support/flake-cli.ts"
   },

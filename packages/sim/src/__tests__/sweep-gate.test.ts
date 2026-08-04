@@ -147,18 +147,60 @@ function failedRateIds(results: readonly ExpectedEventRateResult[]): string[] {
 }
 
 /**
- * Run something against a fresh temp directory, ALWAYS restoring `process.exitCode`.
+ * Run something against a fresh temp directory, ALWAYS restoring `process.exitCode`
+ * AND capturing whatever the run wrote to stderr.
  *
- * A leaked `1` from a deliberately-failing fixture would fail the whole vitest
- * process for tests that passed, which is the one way this suite could make the
- * repo LESS trustworthy than it was before.
+ * TWO LEAKS, ONE GUARD — both are ways this suite could make the repo LESS
+ * trustworthy than it was before:
+ *
+ *   * A leaked `1` from a deliberately-failing fixture would fail the whole vitest
+ *     process for tests that passed.
+ *   * A leaked `[gate] … FAIL` LINE is the same accident one layer up, in the
+ *     reader instead of the exit code. `reportGate` prints `formatGateReport` to
+ *     stderr unconditionally, and this suite deliberately drives it with seeded-bad
+ *     reports — so the run log used to carry `[gate] t153-invariant · shard 1/1 ·
+ *     104 rows · FAIL` / `assertNoNegativeResources · trader · 1 · seed 1 day 5 ·
+ *     credits -40`, byte-identical in shape to a REAL sweep-gate failure, out of a
+ *     suite that passed and a `npm test` that exited 0. CI's own evidence step is a
+ *     `grep '\[gate\]'` (see `formatGateReport`'s grep-ability test below), so a
+ *     fixture that prints production-shaped FAIL text into the shared log is a
+ *     false alarm waiting to be believed — and it was believed. (F-162-5.)
+ *
+ * The text is not thrown away: it is handed to the caller as `gateOutput()` so the
+ * legs that provoke a FAIL now ASSERT the printed table instead of letting it
+ * scroll past unchecked — strictly more coverage than the leak bought. If the run
+ * throws, the buffer is replayed to the real stderr first, so capturing can never
+ * swallow the diagnostics of a genuine break.
  */
-function withTempDir<T>(run: (dir: string) => T): T {
+type StderrWrite = typeof process.stderr.write;
+type StderrCallback = (error?: Error | null) => void;
+
+function withTempDir<T>(run: (dir: string, gateOutput: () => string) => T): T {
   const dir = mkdtempSync(join(tmpdir(), 'sq-t153-'));
   const previousExitCode = process.exitCode;
+  const realWrite: StderrWrite = process.stderr.write.bind(process.stderr);
+  const captured: string[] = [];
+  process.stderr.write = (
+    chunk: Uint8Array | string,
+    encodingOrDone?: BufferEncoding | StderrCallback,
+    done?: StderrCallback,
+  ): boolean => {
+    captured.push(typeof chunk === 'string' ? chunk : String(chunk));
+    // `write` may be called with a completion callback in either trailing slot;
+    // a capture that never calls it would hang a writer that waits on the drain.
+    const finish = typeof encodingOrDone === 'function' ? encodingOrDone : done;
+    finish?.();
+    return true;
+  };
+
+  let threw = true;
   try {
-    return run(dir);
+    const result = run(dir, () => captured.join(''));
+    threw = false;
+    return result;
   } finally {
+    process.stderr.write = realWrite;
+    if (threw && captured.length > 0) realWrite(captured.join(''));
     process.exitCode = previousExitCode;
     rmSync(dir, { recursive: true, force: true });
   }
@@ -675,7 +717,7 @@ describe('T-153 · the gate sets a non-zero exit code, and only when it should',
   }, SAMPLE_TIMEOUT_MS);
 
   it('a clean sweep through main() exits ZERO', () => {
-    withTempDir((dir) => {
+    withTempDir((dir, gateOutput) => {
       main([
         '--label',
         `${LABEL_PREFIX}-clean`,
@@ -702,11 +744,14 @@ describe('T-153 · the gate sets a non-zero exit code, and only when it should',
       expect(report.passed).toBe(true);
       expect(report.violationCount).toBe(0);
       expect(report.rows).toBe(4);
+      // The PRINTED verdict agrees with the written one, and never says FAIL.
+      expect(gateOutput()).toContain(`[gate] ${LABEL_PREFIX}-clean · shard 1/1 · 4 rows · PASS`);
+      expect(gateOutput()).not.toContain('· FAIL');
     });
   }, 120_000);
 
   it('a seeded-bad row set through the real --merge CLI exits NON-ZERO', () => {
-    withTempDir((dir) => {
+    withTempDir((dir, gateOutput) => {
       const bad = corruptRows(rows, (row) => {
         row.combat = [];
       });
@@ -720,11 +765,17 @@ describe('T-153 · the gate sets a non-zero exit code, and only when it should',
       const report = readGateReport(dir, `gate-${LABEL_PREFIX}-bad-merged.json`);
       expect(report.passed).toBe(false);
       expect(failedRateIds(report.rates)).toEqual(['travel-encounter-rate-per-1k-sim-days']);
+      // The printed table names the verdict and the offending rate — the thing a
+      // reader greps for. Asserted HERE, off the captured buffer, rather than
+      // shouted into the shared `npm test` log where it reads as a real failure.
+      const printed = gateOutput();
+      expect(printed).toContain(`[gate] ${LABEL_PREFIX}-bad · merged · ${rows.length} rows · FAIL`);
+      expect(printed).toContain('[gate] rate travel-encounter-rate-per-1k-sim-days: FAIL');
     });
   }, 120_000);
 
   it('a clean row set through the real --merge CLI exits ZERO', () => {
-    withTempDir((dir) => {
+    withTempDir((dir, gateOutput) => {
       writeFileSync(
         join(dir, `rows-${LABEL_PREFIX}-clean-merge-shard1of1.json`),
         `${JSON.stringify(rows)}\n`,
@@ -746,6 +797,10 @@ describe('T-153 · the gate sets a non-zero exit code, and only when it should',
       for (const rate of report.rates) {
         expect(`${rate.id}:${rate.status}`).toBe(`${rate.id}:pass`);
       }
+      expect(gateOutput()).toContain(
+        `[gate] ${LABEL_PREFIX}-clean-merge · merged · ${rows.length} rows · PASS`,
+      );
+      expect(gateOutput()).not.toContain('· FAIL');
     });
   }, 120_000);
 
@@ -756,7 +811,7 @@ describe('T-153 · the gate sets a non-zero exit code, and only when it should',
     // without breaking the engine. And `--merge` deliberately does not re-run them
     // (`SeedRow` carries no `daily[]` — stated at `sweep.ts`'s `mergeShards`), which
     // is a limitation this suite records rather than "fixes".
-    withTempDir((dir) => {
+    withTempDir((dir, gateOutput) => {
       const parsed = parseSweepArgs([
         '--label',
         `${LABEL_PREFIX}-invariant`,
@@ -782,8 +837,48 @@ describe('T-153 · the gate sets a non-zero exit code, and only when it should',
       // The rows are the CLEAN sample, so the verdict is FAIL on the invariant
       // alone — no rate is doing the work.
       expect(failedRateIds(report.rates)).toEqual([]);
+      // The example line a reader would act on, asserted off the captured buffer.
+      // Printing it into the shared log instead is what produced F-162-5's false
+      // alarm: this exact text, out of a suite that passed.
+      const printed = gateOutput();
+      expect(printed).toContain(
+        `[gate] ${LABEL_PREFIX}-invariant · shard 1/1 · ${rows.length} rows · FAIL`,
+      );
+      expect(printed).toContain('[gate]   assertNoNegativeResources · trader · 1');
+      expect(printed).toContain('credits -40');
     });
   }, 120_000);
+
+  it('the stderr capture is bounded, and a real break still gets its output', () => {
+    // F-162-5's fix mutes production-shaped fixture text out of the shared run log.
+    // That is only safe while it is BOTH temporary and non-swallowing — a capture
+    // that outlived its run, or that ate the diagnostics of a genuine crash, would
+    // trade one silent-failure mode for a worse one. Both halves asserted here.
+    const seen: string[] = [];
+    const real: StderrWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (chunk) => {
+      seen.push(typeof chunk === 'string' ? chunk : String(chunk));
+      return true;
+    };
+    try {
+      expect(() =>
+        withTempDir(() => {
+          process.stderr.write('[gate] fixture-shaped noise from a run that then broke\n');
+          throw new Error('boom');
+        }),
+      ).toThrow('boom');
+      // The capture is gone even on the throwing path, so later writes route
+      // straight back out again.
+      process.stderr.write('a later, uncaptured line\n');
+    } finally {
+      process.stderr.write = real;
+    }
+    const escaped = seen.join('');
+    // NOT swallowed: the throwing run's buffered output was replayed.
+    expect(escaped).toContain('fixture-shaped noise from a run that then broke');
+    // NOT permanent: the stream works normally once the run is over.
+    expect(escaped).toContain('a later, uncaptured line');
+  });
 
   it('wrote nothing into the committed docs/balance/ directory', () => {
     // Every path above points BOTH `--out` and `--aggregate-out` at a mkdtemp dir,

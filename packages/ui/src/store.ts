@@ -207,6 +207,16 @@ export interface CockpitState {
   fx: boolean;
   /** Last engine refusal / error, surfaced to the player — never swallowed. */
   notice: string | null;
+  /**
+   * T-162 · F-162-2 — bumped every time a notice is RAISED, including when the
+   * new notice reads exactly like the one already on screen. Without it, a
+   * second identical refusal ("Not enough credits to make that payment." twice)
+   * changed nothing in the DOM at all, so the cockpit looked broken rather than
+   * refusing again. Rendered as the notice element's React `key` (so its reveal
+   * replays) and as `data-notice-key` (so a test can see the raise happened).
+   * Same shape and same argument as `lastCheckKey` directly above.
+   */
+  noticeKey: number;
   /** Bumped on every new day so the boot sweep + dice roll replay. */
   bootKey: number;
   /**
@@ -548,6 +558,7 @@ function init(): CockpitState {
     bloomDie: null,
     fx,
     notice: null,
+    noticeKey: 0,
     bootKey: 1,
     lastCheck: null,
     lastCheckKey: 0,
@@ -800,7 +811,19 @@ function set(patch: Partial<CockpitState>): void {
   // module-local array length, so an ordinary UI-only patch pays one integer
   // compare. It goes AFTER the patch so a caller can never accidentally pin a
   // stale count.
-  state = { ...state, ...patch, playtestLogEntries: playtest.playtestLogSize() };
+  // T-162 · F-162-2 · THE NOTICE SEQUENCE, at the same one choke point and for
+  // the same argument as the two comments above: a raise must be visible even
+  // when the words are identical to the last one, and bumping it at ~25 action
+  // call sites would be twenty-five places to forget. A patch that does not
+  // carry a notice (the ordinary UI-only patch) leaves the counter alone, so
+  // opening a panel never re-plays a stale refusal.
+  const raised = patch.notice !== undefined && patch.notice !== null;
+  state = {
+    ...state,
+    ...patch,
+    noticeKey: raised ? state.noticeKey + 1 : (patch.noticeKey ?? state.noticeKey),
+    playtestLogEntries: playtest.playtestLogSize(),
+  };
   // T-1702b · Rich presence, at the store's ONE state-update choke point rather
   // than at ~20 action call sites — the same argument that folded the achievement
   // mirror into `reactToEvents`: an action added later cannot forget it.
@@ -1247,12 +1270,15 @@ export function signContract(contractIndex: number): void {
     // silent die-deselect. On success this scan returns null and the notice
     // clears — the previous behaviour, preserved.
     const notice = failNoticeFrom(events);
+    // T-162 · F-162-1 — the same authoritative read as `buyFuel` below. The
+    // sign-contract refusal path happens to spend no die today, but "a refusal
+    // spent no die" is an ASSUMPTION about another package; the spent flag is a
+    // fact. Reading the fact costs nothing and cannot go stale.
+    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      // On refusal the engine spent no die; keep the selection so the player can
-      // retry, and don't bloom a die that was never consumed.
-      selectedDie: notice ? die : null,
-      bloomDie: notice ? null : die,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
       notice,
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
@@ -1286,12 +1312,13 @@ export function abandonContract(): void {
     });
     autosave(next, state.seed);
     const notice = failNoticeFrom(events);
+    // T-162 · F-162-1 — the spent flag is a fact; "a refusal spent no die" was
+    // an assumption. See `buyFuel`, where that assumption was false.
+    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      // On refusal the engine spent no die; keep the selection so the player can
-      // retry, and don't bloom a die that was never consumed.
-      selectedDie: notice ? die : null,
-      bloomDie: notice ? null : die,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
@@ -1322,10 +1349,22 @@ export function buyFuel(amount: number): void {
     });
     autosave(next, state.seed);
     const notice = failNoticeFrom(events);
+    // T-162 · F-162-1 — READ THE AUTHORITATIVE SPENT FLAG, NEVER INFER IT FROM
+    // THE NOTICE. `resolveTrade`'s `buy-fuel` branch spends the die BEFORE the
+    // affordability gate (actions/trade.ts:23), so an "Not enough credits"
+    // refusal STILL BURNS IT. The old `selectedDie: notice ? die : null` kept
+    // the selection pointing at a die the engine had already consumed, and
+    // `armed` is `selectedDie !== null` everywhere in the cockpit — so one
+    // unaffordable fill left the manifest, the shipyard, the crew bench, the
+    // port desk, the hangout and the starmap all rendering as ARMED while every
+    // one of those clicks threw `Die already spent` from `dice.ts`. This is the
+    // same authoritative read `explore`, `shipyard`, `crew`, `port`, `hangout`
+    // and `loan` already use; the assumption is now gone rather than restated.
+    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      selectedDie: notice ? die : null,
-      bloomDie: notice ? null : die,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });

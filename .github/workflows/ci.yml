@@ -123,6 +123,22 @@ jobs:
           path: packages/ui/test-results/tour-one/
           if-no-files-found: error
 
+      # T-162 acceptance artifact: the long-haul DOM invariant sweep's run report
+      # (days reached, steps, the whole invariant battery and every violation).
+      # Same `always()` + `if-no-files-found: error` discipline as the sibling
+      # above, and for the same two reasons: a RED long-haul report is the one
+      # worth reading, and an artifact criterion must not rot into an empty
+      # upload. No new job and no new trigger — `long-haul.spec.ts` lives in
+      # `e2e/`, so `npm run test:e2e` above already collects it (one seed x 30
+      # days by default; see the spec header for the cadence argument).
+      - name: Upload long-haul invariant run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: long-haul-run-report
+          path: packages/ui/test-results/longhaul/
+          if-no-files-found: error
+
   # T-1701a · The Electron shell. A THIRD job, deliberately separate from `e2e`:
   # that job proves the WEB build and must keep proving exactly that, unchanged,
   # which together with this job is the "CI proves both" acceptance criterion.

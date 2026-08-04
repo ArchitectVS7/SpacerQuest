@@ -129,7 +129,19 @@ test('unreachable systems are visibly gated, not clickable-then-error', async ({
   // is out): seed 9 spends its whole [16,12,10,6,2] hand on five clean 60-fuel
   // jumps, draining 300 → 0 inside day 1 with no encounter drawn. The gating claim
   // below is untouched; only the road to a dry tank moved.
-  await newGameSeed(page, 9);
+  //
+  // T-195 (re-hunted at T-162) · RE-DERIVED AGAIN, to seed 70. `navDieFuelDiscount`
+  // makes a jump cost `max(1, round(60 × (1 − 0.15·(die−1)/19)))` for the armed
+  // die, so a hand of ordinary dice now drains 300 by only ~277 and strands the
+  // loop with ~23 fuel — enough for a non-zero ring, not enough for the 60-fuel
+  // 1↔2 lane, so the next click lands on an `aria-disabled` node and the loop
+  // hangs. THE SEED WAS RE-HUNTED, NOT THE ASSERTION LOWERED: seeds 1..4000 were
+  // swept offline against the built engine with THIS loop's exact decision rule
+  // (bounce 1↔2 on the lowest-index unspent die, end the day when the hand is
+  // out, abort on an encounter). Seed 70 spends its whole hand on five clean
+  // jumps — 300 → 244 → 186 → 127 → 68 → 8 — inside day 1 with no encounter
+  // drawn, and 8 fuel is below the 12-per-distance floor, so the ring reads 0.
+  await newGameSeed(page, 70);
 
   for (let i = 0; i < 14; i++) {
     const units = Number(await page.getByTestId('fuel-ring').getAttribute('data-radius-units'));

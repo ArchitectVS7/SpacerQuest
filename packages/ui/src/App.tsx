@@ -4809,8 +4809,19 @@ function TradePane({
         {/* The single mechanically-checkable surface for "failure is never
             silent": whenever the store captured an engine refusal, it shows
             here in reverse-video. It clears on the next successful action. */}
+        {/* T-162 · F-162-2 · KEYED ON THE RAISE, NOT THE WORDS. A second
+            identical refusal used to change nothing in the DOM, so the cockpit
+            read as broken rather than as refusing again. The `key` remounts the
+            banner (its reveal replays); `data-notice-key` makes the raise
+            assertable. Same device, same argument, as `lastCheckKey`. */}
         {state.notice && (
-          <div className="notice rev" data-testid="notice" role="status">
+          <div
+            className="notice rev"
+            key={state.noticeKey}
+            data-testid="notice"
+            data-notice-key={state.noticeKey}
+            role="status"
+          >
             {state.notice}
           </div>
         )}

@@ -41,6 +41,11 @@ async function selectUnspentDie(page: Page): Promise<void> {
   await page.locator('[data-testid="die"][data-spent="0"]').first().click();
 }
 
+/** The tank half of the depot's `N/M` hold readout. */
+function fuelInTank(hold: string): number {
+  return Number(hold.split('/')[0].replace(/[^\d]/g, ''));
+}
+
 test('full loop through the UI: sign, haggle, buy fuel, pay debt', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('contract')).toHaveCount(4);
@@ -66,13 +71,25 @@ test('full loop through the UI: sign, haggle, buy fuel, pay debt', async ({ page
   // The fresh junker starts with a FULL tank (300/300), so buying fuel would
   // clamp to the ceiling and move nothing. Burn some first with a jump: the
   // value-3 die (hand index 4) fails the pilot check for Aldebaran-1 (system 2,
-  // DC 10), so the ship stays at Sol but the 60-fuel cost is spent — leaving
-  // 240/300 with the day's board and depot price untouched (both are set at dawn;
-  // the jump is clean thanks to the RNG-advancing debt payment above — T-1103).
+  // DC 10), so the ship stays at Sol but the jump's fuel bill is spent — with the
+  // day's board and depot price untouched (both are set at dawn; the jump is
+  // clean thanks to the RNG-advancing debt payment above — T-1103).
+  //
+  // T-195 (repaired at T-162) · THE BILL IS NO LONGER A LITERAL, AND IS NOT THIS
+  // TEST'S CLAIM. `navDieFuelDiscount` made the jump's cost a function of the
+  // ARMED DIE (0–15% off), so the old pinned `240` went stale the moment that
+  // shipped. What this step is FOR is headroom — a full tank would clamp the
+  // purchase below and move nothing — so it asserts headroom exists and the die
+  // was spent, and leaves the fuel arithmetic to the engine's own tests. See
+  // `F-162-4` for why the previewed figure is not asserted here either.
+  const holdBefore = fuelInTank(await page.getByTestId('fuel-hold').innerText());
+  expect(holdBefore).toBe(300);
   await page.getByTestId('die').nth(4).click();
   await page.locator('[data-testid="starmap-system"][data-system-id="2"]').click();
   await page.getByTestId('confirm-jump').click();
-  await expect(page.getByTestId('fuel-hold')).toContainText('240');
+  await expect
+    .poll(async () => fuelInTank(await page.getByTestId('fuel-hold').innerText()))
+    .toBeLessThan(holdBefore - 10);
   expect(await spentCount(page)).toBe(1);
 
   // --- Sign -------------------------------------------------------------
@@ -101,9 +118,11 @@ test('full loop through the UI: sign, haggle, buy fuel, pay debt', async ({ page
   await selectUnspentDie(page);
   await page.getByTestId('fuel-amount').fill('10');
   await page.getByTestId('buy-fuel').click();
-  // Fuel rose (240 → 250) and exactly one more die was spent.
+  // Fuel rose by exactly the ten paid for, and one more die was spent. Derived
+  // from the tank as it stood, not a literal: the jump above no longer lands on a
+  // fixed number (T-195's nav-die fuel discount).
   await expect(page.getByTestId('fuel-hold')).not.toHaveText(fuelBefore);
-  await expect(page.getByTestId('fuel-hold')).toContainText('250');
+  await expect(page.getByTestId('fuel-hold')).toHaveText(`${fuelInTank(fuelBefore) + 10}/300`);
   expect(await spentCount(page)).toBe(4);
   // (The die-free debt payment that opens this test — moved ahead of the fuel
   // burn for T-1103 — already exercised the ledger-transfer path.)
