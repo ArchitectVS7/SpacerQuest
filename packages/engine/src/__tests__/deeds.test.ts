@@ -1175,8 +1175,12 @@ describe('T-1504a deed content validation', () => {
 // T-1504c · Renown-rank content validation. `defineRenownRanks` throws at content
 // IMPORT time, so a malformed rank ladder fails the build rather than a test —
 // these fixtures prove each rule actually rejects, and the positive case is the
-// literal "the ten citation texts load and validate" acceptance. Lives in the
-// engine suite because `packages/content` has no test runner of its own.
+// literal "the ten citation texts load and validate" acceptance.
+//
+// T-164 · IT LIVED HERE BECAUSE `packages/content` HAD NO TEST RUNNER; it does
+// now. This block reads only `@spacerquest/content`, so under
+// `docs/TESTING-STRATEGY.md` Part I it qualifies to move beside its rows and is
+// on that ruling's migration ledger (F-164-1), out of T-164's own scope.
 // ---------------------------------------------------------------------------
 describe('T-1504c renown rank content validation', () => {
   /** A well-formed two-rank ladder; each test breaks exactly one thing. Cast at

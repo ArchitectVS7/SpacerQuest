@@ -1264,7 +1264,7 @@ that has not happened — the acceptance criterion is satisfied *locally* by the
 assertions plus the negative control, which is exactly what §3 asks for before the push.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the repo has `docs/`, `packages/`, `scripts/` only). · attempts=2/4.
 
-### T-164 · `packages/content` has no test runner — stand one up, or record engine-suite hosting as permanent — `status: TODO` · `coder: opus` · `after: —`
+### T-164 · `packages/content` has no test runner — stand one up, or record engine-suite hosting as permanent — `status: DONE` · `coder: opus` · `after: —`
 
 `packages/content` has no test runner at all — its `package.json` carries only a `build` script and
 there is not one `*.test.ts` under it (verified still true at harvest time). Consequence: the
@@ -1279,6 +1279,65 @@ content pass's job"); no later task picked it up. Either stand up a test runner 
 (with at least the Explore content validator moved or mirrored beside its rows), or a written
 ruling in `docs/TESTING-STRATEGY.md` states that content validators live in the engine suite
 permanently and why; gate green.
+
+**Delivered (2026-08-04): BOTH branches, because the honest answer is a split rule and not a
+choice between the two.** The runner is stood up **and** the ruling is written, because half the
+Explore validator genuinely cannot move and its permanence has to be recorded with the argument
+that forces it.
+
+**The blocker was assumed, never checked — and it does not hold.** The reason six passes deferred
+this was a fear that a test file under `packages/content/src` would join `rulesFingerprint` and put
+every content edit one capstone behind. `packages/sim/src/balance/rules-fingerprint.ts`'s
+`HASHED_ROOT_IGNORED_DIRECTORIES` has `__tests__` as its **first** entry; `listTsFiles` consults it
+before `assertNoUndeclaredSubdirectory` fires, and `balance-rig.test.ts`'s *"lets the declared and
+the explicitly-ignored directories through"* pins that an ignored directory's contents are **not**
+hashed. **Proven, not argued:** `balance-smoke.test.ts` (72 tests) and `balance-rig.test.ts` (52
+tests) both green after the change — no fingerprint moved, **no capstone owed, none taken.**
+
+**The constraint that DOES survive, and is what the ruling records:** `packages/content` can never
+depend on `@spacerquest/engine` — npm workspace cycle, and a `tsc -b` project-reference cycle (root
+`tsconfig.json` lists `./packages/content` before `./packages/engine`; `packages/engine/tsconfig.json`
+references `../content`). So a validator needing `resolveExploration` / `createInitialState` /
+`apCost` **cannot** move, and the answer is a split on the line the old file's own header already
+drew.
+
+**What landed.** `packages/content/package.json` gains `"test": "vitest run"` + `vitest ^1.5.0`
+(engine's range, so the lockfile resolves the installed copy; `package-lock.json` committed). No
+root wiring needed — root `test` is `--workspaces --if-present` and CI runs it at
+`.github/workflows/ci.yml:97`. No `vitest.config.*` (engine has none; defaults exclude `dist/`).
+Sections 1–2 of the Explore validator — well-formedness and the §5 ladder, the file's own
+self-declared purpose — are now `packages/content/src/__tests__/exploreContent.test.ts`; sections
+3–5 (live-roster resolution, the 6,000-seed `resolveExploration` sweep, the band-2 dusk payout)
+stayed. One pair crossed the other way: `recoveryDays`/`apCost` are engine functions, so that half
+of *"no authored row carries a recoveryDays or apCost key"* became an engine `it` of its own.
+**Zero assertions lost** — engine 38 → 17, content 22 new, 39 total, the +1 being the split test
+becoming two. The boundary is **enforced, not described** (L-020):
+`packages/content/src/__tests__/contentPackageBoundary.test.ts` fails if any engine/sim/ui
+workspace appears in any dependency field, and pins the `test` script itself (root `--if-present`
+would otherwise make its deletion a silent no-op). Ruling: `docs/TESTING-STRATEGY.md` **Part I**,
+including the three shapes not chosen. The five stale *"content has no test runner"* comments
+(`exploreContent`, `hangoutContent`, `systems`, `nemesis`, `deeds`) are corrected in place, and
+`rules-fingerprint.ts`'s `__tests__` reason now names `content/src` and states the corollary.
+
+**Verified:** `npm install`; `npm test` (**content 25 · engine 1292 · sim 470 · ui 382 · desktop
+110 · devpanel 61, all green**); `npx tsc -b`; `npm run lint`; `npm run format:check`. Grepped at
+the named call sites: `"test": "vitest run"` in `packages/content/package.json`; two files under
+`packages/content/src/__tests__/`; `grep -rn "no test runner" packages/engine/src/__tests__/`
+returns nothing; `Part I` present in `docs/TESTING-STRATEGY.md`; `grep -rn "engine"
+packages/content/package.json` returns nothing.
+
+**F-164-1 (OPEN, carried forward) · three pure-content blocks still hosted in the engine suite
+qualify to move under the Part I rule.** Named by file so the ledger survives compaction:
+`packages/engine/src/__tests__/systems.test.ts:11` (T-1101 starmap geometry),
+`nemesis.test.ts:253` (T-1505a Signal Fragment validation), `deeds.test.ts:1179` (T-1504c
+renown-rank validation) — each imports only `@spacerquest/content`. **Deliberately out of T-164's
+scope** (charter was the runner plus the Explore split, not a mass relocation) and it rolls up no
+debt: each block is green where it sits, nothing builds on its location, and moving it later is a
+file move with no behaviour change. Each of the three carries an in-file comment pointing here.
+**Explicitly NOT on this ledger, so it is not re-litigated:** `hangoutContent.test.ts` and
+`liarsDiceContent.test.ts` assert through `../hangoutRules.js` / `../liarsDiceRules.js` and are
+engine-hosted **permanently**.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent). · attempts=1/4.
 
 ### T-165 · Baseline-of-record pointer consistency check — fail when the four sites disagree — `status: TODO` · `coder: opus` · `after: —`
 

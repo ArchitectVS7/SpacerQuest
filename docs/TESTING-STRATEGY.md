@@ -223,3 +223,49 @@ The load-bearing argument, because a reviewer will read "widened trigger" as "mo
 4. **Keep the expensive `package` matrix (macOS + Windows) scoped to `main`/`rimward-redesign`.** Declined, and recorded because it is the most likely reviewer objection: the repository is public, so Actions minutes are free; a per-job asymmetric `if:` would be a second condition to keep in sync; and four-jobs-one-condition is what makes the no-duplicate-run rule auditable at a glance. If runner cost ever becomes real, the correct move is a `paths` filter on the packaging job, not a branch list.
 
 **Known and accepted:** widening `e2e-flake.yml` means a working-branch push that edits `packages/ui/e2e/**`, `playwright.config.ts`, `packages/ui/package.json` or that workflow now fires a 20-run flake matrix. That is the cost the `paths` filter was designed to bound, and it is when the measurement is actually due. **Still true and deliberately unchanged:** `sweep-gate.yml`'s nightly `cron:` fires only from the default branch (F-153-1) — a trigger widening cannot fix that, and the per-push `gate` job is what covers working branches.
+
+---
+
+## Part I — Where a content validator lives (T-164, 2026-08-04)
+
+Part H settled *where the suites run*. This part settles *which suite a content validator belongs to*, because for the first year of this repository the answer was decided by an accident rather than by a rule.
+
+**The defect.** `packages/content` had no test runner at all — its `package.json` carried a `build` script and nothing else, and there was not one `*.test.ts` under it. So every validator that checks authored rows was written into the **engine** suite, each one carrying a comment explaining that content has no runner. T-113 flagged this and explicitly deferred it (*"building that infra is not a content pass's job"*); five more passes inherited the deferral and restated the comment. The cost is small but real and it compounds: a content author editing `exploration.ts` runs the engine suite to find out whether the rows are still well-formed, and the file that validates the rows sits three directories away from them.
+
+**The blocker was assumed, never checked.** The reason nobody stood up a runner was a fear that a test file under `packages/content/src` would join `rulesFingerprint` and put every content edit one capstone sweep behind. It does not. `packages/sim/src/balance/rules-fingerprint.ts` declares `HASHED_ROOT_IGNORED_DIRECTORIES`, whose **first** entry is `__tests__`; `listTsFiles` consults it before `assertNoUndeclaredSubdirectory` fires, so the walk skips the directory entirely, and `packages/sim/src/__tests__/balance-rig.test.ts` (*"lets the declared and the explicitly-ignored directories through"*) pins that an ignored directory's **contents are not hashed**. Content-side tests therefore move no fingerprint and owe no capstone. Verified mechanically, not argued: `balance-smoke.test.ts` stayed green across this change.
+
+### The rule
+
+> **A validator whose assertions read only `@spacerquest/content` lives in `packages/content/src/__tests__/`, beside the rows it validates. A validator that must resolve a row *through the engine* lives in `packages/engine/src/__tests__/`, permanently.**
+
+The second clause is not a preference — it is forced. `packages/engine` depends on `@spacerquest/content`, `packages/engine/tsconfig.json` carries `references: [{ path: "../content" }]`, and the root `tsconfig.json` solution file lists `./packages/content` before `./packages/engine` for that reason. An engine dependency in `packages/content` — in **any** field, `devDependencies` included — is an npm workspace cycle and a `tsc -b` project-reference cycle. So a validator that needs `resolveExploration`, `apCost`/`recoveryDays`, `createInitialState` or the day loop **cannot** be moved, no matter how much it is "about content". That is a permanent ruling, and this document is the place it is recorded.
+
+**Two corollaries worth stating rather than re-deriving:**
+
+1. **A content test must live under `src/__tests__/` and nowhere else.** A new sibling directory (`src/tests/`, `src/spec/`) under a hashed root throws by design — `assertNoUndeclaredSubdirectory` refuses an undeclared directory, and the escape hatch is the *named* `__tests__` entry, not a general exemption for test-looking names.
+2. **`--if-present` is why the runner needs a guard.** The root `npm test` is `npm run test --workspaces --if-present`, so deleting content's `test` script would silently stop running its validators rather than failing. `packages/content/src/__tests__/contentPackageBoundary.test.ts` asserts the script exists.
+
+### What T-164 actually did
+
+- **Stood up the runner**: `packages/content/package.json` gains `"test": "vitest run"` and a `vitest ^1.5.0` devDependency (deliberately the same range as engine's, so the lockfile resolves the already-installed copy). No `vitest.config.*` — engine has none, and vitest's defaults already exclude `dist/`, which matters because `tsc -b` emits `dist/__tests__/*.test.js`. No root wiring was needed: `--workspaces --if-present` picks the script up the moment it exists, and CI runs `npm test` at `.github/workflows/ci.yml:97`.
+- **Split the Explore validator rather than moving it.** The old file's own header said *"Two things are asserted here and nowhere else: that every authored ROW IS WELL-FORMED, and that the table's VALUE DISTRIBUTION matches the spec's ladder"* — that is sections 1 and 2, and those (20 of its 36 `it` blocks) are now `packages/content/src/__tests__/exploreContent.test.ts`. Sections 3–5 are id resolution against the live roster, the 6,000-seed `resolveExploration` reachability sweep and the band-2 dusk payout; all three are engine work by construction and stayed. One assertion pair crossed the other way: `recoveryDays(vp)`/`apCost(vp)` are engine functions, so the second half of *"no authored row carries a recoveryDays or apCost key"* is now an engine `it` of its own. **No assertion was dropped in the move**, and the helper block is duplicated across the two files on purpose — sharing it would mean one test suite deep-importing the other's `dist/__tests__`, a build-order coupling to save twenty lines of pure function.
+- **Enforced the boundary.** Per **L-020**, prose is not enforcement: `packages/content/src/__tests__/contentPackageBoundary.test.ts` reads the manifest and fails if `@spacerquest/engine`, `@spacerquest/sim` or `@spacerquest/ui` appears in any dependency field, with the cycle argument in the failure message. The failure mode it catches is the *well-intentioned* one — a future pass reading this ruling, deciding the rest of the file "should live with the rows too", and adding a devDependency to make the import resolve.
+
+### The migration ledger (F-164-1)
+
+Three blocks are pure-content, are hosted in the engine suite for the historical reason only, and **qualify to move** under the rule above. They are deliberately out of T-164's scope — its charter was the runner and the Explore split, not a mass relocation — and are filed as **F-164-1** in `TASKS.md` so the ledger exists in the repo and not only in this document:
+
+| block | file | why it qualifies |
+| --- | --- | --- |
+| T-1101 starmap geometry | `packages/engine/src/__tests__/systems.test.ts:11` | imports only `@spacerquest/content` |
+| T-1505a Signal Fragment validation | `packages/engine/src/__tests__/nemesis.test.ts:253` | a content-validator fixture block; no engine import |
+| T-1504c renown-rank validation | `packages/engine/src/__tests__/deeds.test.ts:1179` | same shape as the above |
+
+**Two files explicitly do NOT qualify**, and are named here so nobody re-litigates them: `hangoutContent.test.ts` and `liarsDiceContent.test.ts` assert through `../hangoutRules.js` and `../liarsDiceRules.js`. They are engine-hosted **permanently**, by the second clause of the rule.
+
+### The shapes not chosen
+
+1. **Ruling only — declare engine hosting permanent and stand up nothing.** This was the task's own alternative branch, and it is the honest-looking answer to a blocker that turned out not to exist. Declined: the sole argument for it was the fingerprint fear the rig had already answered years of comments ago, and adopting it would have written that fear into the record as a rule.
+2. **Move the whole file and give content an engine devDependency.** Declined: project-reference cycle, per the rule above. It is now a failing test rather than an available mistake.
+3. **A shared cross-package test-helper module.** Declined: with no third package to hold it, it means deep-importing `content/dist/__tests__` from the engine suite (or the reverse), which makes one suite's result depend on the other's build freshness. Twenty duplicated lines of pure function over `EXPLORE_VALUE_BANDS` is the cheaper failure mode — the two copies cannot drift without the band table moving under both.
+4. **A `vitest.config.ts` for content, excluding `dist/`.** Declined as redundant: engine ships none, and vitest's default `exclude` already covers `**/dist/**`. A config file that only restates a default is one more thing to keep in sync with the engine's.

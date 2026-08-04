@@ -29,9 +29,14 @@ import {
  * a MECHANICAL AXIS VECTOR (§6.4's set-cardinality rule), and that the content
  * file carries no placeholder text.
  *
- * WHY IT LIVES IN THE ENGINE SUITE. `packages/content` has no test runner at all —
- * the `exploreContent.test.ts` precedent, restated because it has not changed.
- * Giving content a runner is real infra and belongs to a task chartered for it.
+ * WHY IT LIVES IN THE ENGINE SUITE. NOT because content lacks a runner — T-164
+ * stood one up, and the old sentence here saying otherwise is gone with it. It
+ * stays under the rule that replaced that accident (`docs/TESTING-STRATEGY.md`
+ * Part I): a validator that resolves a row THROUGH THE ENGINE cannot move,
+ * because content may never depend on the engine. Every assertion below is
+ * written against the engine accessors `wagerBandFor` / `venueParamsFor` /
+ * `venueOffered` / `portHangoutFor` (`../hangoutRules.js`), which is deliberate
+ * and is exactly what pins this file here.
  *
  * EXTENSION CONTRACT, HONOURED AND NOW CLOSED. T-124 added its four ids to
  * `AUTHORED_PORTS` and `MECHANICALLY_DEVIANT_PORTS` and RESTRUCTURED NOTHING —

@@ -250,8 +250,11 @@ export interface SourceFingerprint {
 export const HASHED_ROOT_IGNORED_DIRECTORIES: Readonly<Record<string, string>> = {
   __tests__:
     'Tests. They observe the rules and never author them; a career run by the sim imports ' +
-    'none of it. This is the only one that actually exists today (under `engine/src` and ' +
-    '`sim/src`) — the other two are named ahead of the mistake rather than after it.',
+    'none of it. This is the only one that actually exists today (under `engine/src`, ' +
+    '`sim/src` and — since T-164 gave content a test runner — `content/src`) — the other two ' +
+    'are named ahead of the mistake rather than after it. NOTE for a content author: this ' +
+    'entry is what makes a content-side validator free of a capstone, and it is why such a ' +
+    'test must live under `src/__tests__/` and nowhere else (docs/TESTING-STRATEGY.md Part I).',
   node_modules:
     "Dependencies. Not this repo's sources at all; their version is pinned by the lockfile, " +
     'which is the thing that would have to change for them to move an outcome.',

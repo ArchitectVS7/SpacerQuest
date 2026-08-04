@@ -259,8 +259,10 @@ Balance artefacts — committed sweeps, and the smoke-test checkpoints under
 `docs/balance/smoke/` — are only meaningful against the ruleset that produced them. A
 hand-maintained "balance version" would be forgotten exactly when it mattered, so this is
 **derived, not declared**: a hash over the files that decide outcomes (`packages/content/src`
-plus the engine's rule modules). Change a tribute constant or a resolver and the
-fingerprint moves on its own.
+plus the engine's rule modules — but **not** a `__tests__` directory under either, which the
+walk skips by name: see `HASHED_ROOT_IGNORED_DIRECTORIES`, and `docs/TESTING-STRATEGY.md`
+Part I for why that is what lets a content validator live beside its rows). Change a tribute
+constant or a resolver and the fingerprint moves on its own.
 
 **It hashes their CODE, not their bytes** (N7-FP, 2026-07-29). Comments are stripped
 before hashing — via the TypeScript parser, not a regex, because `//` and `/* */` appear
