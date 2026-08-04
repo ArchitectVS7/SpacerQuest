@@ -1439,6 +1439,222 @@ body {
   white-space: nowrap;
 }
 
+/* ---- T-191 · the port ledger as a SERVICE RACK -------------------------
+   The owner's note: "other menus on lower right just need to be more
+   interesting… it doesn't differentiate, a few shapes, a few very basic
+   animations will do very good for us." The lower-right quadrant was five
+   identical rectangles inside a fourth copy of the generic pane chrome.
+
+   THE SHAPE LANGUAGE CHOSEN, AND WHY THIS ONE. Three of the four quadrants
+   already own a language: the starmap is an SVG star plane in square 1px
+   hairline chrome; the ship pane (T-189) is an annotated hull outline with
+   callouts; the manifest (T-190) is ROUNDED board stock, paper, punched holes
+   and a torn edge. Paper is taken, organic outline is taken, and the square
+   hairline is the generic pane — so the one non-colliding direction left is
+   HARDWARE: the Port Ledger is a dockside SERVICE RACK. Five machined plates,
+   each with a chamfered top-left and bottom-right corner and a lit mounting
+   edge, bolted onto a riveted rail that runs the height of the rack. A
+   chamfered plate on a rail is none of the other three.
+
+   PALETTE DISCIPLINE — T-186 IS STILL OPEN AND OWNS THE COLOUR RULING. Every
+   value below stays inside the committed CRT-amber system (--ember / --ember-hi
+   / --amber / --amber-dim / --hair / --panel / --tube / --glow), one phosphor,
+   emphasis by reverse video. NO second hue is introduced. Differentiation here
+   is carried entirely by SHAPE (chamfer + rail + rivets), ICON (five stencil
+   glyphs) and MOTION (three keyed animations) — which is exactly the accept
+   clause's own minimum bar. Giving this quadrant its own HUE would be T-186's
+   territory and was deliberately not reached for.
+
+   NO SHARED RULE IS TOUCHED. `.pane`, `.pane > header`, `.col`, `.flag`,
+   `.ship-reason` (shared with ShipPane) and the bare `.notice` (also
+   `.notice.recovery` / `.notice.demo-banner` / the hangout notice) are all left
+   alone; everything below is additive under `.pane.trade` / `.ledger-block` /
+   the new `.lb-*` classes, all of which are exclusive to `TradePane`. The whole
+   treatment is revertible in one block if T-186 rules a different direction.
+
+   MOTION: three animations, all keyed off engine state via a React `key`
+   (`ledgerFascia` in format.ts) — zero component state, zero effect, zero
+   timer. Every one of them lives inside `@media not (prefers-reduced-motion:
+   reduce)`, the house rule this file keeps throughout, so the reduced-motion
+   path is INSTANT rather than "animated then skipped" — which is what keeps
+   the e2e honest. */
+
+/* The rack frame. The body becomes a two-column grid so the rail can be a
+   NORMAL-FLOW item spanning every module: an absolutely-positioned rail inside
+   `.pane .body` (a scroll container) would scroll away from the modules it is
+   supposed to be holding. `align-content: start` keeps the auto rows from
+   stretching, so the module heights are byte-identical to the block-flow
+   baseline — this chrome costs the player no information. */
+.pane.trade > .body {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  column-gap: 9px;
+  align-content: start;
+}
+.pane.trade > .body > * {
+  grid-column: 2;
+}
+/* `1 / span 30` rather than `1 / -1`: the rows here are all IMPLICIT, and -1
+   resolves against the explicit grid (one line), so `1 / -1` would span a
+   single row. The surplus rows are empty and auto-sized, i.e. 0px. */
+.pane.trade > .body > .lb-rail {
+  grid-column: 1;
+  grid-row: 1 / span 30;
+  border-radius: 2px;
+  background:
+    /* mounting rivets down the spine */
+    radial-gradient(
+        circle at 50% 8px,
+        var(--ember-hi) 0 1.1px,
+        var(--ember) 1.1px 2px,
+        #160e05 2.4px 3.4px,
+        rgba(0, 0, 0, 0) 3.6px
+      )
+      0 0 / 9px 22px repeat-y,
+    /* the lit spine, continuous behind the rivets */
+    linear-gradient(
+        90deg,
+        rgba(0, 0, 0, 0) 0 3.5px,
+        var(--amber-dim) 3.5px 5.5px,
+        rgba(0, 0, 0, 0) 5.5px
+      ),
+    /* extruded metal: a specular edge at the left, falling to shadow at the right */
+    linear-gradient(90deg, #1a1006 0, #3a2409 22%, #241708 48%, #120c06 76%, #080503 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.6),
+    1px 0 4px rgba(0, 0, 0, 0.65);
+}
+
+/* A machined service plate: chamfered top-left and bottom-right, a lit mounting
+   edge down the left where it meets the rail. The chamfer is a `clip-path`, and
+   the two 135deg/315deg corner triangles behind it are what is left showing as a
+   bright cut line once the clip takes the outer 6.4px off — a border cannot do
+   this, because a border and a clip-path fight at the mitre. */
+.ledger-block {
+  position: relative;
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+  background:
+    linear-gradient(135deg, var(--amber) 0 8px, rgba(0, 0, 0, 0) 8px) top left / 20px 20px no-repeat,
+    linear-gradient(315deg, var(--amber-dim) 0 8px, rgba(0, 0, 0, 0) 8px) bottom right / 20px 20px
+      no-repeat,
+    linear-gradient(180deg, #1b1209, #0e0a05);
+  box-shadow: inset 2px 0 0 0 var(--amber);
+}
+/* Two bolt heads down the mounting edge, so each plate reads as FIXED to the
+   rail rather than merely adjacent to it. Absolutely positioned chrome — it
+   costs the module no layout height, which is the constraint this quadrant is
+   tightest on (it is the shortest pane in the cockpit and scrolls internally). */
+.ledger-block::before,
+.ledger-block::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 34% 28%,
+    var(--ember-hi) 0 30%,
+    var(--ember) 42%,
+    #1a1006 100%
+  );
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+  z-index: 2;
+}
+.ledger-block::before {
+  top: 12px;
+}
+.ledger-block::after {
+  bottom: 6px;
+}
+/* The five module heads carry the icon language. Kept as a plain block box so
+   the head's TEXT — which several e2e specs read verbatim — is unchanged; the
+   stencil is an inline replaced box sized to sit inside the existing 14.5px line
+   box, so the rack costs the column no height. */
+.ledger-block .lb-glyph {
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  opacity: 0.85;
+}
+/* The charge sweep. Invisible at rest — it exists only to be replayed when the
+   module's engine value moves, and it is clipped to the plate by the chamfer. */
+.ledger-block .lb-sweep {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    rgba(0, 0, 0, 0) 38%,
+    rgba(255, 225, 166, 0.16) 50%,
+    rgba(0, 0, 0, 0) 62%
+  );
+}
+
+@media not (prefers-reduced-motion: reduce) {
+  /* 1 · the readout that just moved ticks. Keyed on the LEAF `<b>` only —
+     never on anything containing `fuel-amount` / `debt-amount`, because
+     remounting an input destroys the typed value and the caret. */
+  .ledger-block .lb-tick {
+    animation: tp-tick 460ms ease-out 1;
+  }
+  /* 2 · a charge runs across the plate whose value changed. */
+  .ledger-block .lb-sweep {
+    animation: tp-charge 700ms ease-out 1;
+  }
+  /* 3 · dispatches post themselves when the live offer set changes. */
+  .lb-posts > * {
+    animation: tp-post 340ms ease-out both;
+  }
+  .lb-posts > *:nth-child(2) {
+    animation-delay: 60ms;
+  }
+  .lb-posts > *:nth-child(3) {
+    animation-delay: 120ms;
+  }
+}
+@keyframes tp-tick {
+  0% {
+    color: var(--ember-hi);
+    text-shadow: var(--glow-hi);
+    transform: scale(1.16);
+  }
+  60% {
+    color: var(--ember-hi);
+    text-shadow: var(--glow-hi);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes tp-charge {
+  0% {
+    opacity: 0;
+    transform: translateX(-102%);
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(102%);
+  }
+}
+@keyframes tp-post {
+  0% {
+    opacity: 0;
+    transform: translateX(-7px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 /* ---- honest check block (signature micro-component) ---- */
 .check {
   display: flex;

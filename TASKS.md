@@ -1808,7 +1808,7 @@ because T-188 has not been ruled and jumps are still instant — re-filed as **T
 T-188, reusing this task's stow render path so it needs no new visual work.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified missing); oriented from `TASKS.md`, `packages/ui/src/App.tsx`, `theme.css`, `format.ts`, `walkthr · attempts=1/4.
 
-### T-191 · The lower-right menus read as flat and interchangeable — `status: TODO` · `coder: opus` · `after: —`
+### T-191 · The lower-right menus read as flat and interchangeable — `status: DONE` · `coder: opus` · `after: —`
 
 Owner's read: "other menus on lower right just need to be more interesting... Overall the page does
 look very nice but it doesn't differentiate, a few shapes, a few very basic animations will do very
@@ -1824,6 +1824,199 @@ a fourth instance of the same panel chrome; no functional behavior changes; a sc
 comparing all four quadrants side by side is attached to the commit so "differentiated" is a visible
 claim, not an assertion; gate green. If this proves entangled with T-186's (still-open) color ruling,
 say so explicitly rather than quietly reaching into palette territory T-186 owns.
+
+**DONE (2026-08-04).** The Port Ledger is a dockside service rack.
+
+**The design problem, stated before the fix.** After T-189 and T-190 three of the four quadrants
+already owned a shape language: the starmap is an SVG star plane in square 1px `--hair` pane chrome
+(`App.tsx` `.pane.starmap`); the ship pane is T-189's annotated hull outline with callouts and a
+yard bench (`.pane.ship`); the manifest is T-190's ROUNDED 2px clipboard — bulldog clip, punched
+paper, torn edge, -0.45deg hang (`.pane.manifest-board`). The lower-right quadrant had **nothing**:
+a plain `.pane` holding five identical `.ledger-block` rectangles. That is precisely the owner's
+"doesn't differentiate", and it is why this task's brief was a feeling rather than a spec.
+
+So the direction was chosen by elimination, not taste: paper is T-190's, organic outline is T-189's,
+and the square hairline is the generic pane. What is left, and collides with none of them, is
+**hardware**. The Port Ledger now reads as a **SERVICE RACK**: five machined plates, each with a
+chamfered top-left and bottom-right corner, a lit 2px mounting edge and two bolt heads, bolted onto a
+riveted extruded rail that runs the height of the rack, each stencilled with its own glyph.
+
+**Both halves of the accept's minimum bar shipped, and then some.** *Shape/border-treatment*: the
+chamfer (`clip-path: polygon(...)` with the cut line drawn by two 135deg/315deg corner triangles
+showing through it — a border and a clip-path fight at the mitre, so a border could not do this), the
+mounting rail, the bolt heads. *Icon-language*: five distinct stencil glyphs — a dispatch slip with a
+folded corner, a banded cargo crate, a pump nozzle, a struck ledger tally, a mooring bollard — one per
+service, drawn in `currentColor`. *Animation*: three, all on state change, exactly the events the
+accept names — `tp-tick` (the readout that just moved flashes and scales), `tp-charge` (a charge
+sweeps the plate whose value changed), `tp-post` (dispatches slide in when the live offer set changes).
+
+**How the motion is driven, and why it is not state.** A pure selector `ledgerFascia(game)` in
+`packages/ui/src/format.ts` (four fields: `portName`, `fuelKey`, `debtKey`, `dispatchKey`) feeds
+`TradePane`, and each animation fires because a React `key` **remounted a leaf** — T-190's
+`boardKey` precedent. Zero component state, zero `useEffect`, zero timer, and no engine call. The
+keys are plain projections of numbers the pane already rendered: `${fuel}/${maxFuel}`,
+`${debt}:${debtDueDay}`, and the live PORT-surface storylet ids **sorted** and joined (sorted on
+purpose — an engine-side reordering of an unchanged offer set must not fire a spurious re-post).
+`dispatchKey` also lands on the block as `data-dispatch-key`, `fuelKey` as `data-fuel-key` and
+`debtKey` as `data-debt-key`, which is what makes the e2e able to assert the motion is wired to the
+state rather than to a clock. Named `ledgerFascia`, NOT `portLedger`: that name is already taken in
+`format.ts` (T-1405) for the port-ownership income ledger.
+
+**THE HARD RULE OBSERVED: no changing `key` ever went on an element containing an input.** Only
+`<b class="lb-tick">` (the fuel HOLD readout and the debt OWED figure) and the two decorative
+`<i class="lb-sweep">` elements are keyed. Remounting the wrappers that hold `fuel-amount` /
+`debt-amount` would destroy a typed value and the caret mid-entry — a functional behaviour change
+wearing a styling hat, and it would break the fill-then-buy flows in `manifest-trade` and
+`progression`. The existing `debtDue <= 5` `due-soon` threshold was likewise left alone: moving it
+would be a rules change wearing the same hat.
+
+**"No functional behavior changes" is a DEMONSTRATION, not a claim, and the ordering is the proof.**
+The markup move landed FIRST with **zero lines of CSS** — the rail element, the five glyphs, the two
+sweeps, the `.lb-posts` wrapper and the three data attributes — and the whole gate was run green on
+that inert state before a single style was written (`npx tsc -b`, `npm run lint`, `npm test`
+2,281/2,281, `npm run test:e2e -w @spacerquest/ui` **138/138**, desktop **8/8**). Every existing
+`data-testid` stayed on the same element, `{...railsProps(state, 'trade')}` / `(state, 'fuel')` stayed
+on the same five blocks in the same order so `inert` / `data-rails-off` semantics are byte-identical,
+the five `.lb-head` text nodes are byte-identical (measured, not eyeballed: `PORT DISPATCHES`,
+`ACTIVE CONTRACT`, `FUEL DEPOT`, `GUILD DEBT`, `PORT AUTHORITY`), and `DUMP THE RUN`'s label is still
+constant. `git status` shows the ONLY new or changed file under `packages/ui/e2e/` is
+`port-ledger.spec.ts`: the thirteen existing readers of these testids — `progression`,
+`action-blocked-parity`, `manifest-trade`, `walkthrough`, `demo-gate`, `storylet-delivery`,
+`settings-saves`, `onboarding`, `playtest-logging`, `tour-one-death`, `manifest-object`,
+`e2e/support/career.ts` and the desktop shell's cockpit helper — all pass **UNMODIFIED**.
+
+**INFORMATION PARITY, measured against a stashed baseline rather than asserted.** This quadrant is
+the shortest pane in the cockpit (163px of visible body at the suite viewport) and it scrolls
+internally, so chrome that costs height costs the player information — which is worse than no
+theming. The rack was therefore built to cost none: the rail is a normal-flow grid item, the bolt
+heads are absolutely positioned, and the glyphs are 12px inline replaced boxes sized to sit inside
+the existing 14.5px head line box. Proof, by measuring the same page with the diff stashed and then
+restored: `.pane.trade .body` `scrollHeight` **574 -> 571** (three pixels SHORTER, not taller),
+`clientHeight` 163 -> 163, `clientWidth` 591 -> 591, and all five `.lb-head` heights 15px -> 15px.
+
+**The one layout decision worth naming.** `.pane.trade > .body` became a two-column grid so the rail
+could be a NORMAL-FLOW item spanning every module. An absolutely-positioned rail inside `.pane .body`
+would have been wrong twice: `.body` is the scroll container, so `top/bottom` would size the rail to
+the VISIBLE box and it would scroll away from the modules it is supposed to be holding. `align-content:
+start` is load-bearing on the grid — the default `normal` stretches auto rows, which would have
+inflated every module on a short board. The rail spans `1 / span 30`, not `1 / -1`, because these rows
+are all IMPLICIT and `-1` resolves against the explicit grid (one line), so `1 / -1` would span a
+single row; the surplus rows are empty and auto-sized, i.e. 0px.
+
+**NOT ENTANGLED WITH T-186 — and here is the boundary.** T-186 (`TASKS.md:1446`) is `status: TODO` ·
+`[BLOCKED BY = Owner ruling]` and owns the palette. Every value in the new block stays inside the
+committed CRT-amber system (`--ember` / `--ember-hi` / `--amber` / `--amber-dim` / `--hair` /
+`--panel` / `--tube` / `--glow`) — one phosphor, emphasis by reverse video. **No second hue was
+introduced.** Differentiation here is carried entirely by *shape* (chamfer + rail + rivets + bolts),
+*icon* (five stencil glyphs) and *motion* (three keyed animations), which is precisely the accept
+clause's own minimum bar. What *would* have been T-186's territory — giving the Port Ledger its own
+hue so the quadrants differentiate by colour — was deliberately not reached for, and is named here so
+the option stays open for whatever T-186 rules. No shared rule was touched either: bare `.notice`
+(also `.notice.recovery` / `.notice.demo-banner` / the hangout notice), `.ship-reason` (shared with
+ShipPane), `.storylet-open` (shared with `.wire-bulletins`), `.pane`, `.pane > header`, `.col` and
+`.flag` are all untouched, and `.pane.trade`'s `overflow: hidden` was deliberately NOT relaxed (T-190
+needed `visible` for its overhanging clip; here the `.body` scroller is load-bearing and nothing
+should overhang). Everything is additive under `.pane.trade` / `.ledger-block` / the new `.lb-*`
+classes — all of which are exclusive to `TradePane`, verified — so the whole treatment is revertible
+in one block.
+
+**Motion railed in both directions, and asserted as such.** All three animations live inside
+`@media not (prefers-reduced-motion: reduce)` — the house rule this file keeps at theme.css:360 /
+812 / 1330 / 1584 / 3148 / 3201 / 3397 and which T-190 kept — so the reduced-motion path is INSTANT,
+never "animated then skipped". The e2e proves it mechanically in BOTH directions: computed
+`animation-name` is `none` under `reducedMotion: 'reduce'` and is exactly `tp-charge` / `tp-tick` /
+`tp-post` without it. That test found a real trap worth recording: the cockpit reads the OS
+preference ONCE per render and stamps `data-motion` on `<html>` (App.tsx:932, T-312), which is a
+blanket `animation: none !important` kill-switch — so `emulateMedia` alone asserts against a stale
+kill-switch and a **reload** is part of the claim.
+
+**No fingerprint, no sweep, no migration — the argument, re-derived rather than copied.**
+`packages/sim/src/balance/rules-fingerprint.ts` was read for this task, not quoted from T-190:
+`computeRulesFingerprint` (line 616) hashes `join('packages','engine','src')` under
+`ENGINE_RULE_DIRECTORIES` plus `join('packages','content','src')`; `computeInstrumentFingerprint`
+(line 624) hashes `join('packages','sim','src')`. **`packages/ui` appears in neither list**, and this
+change touches only `packages/ui` — so no capstone sweep, no re-extract, no staled balance fixture,
+and no `--merge` / `--milestone-days` / `--aggregate` invocation is owed. No save shape changed, so
+no migration and no round-trip test: `CURRENT_SAVE_VERSION` reads **15**
+(`packages/engine/src/save.ts:509`), not the **12** this track's header quoted at start, and this
+task did not move it in either direction. No fingerprint, band, threshold or golden was edited.
+
+**Tests added.** `packages/ui/src/__tests__/port-ledger-fascia.test.ts` — **13** selector tests over
+`format.ts`, never over `../store` (which runs `init()` at module load and reaches for storage and
+sound): `portName` matches the current system through the same reader the pane uses; `fuelKey` prints
+exactly the readout's pair, moves on a burn AND on a `maxFuel` upgrade, and is STABLE across an
+unrelated day advance (if it were not, the readout would tick on every re-render and the animation
+would stop meaning "the tank moved"); `debtKey` moves on a pay-down, on an outright clear and on a
+re-marker at an unchanged balance; `dispatchKey` is ORDER-INDEPENDENT under a reversed offer array,
+moves when an offer leaves and returns to the ORIGINAL key when it comes back (the set, not the
+history); an empty board plus a cleared marker still yields well-formed keys with no
+`NaN`/`undefined`/`null` reaching a rendered attribute; and purity — two calls agree, the state is
+deep-equal to a pre-call clone, and the object has EXACTLY four keys, the guard against the UI quietly
+starting to own state. The fixture is `startDay(createInitialState(424242))`, not bare
+`createInitialState`, because the dispatches are generated at dawn and a bare initial state would make
+the offer assertions test nothing. **The rendered rack is NOT unit-testable here** — this repo has no
+`@testing-library/react` — and that reasoning is written into the spec beside the assertions rather
+than left implicit.
+
+`packages/ui/e2e/port-ledger.spec.ts` — **8** tests, everything through the UI, no `fetch`, no store
+pokes, no engine calls: the rack's parts exist and **all three** neighbouring quadrants (manifest,
+ship, starmap — the accept names all three) have zero `.lb-rail` / `.lb-glyph` / `.ledger-block`;
+differentiation MEASURED as computed-style divergence (a real `polygon` `clip-path` on each of the
+five plates, `none` on `.mb-sheet`, `.pane.ship .body` and `.pane.starmap .body`) plus a bounding-box
+check that the rail is under 16px wide, taller than 80% of the visible rack and outboard of every
+plate; the icon language proved to BE a language (five `[data-glyph]` values, all distinct, each in
+its own module's `.lb-head`); a real fuel purchase driven the player's way (pay debt, burn 60 fuel on
+a jump, arm a die, fill, buy) moving `fuel-hold` 240 -> 250 AND `data-fuel-key` `240/300` -> `250/300`;
+a real die-free debt payment moving the chip to 24,500 AND `data-debt-key` `25000:30` -> `24500:30`;
+a port dispatch still opening its panel and closing again; the both-directions reduced-motion check;
+and the screenshot pass.
+
+**Screenshot pass, read and judged — and it took two passes.** Four PNGs into the gitignored
+`packages/ui/test-results/`: **`T-191-quadrants.png`** (`.main` — both columns, all four quadrants in
+ONE frame; this is the accept clause's named deliverable, "comparing all four quadrants side by
+side"), `T-191-cockpit.png` (full page), `T-191-trade-pane.png` (element-scoped) and
+`T-191-fuel-buy-after.png` (the rack immediately after a real purchase). A baseline of the pre-change
+cockpit was captured by stashing the diff, not from memory. **Pass 1 was judged NOT good enough**: the
+chamfer and the glyphs read, but the rail was a column of disconnected dots — "a pane with a stripe"
+rather than mounted hardware — and nothing tied the plates to it. Pass 2 gave the rail a continuous
+lit spine behind the rivets, a specular-to-shadow extrusion gradient across its 9px, brighter
+two-stop rivet heads on a 22px pitch, and added **two bolt heads** down each plate's mounting edge so
+the plates read as FIXED to the rail rather than merely adjacent to it. A third correction was to the
+capture, not the design: the contextual coach re-arms with the next prompt after each dismissal, so
+the comparison shot was being taken with a tooltip over a quadrant — the pass now dismisses (through
+the real GOT IT button, up to a bounded ten times) until the board is clear. **Judgement on pass 2:
+yes** — in one frame the four quadrants now read as four different instruments: a star plane, a hull
+diagram, a clipboard, and a bolted equipment rack. That iteration is the deliverable, not a footnote.
+No raster art and no new binary: `git status` shows only `.ts` / `.tsx` / `.css` / `TASKS.md`.
+
+**Height risk checked by hand, not assumed** (T-189's gate went red on exactly this class of problem,
+and T-190's first pass failed for eating 12px): beyond the measured `scrollHeight` parity above, the
+screenshot test ends by CLICKING `debt-amount` and `pay-debt` and asserting the debt chip moves to
+24,400, then hovering `buy-port` at the very bottom of the rack. `click()` and `hover()` both fail on
+an occluded or offscreen control, so those lines ARE the below-the-fold assertion. (`hover()` rather
+than `click()` on `buy-port`: by that point every die is spent so the button is legitimately
+DISABLED, and `hover` still runs the visible / stable / receives-events checks without requiring the
+test to change engine state it has no business changing.)
+
+**Gate green:** `npx tsc -b` clean, `npm run lint` clean, `npm test` **2,294/2,294** across all five
+workspaces (engine 1,313 · content 110 · sim 447 · ui 363 · desktop 61 — 0 failures, +13 for the new
+selector spec), `npm run test:e2e -w @spacerquest/ui` **146/146** (the 138 that existed at T-190, all
+unmodified, plus this task's 8), `npm run test:e2e:demo -w @spacerquest/ui` **4/4** (run explicitly
+because `demo-gate.spec.ts` is one of the thirteen readers and lives behind its own config),
+`npm run test:e2e -w @spacerquest/desktop` **8/8**, `npm run format` run BEFORE this write-up then
+`npm run format:check` clean. No sweep run, by the fingerprint argument above.
+
+**Delivered (2026-08-04):** the lower-right quadrant no longer reads as a fourth instance of the same
+panel chrome — a pure `ledgerFascia(game)` selector in `format.ts` feeds a re-shaped `TradePane` in
+`App.tsx` and a new `/* ---- T-191 - the port ledger as a SERVICE RACK ---- */` block in `theme.css`,
+turning the Port Ledger into a bolted service rack: chamfered plates on a riveted mounting rail, five
+stencil glyphs, and three state-driven animations (fuel tick, charge sweep, dispatch re-post) all
+railed behind `prefers-reduced-motion`. Zero functional change (thirteen existing testid readers pass
+untouched; the markup move was landed and gated green before any CSS existed), zero height cost
+(scrollHeight 574 -> 571, measured against a stashed baseline), and zero colour change — T-186 owns the
+palette and was deliberately not reached into.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent; only `docs/`, `packages/` present) · attempts=1/4.
 
 ### T-192 · The manifest's "not docked" state — the half of T-190 that needs a travel duration to exist — `status: TODO` · `coder: opus` · `after: T-188` · `[BLOCKED BY = T-188 ruling]`
 

@@ -238,6 +238,64 @@ export function fuelPurchaseQuote(game: GameState, fuelAmount: number): FuelPurc
   return quoteFuelPurchase(game, fuelAmount);
 }
 
+// ---- T-191 the port ledger as a service rack ------------------------------
+//
+// PRESENTATION ONLY. Every field below is either a plain identity read off the
+// state or a string built from numbers the Port Ledger ALREADY renders. This
+// selector derives no rule, owns no threshold, invents no field, and reads
+// nothing the pane did not read before it existed.
+//
+// WHY IT EXISTS. The rack's three animations (a readout tick, a charge sweep, a
+// dispatch re-post) are driven the way T-190 drove the manifest's re-post: by a
+// React `key` that CHANGES when — and only when — the engine value behind the
+// module moved. That is zero state, zero effect and zero timer in the UI. But a
+// key that silently stopped moving would silently stop the animation with no
+// e2e assertion noticing, so the keys get a tested home here rather than being
+// interpolated inline in JSX (T-190's `boardKey` precedent).
+//
+// NAMING: deliberately NOT `portLedger` — that name is already taken further
+// down this file (T-1405) and means the port-ownership income ledger, an
+// entirely different thing.
+
+/** The Port Ledger's fascia: the port it serves, plus the three re-mount keys
+ *  its service modules animate off. Four fields, all pure projection. */
+export interface LedgerFascia {
+  /** The port whose services these modules are — the same read the pane's tag
+   *  already renders. */
+  portName: string;
+  /**
+   * `${fuel}/${maxFuel}` — the exact pair the FUEL DEPOT readout prints. Moves
+   * when the tank moves (a purchase, a jump, a tank upgrade) and at no other
+   * time, so keying the readout on it ticks precisely once per real change.
+   */
+  fuelKey: string;
+  /**
+   * `${debt}:${debtDueDay}` — moves on a pay-down and on a re-markered due day.
+   * Both are player-visible numbers the GUILD DEBT module already prints.
+   */
+  debtKey: string;
+  /**
+   * The live PORT-surface storylet ids, SORTED and joined. Sorted on purpose:
+   * an engine-side reordering of an unchanged offer set must not fire a
+   * spurious re-post, so the key is order-independent by construction.
+   */
+  dispatchKey: string;
+}
+
+/** Pure projection of the Port Ledger's fascia identity (display-only). */
+export function ledgerFascia(game: GameState): LedgerFascia {
+  const p = game.player;
+  return {
+    portName: systemName(p.currentSystemId),
+    fuelKey: `${p.ship.fuel}/${p.ship.maxFuel}`,
+    debtKey: `${p.debt}:${p.debtDueDay}`,
+    dispatchKey: offersForSurface(game, 'port')
+      .map((o) => o.storyletId)
+      .sort()
+      .join('|'),
+  };
+}
+
 // ---- T-304 starmap -------------------------------------------------------
 //
 // Every rule number the starmap shows flows out of an engine function — never

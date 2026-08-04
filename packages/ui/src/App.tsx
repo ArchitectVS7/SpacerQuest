@@ -152,6 +152,7 @@ import {
   storyletChoiceLock,
   deedRegistry,
   manifestSheet,
+  ledgerFascia,
   factionStanding,
   nemesisFile,
   crossingStatus,
@@ -4669,6 +4670,77 @@ function Manifest({ state }: { state: CockpitState }) {
   );
 }
 
+// T-191 · THE PORT LEDGER'S ICON LANGUAGE. One stencilled glyph per service
+// module, punched into the module's own head line. Presentation-only and
+// `aria-hidden` throughout: every module still announces itself by its head TEXT
+// (`FUEL DEPOT`, `GUILD DEBT`, …), which is unchanged and which several e2e
+// specs read verbatim. Drawn in `currentColor` so the stencil inherits whatever
+// the head colour is and costs T-186's still-open palette ruling nothing.
+type LedgerGlyphKind = 'dispatch' | 'hold' | 'fuel' | 'debt' | 'port';
+
+const LEDGER_GLYPHS: Record<LedgerGlyphKind, ReactNode> = {
+  // A dispatch slip with a folded corner — paper handed over a counter.
+  dispatch: (
+    <>
+      <path d="M3 2h5l3 3v7H3z" />
+      <path d="M8 2v3h3" />
+      <path d="M5 8h4M5 10h3" />
+    </>
+  ),
+  // A cargo crate, banded — what rides in the hold.
+  hold: (
+    <>
+      <path d="M2 4h10v7H2z" />
+      <path d="M2 6.5h10M7 4v7" />
+    </>
+  ),
+  // A pump nozzle and hose — the depot.
+  fuel: (
+    <>
+      <path d="M3 12V3h5v9" />
+      <path d="M3 6h5" />
+      <path d="M8 5h2v5a1.2 1.2 0 0 0 2 0V7" />
+    </>
+  ),
+  // A struck ledger tally — the marker against you.
+  debt: (
+    <>
+      <path d="M2 2.5h10v9H2z" />
+      <path d="M4.5 5h5M4.5 7.2h5M4.5 9.4h3" />
+      <path d="M2.6 11.4 11.4 2.6" />
+    </>
+  ),
+  // A mooring bollard on a dock line — the authority you stand on.
+  port: (
+    <>
+      <path d="M4.5 12V6a2.5 2.5 0 0 1 5 0v6" />
+      <path d="M3 12h8" />
+      <path d="M4.5 8h5" />
+    </>
+  ),
+};
+
+/** A 14x14 stencil punched into a service module's head. Chrome only. */
+function LedgerGlyph({ kind }: { kind: LedgerGlyphKind }) {
+  return (
+    <svg
+      className="lb-glyph"
+      data-glyph={kind}
+      viewBox="0 0 14 14"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.1"
+      strokeLinecap="square"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {LEDGER_GLYPHS[kind]}
+    </svg>
+  );
+}
+
 // The trade pane (T-305): the port-side controls that sit beside the manifest
 // board — a visible failure notice, the active-contract tracker, the fuel depot
 // and the debt ledger. Every button routes through a store action; the pane
@@ -4713,6 +4785,14 @@ function TradePane({
   // Surface the clamp BEFORE the buy so the overspend is never a silent charge.
   const fuelQuote = fuelPurchaseQuote(game, fuelAmount);
 
+  // T-191 · The rack's fascia — the port name and the three re-mount keys the
+  // service modules animate off. A pure projection (format.ts `ledgerFascia`);
+  // it derives no rule and adds no state. The keys are placed ONLY on leaf
+  // readouts and decorative sweeps, never on a wrapper that contains an input —
+  // remounting `fuel-amount` / `debt-amount` would blow away a typed value and
+  // the caret, which would be a behaviour change wearing a styling hat.
+  const fascia = ledgerFascia(game);
+
   return (
     <section className="pane trade" data-testid="trade-pane">
       <header>
@@ -4720,6 +4800,12 @@ function TradePane({
         <span className="tag">{systemName(p.currentSystemId)} SERVICES</span>
       </header>
       <div className="body">
+        {/* T-191 · The mounting rail every service module is bolted to — the
+            silhouette cue that makes this quadrant read as dockside HARDWARE
+            rather than a fourth copy of the pane chrome. A real element, not a
+            `::before`: pseudo-elements cannot be located by Playwright, and the
+            e2e has to assert the rack's parts exist here and nowhere else. */}
+        <i className="lb-rail" aria-hidden="true" />
         {/* The single mechanically-checkable surface for "failure is never
             silent": whenever the store captured an engine refusal, it shows
             here in reverse-video. It clears on the next successful action. */}
@@ -4738,12 +4824,21 @@ function TradePane({
           <div
             className="ledger-block port-dispatches"
             data-testid="port-dispatches"
+            // T-191 · The live PORT-surface offer set, as one order-independent
+            // string. READER: the `.lb-posts` key below (a re-post animation
+            // when the set genuinely changes) and e2e/port-ledger.spec.ts.
+            data-dispatch-key={fascia.dispatchKey}
             {...railsProps(state, 'trade')}
           >
-            <div className="lb-head">PORT DISPATCHES</div>
-            {portOffers.map((o) => (
-              <StoryletOpener key={o.storyletId} offer={o} onOpen={onOpenStorylet} />
-            ))}
+            <div className="lb-head">
+              <LedgerGlyph kind="dispatch" />
+              PORT DISPATCHES
+            </div>
+            <div className="lb-posts" key={fascia.dispatchKey}>
+              {portOffers.map((o) => (
+                <StoryletOpener key={o.storyletId} offer={o} onOpen={onOpenStorylet} />
+              ))}
+            </div>
           </div>
         )}
 
@@ -4768,6 +4863,7 @@ function TradePane({
           {...railsProps(state, 'trade')}
         >
           <div className="lb-head">
+            <LedgerGlyph kind="hold" />
             ACTIVE CONTRACT
             {/* T-1405 · Contraband-HOLD indicator (distinct from the manifest's
                 contraband OFFER flag). Shows whenever the ship is carrying illicit
@@ -4841,16 +4937,28 @@ function TradePane({
         <div
           className="ledger-block fuel-depot"
           data-testid="fuel-depot"
+          // T-191 · `${fuel}/${maxFuel}` — the exact pair the readout below
+          // prints. READER: the readout's own remount key and
+          // e2e/port-ledger.spec.ts, which uses it as the mechanically-checkable
+          // proof that the tick animation is wired to the real state change
+          // (the paint itself is deliberately off under reduced motion).
+          data-fuel-key={fascia.fuelKey}
           {...railsProps(state, 'fuel')}
         >
-          <div className="lb-head">FUEL DEPOT</div>
+          {/* Decorative charge sweep — remounts, and so replays, whenever the
+              tank moves. Keyed on a LEAF: never on anything containing an input. */}
+          <i className="lb-sweep" key={fascia.fuelKey} aria-hidden="true" />
+          <div className="lb-head">
+            <LedgerGlyph kind="fuel" />
+            FUEL DEPOT
+          </div>
           <div className="lb-row">
             <span className="mono">
               PRICE <b data-testid="fuel-price">{fuelPrice}</b>cr/unit
             </span>
             <span className="mono">
               HOLD{' '}
-              <b data-testid="fuel-hold">
+              <b className="lb-tick" key={fascia.fuelKey} data-testid="fuel-hold">
                 {p.ship.fuel.toLocaleString()}/{p.ship.maxFuel.toLocaleString()}
               </b>
             </span>
@@ -4894,14 +5002,26 @@ function TradePane({
         <div
           className="ledger-block debt-ledger"
           data-testid="debt-ledger"
+          // T-191 · `${debt}:${debtDueDay}` — moves on a pay-down and on a
+          // re-markered due day, and at no other time. READER: the OWED
+          // readout's remount key and e2e/port-ledger.spec.ts.
+          data-debt-key={fascia.debtKey}
           {...railsProps(state, 'trade')}
         >
-          <div className="lb-head">GUILD DEBT</div>
+          <i className="lb-sweep" key={fascia.debtKey} aria-hidden="true" />
+          <div className="lb-head">
+            <LedgerGlyph kind="debt" />
+            GUILD DEBT
+          </div>
           {p.debt > 0 ? (
             <>
               <div className="lb-row">
                 <span className="mono">
-                  OWED <b>{p.debt.toLocaleString()}</b>cr
+                  OWED{' '}
+                  <b className="lb-tick" key={fascia.debtKey}>
+                    {p.debt.toLocaleString()}
+                  </b>
+                  cr
                 </span>
                 <span className={debtDue <= 5 ? 'mono due-soon' : 'mono'}>
                   DUE D{p.debtDueDay} · <b data-testid="debt-countdown">{debtDue}d</b>
@@ -4943,7 +5063,10 @@ function TradePane({
           data-testid="port-authority"
           {...railsProps(state, 'trade')}
         >
-          <div className="lb-head">PORT AUTHORITY</div>
+          <div className="lb-head">
+            <LedgerGlyph kind="port" />
+            PORT AUTHORITY
+          </div>
           {ledger.current ? (
             <div className="port-current" data-testid="port-current">
               <div className="lb-row">
