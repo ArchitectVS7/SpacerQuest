@@ -1404,7 +1404,8 @@ lever.**
 > Explores on a recovery dawn (was 3,204 of 23,858), and the guaranteed-refusal rate against
 > queued Explores halves. §10.2 names the within-day residual the dawn-pure policy contract
 > leaves open; §10.3 files **F-150-2**, the same defect in `smugglerPolicy`, measured and
-> deliberately not fixed.
+> deliberately not fixed *(by T-150 — **F-150-2 was CLOSED at T-199**, together with the shared
+> combat stall that blocked it; §10.3 carries both records)*.
 
 ### 9.8 The five honesty caveats
 
@@ -1587,12 +1588,13 @@ Two closures were available and both were refused, for reasons this repo has alr
 The refusals cost no die and no fuel, so they do not distort the credit column; they inflate the
 *queued* denominator, which is why the table above reports both.
 
-### 10.3 Finding F-150-2 · `smugglerPolicy` carries the same unguarded loop — **FILED, MEASURED, NOT FIXED**
+### 10.3 Finding F-150-2 · `smugglerPolicy` carried the same unguarded loop — **CLOSED, FIXED at T-199**
 
-`smugglerPolicy` has a byte-identical Explore loop with the same missing guard. **T-150 wrote
-that fix, measured it, and backed it out**, and the measurement is why:
+**T-150's record is preserved below, unrevised.** `smugglerPolicy` had a byte-identical Explore
+loop with the same missing guard. **T-150 wrote that fix, measured it, and backed it out**, and
+the measurement was why:
 
-| `smugglerPolicy` (HEAD, unguarded) | value |
+| `smugglerPolicy` (T-150's HEAD, unguarded) | value |
 | --- | --- |
 | policy-days | 14,400 |
 | dawns carrying an open recovery | 1,754 (12.18%) |
@@ -1600,27 +1602,140 @@ that fix, measured it, and backed it out**, and the measurement is why:
 | **queued on a recovery dawn** | **3,891 (16.78%)** |
 | engine refusals `recovery-in-progress` | 4,151 (17.90% of queued) — DAWN-OPEN 2,398 (10.34%) + WITHIN-DAY 1,753 (7.56%) |
 
-So the defect is real and is *larger* here than it was in the explorer. **Adding the guard
-re-seeds the smuggler's deterministic stream onto a PRE-EXISTING stall in the SHARED
-`planPacifistCombat`:** seed 3, Sirius-16, days 45–49 — one interceptor (`anon-rim-pirate-15`)
-escalates rounds 2 → 10 while the tribute climbs 2,000 → 10,000 against a 1,071-credit purse, so
-`canPay` is false at every dawn and the policy plays **five consecutive `run` stances**. A `run`
-is not an income action, so `longestZeroIncomeStreak` reaches 5 and the poverty-trap invariant
-in `campaign-smuggler-gambler.test.ts` goes red.
+Adding the guard re-seeded the smuggler's deterministic stream onto a **pre-existing stall in the
+SHARED `planPacifistCombat`:** seed 3, Sirius-16, days 45–49 — one interceptor
+(`anon-rim-pirate-15`) escalating rounds 2 → 10 while the tribute climbed 2,000 → 10,000 against a
+1,071-credit purse, so `canPay` was false at every dawn and the policy played **five consecutive
+`run` stances**. A `run` is not an income action, so `longestZeroIncomeStreak` reached 5 and the
+poverty-trap invariant went red. The root was a planner five policies share, so T-150 filed it and
+pinned it with an explicit tripwire in `campaign-policies.test.ts` rather than close it quietly.
 
-**The stall is not an Explore problem.** `smugglerPolicy` returns at
-`if (state.encounter) return withReroll(state, planPacifistCombat(...))` long before the Explore
-loop is reached, and `player.recovery` is `null` on all five days. That test file's own header
-already records the same pathology at seed 19 of the T-1601b 300-day sweep; the guard only moves
-which seed meets it.
+#### T-199 · what was actually fixed, and in what order
 
-**Why it is not fixed here.** The root is `planPacifistCombat`, shared by the trader, explorer,
-veteran, smuggler and gambler. Touching it moves **every** policy's fingerprint, which would
-destroy this task's containment claim (§11.5 of `docs/HANGOUT_REDESIGN.md`) and invalidate the
-capstone taken in the same commit. **Filed for a task that is allowed to move every fingerprint,
-and pinned so it cannot be closed by accident:** `campaign-policies.test.ts` carries an explicit
-F-150-2 tripwire asserting the smuggler still queues the refusable Explore, which whoever fixes
-it must delete deliberately — in the same change that deals with the combat stall.
+**1. The shared planner first.** `planPacifistCombat` no longer plays exactly one stance against
+an unaffordable tribute. It keeps the getaway first, on the same die as before, and queues the
+plea behind it on the next die. The justification is the engine mirror this file's planners are
+held to: `canPay` compares the purse to the **demand**, but `resolveTalk`
+(`packages/engine/src/actions/combat.ts`) charges a margin-discounted `paid` and **waives the toll
+entirely on a natural 20** — so the old code was declining a deal the engine might still have
+closed. The "exactly ONE combat action per day" cap that used to forbid a second stance was
+justified by a crash that both batch drivers have guarded against since T-1205 (`runCampaign`) and
+T-1603c (`driveFrom`), each carrying `if (action.type === 'Combat' && !dayState.encounter)
+continue;`.
+
+*Stated honestly, because it matters:* a `talk` anywhere in a day's plan makes that day
+income-classified (`isIncomeAction` counts Combat talk, not run), so `assertNoIncomeStall` can no
+longer fire from a carried encounter for the five policies sharing this planner. That is a
+**consequence** of the fix, not its justification. The cross-check that the strand is genuinely
+gone rather than merely reclassified is a variant that was measured and discarded: queueing a
+**second `run`** instead of a plea — no income reclassification at all — also cleared every
+offending seed (200 seeds × 35 days, worst streak 3, zero offenders).
+
+*The ORDER of the two stances is measured, not aesthetic.* A plea-first version was written and
+run: it moved `balance-combat-survival.test.ts`'s "preparation pays off when outgunned" band from
+0.5333 to 0.4542 against a bar of 0.50 (confirmed causal at a 3×-widened sample: 0.4340 over 360
+seeds × 60 days). A prepared ship usually escapes, so making it open its purse before it opens the
+throttle makes it pay for encounters it used to leave. The band was not moved to accommodate the
+ordering; the ordering was moved to respect the band.
+
+**2. Then the guard.** `smugglerPolicy`'s Explore loop now carries
+`state.player.recovery === null`, identical to `explorerPolicy`'s. The tripwire at
+`campaign-policies.test.ts` is **deleted in the same commit**, and the smuggler is added to that
+suite's `POLICIES` table — so the property the tripwire pinned the *absence* of is now asserted
+positively.
+
+**3. Re-measured**, same probe and same window T-150 used (seeds 1..120 × 120 days = 14,400
+policy-days), as a two-arm HEAD-vs-fix comparison on THIS tree — because T-195's travel-die rules
+re-seeded every stream after T-150's numbers were taken, and forward-carrying the 2026-08-01
+figures would have been dishonest:
+
+| `smugglerPolicy` | **BEFORE** (this tree's HEAD) | **AFTER** (T-199) |
+| --- | --- | --- |
+| policy-days | 14,400 | 14,400 |
+| dawns carrying an open recovery | 2,192 (15.22%) | 2,130 (14.79%) |
+| `Explore` actions queued | 25,756 | 20,534 |
+| **queued on a recovery dawn** | **4,974 (19.31%)** | **0 (0.00%)** |
+| engine refusals `recovery-in-progress` | 5,606 (**21.77%** of queued) | 2,189 (**10.66%** of queued) |
+|  — of those, DAWN-OPEN (*the finding*) | 3,344 (12.98%) | **0 (0.00%)** |
+|  — of those, WITHIN-DAY (*the residual*) | 2,262 (8.78%) | 2,189 (10.66%) |
+
+**The finding's channel is closed exactly: 4,974 → 0 queued, 3,344 → 0 refused**, the same shape
+§10.1 recorded for the explorer. The guaranteed-refusal rate against queued Explores halves,
+21.77% → 10.66%, and **every refusal that remains is §10.2's residual** — the dawn-pure policy
+contract, named and bounded there, not a hole in this fix.
+
+Note the drift against T-150's own row (16.78% → 19.31% on the same policy, same window): that is
+T-195, not this task. It is why the BEFORE arm was re-run rather than quoted.
+
+#### The stall itself, and the two seeds the acceptance names
+
+**Seed 3 no longer reproduces on this tree at all.** With the guard applied and nothing else
+changed, `smugglerPolicy` seed 3 × 120 days has a longest zero-income streak of **1**. T-195
+(`8ba4e83a`) re-seeded every stream long before T-199 touched anything, so the Sirius-16 /
+days-45-49 trajectory this section describes is a historical record, not a live case. It is pinned
+as a **regression bar** in `campaign-smuggler-gambler.test.ts` rather than as a reproduction.
+
+**Seed 20 was live, and was the reason this became urgent.** The "Sweep gate" GitHub Actions check
+went red on `redesign/explore-hangout` for the first time at run 30935230550, shard 2/2:
+`assertNoIncomeStall · smuggler · seed 20 · 5 consecutive zero-income days (limit 5)` — the same
+invariant, the same policy, the same root, newly sampled by CI's seed range rather than introduced
+by the commit that surfaced it. It clears under this fix, and is pinned by seed.
+
+#### The wider map, and what it forced
+
+The fix was graded on `balance:sweep --seeds 1000 --days 35` (4 shards), which is where the
+smuggler's two seeds turned out to be two of **seven** `assertNoIncomeStall` violations across four
+policies:
+
+| policy | seeds | streak | class |
+| --- | --- | --- | --- |
+| smuggler | 20, 677 | 5, 6 | **F-150-2** — encounter-pinned in the shared planner |
+| trader | 371, 571 | 6, 7 | **F-199-1** — rim strand: a full 240/240 tank, `TRADER_RESERVE` in the purse, `reachable` empty even at `maxFuel`, and no anti-idle move at all → bare `Wait` |
+| fighter | 74, 747, 916 | 9, 26, 24 | **F-199-2** — the strand T-159's homeward burn cannot reach: no leg on the board fits even a full tank, and the tank itself has been collapsed by hull damage |
+
+Fixing the smuggler alone was not an option: any shared-planner change re-seeds every stream and
+moves *which* seeds strand (**F-199-3**), and the guard alone woke a dormant 25-day fighter strand
+on seed 35 and a 5-day smuggler strand on seed 970. So the rim-strand class was closed in the same
+change:
+
+- `fighterPolicy`'s T-159 homeward burn was **extracted to a shared `planHomewardBurn`** and proved
+  inert first (the `fighter` fingerprint came back byte-identical to its pre-T-199 pin with only the
+  extraction applied), then wired into `traderPolicy` and `smugglerPolicy`.
+- A second rung, `planStrandedExplore`, covers the corner the burn cannot reach — no leg on the map
+  is affordable, so the ship looks around instead. It must be queued **last** in a day plan: a
+  band-3/4 find charges `apCost` extra dice at claim (owner ruling D1), which orphans any die-costed
+  action queued behind it.
+- `planCrippledRepair` was given to `fighterPolicy` — the last policy in `sim/index.ts` without it,
+  and the one that stands and trades fire. Seed 74 was not a fuel or credit problem: enemy fire had
+  ground the hull to condition 1, collapsing the tank to 60 units, permanently below the 80-unit
+  Explore floor and short of every leg on junker drives. This one change pays for itself on every
+  axis measured (100 seeds × 120 days): worst zero-income streak 9 → 1, median final credits
+  68,691 → 79,494, debt-clear rate 0.570 → 0.580.
+
+**Result: 7 violations → 0**, all eight capstone shards exit 0.
+
+#### Two residuals are carried open, deliberately — each written, MEASURED, and backed out
+
+Both are real defects. Neither is worth what closing it costs, and neither is paid for by moving a
+threshold:
+
+- **`veteranPolicy` is not wired to the shared anti-idle move**, though it has the same rim-strand
+  hole. It is exempt from `assertNoIncomeStall` (`balance/gate.ts` `GATE_COMPETENT_POLICIES` — "an
+  endgame grinder, not a lean balance instrument"), and wiring it moved
+  `balance-combat-survival.test.ts`'s "preparation pays off when outgunned" band from 0.5333 to
+  0.4801 against a bar of 0.50 (the veteran is one of that slice's four policies; the trader is not,
+  which is why the trader could be wired and the veteran could not).
+- **`fighterPolicy`'s Guild-marker payment is not netted against the yard spend queued moments
+  earlier**, though the arithmetic hole is real — both spenders respect `FIGHTER_RESERVE`
+  individually and can clear it together, which is how seed 74's day 15 queued a 2,600cr tier AND a
+  3,412cr marker payment out of a 6,652cr purse. Netting it cost median final credits
+  79,494 → 5,877 and the debt-clear rate 0.580 → 0.510 (an 8,000-row capstone diff put the same
+  number at `fighter.finalCredits.median` −93.5%, `tourOneClearRate` −9.2%): a smaller payment
+  leaves the **compounding** marker open longer, and this policy withholds special equipment while
+  `debt > 0`. The strand it was aimed at is closed by the crippled repair instead.
+
+Both are filed as **F-199-1** and **F-199-2** in `TASKS.md`, with the measurements above, for a task
+that owns the bands they move.
 
 ### 10.4 The Explore PARITY LEDGER row, RE-ASKED — **still UNRULED**
 
@@ -1686,3 +1801,17 @@ owed** — both fixes are sim-policy-only and touch no save shape.
 The only shipped-source change is the one term added to `explorerPolicy`'s loop condition (plus
 `planDare`'s roaming carry-forward, which belongs to `docs/HANGOUT_REDESIGN.md` §11.2), the
 baseline-of-record re-pin, and new tests.
+
+---
+
+**T-199 ADDENDUM to §10.5 — added, not a revision.** Everything above about T-150 stands as
+written. T-199 (which closed F-150-2 in §10.3) also touched **no** constant, DC, price, band
+weight, threshold, golden or band: `git diff --stat` over `packages/engine/src`,
+`packages/content/src` and `packages/ui/src` shows zero files and zero lines for that task too,
+`CURRENT_SAVE_VERSION` is unmoved and no migration is owed — every change is sim-policy-only and
+touches no save shape. What it did move, and named up front as expected before running anything:
+four `campaign-degraded.test.ts` fingerprints (`trader`, `fighter`, `explorer`, `smuggler`; the
+`veteran`, `gambler` and `greedy` rows came back byte for byte, and the entry-29 note records that
+as *unchanged in this window*, never as *unaffected*), one re-phased seed-pin in
+`campaign-reach.test.ts` (swept over seeds 1..80 and widened, not re-thresholded), and the capstone
+baseline of record.

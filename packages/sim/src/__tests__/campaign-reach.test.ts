@@ -379,7 +379,29 @@ describe('T-1307 ports reachable through play', () => {
     // PINNED, NOT STEERED: only the seed changed; every assertion below is untouched,
     // the 150-day horizon is unmoved, and the sample was WIDENED rather than the
     // threshold.
-    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 8, 150);
+    //
+    // T-199 re-pin (seed 8 -> 4). MECHANISM: the same class a THIRD time, and this
+    // time from two directions at once. (a) `planPacifistCombat` — shared by the
+    // veteran and five other policies — now PLEADS before it runs when the tribute
+    // is unaffordable, instead of only running, so a carried encounter resolves on a
+    // different day. (b) `veteranPolicy` gained the shared anti-idle repositioning
+    // burn (F-199-1) and its marker payment now nets off the yard spend it queued
+    // moments earlier (F-199-2), so a day that used to be a busy-but-earning-nothing
+    // `Wait` is a jump. Both re-phase a 150-day trajectory from the first encounter
+    // and the first idle rim dawn onward — different ports on different days, so a
+    // different set of purchasable core ports is ever stood on with the price plus 5k
+    // headroom in hand.
+    // SWEEP EVIDENCE (seeds 1..80 of this exact committed test, run through a
+    // temporary in-file seed loop so the swept code IS the shipped code): 18 of 80
+    // qualify — 4, 16, 17, 21, 24, 25, 34, 35, 41, 46, 51, 58, 60, 62, 66, 67, 70,
+    // 79 — which is 22.5% against T-161's 20% at the same sample, i.e. the pillar is
+    // EASIER to reach again after the fix and the falling trend the T-1504a note
+    // warns about has still not resumed. Seed 4 is the first qualifier (1 purchase on
+    // day 131, 20 income accruals after it).
+    // PINNED, NOT STEERED: only the seed changed; every assertion below is untouched,
+    // the 150-day horizon is unmoved, and the sample was WIDENED rather than the
+    // threshold.
+    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 4, 150);
 
     // The purchase happened through legal play: a PortEvent{purchased} was logged
     // (ports are bought via the Port action, never injected).

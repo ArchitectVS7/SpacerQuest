@@ -2369,7 +2369,16 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t195-dawn-dice.json`** (1,000 seeds ×
+   > **Baseline of record is `docs/balance/baseline-t199-pacifist.json`** (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at T-199 2026-08-04 — the F-150-2 capstone:
+   > the shared `planPacifistCombat` no longer plays one stance against an unaffordable tribute,
+   > `smugglerPolicy` gains the Explore recovery guard T-150 had to back out, and the rim-strand
+   > class gets a shared anti-idle move. PREDICTED BEFORE THE RUN and held: all eight rows move
+   > except `greedy`, which never reaches the changed planner. Fleet deltas are small —
+   > `tourOneClearRate` 0.6310 → 0.6320, median final credits 50,813 → 49,729 (−2.1%), ships lost
+   > 411 → 436 (+6.1%, and the `fighter` row alone falls 14 → 8 on its new crippled repair). The
+   > change it exists for is `assertNoIncomeStall`: **7 violations → 0** at 1,000 seeds × 35 days).
+   > Before that, `docs/balance/baseline-t195-dawn-dice.json` (1,000 seeds ×
    > 120 days × 8 policies = 8,000 runs, re-pinned at T-195 2026-08-04 — the dawn-hand travel-die
    > bake-off; all eight policies moved, a real and intended broad easing — see the standing
    > amendment above for the exact deltas and the two seeded tests flagged for possible re-tuning).

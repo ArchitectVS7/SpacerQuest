@@ -1,11 +1,19 @@
-import { STAR_SYSTEMS } from '@spacerquest/content';
+import {
+  EXPLORATION_FUEL_COST,
+  FLAWS,
+  RUN_FUEL_COST,
+  STAR_SYSTEMS,
+  distance as systemDistance,
+} from '@spacerquest/content';
 import {
   applyPlayerAction,
   createInitialState,
   endDay,
   SeededRng,
   startDay,
+  tributeForRound,
   type GameState,
+  type PlayerAction,
   type RecoveryState,
 } from '@spacerquest/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -13,6 +21,7 @@ import {
   DARE_MAX_MOVES_PER_HAND,
   explorerPolicy,
   fighterPolicy,
+  hangoutSystemIds,
   planDareMove,
   reportToJson,
   runCampaign,
@@ -413,15 +422,20 @@ const policyRng = (seed: number, day: number, dayIndex: number) =>
   new SeededRng(seed).fork('policy').fork(`day-${day}`).fork(`index-${dayIndex}`);
 
 describe('T-150 · F-116-1 · explorerPolicy never queues an Explore the engine will refuse', () => {
-  // SCOPED TO THE EXPLORER, and the scope is itself a measured decision.
-  // `smugglerPolicy` carries a byte-identical Explore loop with the same missing
-  // guard; T-150 wrote that fix, measured it, and BACKED IT OUT — it re-seeds the
-  // smuggler's stream onto a pre-existing five-day stall in the SHARED
-  // `planPacifistCombat` (seed 3, days 45-49) that trips the poverty-trap
-  // invariant below. Filed as F-150-2 (docs/EXPLORE_REDESIGN.md §10) for a task
-  // allowed to move every policy fingerprint. See the note at that loop in
-  // `sim/index.ts`. `smugglerPolicy` is deliberately NOT in this table.
-  const POLICIES: [string, SimPolicy][] = [['explorerPolicy', explorerPolicy]];
+  // THE SCOPE CLOSED AT T-199. This table used to hold the explorer alone, and the
+  // exclusion was itself a measured decision: `smugglerPolicy` carries a
+  // byte-identical Explore loop with the same missing guard, and T-150 wrote that
+  // fix, measured it, and BACKED IT OUT because it re-seeded the smuggler's stream
+  // onto a pre-existing five-day stall in the SHARED `planPacifistCombat` (seed 3,
+  // days 45-49) that tripped the poverty-trap invariant below. T-199 fixed that
+  // planner first — it now pleads before it runs, so an encounter-pinned day is no
+  // longer a zero-income day — and only then added the smuggler's guard. Both
+  // policies are in scope from here on, and the F-150-2 tripwire that pinned the
+  // exclusion is deleted in the same change.
+  const POLICIES: [string, SimPolicy][] = [
+    ['explorerPolicy', explorerPolicy],
+    ['smugglerPolicy', smugglerPolicy],
+  ];
 
   for (const [name, policy] of POLICIES) {
     it(`${name} queues no Explore while a recovery is open, and still explores when none is`, () => {
@@ -463,7 +477,7 @@ describe('T-150 · F-116-1 · explorerPolicy never queues an Explore the engine 
     let daysWithOpenRecovery = 0;
     let exploresOnRecoveryDawns = 0;
 
-    for (const policy of [explorerPolicy]) {
+    for (const policy of [explorerPolicy, smugglerPolicy]) {
       for (let seed = 1; seed <= 5; seed += 1) {
         let state = createInitialState(seed);
         for (let dayIndex = 0; dayIndex < 120; dayIndex += 1) {
@@ -502,27 +516,205 @@ describe('T-150 · F-116-1 · explorerPolicy never queues an Explore the engine 
     expect(exploresOnRecoveryDawns).toBe(0);
   }, 180000);
 
-  it('F-150-2 TRIPWIRE · smugglerPolicy still queues the refusable Explore, on purpose', () => {
-    // NOT AN ENDORSEMENT — a PIN. `smugglerPolicy`'s Explore loop is F-116-1's
-    // twin and is knowingly unguarded (full reasoning at that loop in
-    // `sim/index.ts` and in docs/EXPLORE_REDESIGN.md §10, finding F-150-2): adding
-    // the guard re-seeds the smuggler's stream onto a pre-existing five-day stall
-    // in the shared `planPacifistCombat`, which trips the poverty-trap invariant.
-    //
-    // This assertion exists so the finding cannot be quietly closed. Whoever fixes
-    // F-150-2 must DELETE this test deliberately and, in the same change, fix the
-    // combat stall that the guard exposes. A silent flip here would mean the twin
-    // was patched without its consequence being dealt with.
+  // THE F-150-2 TRIPWIRE ('smugglerPolicy still queues the refusable Explore, on
+  // purpose') STOOD HERE AND IS DELETED AT T-199, DELIBERATELY. It was a PIN, not
+  // an endorsement: it asserted the smuggler's unguarded twin still queued a
+  // refusable Explore, so that the finding could not be closed silently — its own
+  // words were "whoever fixes F-150-2 must DELETE this test deliberately and, in
+  // the same change, fix the combat stall that the guard exposes."
+  //
+  // Both halves of that condition are met by the commit deleting it: the shared
+  // `planPacifistCombat` stall is fixed first (it now pleads before it runs, so a
+  // day pinned by an unaffordable tribute is income-classified rather than five
+  // consecutive `run` stances), and the smuggler's guard is added on top. The
+  // smuggler is now a member of `POLICIES` above, so the property the tripwire
+  // pinned the ABSENCE of is asserted positively there — deleting it does not
+  // reduce coverage, it inverts it.
+});
+
+// ---------------------------------------------------------------------------
+// T-199 · `planPacifistCombat` — the second stance, and the guards that make it
+// safe. The function is not exported, so every assertion below drives it through
+// a policy that routes to it (`if (state.encounter) return withReroll(state,
+// planPacifistCombat(...))`), against states produced by real play rather than by
+// poking `state.encounter` — the same standard the recovery suite above holds.
+// ---------------------------------------------------------------------------
+describe('T-199 · the pacifist planner takes a second stance at an unaffordable tribute', () => {
+  it('queues the getaway FIRST and the plea behind it, and never more than two', () => {
+    // THE PROPERTY, over every dawn in a real sweep where the branch is live:
+    // an open encounter, a tribute the purse cannot cover, and fuel for a run.
+    // The demand is built with the ENGINE's own `tributeForRound` rather than a
+    // transcribed number, so a content re-price cannot silently make this vacuous.
+    let branchDawns = 0;
+    let twoStanceDawns = 0;
+
+    for (let seed = 1; seed <= 25; seed += 1) {
+      let state = createInitialState(seed);
+      for (let dayIndex = 0; dayIndex < 60; dayIndex += 1) {
+        const rng = policyRng(seed, state.day, dayIndex);
+        let dayState = startDay(state).state;
+        const encounter = dayState.encounter;
+        const actions = smugglerPolicy({ state: dayState, dayIndex, rng });
+
+        if (encounter) {
+          const tribute = tributeForRound(
+            encounter.round,
+            encounter.interceptor.kind,
+            encounter.interceptor.tier - dayState.player.tier,
+          );
+          const flaw = encounter.interceptor.flaw;
+          const refuses = flaw ? Boolean(FLAWS[flaw]?.refusesTribute) : false;
+          const unaffordable = refuses || dayState.player.credits < tribute;
+          const combat = actions.filter((a) => a.type === 'Combat');
+          // A combat plan never mixes targets and never runs past two stances.
+          expect(combat.every((a) => a.targetId === encounter.interceptor.id)).toBe(true);
+          expect(combat.length).toBeLessThanOrEqual(2);
+
+          if (unaffordable && dayState.player.ship.fuel >= RUN_FUEL_COST) {
+            branchDawns += 1;
+            // The getaway is FIRST — measured, not aesthetic: opening with the
+            // plea instead moved `balance-combat-survival.test.ts`'s
+            // "preparation pays off when outgunned" band under its bar, because a
+            // prepared ship that used to escape started paying. See the note at
+            // the planner.
+            expect(combat[0]?.stance).toBe('run');
+            if (combat.length === 2) {
+              twoStanceDawns += 1;
+              expect(combat[1]?.stance).toBe('talk');
+              expect(combat[0]?.spendDie).not.toBe(combat[1]?.spendDie);
+            }
+          }
+        }
+
+        for (const action of actions) {
+          if (action.type === 'Combat' && !dayState.encounter) continue;
+          if (action.type === 'Dare' && !dayState.dareHand) continue;
+          dayState = applyPlayerAction(dayState, action).state;
+          let dareGuard = 0;
+          while (dayState.dareHand && dareGuard < DARE_MAX_MOVES_PER_HAND) {
+            dareGuard += 1;
+            const move = planDareMove(dayState);
+            if (!move) break;
+            dayState = applyPlayerAction(dayState, move).state;
+          }
+        }
+        state = endDay(dayState).state;
+      }
+    }
+
+    // NON-VACUOUS: the branch has to be reached, and the second stance has to be
+    // queued, or the assertions above are statements about the empty set.
+    expect(branchDawns).toBeGreaterThan(0);
+    expect(twoStanceDawns).toBeGreaterThan(0);
+  }, 180000);
+
+  it('THE ORPHAN GUARD is what makes a two-action combat plan safe, in BOTH drivers', () => {
+    // The one-combat-action-per-day cap this planner used to carry was justified
+    // by a crash — "queueing more would crash the moment one resolves the
+    // encounter (no encounter left to target)" — and that justification was stale:
+    // `runCampaign` (T-1205) and `driveFrom` (T-1603c) both skip a Combat whose
+    // encounter is gone. This test pins the guard so nobody re-imposes the cap on
+    // the old rationale, and it pins it as a PROPERTY OF BOTH DRIVERS: the engine
+    // really does throw on the orphan, and both drivers really do avoid it.
     const dawn = fuelledSolventDawn(1);
-    const blocked: GameState = {
-      ...dawn,
-      player: { ...dawn.player, recovery: openRecovery(dawn) },
+    expect(dawn.encounter ?? null).toBeNull();
+    const orphan: PlayerAction = {
+      type: 'Combat',
+      stance: 'run',
+      targetId: 'anyone-at-all',
+      spendDie: 0,
     };
-    const plan = smugglerPolicy({
-      state: blocked,
-      dayIndex: 0,
-      rng: policyRng(1, blocked.day, 0),
-    });
-    expect(plan.filter((a) => a.type === 'Explore').length).toBeGreaterThan(0);
+    // The engine's own answer, stated so the guard's necessity is visible.
+    expect(() => applyPlayerAction(dawn, orphan)).toThrow();
+
+    // `driveFrom`'s guard: a policy that queues nothing BUT an orphaned Combat
+    // drives a full campaign without throwing, and the day is simply a no-op.
+    const orphanOnlyPolicy: SimPolicy = () => [orphan];
+    expect(() => driveCompetentCampaign(orphanOnlyPolicy, 1, 5)).not.toThrow();
+
+    // `runCampaign`'s guard: the same, through the shipped sim entry point.
+    expect(() => runCampaign(1, 5, 'trader')).not.toThrow();
   });
+});
+
+describe('T-199 · F-199-1/F-199-2 · the shared anti-idle move and its guards', () => {
+  // `planHomewardBurn` and `planStrandedExplore` are not exported either, so these
+  // assert their three guards through `traderPolicy` — the caller F-199-1 was
+  // measured on — over real sweep dawns.
+  it('never displaces income work, and only ever adds ONE anti-idle action', () => {
+    let idleDawns = 0;
+    let rescuedDawns = 0;
+
+    for (let seed = 360; seed <= 380; seed += 1) {
+      let state = createInitialState(seed);
+      for (let dayIndex = 0; dayIndex < 35; dayIndex += 1) {
+        const rng = policyRng(seed, state.day, dayIndex);
+        let dayState = startDay(state).state;
+        const actions = traderPolicy({ state: dayState, dayIndex, rng });
+
+        const travels = actions.filter((a) => a.type === 'Travel');
+        const explores = actions.filter((a) => a.type === 'Explore');
+        // Guard 1, as a property: the burn and the stranded Explore are BOTH gated
+        // on the day having queued no income action, so neither can ever be the
+        // second Travel or the Explore-on-a-working-day. A trader day therefore
+        // still queues at most the two legs its own contract block plans.
+        expect(travels.length).toBeLessThanOrEqual(2);
+        // Guard 2 in effect: the trader never queues a leg on an empty tank.
+        if (explores.length > 0) {
+          expect(dayState.player.ship.fuel).toBeGreaterThanOrEqual(EXPLORATION_FUEL_COST);
+          expect(dayState.player.recovery).toBeNull();
+        }
+
+        if (actions.length > 0 && !actions.some((a) => a.type === 'Wait')) {
+          idleDawns += 1;
+          if (travels.length === 1 && !dayState.player.activeContract) rescuedDawns += 1;
+        }
+
+        for (const action of actions) {
+          if (action.type === 'Combat' && !dayState.encounter) continue;
+          if (action.type === 'Dare' && !dayState.dareHand) continue;
+          dayState = applyPlayerAction(dayState, action).state;
+        }
+        state = endDay(dayState).state;
+      }
+    }
+
+    // NON-VACUOUS: this seed window is the one F-199-1 was measured on (371, 571),
+    // so it must actually contain days the move fires on.
+    expect(idleDawns).toBeGreaterThan(0);
+    expect(rescuedDawns).toBeGreaterThan(0);
+  }, 120000);
+
+  it('STRICT PROGRESS: a repositioning burn only ever ends nearer a Hangout', () => {
+    // Guard 3. Asserted on the destination the plan actually names, over the same
+    // window: a burn that landed no closer to a desk would be a twitch to keep an
+    // income counter warm, which is the failure mode the guard exists to refuse.
+    let burns = 0;
+    for (let seed = 360; seed <= 380; seed += 1) {
+      let state = createInitialState(seed);
+      for (let dayIndex = 0; dayIndex < 35; dayIndex += 1) {
+        const rng = policyRng(seed, state.day, dayIndex);
+        let dayState = startDay(state).state;
+        const from = dayState.player.currentSystemId;
+        const actions = traderPolicy({ state: dayState, dayIndex, rng });
+        const signed = actions.some((a) => a.type === 'Trade' && a.action === 'sign-contract');
+        const travel = actions.find((a) => a.type === 'Travel');
+        // A Travel with no contract signed this day and no contract already open
+        // can only have come from the burn.
+        if (travel && !signed && !dayState.player.activeContract) {
+          const homeward = (systemId: number): number =>
+            Math.min(...hangoutSystemIds().map((id) => systemDistance(systemId, id)));
+          expect(homeward(travel.destinationId)).toBeLessThan(homeward(from));
+          burns += 1;
+        }
+        for (const action of actions) {
+          if (action.type === 'Combat' && !dayState.encounter) continue;
+          if (action.type === 'Dare' && !dayState.dareHand) continue;
+          dayState = applyPlayerAction(dayState, action).state;
+        }
+        state = endDay(dayState).state;
+      }
+    }
+    expect(burns).toBeGreaterThan(0);
+  }, 120000);
 });

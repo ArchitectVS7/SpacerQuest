@@ -99,8 +99,14 @@ const TRADER_CLEAR_DAY_MAX = 30;
  * the new file updates this line and the pointer in
  * `docs/NPC_REDESIGN.md`'s standing amendment 1.
  */
+// T-199 re-pin (t195-dawn-dice -> t199-pacifist). Same shape, same 8,000 rows, same
+// eight policies, same milestone days: the capstone was re-taken because
+// `packages/sim/src/index.ts` moved (the shared pacifist-combat planner and the
+// anti-idle rim-strand rules), which moves the INSTRUMENT fingerprint and stales
+// every fixture measured against it. The bands below are UNTOUCHED — nothing here
+// was re-derived to accommodate the new sample.
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
-  new URL('../../../../docs/balance/baseline-t195-dawn-dice.json', import.meta.url),
+  new URL('../../../../docs/balance/baseline-t199-pacifist.json', import.meta.url),
 );
 const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
   label: string;

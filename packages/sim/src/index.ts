@@ -1971,10 +1971,19 @@ function crippledRepairNeed(state: GameState): {
  * encounter by talk or fight COMPLETES the interrupted delivery; running only
  * escapes back to the origin (delivery lost). So prefer to talk it down when the
  * tribute is affordable and the interceptor will actually take credits; fall
- * back to a getaway otherwise. Exactly ONE combat action per day — queueing more
+ * back to a getaway otherwise. An unresolved encounter simply carries to the next
+ * dawn and is retried, at the cost of one dusk pressure roll.
+ *
+ * T-199 · THE ONE-ACTION-PER-DAY CAP IS GONE, AND ITS RATIONALE WAS STALE.
+ * This comment used to read "Exactly ONE combat action per day — queueing more
  * would crash the moment one resolves the encounter (no encounter left to
- * target). An unresolved encounter simply carries to the next dawn and is
- * retried, at the cost of one dusk pressure roll.
+ * target)". That crash is no longer reachable from a batch driver: BOTH drivers
+ * that apply a policy's plan now skip an orphaned Combat before it reaches the
+ * engine — `runCampaign` (this file, "T-1205: a queued Combat can now be orphaned
+ * mid-batch") and `driveFrom` (`__tests__/support/campaign-drivers.ts`, T-1603c),
+ * each carrying the same `if (action.type === 'Combat' && !dayState.encounter)
+ * continue;`. The cap was a workaround for a hazard those two guards removed, and
+ * leaving it in place cost a real out (below).
  */
 function planPacifistCombat(state: GameState, ledger: DieLedger): PlayerAction[] {
   const encounter = state.encounter;
@@ -2015,12 +2024,227 @@ function planPacifistCombat(state: GameState, ledger: DieLedger): PlayerAction[]
   if (!refusesTribute && canPay) {
     return [{ type: 'Combat', stance: 'talk', targetId, spendDie: die }];
   }
+
+  // T-199 · THE DAY DOES NOT HAVE TO END AT THE FIRST REFUSED STANCE. Until now
+  // this branch played exactly one move — a `run` if the tank could pay for one,
+  // otherwise a plea — and then let the encounter carry to the next dawn. That
+  // single move is kept, in the same order and on the same die, so a prepared ship
+  // still tries the getaway it has always tried. What is added is a SECOND stance
+  // behind it, taken only if the first one did not end the encounter (both batch
+  // drivers skip an orphaned Combat, see the header).
+  //
+  // THE SECOND STANCE IS THE PLEA, AND `canPay === false` WAS NEVER THE ENGINE'S
+  // GATE ON IT. `canPay` compares the purse to the DEMAND; `resolveTalk`
+  // (`engine/src/actions/combat.ts`) charges `paid = max(1, floor(amount × (1 −
+  // 0.05 × margin)))` on a success and WAIVES THE TOLL ENTIRELY on a natural 20.
+  // So the old code declined a deal the engine might still have closed — the same
+  // class of mistake the R0a block above fixed for the demand itself ("an
+  // instrument that is wrong about the one number a decision turns on cannot grade
+  // a change to that number"), and the same reasoning the dry-tank fallback below
+  // already used in its own words ("a nat-20 waves the ship through, and it costs
+  // no fuel"). That fallback stops being a dry-tank corner and becomes the general
+  // second try.
+  //
+  // WHY THE GETAWAY STAYS FIRST, and this ordering is MEASURED, not aesthetic. A
+  // plea-first version was written and run: it moved
+  // `balance-combat-survival.test.ts`'s "preparation pays off when outgunned" band
+  // from 0.5333 to 0.4542 against a bar of 0.50 (confirmed causal, not noise, at a
+  // 3x-widened sample: 0.4340 over 360 seeds × 60 days, n = 4,636 / 826 in the two
+  // graded cells). The mechanism is plain once seen — a PREPARED ship outguns the
+  // interceptor and usually escapes, so making it open its purse before it opens
+  // the throttle makes it PAY for encounters it used to leave, and the band that
+  // exists to say "preparation pays" is exactly the thing that dulls. The band was
+  // not moved to accommodate the ordering; the ordering was moved to respect the
+  // band.
+  //
+  // HONEST TRADE-OFF, stated because a reviewer will ask: a `talk` anywhere in the
+  // plan makes an encounter-pinned day income-classified (`isIncomeAction` counts
+  // Combat talk, not run), so `assertNoIncomeStall` can no longer fire from a
+  // carried encounter for the five policies sharing this planner. That is a
+  // CONSEQUENCE of the fix, not its justification — the justification is the
+  // engine mirror above, and it would stand if the invariant did not exist.
+  //
+  // REJECTED: `fight` as a last resort. It converts five deliberately pacifist
+  // instruments into fighters, moves `ship-loss-share-of-encounters` and
+  // `combat-win-share`, and would change what the trader/explorer/smuggler rows
+  // measure. NAMED, NOT CLOSED: `refusesTribute` is still a wrong mirror in the
+  // other direction — `interceptorRefusesTribute` (`engine/src/rules/combatRules.ts`)
+  // is a per-attempt d20 against `flawDc`, not a certainty, so a flawed
+  // interceptor is treated here as never negotiable when the engine says
+  // "usually not". Left as-is: closing it would widen this change past its root.
+  const actions: PlayerAction[] = [];
   if (state.player.ship.fuel >= RUN_FUEL_COST) {
-    return [{ type: 'Combat', stance: 'run', targetId, spendDie: die }];
+    actions.push({ type: 'Combat', stance: 'run', targetId, spendDie: die });
+    // The plea rides the NEXT die. If the hand is empty the getaway simply stands
+    // alone, which is exactly what this branch did before.
+    const pleaDie = ledger.takeBest();
+    if (pleaDie !== undefined) {
+      actions.push({ type: 'Combat', stance: 'talk', targetId, spendDie: pleaDie });
+    }
+    return actions;
   }
-  // Dry tank and can't buy the interceptor off with credits: talk anyway (a
-  // nat-20 waves the ship through, and it costs no fuel).
+  // Dry tank and can't buy the interceptor off at the asking price: plead anyway,
+  // on the die the getaway would have used.
   return [{ type: 'Combat', stance: 'talk', targetId, spendDie: die }];
+}
+
+/**
+ * THE ANTI-IDLE REPOSITIONING BURN, shared. Lifted VERBATIM at T-199 from
+ * `fighterPolicy`'s T-159 second pass, whose original reasoning is preserved
+ * below word for word because it is the justification for every caller, not just
+ * for the fighter:
+ *
+ *   "NOTHING ON THE BOARD IS FLYABLE AT ALL: FLY HOME. The relaxation above
+ *   closes the case where the margin cap is the only thing in the way. It CANNOT
+ *   close the harder rim corner, and measurement said so: with the relaxation
+ *   alone, seed 35's fighter still sat 8 consecutive zero-income days at Algol-2
+ *   (system 20) because after a succession left it on a 240-unit tank and a
+ *   junker drive, EVERY leg the board offered cost 252-602 fuel — `reachable` is
+ *   empty even at `maxFuel`, so there is no filter to relax.
+ *
+ *   So this is the gambler's fallback, not the trader's: an explicit ANTI-IDLE
+ *   MOVE (`index.ts` gamblerPolicy, "Nothing to fly? Go where the tables are" —
+ *   "`Travel` IS an income action, and without it a rich gambler simply stops").
+ *   The fighter's version of "where the tables are" is HOMEWARD: the lanes around
+ *   the Hangout, where the legs are short enough that a junker drive can fly them
+ *   and where the interceptor traffic this policy exists to shoot actually is.
+ *
+ *   Three guards keep this a repositioning burn and not a metric-gaming twitch:
+ *     1. It fires ONLY when the day has queued no income action at all, so it can
+ *        never displace a run the fighter could have flown.
+ *     2. The destination must be affordable on the tank the day will ACTUALLY
+ *        have (`availableFuel`, post-refuel) — never a leg the engine refuses.
+ *     3. STRICT PROGRESS: the target must be closer to a Hangout than the current
+ *        port is, so a stranded fighter walks in toward the core instead of
+ *        ping-ponging between two rim ports to keep an income counter warm."
+ *
+ * WHY IT IS SHARED NOW (F-199-1). The rim corner T-159 measured is not a fighter
+ * property — it is a property of the BOARD, and the 1,000-seed × 35-day sweep
+ * caught `traderPolicy` in exactly it (seeds 371 and 571: a full 240/240 tank,
+ * `TRADER_RESERVE` in the purse, `reachable` empty even at `maxFuel`, and no
+ * anti-idle move of any kind, so the day fell through to a bare `Wait`). Rather
+ * than write the same walk out again, T-159's is lifted here unchanged — and the
+ * extraction was proven INERT before any new caller was wired in: with the fighter
+ * calling this function and nothing else changed, `campaign-degraded.test.ts`'s
+ * `fighter` fingerprint came back byte-identical to its pre-T-199 pin and the
+ * 200-seed × 35-day strand scan reported the same two offending seeds.
+ *
+ * CALLERS: `fighterPolicy` (its original home), `traderPolicy` and
+ * `smugglerPolicy`. `veteranPolicy` is DELIBERATELY NOT WIRED, and the omission is
+ * measured, not forgotten: the veteran is exempt from `assertNoIncomeStall`
+ * (`balance/gate.ts` GATE_COMPETENT_POLICIES — "an endgame grinder, not a lean
+ * balance instrument"), and wiring it moved `balance-combat-survival.test.ts`'s
+ * "preparation pays off when outgunned" band from 0.5333 to 0.4801 against a bar of
+ * 0.50 (the veteran is one of that slice's four policies; the trader is not, which
+ * is why the trader could be wired and the veteran could not). Carried as an open
+ * residual under F-199-1 in TASKS.md rather than paid for by moving a band.
+ *
+ * `refuelCost` is the CREDITS the day has already committed to refuelling; it is
+ * converted back to fuel units at the port's price, exactly as the fighter did.
+ * Guard 1 is enforced here rather than at the call sites so a new caller cannot
+ * forget it. Readers: `assertNoIncomeStall` in `balance/gate.ts`, and the `< 5`
+ * poverty-trap invariant in `campaign-policies.test.ts`.
+ */
+function planHomewardBurn(
+  state: GameState,
+  ledger: DieLedger,
+  actions: readonly PlayerAction[],
+  refuelCost: number,
+): PlayerAction | null {
+  // Guard 1.
+  if (state.player.activeContract) return null;
+  if (actions.some(isIncomeAction)) return null;
+
+  const from = state.player.currentSystemId;
+  const homewardDistance = (systemId: number): number =>
+    Math.min(...hangoutSystemIds().map((id) => systemDistance(systemId, id)));
+  const boughtFuel = refuelCost > 0 ? refuelCost / fuelPrice(state) : 0;
+  const availableFuel = Math.min(state.player.ship.maxFuel, state.player.ship.fuel + boughtFuel);
+  const currentHomeward = homewardDistance(from);
+  let target: number | null = null;
+  let targetHomeward = currentHomeward;
+  let targetFuel = Infinity;
+  for (const id of travelableSystemIds()) {
+    if (id === from) continue;
+    const jumpFuel = playerJumpFuel(state, systemDistance(from, id));
+    // Guard 2.
+    if (jumpFuel > availableFuel) continue;
+    const homeward = homewardDistance(id);
+    // Guard 3 in code: a candidate no closer to the desk than the current port
+    // is not a repositioning burn, it is a twitch, and is never taken.
+    if (homeward >= currentHomeward) continue;
+    // Closest to the desk wins; ties go to the cheaper burn, then to the lower
+    // id (loop order) so the choice is deterministic.
+    if (
+      target === null ||
+      homeward < targetHomeward ||
+      (homeward === targetHomeward && jumpFuel < targetFuel)
+    ) {
+      target = id;
+      targetHomeward = homeward;
+      targetFuel = jumpFuel;
+    }
+  }
+  if (target === null) return null;
+  const die = ledger.takeBest();
+  if (die === undefined) return null;
+  return { type: 'Travel', destinationId: target, spendDie: die };
+}
+
+/**
+ * THE SECOND RUNG OF THE ANTI-IDLE FALLBACK (T-199, F-199-2) · WHEN NOT EVEN THE
+ * WALK HOME IS FLYABLE. {@link planHomewardBurn} needs one leg the tank can pay
+ * for. The harder corner has none: the tank is at max and EVERY leg on the map —
+ * contract, homeward or otherwise — costs more than the whole tank, which is the
+ * state seed 74's fighter woke into after spending 6,652 → 400 credits at the
+ * yard and coming out with a 60-unit tank it could not use and no credits to
+ * enlarge it. Twenty-six consecutive zero-income days followed, and no travel
+ * rule can reach that: there is nowhere to travel TO.
+ *
+ * The out that remains is the one verb that costs fuel but no distance. Explore
+ * is an income action (`isIncomeAction`), it is what a stranded captain would
+ * actually do with a part tank, and the evidence it is enough is `explorerPolicy`
+ * itself — which builds a whole career on this verb and never stalls in any
+ * window measured for this task (worst zero-income streak 0 over 200 seeds × 35
+ * days after the T-199 combat fix).
+ *
+ * The guards mirror the burn's: it fires only after a day has queued no income
+ * action and no leg was flyable, and it is offered only when the engine will
+ * actually accept the verb — `EXPLORATION_FUEL_COST` of fuel in the tank and no
+ * open recovery (`engine/src/actions/exploration.ts` refuses with
+ * `ExplorationFailed{'recovery-in-progress'}`, the same F-116-1 mirror the
+ * explorer's and smuggler's own loops carry). One Explore, not a drain loop: this
+ * is a last resort, not a strategy, and a stranded captain with a part tank should
+ * not spend all of it in a day.
+ *
+ * CALL IT LAST, AFTER EVERY OTHER DIE-COSTED ACTION IN THE DAY — this is an engine
+ * rule, not a preference. A band-3/4 find charges `apCost`: 2 or 3 EXTRA dice out
+ * of the same dawn hand, taken AT CLAIM (`engine/src/exploreOutcomes.ts`, owner
+ * ruling D1). An Explore placed mid-plan therefore spends dice that later actions
+ * in the same batch have already been assigned, and the engine throws `Die already
+ * spent` on whichever one follows. Not hypothetical: a first pass at this change
+ * put the call before `veteranPolicy`'s yard block and crashed on seed 194, day 22
+ * (Explore on die 0, then `buy-cargo-pods` on die 2). `explorerPolicy` and
+ * `smugglerPolicy` have always put their Explore loops last for exactly this
+ * reason; the tail placement is that same rule, not a new one.
+ *
+ * ORDERING AGAINST {@link planHomewardBurn} NEEDS NO COORDINATION, even though the
+ * two are called from different points in the plan: the walk home is the better
+ * out (it reaches ports that have BOARDS on them; an Explore does not move the ship
+ * at all), and if it queued a Travel then `actions.some(isIncomeAction)` is already
+ * true by the time this runs, so this returns null on its own first guard.
+ */
+function planStrandedExplore(
+  state: GameState,
+  ledger: DieLedger,
+  actions: readonly PlayerAction[],
+): PlayerAction | null {
+  if (actions.some(isIncomeAction)) return null;
+  if (state.player.recovery !== null) return null;
+  if (state.player.ship.fuel < EXPLORATION_FUEL_COST) return null;
+  const die = ledger.takeBest();
+  if (die === undefined) return null;
+  return { type: 'Explore', spendDie: die };
 }
 
 /** Amount to pay toward the Guild marker this dusk. Computed from PLAN-TIME
@@ -2805,6 +3029,22 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
     }
   }
 
+  // ---- T-199 · F-199-1 · THE TRADER'S MISSING ANTI-IDLE MOVE.
+  // The full-tank relaxation above closes the case where the margin cap is the only
+  // thing in the way; it cannot close the rim corner where EVERY leg on the board
+  // costs more than the whole tank, and until now the trader had no answer to that
+  // at all. Measured at 1,000 seeds × 35 days, on HEAD and unmoved by anything else
+  // in this task: seeds 371 and 571 sat 6 and 7 consecutive zero-income days with a
+  // FULL 240/240 tank and exactly `TRADER_RESERVE` in the purse, `reachable` empty
+  // even at `maxFuel`, falling through to a bare `Wait`. `fighterPolicy` has had the
+  // walk-home fix since T-159; this is that same code, now shared. Placed here —
+  // after the day's contract and travel work, before the overhead and the marker —
+  // so it can only ever fill an idle day. (The second rung, `planStrandedExplore`,
+  // is called at the TAIL of this plan; its own doc explains why it cannot be queued
+  // beside the burn.)
+  const homewardBurn = planHomewardBurn(state, ledger, actions, refuelCost);
+  if (homewardBurn) actions.push(homewardBurn);
+
   // T-1601a: PROTECT THE PENNY WISE REPAYMENT FROM THE GUILD MARKER. While a loan
   // is live and unpaid this day, hold its whole balance back on top of the
   // operating reserve. Sending it to the Guild instead is a false economy: the
@@ -2825,6 +3065,13 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
     refuelCost + repaid - borrowed,
   );
   actions.push(...overhead.actions);
+
+  // T-199 · F-199-2 · the second rung, at the tail (see `planStrandedExplore` for
+  // why it cannot sit beside the burn above). Fires only when the walk home found
+  // no flyable leg either, i.e. the day is otherwise a bare `Wait`.
+  const strandedExplore = planStrandedExplore(state, ledger, actions);
+  if (strandedExplore) actions.push(strandedExplore);
+
   const debtPayment = planDebtPayment(
     state,
     TRADER_RESERVE + loanHold,
@@ -3393,34 +3640,17 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   const exploreFloor = actions.some(isIncomeAction)
     ? SMUGGLER_EXPLORE_RESERVE
     : SMUGGLER_IDLE_EXPLORE_RESERVE;
-  // F-150-2 · THIS LOOP IS F-116-1's TWIN, AND IT IS DELIBERATELY LEFT UNGUARDED.
-  // It is byte-identical in shape to `explorerPolicy`'s Explore loop and carries
-  // the same missing `state.player.recovery === null` term, so it too queues
-  // Explores the engine will refuse with `ExplorationFailed{'recovery-in-progress'}`.
-  //
-  // T-150 WROTE THE FIX, MEASURED IT, AND BACKED IT OUT. The guard is correct on
-  // its own terms and costs nothing, but adding it re-seeds the smuggler's
-  // deterministic stream, and seed 3 then lands on a PRE-EXISTING stall in the
-  // SHARED `planPacifistCombat`: at Sirius-16, days 45-49, one interceptor
-  // (`anon-rim-pirate-15`) escalates rounds 2 → 10 while the tribute climbs
-  // 2,000 → 10,000 against a 1,071-credit purse, so `canPay` is false every dawn
-  // and the policy plays five consecutive `run` stances. A `run` is not an income
-  // action, so `longestZeroIncomeStreak` hits 5 and the poverty-trap invariant in
-  // `campaign-smuggler-gambler.test.ts` goes red.
-  //
-  // THE STALL IS NOT AN EXPLORE PROBLEM. `smugglerPolicy` returns at
-  // `if (state.encounter) return withReroll(state, planPacifistCombat(...))` long
-  // before this loop is reached, and `player.recovery` is null on all five days.
-  // This file's own header already records the same pathology at seed 19 of the
-  // T-1601b 300-day sweep; the guard merely moves which seed meets it.
-  //
-  // WHY IT IS NOT FIXED HERE. The root is `planPacifistCombat`, which is shared by
-  // the trader, explorer, veteran, smuggler and gambler — touching it moves EVERY
-  // policy's fingerprint and would destroy this task's containment prediction (that
-  // only the policies it edits may move) and the capstone taken in the same commit.
-  // Filed as F-150-2 in `docs/EXPLORE_REDESIGN.md` §10 for a task that is allowed
-  // to move every fingerprint, and NOT silently dropped.
+  // F-150-2, CLOSED AT T-199 · this is F-116-1's twin and it now carries the same
+  // `state.player.recovery === null` term the explorer's loop does. The full
+  // reasoning for the guard — the engine's `ExplorationFailed{'recovery-in-progress'}`
+  // refusal, why it is scoped to the queue rather than to the policy, and the named
+  // dawn-pure residual — lives at `explorerPolicy`'s loop and is not restated here;
+  // the two loops are identical again, on purpose. T-150 wrote this guard, measured
+  // it and backed it out because it re-seeded the smuggler onto a stall in the
+  // SHARED `planPacifistCombat`; T-199 fixed that planner first (see its header),
+  // which is what made this line safe to add.
   while (
+    state.player.recovery === null &&
     state.player.credits + borrowed - refuelCost - repaid - overhead.cost > exploreFloor &&
     projectedFuel >= EXPLORATION_FUEL_COST &&
     ledger.remaining() > 0
@@ -3430,6 +3660,28 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     actions.push({ type: 'Explore', spendDie: die });
     projectedFuel -= EXPLORATION_FUEL_COST;
   }
+
+  // ---- T-199 · F-199-1 · THE WALK HOME, AS THE LAST RUNG.
+  // Deliberately placed AFTER the T-1603c drive refit and after the Explore sweep
+  // above, not up with the contract block — both of those are gated on
+  // `!actions.some(isIncomeAction)` and both are BETTER outs than a repositioning
+  // burn (the refit ends a strand permanently by making the whole board flyable
+  // again; the sweep feeds the pod supply line). Queueing a Travel ahead of them
+  // would have switched them off. So the shared move goes last: it fires only on a
+  // day where the yard, the board and the sweep floor all had nothing.
+  //
+  // WHY THE SMUGGLER AND NOT THE OTHER TWO. This wiring is here because leaving it
+  // out WOKE A STRAND: on the 1,000-seed × 35-day map, seed 970 went from clean to
+  // 5 consecutive zero-income days — the F-199-3 re-seeding effect, i.e. a defect
+  // this change moved rather than caused, but moved INTO the sample, which makes it
+  // this change's to close. `traderPolicy` and `veteranPolicy` are deliberately NOT
+  // wired (see TASKS.md F-199-1): their strands are pre-existing and unmoved, and
+  // widening to them measurably dulled `balance-combat-survival.test.ts`'s
+  // preparation band.
+  const homewardBurn = planHomewardBurn(state, ledger, actions, refuelCost);
+  if (homewardBurn) actions.push(homewardBurn);
+  const strandedExplore = planStrandedExplore(state, ledger, actions);
+  if (strandedExplore) actions.push(strandedExplore);
 
   const debtPayment = planDebtPayment(
     state,
@@ -4158,6 +4410,31 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   }
 
   const actions: PlayerAction[] = [];
+
+  // ---- T-199 · F-199-2 · THE CRIPPLED REPAIR THE FIGHTER WAS THE LAST POLICY
+  // WITHOUT. `planCrippledRepair` (T-1205/T-1302) is carried by `traderPolicy`,
+  // `smugglerPolicy`, `gamblerPolicy`, `explorerPolicy` and `veteranPolicy`; the
+  // fighter — the ONE archetype that deliberately stands and trades fire, and so
+  // the one whose hull is chipped most — had no repair of any kind. That is the
+  // same omission shape T-159 and T-161 each closed for this file (the last
+  // policy without the full-tank relaxation), and it produced the same result.
+  //
+  // Seed 74 is the picture, and it is not a fuel problem or a credit problem:
+  // enemy fire ground the hull to condition 1, which collapses the tank to
+  // `(1+1)·1·30 = 60` units. At 60 the ship is below the 80-unit Explore floor
+  // FOREVER, and on junker drives (strength 10) it can only reach systems within
+  // distance 5, so `reachable` is empty most dawns, `planHomewardBurn` finds no
+  // leg and `planStrandedExplore` cannot fire. Nine to twenty-six consecutive
+  // zero-income days followed. No anti-idle rule can reach that state; the only
+  // move that reopens the map is the one every other policy already makes.
+  //
+  // Placed FIRST, ahead of the refuel, for the reason `planRefuel` itself needs:
+  // a repair lifts `maxFuel`, so buying fuel into the collapsed ceiling first
+  // would cap the top-up at the broken tank. Same reserve the rest of the day
+  // spends against, so it cannot itself strand the purse.
+  const crippledRepair = planCrippledRepair(state, ledger, FIGHTER_RESERVE);
+  if (crippledRepair) actions.push(crippledRepair);
+
   const refuel = planRefuel(state, ledger, 0);
   if (refuel) actions.push(refuel.action);
 
@@ -4227,66 +4504,21 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
 
   // ---- T-159 (second pass) · NOTHING ON THE BOARD IS FLYABLE AT ALL: FLY HOME
   // The relaxation above closes the case where the margin cap is the only thing
-  // in the way. It CANNOT close the harder rim corner, and measurement said so:
-  // with the relaxation alone, seed 35's fighter still sat 8 consecutive
-  // zero-income days at Algol-2 (system 20) because after a succession left it on
-  // a 240-unit tank and a junker drive, EVERY leg the board offered cost 252-602
-  // fuel — `reachable` is empty even at `maxFuel`, so there is no filter to relax.
+  // in the way. It CANNOT close the harder rim corner — see `planHomewardBurn`,
+  // which is this pass, lifted verbatim at T-199 so the trader and the smuggler
+  // (which had the same hole, F-199-1) can share it. The fighter's
+  // behaviour is unchanged by that extraction (proved before the second rung was
+  // added: this row's fingerprint came back byte-identical to its pre-T-199 pin,
+  // and the 200-seed × 35-day strand scan reported the same two offenders).
   //
-  // So this is the gambler's fallback, not the trader's: an explicit ANTI-IDLE
-  // MOVE (`index.ts` gamblerPolicy, "Nothing to fly? Go where the tables are" —
-  // "`Travel` IS an income action, and without it a rich gambler simply stops").
-  // The fighter's version of "where the tables are" is HOMEWARD: the lanes around
-  // the Hangout, where the legs are short enough that a junker drive can fly them
-  // and where the interceptor traffic this policy exists to shoot actually is.
-  //
-  // Three guards keep this a repositioning burn and not a metric-gaming twitch:
-  //   1. It fires ONLY when the day has queued no income action at all, so it can
-  //      never displace a run the fighter could have flown.
-  //   2. The destination must be affordable on the tank the day will ACTUALLY
-  //      have (`availableFuel`, post-refuel) — never a leg the engine refuses.
-  //   3. STRICT PROGRESS: the target must be closer to a Hangout than the current
-  //      port is, so a stranded fighter walks in toward the core instead of
-  //      ping-ponging between two rim ports to keep an income counter warm.
-  // Readers: `assertNoIncomeStall` in `balance/gate.ts`, and the `< 5`
-  // poverty-trap invariant in `campaign-policies.test.ts`.
-  if (!state.player.activeContract && !actions.some(isIncomeAction)) {
-    const from = state.player.currentSystemId;
-    const homewardDistance = (systemId: number): number =>
-      Math.min(...hangoutSystemIds().map((id) => systemDistance(systemId, id)));
-    const boughtFuel = refuel ? refuel.cost / fuelPrice(state) : 0;
-    const availableFuel = Math.min(state.player.ship.maxFuel, state.player.ship.fuel + boughtFuel);
-    const currentHomeward = homewardDistance(from);
-    let target: number | null = null;
-    let targetHomeward = currentHomeward;
-    let targetFuel = Infinity;
-    for (const id of travelableSystemIds()) {
-      if (id === from) continue;
-      const jumpFuel = playerJumpFuel(state, systemDistance(from, id));
-      if (jumpFuel > availableFuel) continue;
-      const homeward = homewardDistance(id);
-      // Guard 3 in code: a candidate no closer to the desk than the current port
-      // is not a repositioning burn, it is a twitch, and is never taken.
-      if (homeward >= currentHomeward) continue;
-      // Closest to the desk wins; ties go to the cheaper burn, then to the lower
-      // id (loop order) so the choice is deterministic.
-      if (
-        target === null ||
-        homeward < targetHomeward ||
-        (homeward === targetHomeward && jumpFuel < targetFuel)
-      ) {
-        target = id;
-        targetHomeward = homeward;
-        targetFuel = jumpFuel;
-      }
-    }
-    if (target !== null) {
-      const die = ledger.takeBest();
-      if (die !== undefined) {
-        actions.push({ type: 'Travel', destinationId: target, spendDie: die });
-      }
-    }
-  }
+  // The SECOND rung (`planStrandedExplore`) is new and is the fighter's own
+  // finding — F-199-2, measured at 1,000 seeds × 35 days: seeds 74, 747 and 916 sat
+  // 9, 26 and 24 consecutive zero-income days at rim ports where not even the walk
+  // home was affordable — but it is queued at the TAIL of
+  // this plan, not here, because an Explore can charge `apCost` dice at claim and
+  // would orphan the yard purchases below. See its doc.
+  const homewardBurn = planHomewardBurn(state, ledger, actions, refuel ? refuel.cost : 0);
+  if (homewardBurn) actions.push(homewardBurn);
 
   // T-1601a: special equipment goes FIRST for the fighter. AUTO_REPAIR is priced
   // off the CURRENT hull strength, so buying it before `planFighterUpgrade` lands
@@ -4334,7 +4566,37 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   const overhead = planCaptainOverhead(state, ledger, FIGHTER_RESERVE, refuel?.cost ?? 0);
   actions.push(...overhead.actions);
 
+  // T-199 · F-199-2 · the second rung, at the tail (see `planStrandedExplore`).
+  const strandedExplore = planStrandedExplore(state, ledger, actions);
+  if (strandedExplore) actions.push(strandedExplore);
+
   // Keep the marker from festering, but never at the cost of the war chest.
+  //
+  // T-199 · F-199-2 · A SPEND-SIDE FIX WAS WRITTEN HERE, MEASURED, AND BACKED OUT.
+  // `planDebtPayment`'s third argument is documented at its own site as "everything
+  // already committed this day" (T-1601a), and this call lists the refuel and the
+  // overhead but NOT the component tier / special equipment queued twenty lines
+  // above — so on a heavy shopping day the yard and the marker can each respect
+  // `FIGHTER_RESERVE` on their own and clear it together. Seed 74's day 15 is the
+  // picture: a 2,600cr tier AND a 3,412cr marker payment out of a 6,652cr purse,
+  // waking on 400 credits.
+  //
+  // Adding `yardCost` to this call closed that arithmetic — and cost far more than
+  // it bought, measured over 100 seeds x 120 days: median final credits
+  // 79,494 -> 5,877 and the debt-clear rate 0.580 -> 0.510, because a smaller
+  // payment leaves the COMPOUNDING Guild marker open for longer, and `kitAllowed`
+  // (this policy's `debt === 0` gate) then withholds the special equipment that
+  // pays for the rest of the career. The 8,000-row capstone diff put the same
+  // number at `fighter.finalCredits.median` 46,242 -> 3,000 (-93.5%) with
+  // `tourOneClearRate` -9.2%. So it is NOT applied.
+  //
+  // The strand it was aimed at is closed at the top of this policy instead, by the
+  // `planCrippledRepair` every other policy already had: seed 74's real problem was
+  // a hull ground to condition 1 (a 60-unit tank), not the credits. With the repair
+  // in and this call left alone, seed 74 clears, median credits RISE to 79,494 and
+  // the debt-clear rate rises to 0.580 — better than before the task on every one
+  // of the three. The arithmetic hole is real and stays FILED (F-199-2 in TASKS.md)
+  // rather than being paid for by a 93% credit regression.
   const debtPayment = planDebtPayment(state, FIGHTER_RESERVE, (refuel?.cost ?? 0) + overhead.cost);
   if (debtPayment) actions.push(debtPayment);
 
@@ -5113,6 +5375,12 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   const overhead = planCaptainOverhead(state, ledger, VETERAN_RESERVE, refuelCost);
   actions.push(...overhead.actions);
 
+  // T-199 · F-199-1 · the yard spend is NOT netted off this payment, and that is a
+  // KNOWN, FILED hole, not an oversight — `fighterPolicy`'s equivalent call carries
+  // the fix and the reasoning. It is left alone here because the veteran is exempt
+  // from `assertNoIncomeStall` and because widening this change to a fourth policy
+  // moved `balance-combat-survival.test.ts`'s preparation band (see TASKS.md,
+  // F-199-1). Closing it belongs to the task that owns that band.
   const debtPayment = planDebtPayment(state, VETERAN_RESERVE, refuelCost + overhead.cost);
   if (debtPayment) actions.push(debtPayment);
 

@@ -57,6 +57,20 @@ describe('T-1310 explorer opens the Nemesis arc', () => {
         let dayState = dawn.state;
         const actions = explorerPolicy({ state: dayState, dayIndex, rng });
         for (const action of actions) {
+          // T-199 · THE ORPHAN GUARDS THIS HAND-ROLLED DRIVER WAS MISSING.
+          // Both production batch drivers carry them — `runCampaign`
+          // (`sim/index.ts`, T-1205) and `driveFrom`
+          // (`__tests__/support/campaign-drivers.ts`, T-1603c) — with the same
+          // rationale in both places: a queued action whose target is already gone
+          // is malformed input a real UGT client would never send, because it
+          // re-reads the legal actions between steps. This loop predates policies
+          // that queue more than one action against a single encounter and threw
+          // `Combat requires an active encounter` the moment `planPacifistCombat`
+          // started queueing a plea AND a getaway on the same day. The ASSERTION
+          // below is untouched; only the driver is brought up to the contract the
+          // other two already state.
+          if (action.type === 'Combat' && !dayState.encounter) continue;
+          if (action.type === 'Dare' && !dayState.dareHand) continue;
           dayState = applyPlayerAction(dayState, action).state;
         }
         state = endDay(dayState).state;
@@ -101,6 +115,9 @@ describe('T-1310 explorer opens the Nemesis arc', () => {
         }
         const actions = explorerPolicy({ state: dayState, dayIndex, rng });
         for (const action of actions) {
+          // T-199 · the same orphan guards the driver above gained; see that note.
+          if (action.type === 'Combat' && !dayState.encounter) continue;
+          if (action.type === 'Dare' && !dayState.dareHand) continue;
           dayState = applyPlayerAction(dayState, action).state;
         }
         state = endDay(dayState).state;

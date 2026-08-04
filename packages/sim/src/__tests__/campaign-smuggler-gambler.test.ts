@@ -494,3 +494,56 @@ describe('T-150 · F-123-3 · the gambler never queues a hand its dealer cannot 
     expect(queued).toBeGreaterThan(0);
   }, 180000);
 });
+
+// ---------------------------------------------------------------------------
+// T-199 · F-150-2 · THE SEEDED REGRESSIONS FOR THE POVERTY TRAP.
+//
+// These name the exact seeds that went red, so the next person to move a shared
+// planner finds out locally instead of from a GitHub Actions run. Seed 20 is the
+// one that took the "Sweep gate" check red on `redesign/explore-hangout` for the
+// first time (run 30935230550, shard 2/2, `assertNoIncomeStall · smuggler · seed
+// 20 · 5 consecutive zero-income days (limit 5)`) — a stall in the SHARED
+// `planPacifistCombat`, not in anything the commit that surfaced it had touched.
+// Seed 970 is the one that adding the smuggler's Explore recovery guard WOKE, and
+// which the shared anti-idle move closes; it is pinned for the same reason.
+//
+// The horizon is the sweep gate's own (35 days), not 300, because that is the
+// window the CI check samples and therefore the window a local run has to match.
+// ---------------------------------------------------------------------------
+describe('T-199 · the smuggler clears the poverty-trap bar on the seeds that failed', () => {
+  it.each([
+    [20, 'the CI Sweep-gate failure: five `run` stances against an unaffordable tribute'],
+    [970, 'the strand the Explore recovery guard re-seeded onto (F-199-3)'],
+  ])('seed %i · %s', (seed) => {
+    const report = runCampaign(seed, 35, 'smuggler');
+    expect(longestZeroIncomeStreak(report.daily)).toBeLessThan(5);
+  });
+
+  it('seed 3 · the case docs/EXPLORE_REDESIGN.md §10.3 names, at its own 120-day horizon', () => {
+    // §10.3 recorded a five-day stall here (Sirius-16, days 45-49). It no longer
+    // reproduces AT ALL on this tree — T-195's travel-die rules re-seeded every
+    // stream long before T-199 touched anything — so this is pinned as a
+    // REGRESSION BAR, not as a reproduction: whatever moves next must not put it
+    // back.
+    const report = runCampaign(3, 120, 'smuggler');
+    expect(longestZeroIncomeStreak(report.daily)).toBeLessThan(5);
+  });
+});
+
+describe('T-199 · F-199-1/F-199-2 · the rim strands the shared anti-idle move closes', () => {
+  // Each of these sat at or over the `INCOME_STALL_LIMIT` bar of 5 on the tree
+  // before T-199, measured by `balance:sweep --seeds 1000 --days 35` (the map is
+  // in TASKS.md). They are pinned by seed so the next shared-planner change has to
+  // meet them locally.
+  it.each([
+    ['trader' as const, 371, 6],
+    ['trader' as const, 571, 7],
+    ['fighter' as const, 74, 9],
+    ['fighter' as const, 747, 26],
+    ['fighter' as const, 916, 24],
+    ['smuggler' as const, 677, 6],
+  ])('%s seed %i (was %i consecutive zero-income days)', (policy, seed, _was) => {
+    const report = runCampaign(seed, 35, policy);
+    expect(longestZeroIncomeStreak(report.daily)).toBeLessThan(5);
+  });
+});

@@ -1042,6 +1042,63 @@ const UNCHANGED_POLICIES = [
 // standing amendment carries the exact deltas — tourOneClearRate +12.6%, credits
 // +40.5%, ships lost -27.1% fleet-wide). Nothing here was tuned to hit a target;
 // these are simply what the new formula produces on these exact seeds.
+//
+// Entry 29 (T-199 — F-150-2, F-199-1, F-199-2). THREE ROWS MOVE: `trader`,
+// `explorer`, `smuggler`. Four do NOT: `fighter`, `veteran`, `gambler`, `greedy`.
+//
+// THE PREDICTION WAS WRITTEN BEFORE THE RUN, and it was WIDER than the result.
+// The prediction named `planPacifistCombat`'s six callers — `planTraderDay` (so
+// trader AND trader-degraded), `smugglerPolicy`, `gamblerPolicy`, `fighterPolicy`,
+// `explorerPolicy`, `veteranPolicy` — as movers, with `greedy` (which never
+// reaches that planner) as the only guaranteed-unmoved row. `greedy` held. But
+// `fighter`, `veteran` and `gambler` also came back byte for byte, and the honest
+// reading of that is entry 2's, restated: they are UNCHANGED IN THIS WINDOW, not
+// unaffected. All three call the changed planner; none happened to meet its branch
+// (an open encounter whose tribute the purse cannot cover, with fuel for a getaway)
+// inside seeds 1..5 × 40 days, and the fighter's other two changes need a rim
+// strand this window never enters. Each moves plainly at sweep scale — the capstone
+// diff is the evidence, and it is cited per row below.
+//
+// WHAT MOVED, in the order the change was made:
+//   1. `planPacifistCombat` (SHARED — this is why four rows move at once) no
+//      longer plays exactly one stance against an unaffordable tribute. It keeps
+//      the getaway first, on the same die as before, and queues the plea behind it
+//      on the next die: `canPay` compares the purse to the DEMAND, but
+//      `resolveTalk` charges a margin-discounted `paid` and waives the toll
+//      outright on a natural 20, so the old code was refusing a deal the engine
+//      might still have closed. The one-action-per-day cap that used to forbid the
+//      second stance was justified by a crash both batch drivers have guarded
+//      against since T-1205 / T-1603c.
+//   2. `smugglerPolicy`'s Explore loop gained `state.player.recovery === null`
+//      (F-150-2, the twin of F-116-1) — the fix T-150 wrote, measured and backed
+//      out because it re-seeded onto (1). With (1) fixed it is safe, and the
+//      tripwire that pinned the omission is deleted in the same change.
+//   3. The anti-idle rim-strand rules (F-199-1 / F-199-2): `fighterPolicy`'s T-159
+//      homeward burn extracted to a shared `planHomewardBurn` (proved INERT first —
+//      the `fighter` row came back byte-identical to entry 27's value with only the
+//      extraction applied) and wired into `traderPolicy` and `smugglerPolicy`; a
+//      new `planStrandedExplore` behind it; and `planCrippledRepair` given to
+//      `fighterPolicy`, the last policy in the file without it.
+//
+// MEASURED EFFECT, and it is the reason the change exists — `balance:sweep
+// --seeds 1000 --days 35`, `assertNoIncomeStall` violations: SEVEN before (trader
+// 371/571, fighter 74/747/916, smuggler 20/677) and ZERO after, all four shards
+// exit 0. Seed 20 is the one that took the "Sweep gate" CI check red.
+//
+// NO BAND, THRESHOLD, GOLDEN OR CONSTANT WAS EDITED, and TWO further fixes were
+// written, measured and BACKED OUT rather than paid for. (a) `veteranPolicy` was
+// NOT given the anti-idle move even though it has the same hole: wiring it moved
+// `balance-combat-survival.test.ts`'s "preparation pays off when outgunned" band
+// from 0.5333 to 0.4801 against a bar of 0.50. (b) `fighterPolicy`'s marker payment
+// was NOT netted against the yard spend it queues moments earlier, even though that
+// arithmetic hole is real: netting it cost median final credits 79,494 -> 5,877 and
+// the debt-clear rate 0.580 -> 0.510 (a smaller payment leaves a COMPOUNDING marker
+// open longer, and this policy withholds special equipment while `debt > 0`). Both
+// are carried open in TASKS.md under F-199-1 / F-199-2 rather than shipped at that
+// price. Two seed-pins
+// moved for the re-phasing reason and are documented at their own sites:
+// `campaign-reach.test.ts`'s T-1307 port-purchase seed (8 -> 4, swept over seeds
+// 1..80 and WIDENED, not re-thresholded) and this task's own capstone re-extract.
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
   // so the trader borrows and repays on the day it needs to rather than on the day
@@ -1053,7 +1110,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // itself is provably inert over these seeds.
   // Entry 23: re-derived — the new `dareGuardHits` report key ONLY (see above).
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
-  trader: 'f39050653569260e',
+  // Entry 29 (T-199): re-derived — the shared pacifist-combat planner and the
+  // trader's new anti-idle rim move (see the header).
+  trader: 'baf0ce4ea567da8e',
   // Entry 27 (T-159): re-derived — and the ONLY row that moves, which is the
   // cross-check that this was a fighter change and nothing else: `trader`,
   // `explorer`, `veteran`, `smuggler`, `gambler` and `greedy` all came back byte
@@ -1083,6 +1142,12 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // whole rate table is unchanged to four decimals except `board-depth-mean`
   // (3.7822 -> 3.7820), and every invariant went from one violation to zero.
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
+  // Entry 29 (T-199): UNCHANGED IN THIS WINDOW, not unaffected — and it was
+  // PREDICTED to move. `fighterPolicy` gained `planCrippledRepair` and the shared
+  // anti-idle Explore, and it calls the changed `planPacifistCombat`; none of the
+  // three fires inside seeds 1..5 x 40 days. It moves plainly at sweep scale (100
+  // seeds x 120 days: median final credits 68,691 -> 79,494, debt-clear rate
+  // 0.570 -> 0.580, worst zero-income streak 9 -> 1).
   fighter: 'acfa7bcc4800e969',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
@@ -1093,7 +1158,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // policy no longer queues an Explore on a day whose dawn carries an open salvage
   // op, so the die that used to buy a guaranteed refusal is spent elsewhere.
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
-  explorer: '94d773a9f90cbccb',
+  // Entry 29 (T-199): re-derived — the shared pacifist-combat planner ONLY; no
+  // line inside `explorerPolicy` moved.
+  explorer: '19c9bf4ab6ad2f94',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   //
   // Entry 29 (T-161): re-derived, and the ONLY row that moves — which is the
@@ -1123,12 +1190,18 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // seeds at or over the stall limit barely moves (198 -> 197) because the
   // residual is a different, separately-filed defect (F-161-1, the un-split
   // storylet branch), and no threshold was touched to hide that.
+  // Entry 29 (T-199): UNCHANGED IN THIS WINDOW, not unaffected — `veteranPolicy`
+  // calls the changed `planPacifistCombat` but never met its branch inside seeds
+  // 1..5 x 40 days. Every veteran-specific edit in that task was reverted (see the
+  // header's F-199-1 residual), so this row has no second reason to move.
   veteran: 'f649dc33cd51a01e',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
   // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
   // through the shorter hand on a band-3/4 board rather than through the payout.
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
-  smuggler: 'b52c468cf1ede8e9',
+  // Entry 29 (T-199): re-derived — the shared planner, F-150-2's Explore recovery
+  // guard, and the anti-idle rim move.
+  smuggler: 'd9b36d370ba59822',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sol-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
@@ -1201,6 +1274,10 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // Entry 28 (T-160): re-derived a NINTH time, and once again the ONLY row that
   // moves — the opening floor is reachable only through a hand only `planDare`
   // opens (see the header).
+  // Entry 29 (T-199): UNCHANGED IN THIS WINDOW, not unaffected — `gamblerPolicy`
+  // calls the changed `planPacifistCombat` and was PREDICTED to move; it did not,
+  // because it never met that planner's unaffordable-tribute branch inside seeds
+  // 1..5 x 40 days. A wider window would be expected to move it.
   gambler: '4e89e7dad776577d',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   greedy: 'bad42225b0cc469f',
