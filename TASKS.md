@@ -180,7 +180,11 @@ Out of scope for 0.5.2 — recorded so a coder does not re-scope them in:
   track ends.
 - **`executeCombat`'s missing shared rules** — fighters still take 0 deaths on their chosen
   Combat day. A real PARITY LEDGER gap; whether it lands as an N3 follow-up or at N13 is an
-  owner sequencing call.
+  owner sequencing call. **RULED (owner, 2026-08-03, at T-158): DEFER.** Not fixed this pass —
+  the owner is prioritizing UI/visual-design iteration (T-186, T-188, T-189, T-190, T-191)
+  first, and will revisit sequencing (N3 follow-up vs. N13) afterward. Recorded in
+  `packages/sim/src/balance/coverage.ts`'s `ACKNOWLEDGED_COVERAGE_GAPS.fighter.owner` and
+  `docs/NPC_REDESIGN.md`'s `| Combat |` PARITY LEDGER row.
 - **Explore being a net loss for the PLAYER as a balance question.** T-116 re-measures it, but
   _re-pricing_ is R-series work and an owner call, not something a content pass does.
   **UPDATE (2026-08-02): named in T-158's pre-UAT brief** — still deferred as a build item, but
@@ -225,7 +229,7 @@ already answered below.
 
 | # | Finding | Status | Where |
 | --- | --- | --- | --- |
-| **F-150-1** | The **0.25 named-pool interceptor gate** (`actions/travel.ts`) and **`DISPOSITION_DECAY_INTERVAL_DAYS = 3`** (`content/disposition.ts`), read together now that the faucet is gated, the UI speaks, Explore's recovery model changed and the Dare is Liar's Dice | **OPEN — a DESIGN QUESTION for the owner, not a tuning knob (T-125's own ruling). NEITHER CONSTANT CHANGED BY T-150.** Measured: named share **25.07%** vs the analytic 25.00%, inertness **71.52%**, wronged-captain lift **2.358×**; the cast sits at exactly 0 on **96.52%** of live captain-days and a standing survives a **median 3 days**, with decay outrunning interaction **1.53 : 1** — so widening the gate alone would mostly buy more *inert* draws. **SCHEDULED FOR A RECORDED RULING AT T-158 (2026-08-02)** — the UAT checkpoint's brief now carries these numbers and its Accept requires the ruling | `docs/HANGOUT_REDESIGN.md` §11.3, with a levers-not-pulled table |
+| **F-150-1** | The **0.25 named-pool interceptor gate** (`actions/travel.ts`) and **`DISPOSITION_DECAY_INTERVAL_DAYS = 3`** (`content/disposition.ts`), read together now that the faucet is gated, the UI speaks, Explore's recovery model changed and the Dare is Liar's Dice | **OPEN — a DESIGN QUESTION for the owner, not a tuning knob (T-125's own ruling). NEITHER CONSTANT CHANGED BY T-150.** Measured: named share **25.07%** vs the analytic 25.00%, inertness **71.52%**, wronged-captain lift **2.358×**; the cast sits at exactly 0 on **96.52%** of live captain-days and a standing survives a **median 3 days**, with decay outrunning interaction **1.53 : 1** — so widening the gate alone would mostly buy more *inert* draws. **RULED (owner, 2026-08-03, at T-158): DEFER.** Neither constant fixed or accepted-as-final — the owner is prioritizing UI/visual-design iteration (T-186, T-188, T-189, T-190, T-191) first and will revisit afterward | `docs/HANGOUT_REDESIGN.md` §11.3, with a levers-not-pulled table |
 | **F-150-2** | `smugglerPolicy` carries a byte-identical copy of F-116-1's unguarded Explore loop (**3,891 of 23,192 queued on a recovery dawn**) | **OPEN — the fix was written, MEASURED, and deliberately backed out.** It re-seeds that policy's stream onto a pre-existing five-day stall in the SHARED `planPacifistCombat`, tripping the poverty-trap invariant; root-fixing that means editing a planner five policies share, which would move every fingerprint and destroy T-150's containment claim. **Pinned by an explicit tripwire test** so it cannot be closed by accident | `docs/EXPLORE_REDESIGN.md` §10.3 |
 | **The two PARITY LEDGER rows** | **Explore** and **VisitHangout**, RE-ASKED against the systems as they now are, with fresh numbers beside them and the three VisitHangout-deferred defects re-measured (faucet **+3.44cr/captain-day = 0.22%** of terminal NPC wealth; off-Hangout Socialize **37.97%** — T-149 fixed the FICTION, not the VERB; the 150cr ante locks out **17.49%** of live captain-days) | **STILL DEFERRED — UNRULED. Owner's call, not a build task's.** This is what un-gates **N8**; no N-series task's status was changed | `docs/HANGOUT_REDESIGN.md` §11.4, `docs/EXPLORE_REDESIGN.md` §10.4, and the two ledger rows in `docs/NPC_REDESIGN.md` |
 
@@ -566,7 +570,7 @@ other archetypes byte-identical.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked); oriented directly from `packages/sim/src/index.ts`, `balance/gate.ts`, `docs/BALANCE-POLICY.md`  · attempts=1/4.
 
-### T-158 · CHECKPOINT — human UAT, plus recorded rulings on Combat's chosen branch and F-150-1 — `status: BLOCKED(Human UAT)` · `coder: sonnet` · `after: T-150, T-153, T-157, T-140, T-141, T-160` · `[BLOCKED BY = Human UAT]`
+### T-158 · CHECKPOINT — human UAT, plus recorded rulings on Combat's chosen branch and F-150-1 — `status: DONE` · `coder: sonnet` · `after: T-150, T-153, T-157, T-140, T-141, T-160`
 **`after:` gained T-160 (2026-08-02, owner-directed):** UAT must be played against the fixed
 Liar's Dice dealer, not the F-137-1 one that volunteers a certain loss on nine decisions in ten —
 otherwise the owner's first read of the bar is a read of a defect already known and scheduled. The
@@ -680,9 +684,24 @@ after the halt; it is written down here on purpose.
    (B), commit `75004d33`: the PARITY LEDGER's `| VisitHangout |` row stays Deferred and N8 is
    unblocked-but-unscheduled. **The queue at this checkpoint is TWO rulings, not three.**
 
-**THE HALT.** Nothing further is done on this task by any coder. `T-155` and `T-162` stay `TODO` and
-must not start. Neither ruling was made, guessed at, paraphrased or implied by this pass — the coder
-does not self-waive, and the two empty cells in the brief's §9 are the record that it did not.
+**THE HALT (2026-08-02 — historical; closed below).** Nothing further was done on this task by any
+coder. Neither ruling was made, guessed at, paraphrased or implied by this pass — the coder does not
+self-waive, and the two empty cells in the brief's §9 were the record that it did not.
+
+**RULINGS RECORDED, TASK CLOSED (owner, 2026-08-03).** The owner played the UAT pass across two live
+sessions (audio, visual-identity and board-layout feedback filed as M14/M15) and then gave both
+rulings directly, choosing not to prolong the checkpoint into a full scripted career playthrough:
+**R1 (Combat's chosen branch) — DEFER.** **R2 (F-150-1) — DEFER.** Both are deferrals, not fixes and
+not accept-as-final — the owner is prioritizing UI/visual-design iteration (T-186, T-188, T-189,
+T-190, T-191) first and will revisit both afterward. Transcribed per the TO CLOSE THIS TASK checklist
+above: (R1) `ACKNOWLEDGED_COVERAGE_GAPS.fighter.owner` in `coverage.ts`, the `| Combat |` PARITY
+LEDGER row in `docs/NPC_REDESIGN.md`, and this file's "Deliberately deferred" bullet; (R2) the STATUS
+line at `docs/HANGOUT_REDESIGN.md` §11.3 and the F-150-1 row in this file's "Findings filed BY T-150"
+table — (c) does not apply, the ruling is defer, not fix. Both ruling cells in
+`docs/playtests/T-158-pre-uat-brief.md` §9 are now filled with the owner's verbatim text and dated
+2026-08-03; `uat-brief-figures.test.ts`'s third test updated to assert they are non-empty rather than
+empty (see that test's own comment for how to re-derive the prior asserted-empty shape). `T-155` and
+`T-162` are now unblocked by this closure — `T-155`'s own `after:` still separately names `T-154`.
 
 **Prepared (2026-08-02):** This automated pass wrote `docs/playtests/T-158-pre-uat-brief.md` (the
 UAT runbook, the known-uncovered-going-in list, the Explore net-loss and F-150-1 figure sections, and
@@ -1443,6 +1462,105 @@ generic web palette — vs. a harder break from monochrome) before any implement
 PRD-REIMAGINED.md` §4 is updated to match (never silently left to contradict shipped behaviour), the
 chosen direction is implemented (`packages/ui/src/theme.css` and call sites), and a screenshot pass
 confirms it reads as a game, not an IDE-neutral palette bolted onto the existing CRT chrome.
+
+---
+
+## M15 — Owner UAT pass 2: board-quadrant feedback (2026-08-03)
+
+Four findings from the owner's second live session, one per board quadrant. Captured verbatim per
+the Bug Discovery Policy. All four are UX/design, filed as tasks rather than `F-` findings for the
+same reason as M14: each is substantial enough to need its own implementation pass.
+
+### T-188 · Galaxy map: port spacing gives near-zero travel payoff, and a jump is imperceptible — an owner design decision — `status: TODO` · `coder: opus` · `after: —` · `[BLOCKED BY = Owner ruling]`
+
+Owner's read: "the galaxy on the top left is too crowded. All the space ports are super close
+together. There is basically zero payoff to travelling between ports... The OG game had a real-time
+ascii animation which was too slow, we just have instant jump to port, and it is barely noticeable
+that any game action has happened. We need to come up with a design decision on this."
+
+Current state, verified in code: `packages/content/src/systems.ts:87-341`'s `STAR_SYSTEMS` (31
+entries — 14 core + 6 rim + 3 remote specials) uses a fixed hand-authored `{x,y}` coordinate list;
+the core cluster sits within roughly ±11 units, the rim shell ~20-24 units out. `travelTo()`
+(`store.ts` ~1417-1460) resolves a jump synchronously against the engine with **zero animation or
+transition** — `theme.css` has no starmap transition rule at all. This is TWO coupled asks: (a) port
+spacing/distinctiveness (a content/layout question — is 31 systems too many for a legible map, or
+does spacing need real variance so "far" ports read as far?), and (b) travel feedback (the owner
+explicitly rejected both extremes already tried — real-time ASCII was too slow, instant is
+imperceptible — so this needs a THIRD option, not a revert to either). **This starts BLOCKED
+because it's a design tradeoff the owner needs to choose between, not a build call**, per the house
+pattern this repo already uses for exactly this shape of decision (T-160's dealer fix: "bakeoff the
+two sanctioned shapes, ship the winner").
+
+**Accept (the ruling, first):** run `/bakeoff` (or an equivalent structured comparison) over at
+least: (1) a spacing/layout pass on `STAR_SYSTEMS`'s coordinates so distance reads as meaningful
+without reintroducing the old ASCII crawl, and (2) 2-3 candidate jump-feedback treatments strictly
+between "instant, silent" and "real-time ASCII" (e.g. a bounded-duration animated transition, a
+non-blocking async travel state the player can still act during, a diegetic ship's-log entry that
+stamps the jump) — each with a rough implementation cost and a screenshot/gif so the owner is
+choosing between working prototypes, not prose. Once ruled: the chosen spacing and feedback
+treatment ship together (spacing changes alone would leave the "imperceptible jump" complaint
+open); `docs/PRD-REIMAGINED.md` is updated if the ruling changes the "one screen" travel story;
+gate green.
+
+### T-189 · Ship state panel is an unreadable ledger — replace the number-blur with a real ship diagram — `status: TODO` · `coder: opus` · `after: —`
+
+Owner's read: "ship state lower left. I want to see an outline of a spaceship. We should see
+numbers associated with certain areas like cargo pods and engines. The whole board right now blurs
+together like a ledger of numbers." Current state, verified: `ShipPane`
+(`packages/ui/src/App.tsx:3704-3970`) is **purely numeric/tabular** — no ship silhouette or visual
+representation exists anywhere in the codebase today (`.ship-grid` renders a component TABLE via
+`ComponentRow`, not a diagram); this is new visual surface, not a restyle.
+
+**Accept:** `ShipPane` gains an actual outline/diagram of the player's ship (SVG, in keeping with
+the starmap's existing SVG approach and the committed CRT-amber aesthetic — no raster ship art),
+with the key numeric readouts (cargo capacity/used, engine/fuel state, hull/component damage)
+positioned AT the diagram region they describe rather than in a flat list; the existing data (fuel
+curve, salvaged fittings, component damage flags, crew) is not lost, only re-presented — nothing in
+`ShipPane`'s underlying state or the engine's ship model changes, this is render-layer only; a
+screenshot pass confirms cargo pods and engines are visually locatable at a glance, not just
+readable by scanning a table; gate green.
+
+### T-190 · Contract manifest should feel like a discrete, port-bound object, not a permanent fixture — `status: TODO` · `coder: opus` · `after: —`
+
+Owner's read: "the contract manifest probably needs to be a clickable item, available only in a
+port. Story-wise, a contract should be taking a player from port to port, so there should not be a
+persistent always-on manifest. Make it stand out as distinct from everything else." Current state,
+verified: `Manifest` (`packages/ui/src/App.tsx:4197-4325`) is **always rendered**, one of two
+permanent panes in the right-column CSS grid (`theme.css:261-289`) — there is currently no separate
+"docked at a port" vs. "in transit" state at all (jumps are instant, per T-188), so "available only
+in a port" is already trivially true today (the player is always AT a system), but the PRESENTATION
+doesn't read that way.
+
+**Two asks, and they're not the same size.** (1) **Visual distinctness** — make the manifest read as
+its own diegetic object (a physical clipboard/manifest instrument on the console, not a pane that
+blends into the grid) — this can ship now, independent of anything else. (2) **A real
+"unavailable while not docked" state** — this is only meaningful once T-188's ruling gives travel a
+non-instant, occupiable duration; **do not fake a docking state against the current instant-jump
+model** just to satisfy this ask literally.
+
+**Accept:** (1) ships unconditionally — the manifest gets a distinct visual treatment (frame,
+material, motion-on-open/close, whatever reads as "an object" rather than "a pane") that clearly
+reads as different from `TradePane` beside it; SIGN/HAGGLE interactions are unchanged. (2) ships only
+if T-188 has been ruled AND the ruling produces an actual in-transit state; if T-188 is still open,
+this task closes on (1) alone with (2) explicitly re-filed as a follow-up naming the T-188
+dependency; gate green.
+
+### T-191 · The lower-right menus read as flat and interchangeable — `status: TODO` · `coder: opus` · `after: —`
+
+Owner's read: "other menus on lower right just need to be more interesting... Overall the page does
+look very nice but it doesn't differentiate, a few shapes, a few very basic animations will do very
+good for us." Least specific of the four — the owner is naming a feeling (four quadrants that don't
+visually differentiate from each other), not a concrete spec. Current state: the lower-right
+quadrant is `TradePane` / "Port Ledger" (`packages/ui/src/App.tsx:4331-4707`) — failure/notice
+banner, Port Dispatches storylets, active-contract tracker, fuel purchase, debt ledger.
+
+**Accept:** at minimum one distinguishing shape/border-treatment/icon-language and one basic
+animation (e.g. on state change — a fuel purchase, a debt payment, a dispatch opening) is added to
+`TradePane` so it reads as visually distinct from `Manifest`, `ShipPane`, and the starmap rather than
+a fourth instance of the same panel chrome; no functional behavior changes; a screenshot pass
+comparing all four quadrants side by side is attached to the commit so "differentiated" is a visible
+claim, not an assertion; gate green. If this proves entangled with T-186's (still-open) color ruling,
+say so explicitly rather than quietly reaching into palette territory T-186 owns.
 
 ---
 

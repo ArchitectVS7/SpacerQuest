@@ -244,8 +244,8 @@ Same idiom as `docs/RELEASE-CHECKLIST.md` §G: the answer goes in **verbatim**.
 
 | # | The ruling asked for | Owner's ruling (verbatim) | Date |
 | --- | --- | --- | --- |
-| **R1** | **Combat's chosen branch** — `executeCombat` is still an abstract GUNS check + flat `150 × tier`, no interceptor, no damage, no ship loss (§4 item 1). Fix now / defer / accept-as-is. | | |
-| **R2** | **F-150-1** — the `0.25` named-pool gate and `DISPOSITION_DECAY_INTERVAL_DAYS = 3`, **read together** (§6). Fix / defer / accept-as-is. | | |
+| **R1** | **Combat's chosen branch** — `executeCombat` is still an abstract GUNS check + flat `150 × tier`, no interceptor, no damage, no ship loss (§4 item 1). Fix now / defer / accept-as-is. | Defer. Prioritizing UI/visual-design iteration (T-186, T-188, T-189, T-190, T-191) first; revisit the combat model afterward. | 2026-08-03 |
+| **R2** | **F-150-1** — the `0.25` named-pool gate and `DISPOSITION_DECAY_INTERVAL_DAYS = 3`, **read together** (§6). Fix / defer / accept-as-is. | Defer. Same reason as R1 — UI/visual-design iteration comes first. | 2026-08-03 |
 
 **"Fix", "defer" and "accept-as-is" all count as a ruling. What does not count is silence.**
 Nothing in this repository can fill a cell in — the coder does not self-waive. `TASKS.md`'s T-158

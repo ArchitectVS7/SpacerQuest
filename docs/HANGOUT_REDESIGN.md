@@ -2245,6 +2245,11 @@ between the arms is career re-phasing, not the fix.**
 **STATUS: A DESIGN QUESTION FOR THE OWNER, NOT A TUNING KNOB.** T-125 ruled it so and T-150
 does not overturn that. **Neither constant is changed by this task.**
 
+**RULED (owner, 2026-08-03, at the T-158 checkpoint): DEFER.** Neither constant (`rng.next() <
+0.25`, `DISPOSITION_DECAY_INTERVAL_DAYS = 3`) is fixed or accepted-as-final by this ruling — the
+owner is prioritizing UI/visual-design iteration (T-186, T-188, T-189, T-190, T-191) first and
+will revisit this design question afterward. This is a deferral, not a close.
+
 The two constants are `rng.next() < 0.25` in `packages/engine/src/actions/travel.ts` (the
 named-pool gate on the interceptor draw) and `DISPOSITION_DECAY_INTERVAL_DAYS = 3` in
 `packages/content/src/disposition.ts`. They are filed **together** because they compose: the

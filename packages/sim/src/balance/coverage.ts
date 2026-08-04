@@ -440,7 +440,7 @@ export const ACKNOWLEDGED_COVERAGE_GAPS: readonly AcknowledgedCoverageGap[] = [
     policy: 'fighter',
     verb: 'Combat',
     owner:
-      'OWNER SEQUENCING CALL, scheduled for a recorded ruling at T-158 (the pre-UAT checkpoint). `docs/0.5.2-REVIEW.md` states it directly: `executeCombat`\'s missing shared rules is "Still a real PARITY LEDGER gap; whether it lands as an N3 follow-up or at N13 is an owner sequencing call". `docs/TESTING-STRATEGY.md` Part G item 4 asks for the call to be made "even if the call is \'not fixing the model this pass\'".',
+      'RULED (owner, 2026-08-03, at the T-158 checkpoint): DEFER. `executeCombat`\'s missing shared rules stays the pre-N3 abstract GUNS check for now — the owner is prioritizing UI/visual-design iteration (T-186, T-188, T-189, T-190, T-191) before returning to gameplay-model work. Not fixed, not accepted-as-final; revisit once the UI pass settles. `docs/0.5.2-REVIEW.md`\'s prior framing ("whether it lands as an N3 follow-up or at N13 is an owner sequencing call") is now resolved by this ruling: sequencing lands AFTER the UI pass.',
     evidence:
       'docs/NPC_REDESIGN.md · PARITY LEDGER `| Combat |`: the chosen branch is "still the pre-N3 abstract GUNS check + flat `150 × tier`, with no interceptor, no damage and no ship loss — so the six fighters take 6.4 interdictions each and **0 deaths**". A sweep therefore cannot exercise chosen-combat risk/reward at all.',
     // Empty by CHECKED CLAIM, not by omission: the N4 figures above live in the

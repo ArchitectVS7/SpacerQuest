@@ -308,18 +308,21 @@ describe('T-158 · the pre-UAT brief quotes live figures, in both directions', (
     expect(checked).toBeGreaterThan(0);
   });
 
-  it('carries the two ruling slots the task halts on, both still empty', () => {
-    // T-158 closes on TWO recorded owner rulings and nothing else. The slots are
-    // asserted here so a future edit cannot quietly drop one, and so the halt is
-    // visible from the test suite rather than only from `TASKS.md` prose.
+  it('carries the two ruling slots the task halted on, both now recorded by the owner', () => {
+    // T-158 closed on TWO recorded owner rulings (2026-08-03: both DEFER) and nothing
+    // else. The slots are asserted here so a future edit cannot quietly drop one, and
+    // so the ruling is visible from the test suite rather than only from `TASKS.md`
+    // prose. Both cells were EMPTY until the owner's ruling landed — see git history
+    // on this test for the pre-ruling shape (asserted-empty) if that ever needs
+    // re-deriving.
     expect(BRIEF).toContain("| **R1** | **Combat's chosen branch**");
     expect(BRIEF).toContain('| **R2** | **F-150-1**');
     expect(BRIEF).toContain(
       '**"Fix", "defer" and "accept-as-is" all count as a ruling. What does not count is silence.**',
     );
 
-    // The coder does not self-waive: the answer column of both rows is blank.
-    // Any non-empty text is the owner's, and it is what closes the task.
+    // The coder does not self-waive: a non-empty ruling cell must be the OWNER'S text,
+    // transcribed here verbatim, never invented by a coding pass.
     const rulingRows = BRIEF.split('\n').filter(
       (line) => line.startsWith('| **R1** |') || line.startsWith('| **R2** |'),
     );
@@ -329,12 +332,11 @@ describe('T-158 · the pre-UAT brief quotes live figures, in both directions', (
       // ['', '#', 'the ask', "owner's ruling", 'date', '']
       expect(cells).toHaveLength(6);
       expect(
-        cells[3],
-        'A ruling cell in the pre-UAT brief is non-empty. If the owner filled it in, ' +
-          'close T-158 by transcribing it to the sites named in the TO CLOSE THIS TASK ' +
-          'checklist and update this test. If anything else filled it in, that is a ' +
-          'self-waiver and must be reverted.',
-      ).toBe('');
+        cells[3].length > 0,
+        `A ruling cell in the pre-UAT brief is empty (row: "${row}"). T-158 is only DONE ` +
+          "once both R1 and R2 carry the owner's actual ruling text.",
+      ).toBe(true);
+      expect(cells[4].length > 0, `A ruling row is missing its date (row: "${row}").`).toBe(true);
     }
   });
 });
