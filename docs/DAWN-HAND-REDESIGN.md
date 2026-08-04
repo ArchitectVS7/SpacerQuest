@@ -5,6 +5,15 @@ count was illegible ("it feels like I have five action points"), a `/bakeoff` on
 specifically (T-195, shipped), and a board-game-designer pass on the whole action list. This
 document is the spec; `TASKS.md`'s M17 block is the work list that implements it.
 
+**Amended at the owner-approved review pass, 2026-08-04 (two rulings, same day):** the review
+pass first extended the Befriend cap to Meet per-NPC-per-day; the owner then superseded that
+draft with the **social pool ruling** — one daily pool of `SOCIAL_PLAYS_PER_DAY = 3` free
+social plays bounds Meet, Befriend, AND Insult (§4a), with no per-NPC bookkeeping. In the same
+ruling: Befriend's Guile check rolls an **internal d20** (§5's blocker, resolved as option 1);
+§4b's round counter increments AT OPEN; and T-197's capstone still measures the Insult
+encounter-farming loop, now as *verification* that X = 3 holds it rather than as an open
+question.
+
 ## 1 · The complaint, and the two separate problems it turned out to be
 
 Owner, live playtest: *"it was not at all apparent why I was adding a d20 to any of my tasks...
@@ -55,8 +64,10 @@ exists elsewhere, it's free with no further work.
 | Crew dismiss | Main, die blind | **Free** — no cost today besides the die |
 | Reroll | *(not a die spend — burns a separate `rerollsRemaining` charge)* | **No change** |
 | Hangout → open a Dare (Liar's Dice) | Main, die blind | **Free, but capped (§4)** — wagers are bounded by the player's own credits, but ROUNDS PLAYED had no bound besides the die |
-| Hangout → Befriend | Main, die matters (Guile vs DC) | **Free, but capped (§4)** — disposition clamps at a ceiling, but nothing stopped reaching it in one sitting |
-| Hangout → Insult, Meet, Rumor | Main, die blind | **Free** — low-stakes, no exploit surface found |
+| Hangout → Befriend | Main, die matters (Guile vs DC) | **Free, draws from the social pool (§4a)** — the check survives as an internal d20 vs the port's authored DC (§5, RESOLVED by owner ruling 2026-08-04) |
+| Hangout → Meet | Main, die blind | **Free, draws from the social pool (§4a)** — the meet arm applies its disposition delta unconditionally, NO check; free and unbounded it would be a rush-to-ceiling grind, closed by the pool |
+| Hangout → Insult | Main, die blind | **Free, draws from the social pool (§4a)** — always lands (−4); at −10 the hunt weight is 16×, so unbounded free insults are an encounter-farming loop. The pool prices a manufactured grudge at a full day's plays; T-197's capstone measures the fighter policy's encounter/combat income as VERIFICATION that X = 3 holds it |
+| Hangout → Rumor | Main, die blind | **Free, outside the pool** — read-only: emits rumors, mutates nothing |
 | Hangout → Borrow | Main, die blind | **Free** — bounded already: refuses a second loan while one is active |
 | Hangout → Repay | Main, die blind | **Free** — bounded by credits and outstanding debt |
 | Explore outcome's secondary "extra dice" toll | Main, die blind, a cost INSIDE an already-Main action | **Out of scope for M17** — smaller inconsistency, the parent Explore action already reads a die meaningfully; revisit later if it still bothers on review |
@@ -65,21 +76,40 @@ exists elsewhere, it's free with no further work.
 **Net effect:** of the ~15 die-costed action types today, 6 remain Main Actions (Jump, Explore,
 Haggle, Combat, Peek, Crossing). Everything else becomes Free.
 
-## 4 · The two caps (owner-ruled this round)
+## 4 · The caps (owner-ruled; §4a re-ruled as the social pool, 2026-08-04)
 
-Freeing an action removes the die as its only throttle. Two of the freed actions had no other
-bound, so freeing them outright would let a rational player grind them without limit:
+Freeing an action removes the die as its only throttle. Three of the freed actions — Meet,
+Befriend, Insult, the three that move disposition with no other bound — would otherwise be
+grindable without limit. One pool bounds all three:
 
-### 4a. Befriend — clamp to once per NPC per day
+### 4a. The social pool — `SOCIAL_PLAYS_PER_DAY = 3` free social plays per day
 
-Owner: *"clamp befriend at one."* Disposition already clamps at a ceiling, so unlimited free
-Befriends couldn't have exceeded the max — but nothing stopped a player from *rushing* to it in
-one sitting instead of it costing real time across days, which was the actual risk. **One
-Befriend attempt per NPC per calendar day**, tracked per-NPC (not a global daily counter — a
-player working through the Hangout roster should still be able to Befriend several *different*
-NPCs in one visit; the cap is against repeating the SAME NPC). Refused attempts return a typed
-fail (`hangout.ts`'s existing three-way `no-die`/`invalid-die-index`/`die-already-spent`
-convention extends naturally to a fourth: `already-attempted-today`), never a silent no-op.
+**Owner ruling, 2026-08-04, superseding the same-day per-NPC-per-day draft** (that draft —
+Meet and Befriend each once per NPC per day, tracked per-(npcId, venue) — is preserved in git
+history as the logged not-chosen shape, per the D1/D7 precedent; the hybrid "pool + per-NPC"
+and "Befriend stays Main" shapes were also presented and not chosen). One daily counter,
+consumed by exactly **Meet, Befriend, and Insult**. Rumor (read-only), Borrow/Repay
+(ledger-bounded), and Dare-open (§4b's own cap) are OUTSIDE the pool. `SOCIAL_PLAYS_PER_DAY`
+is a **content constant** (with `MEET_DISPOSITION` and friends in `packages/content`) — tuning
+X later is a content edit, not an engine change.
+
+Why the arithmetic holds at X = 3: disposition clamps at ±10, Meet is +1 and Befriend +3 on
+success, so walking one NPC to the ceiling takes ~4 dedicated days (with the every-3rd-dusk
+decay dragging back) — restoring the owner's original intent that a relationship costs "real
+time across days" — and the Insult farm (−4 always lands; −10 is a 16× hunt weight) costs a
+full day's pool per manufactured grudge instead of three clicks.
+
+**Accounting:** a play is spent when the action RESOLVES, regardless of outcome — a failed
+Befriend check spends the play; a typed refusal (`venue-not-offered`,
+`social-limit-reached`, …) spends nothing, matching the existing no-die-on-refusal convention.
+The counter lives on the save, resets at dawn at `day.ts`'s existing chokepoint, and a
+spent-out pool refuses with a typed `social-limit-reached` (extending `hangout.ts`'s existing
+`no-die`/`invalid-die-index`/`die-already-spent` refusal family), never a silent no-op.
+
+**Befriend's check, resolved by the same ruling (§5's blocker, option 1):** free Befriend rolls
+an **internal d20 drawn from the action's rng** against the port's authored `befriend.dc` — the
+check and every port's DC content stay live; what's given up is aiming a chosen die at it,
+accepted by the owner as part of the pool ruling.
 
 ### 4b. Liar's Dice rounds — clamp per day, scaling with the player's Liar's Dice rank
 
@@ -105,17 +135,32 @@ rounds at higher tier — is the ruled part, the exact counts are not):
 A "round" is one settled hand (open → bidding → challenge/settlement), not one bid. Refused
 opens past the day's cap return a typed fail, same convention as 4a.
 
+**The counter increments AT OPEN** (ruled at the 2026-08-04 review pass), at the same
+`hangout.ts:351` site that freezes the tier's effects onto the hand: Liar's Dice hands persist
+across save/reload and can straddle dusk, so counting at settlement would let a hand opened
+before dusk dodge the dawn reset. "One settled hand" defines the round's UNIT; the open is when
+the day's allowance is spent. A fold still settles the hand, so an open-and-fold burns both the
+round and the escrow — the cap cannot be laundered through folds.
+
 ## 5 · Things this document flags rather than silently resolves
 
+- **RESOLVED (owner, 2026-08-04) — what rolls Befriend's Guile check once its die is gone?**
+  (Added at the review pass; the original draft missed it. The resolver is
+  `check(die, playerGuile, dc)` — the spent die IS the roll, so "free Befriend" had nothing to
+  roll.) **Ruled: option 1, an internal d20 from the action's rng** — the check and every
+  port's authored `befriend.dc` stay live; the agency cost (Befriend becomes a Guile check the
+  player cannot aim a die at) was accepted as part of the §4a social-pool ruling. Logged
+  not-chosen shapes, for the record: (2) keep Befriend a Main Action (the die stays the roll —
+  smallest mechanical change, breaks the "Hangout is free" story); (3) drop the check entirely
+  (always lands like Meet — deletes a die-matters moment and kills the DC content).
 - **"Hangout is free" — does that mean the visit, or every sub-action?** There's no separate
   "walk in" step today (visiting and acting are the same die-spend); this doc reads the owner's
   ruling as "every current Hangout sub-action loses its die cost," which is what §3's table
   applies. If that's not the intent, say so before M17's Hangout task starts.
-- **Is "once per NPC per day" the right grain for the Befriend cap**, or should it be "once per
-  Hangout visit" (finer, if a future task ever meters visits separately) or a flat daily total
-  across all NPCs (coarser)? This doc picked per-NPC-per-day as the reading that best matches
-  "don't let a player max one relationship for free in one sitting" without also blocking a
-  player who wants to work the whole roster in one visit.
+- **SUPERSEDED (owner, 2026-08-04): the cap grain question.** The original per-NPC-per-day
+  grain question is moot — the §4a social pool has no per-NPC bookkeeping; "a flat daily total
+  across all NPCs," the coarser grain this bullet once listed as an alternative, is exactly
+  what was ruled. Kept for the record of why the finer grains were considered.
 - **The exact rounds-per-tier numbers in §4b are a starting suggestion, not a ruling.** Confirm
   before the coder locks them in — they're cheap to change later (one content table), but the
   *shape* (more rounds at higher tier) is what's actually load-bearing for "rewarding good play."

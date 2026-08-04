@@ -2147,62 +2147,71 @@ the check was removed.** The UI has been showing a stat check that cannot fail f
 jump since T-1605 shipped — actively misleading, not merely uninformative: a player reads "PILOT DC
 12" and reasonably concludes their die and Pilot stat matter here, when neither does.
 
-**Accept:** the route-preview panel does not display a DC for a destination `resolveTravel` will
-not roll a check against (ordinary jumps); it MAY still show the Nemesis crossing's real DC, since
-that check is real. Replace the misleading number with something honest instead of just deleting
-it — e.g. the panel could say "no check — every jump with fuel arrives" for ordinary jumps, so the
-absence of a DC reads as a stated fact, not a missing feature. `travelPreview`'s `dc` field can stay
-(it is still useful for the crossing and for anything else that reads it), but the UI consumer must
-stop rendering it as if it always means something. e2e coverage: a route preview to a non-crossing
-destination does not render a Pilot-DC readout (or renders the "no check" copy instead); a preview
-to the (unlocked) Nemesis crossing still does. Gate green.
+**Accept (amended at the 2026-08-04 review pass — T-195 shipped in the same commit as this
+filing, and it changes what "honest" means here):** the route-preview panel does not display a DC
+for a destination `resolveTravel` will not roll a check against (ordinary jumps); it MAY still
+show the Nemesis crossing's real DC, since that check is real. But do NOT replace the dead DC
+with only a "no check — every jump with fuel arrives" line — since T-195, an ordinary jump's die
+is no longer inert: it sets a fuel discount (`navDieFuelDiscount`, 0-15%) and an
+encounter-evasion factor (`navDieEvasionFactor`, 0-20%), and `travelPreview` already computes
+both once a die is known. The honest readout is the armed die's live effect (e.g. "die 14 · fuel
+−9% · encounter odds −13%"), with the "no check" copy covering the no-die-armed state — either
+way the absence of a DC reads as a stated fact, not a missing feature. `travelPreview`'s `dc`
+field can stay (still useful for the crossing and anything else that reads it), but the UI
+consumer must stop rendering it as if it always means something. Coverage lands in the existing
+DOM pane-test harness (`packages/ui/src/__tests__/`, vitest + testing-library — "coverage" here
+means these; do NOT stand up a browser tier for this task, that is T-162's still-open thread): a
+route preview to a non-crossing destination renders no Pilot-DC readout (the die-effect or
+"no check" copy instead); a preview to the (unlocked) Nemesis crossing still renders the real
+DC. Gate green.
 
-### T-194 · The dawn hand's die-value mechanic is illegible — teach it, and make success visible — `status: TODO` · `coder: opus` · `after: T-196, T-197`
+### T-194 · The dawn hand's die-value mechanic is illegible — teach it, and make success visible — `status: TODO` · `coder: opus` · `after: T-198`
 
 Owner's read, after a live session: "it was not at all apparent why I was adding a d20 to any of my
 tasks. Taking a contract? Making a jump to deliver the contract? Entering the hangout? ... In its
 current state it feels like I have [a] number of action points, I have no feedback if the die does
 anything."
 
-**The mechanic, stated precisely (verified by reading every `resolveX` action file) because the
-game currently explains it nowhere:** every action costs exactly one die from the 5-die dawn hand,
-but the die's FACE VALUE only matters for some actions. **Value-blind (pure resource spend, number
-never read):** signing a contract, buying fuel, paying debt, abandoning a contract, and — since
-T-1605 — ordinary jumps (T-193 is the bug half of that finding). **Value-matters (the die IS your
-roll, checked against that action's DC):** Haggle (Trade vs DC), Explore/off-lane sweeps (Pilot vs
-Nav DC), Hangout actions like Befriend and opening a Liar's Dice hand (Guile vs DC), Combat (Guns/
-Pilot/Trade vs DC depending on stance), and the Nemesis crossing jump (Pilot vs DC). Nothing in the
-UI currently distinguishes the two classes, and nowhere does a player see "this die's value vs this
-action's DC" compared before they commit — `dieArmed` (`App.tsx:3471`) is a plain boolean, not a
-comparison.
+**The pre-M17 mechanic this task was filed against (kept as the record of the finding; the full
+value-blind/value-matters split is preserved in `docs/DAWN-HAND-REDESIGN.md` §3's table):** every
+action cost one die, but only some read its face value, and nothing in the UI distinguished the
+two classes — `dieArmed` (`App.tsx:3471`) is a plain boolean, not a comparison. **M17 dissolves
+that split instead of teaching it:** after T-196a-c and T-197, every remaining Main Action reads
+its die — Jump (fuel discount + encounter evasion, monotonic, T-195), Explore (Pilot vs Nav DC),
+Haggle (Trade vs DC), Combat (Guns/Pilot/Trade vs DC by stance), Peek (Guile vs DC), Nemesis
+crossing (Pilot vs DC) — and everything else is a Free Action costing no die at all. Two
+deliberate corners stay die-blind, both ruled out of M17's scope by the spec's §3: storylet
+choices authored with `spendDie` and no `statCheck`, and Explore's secondary extra-dice toll.
 
-**Accept, in two parts, both required:**
+**RE-SCOPED at the owner-approved review pass, 2026-08-04** (originally written pre-M17, then
+marked superseded with a "re-scope later" note — this rewrite IS that re-scope, done now so no
+future coder inherits an Accept that contradicts its own postscript; the original two-part
+version is in git history). Gated `after: T-198` so the tutorial teaches the post-checkpoint
+economy, not numbers the owner may still re-tune.
 
-1. **Explain it in the hand-held tutorial (T-187's on-rails walkthrough).** At the step where the
-   player first assigns a die, the popup must say plainly that some actions spend the die as a flat
-   cost (the number doesn't matter) and others roll the die's number against a target (a bigger
-   number is more likely to clear it) — ideally demonstrated concretely at the two steps the
-   walkthrough already covers a value-blind action (sign a contract or jump) and a value-matters one
-   (if the scripted Liar's Dice hand opens with a die), so the contrast is felt, not just stated.
-2. **Make it visible everywhere it's true, not just explained once.** For every value-matters
-   action, once a die is selected/armed, show that specific die's value against the action's DC
-   before the player commits — a clear success/fail read (e.g. "[14] vs DC 12 — clears it" or a
-   plain pass/fail badge), not a bare DC number sitting next to an unrelated hand of dice. For every
-   value-blind action, the UI should not display a DC at all (T-193's fix generalized to Haggle/
-   Explore/Hangout call sites if any of them share the same "DC shown before a die is even picked"
-   pattern) — or if a DC is shown before selection for planning purposes, it must be visually
-   distinct from a live per-die success read.
+**Accept, in three parts, all required:**
 
-Scope check before starting: confirm which Hangout sub-actions (Meet, Insult, Rumor, alongside the
-confirmed Befriend/Dare) are value-blind vs value-matters — this block only verified Befriend and
-Dare directly; do not assume the rest without checking `hangout.ts`/`dare.ts`. Gate green.
+1. **Teach the two-class economy in the hand-held tutorial (T-187's contextual coach).** At the
+   first die assignment: Main Actions cost a die and the die IS your roll (or, for a jump, your
+   edge — higher is strictly better); Free Actions cost nothing and can be taken even with an
+   empty hand — with one bounded exception, the daily social plays (§4a's pool), taught where
+   the player first meets it (on entering a Hangout), not front-loaded. Demonstrate, don't just
+   state: the walkthrough already covers a Free action (sign a contract) and a Main one (jump)
+   back-to-back, so the contrast is felt.
+2. **Show the roll before it's committed, everywhere a die is read.** For every check-based Main
+   Action (Explore, Haggle, Combat, Peek, Crossing), once a die is armed, render that die's value
+   against the action's DC as a clear success/fail read (e.g. "[14] vs DC 12 — clears it" or a
+   plain pass/fail badge), not a bare DC sitting next to an unrelated hand of dice. For the jump,
+   T-193's die-effect readout is the same idea and lands first; this task extends the pattern to
+   the check actions. A DC shown before any die is armed (planning view) must be visually
+   distinct from a live per-die read.
+3. **The two residual die-blind corners must not be taught wrong.** Storylet `spendDie`-only
+   choices and Explore's extra-dice toll still spend dice without reading them; the tutorial and
+   the per-die read must not imply those dice roll against anything. If making them honest in the
+   UI is cheap, do it here; if not, FILE the cleanup as a follow-up task rather than widening
+   this one.
 
-**SUPERSEDED BY THE M17 ACTION-ECONOMY REWRITE, BELOW (owner, 2026-08-04).** The owner's
-follow-up ruling doesn't just ask the value-blind/value-matters split to be explained — it
-removes the die cost from most of the value-blind actions entirely (see M17). Re-scope this
-task's Accept criteria against the NEW action list once M17 lands: teach "Main Actions cost a
-die, Free Actions don't, and here's what the die does for each Main Action" rather than the
-now-obsolete "some actions ignore the number" framing. Do not start T-194 before M17 closes.
+Gate green.
 
 ### T-195 · The travel die matters again — fuel discount + encounter evasion, both monotonic — `status: DONE` · `coder: opus` · `after: —`
 
@@ -2235,7 +2244,9 @@ known (an inconsistency this task would otherwise have introduced, caught and cl
 same pass). `generateEncounter` gained an optional `die` parameter, defaulting to 1 (no
 evasion) so every existing caller that doesn't pass one is unchanged and byte-identical.
 
-**Capstone: real, broad, intended movement.** `docs/balance/baseline-t193-dawn-dice.json`
+**Capstone: real, broad, intended movement.** `docs/balance/baseline-t195-dawn-dice.json`
+(the block originally said `t193` — wrong pointer, corrected at the 2026-08-04 review pass; the
+file on disk and all four pinned sites say `t195`.)
 (1,000 seeds × 120 days × 8 policies = 8,000 runs) — ALL EIGHT policies moved.
 `fleet.tourOneClearRate` 0.5605 → 0.6310 (+12.6%), `finalCredits.median` +40.5%,
 `survival.shipsLost` -27.1%, `encountersPerRun` -10.3%. Re-pinned at all four sites
@@ -2261,89 +2272,222 @@ dawn-hand system: most of today's 15 die-costed actions were administrative over
 same scarce resource as the decisions that actually vary a run. The ruling splits every action
 into **Main Actions** (cost a die — the actions that make a day's shape a real choice) and
 **Free Actions** (bounded by something else already: credits, inventory slots, one-contract-at-
-a-time, one-loan-at-a-time), plus two new caps on two Free actions that had no bound besides the
-die today. See the spec doc for the full table, the reasoning per action, and the two things
-the doc flags as needing a decision during implementation, not before it.
+a-time, one-loan-at-a-time), plus new caps on the Free actions that had no bound besides the
+die today. See the spec doc for the full table, the reasoning per action, and §5's open
+questions.
 
-### T-196 · Free the administrative actions — Sign, Buy fuel, Abandon, Port purchase, Shipyard (all 4), Crew hire/dismiss — `status: TODO` · `coder: opus` · `after: T-195`
+**Amended at the owner-approved review pass, 2026-08-04.** Five changes, all reflected in the
+blocks below and in the spec doc's own amendment header: (1) T-196 is split into T-196a/b/c —
+the original task was engine + types + protocol + sim policies + UI + capstone in one commit,
+and the a/b arms now double as a control-arm pair (rules-eased vs instruments-exploiting,
+N13's own discipline). (2) The owner ruled a **single daily social pool**
+(`SOCIAL_PLAYS_PER_DAY = 3`, a content constant) over Meet, Befriend, AND Insult — the three
+disposition movers with no other bound — superseding the same-day per-NPC-per-day draft (spec
+§4a records both the ruling and the logged not-chosen shapes); the capstone still measures the
+Insult encounter-farming loop, now as verification that X = 3 holds it. (3) The spec's §5
+Befriend-check question is RESOLVED in the same ruling: free Befriend rolls an internal d20
+from the action's rng against the port's authored DC — the check and its content stay live.
+(4) T-197 carries the save bump (13 → 14) its
+two persistent caps imply, per the standing migration constraint. (5) T-198, a pacing
+checkpoint, sits between the capstone and T-194 — T-195 already moved clear rate +12.6% and
+median credits +40.5%, M17 roughly doubles a trading day's useful actions, and the day-30
+marker/contract deadlines/loan terms were all tuned against the old economy; nobody should
+write tutorial copy against numbers the owner may still re-tune.
+
+### T-196a · Free the administrative actions — engine rules, action shapes, and the compile-error sweep — `status: TODO` · `coder: opus` · `after: T-195`
 
 Per `docs/DAWN-HAND-REDESIGN.md` §3's ruled table. These nine action types currently spend a die
 whose face value is never read (verified: `void die;` or no extraction at all, at each resolver)
 and each is already bounded by something else — credits, one-active-contract, one purchase per
 port, berth capacity. Remove the die cost entirely; do not add a check or a new cap to any of
-these (none needed one per §3's exploit analysis).
+these (none needed one per §3's exploit analysis). This is the first of a three-task split
+(2026-08-04 review pass) — engine here, instruments in T-196b, UI in T-196c.
 
-**Files, verified by the same sweep that built the spec's table:**
+**Files (engine + shapes):**
 - `packages/engine/src/actions/trade.ts` — `sign-contract`, `buy-fuel`, `abandon-contract`
   (leave `haggle` and `pay-debt` untouched — Haggle stays Main, pay-debt was never die-costed).
+  NOTE: these arms THROW on a missing die today (`throw new Error('Must spend a die …')`) rather
+  than emitting the typed refusals the other resolvers use; deleting the die requirement deletes
+  those throws — update the tests that assert them deliberately, don't just drop the assertions.
 - `packages/engine/src/actions/shipyard.ts` — `resolveShipyard`'s single shared `spendDie` call
   covers all four kinds (repair, buy-cargo-pods, buy-component-tier, buy-special-equipment); one
   removal covers all four.
 - `packages/engine/src/actions/crew.ts` — `resolveCrew`'s hire and dismiss branches (leave
   `resolveReroll` untouched — it was never a die spend, see the spec's §3 note).
 - `packages/engine/src/actions/port.ts` — the port-purchase resolver.
-- `packages/sim/src/protocol.ts` — `legalActions` constructs these action shapes WITH a
-  `spendDie: dieParam` today (verified: `sign-contract`/buy-fuel/abandon/shipyard/crew/port call
-  sites all pass it); update the enumerator so these no longer require or offer a die parameter,
-  and update `protocol.test.ts`'s coverage of them.
-- `packages/ui/src/App.tsx` / `store.ts` — every button/flow for these nine actions currently
-  gates on `dieArmed` (a selected die) before allowing the action; remove that gate for exactly
-  these nine, leaving it in place for every Main Action.
+- `packages/engine/src/types.ts` + `packages/engine/src/schema.ts` — **DROP the `spendDie`
+  field from exactly these nine action shapes** (ruled here, closing the original task's
+  "decide-and-state" clause: dropping, not optional-and-ignored — a field that silently does
+  nothing is its own future bug). Dropping the field is the compile-error sweep, the T-146
+  required-param precedent inverted: every stale call site in `packages/sim` and `packages/ui`
+  becomes a tsc error. Fix them all MINIMALLY in this task — remove the field/argument, change
+  no other behaviour: the sim policies keep their die-budgeted day plans until T-196b
+  (deliberately — see the capstone note), and the UI keeps its armed-die gating until T-196c.
+- Golden fixtures (`day-loop-golden.ts`, `replay-golden.ts`) regenerate — recorded actions
+  carry the dropped field and the resolvers' event/hand stream moves.
 
-**Accept:** each of the nine no longer requires (or accepts) a `spendDie` index — decide and
-state explicitly whether the action's TypeScript shape drops the field entirely or keeps it
-optional-and-ignored (prefer dropping it; a field that silently does nothing is its own future
-bug). `applyPlayerAction`'s day-loop bookkeeping (`day.ts`) still runs correctly for a day where
-the player takes zero OR many of these in sequence without touching their dawn hand. A player
-can carry an EMPTY dawn hand (all 5 dice spent on Main Actions) and still sign a contract, buy
-fuel, repair, hire crew, buy a port — since none of those cost a die anymore. e2e/unit coverage
-updated at every call site named above, not just made to pass. `docs/DAWN-HAND-REDESIGN.md` is
-the design authority; do not re-litigate which actions are Free, only implement the ruling.
-Capstone: this moves `rulesFingerprint` (real resolver behaviour changes, and NPCs share these
-exact resolvers) — run the full 8,000-row sweep and re-pin at all four sites before commit,
-following T-195's own pattern exactly (isolated bisect first if the diff looks broader than
-expected, so real drift and this task's drift aren't conflated). Gate green.
+**Accept:** each of the nine neither requires nor accepts a `spendDie` index — the field is
+gone from the type AND the zod schema. `applyPlayerAction`'s day-loop bookkeeping (`day.ts`)
+runs correctly for a day where the player takes zero OR many of these in sequence without
+touching their dawn hand; a player with an EMPTY dawn hand (all 5 dice spent on Main Actions)
+can still sign a contract, buy fuel, repair, hire crew, buy a port — asserted by an engine
+test, not just claimed. Unit coverage updated at every named call site, not just made to pass.
+`docs/DAWN-HAND-REDESIGN.md` is the design authority; do not re-litigate which actions are
+Free. **Capstone (arm 1 of the control-arm pair):** this moves `rulesFingerprint` — resolver
+behaviour changes, and the sim's player policies drive these resolvers directly. NPCs do NOT:
+`npc.ts` imports only helpers (`applyShipyardMutation`, `quoteShipyard`, travel helpers), never
+the resolvers, so predict NPC-side rows near-still and player-policy rows moving BEFORE the
+run, per T-160's discipline. Full 8,000-row sweep, re-pin at all four sites, following T-195's
+pattern (isolated bisect first if the diff looks broader than expected). This arm measures
+"rules eased, instruments not yet exploiting"; T-196b's arm measures the exploitation — keep
+them attributable, exactly N13's control-arm pattern. Gate green.
 
-### T-197 · Free the Hangout actions, and cap the two that had no bound besides the die — `status: TODO` · `coder: opus` · `after: T-196`
+### T-196b · Teach the instruments the free actions — sim policy day-budgets + the protocol enumerator — `status: TODO` · `coder: opus` · `after: T-196a`
 
-Per `docs/DAWN-HAND-REDESIGN.md` §3-4. Six of Hangout's seven venues lose their die cost
-(Insult, Meet, Rumor, Borrow, Repay, and opening a Dare/Liar's Dice hand); Befriend loses its
-die cost too but gains a new cap; Peek (the one check inside an open hand) stays a Main Action,
-untouched. Liar's Dice ALSO gains a rounds-per-day cap, independent of Befriend's.
+After T-196a the rules are eased but every instrument still behaves as if the nine cost a die:
+the eight sim policies (`packages/sim/src/index.ts`) plan their day around "5 dice = 5 actions"
+and ration sign/fuel/repair against jumps, and the protocol enumerator still plumbs the nine
+through its die-param machinery. Until this task lands, any sweep UNDERSTATES the change — it
+measures an economy no rational player would play.
 
-**Files:** `packages/engine/src/actions/hangout.ts` (the shared `spendDie` at the venue-switch
-entry, `~line 319`, currently spent once regardless of which of the seven venues is chosen —
-remove it for six of seven, keep it live only for the path that reaches Peek in `dare.ts`);
-`packages/engine/src/actions/dare.ts` (Peek's own `spendDie`/`check` stays exactly as-is).
-`packages/sim/src/protocol.ts`'s Hangout/Dare `legalActions` branches, same treatment as T-196.
-`packages/ui/src/App.tsx` Hangout panel's `dieArmed` gating, same treatment as T-196.
+**Files:**
+- `packages/sim/src/index.ts` — every policy planner stops counting the nine freed action types
+  against its hand budget (dice are for jumps and checks now). Mind the F-116-1/F-150-2 class:
+  an unguarded "keep taking free actions" loop is exactly how those defects happened — every
+  freed action a planner queues must still be bounded by its REAL bound (credits, board size,
+  tank, berths) in the planner itself. The sign→abandon pair is self-limiting only because an
+  abandoned contract is destroyed, never returned to the board (verified: `trade.ts` splices
+  the board on sign and vents the cargo on abandon) — do not build a planner that assumes
+  otherwise.
+- `packages/sim/src/protocol.ts` — the nine are enumerated WITHOUT a die param, and — new
+  behaviour, test it explicitly — they are STILL enumerated when `diceRemaining` is EMPTY (the
+  enumerator's contract says the die list is "Empty in DAWN / when exhausted"; die-actions
+  vanish with the hand, freed actions must not). Update `protocol.test.ts`, including an
+  empty-hand enumeration test.
+- `packages/sim/src/pilot.ts` — no logic change expected (its candidate caps plus never-capped
+  Wait/end-day already handle longer free-action days by truncation), but confirm and say so in
+  the delivery note; if the caps starve freed candidates in practice, that is a finding to
+  FILE, not a constant to silently retune.
 
-**4a — Befriend, once per NPC per day (spec §4a).** New per-NPC-per-day tracking (a set/map
-keyed by NPC id, cleared at dawn — check `day.ts`'s existing dawn-reset chokepoint before adding
-a new one). A repeat attempt on an already-attempted-today NPC returns a typed fail
-(`already-attempted-today`, extending `hangout.ts`'s existing `no-die`/`invalid-die-index`/
-`die-already-spent` three-way convention to a fourth member) — never a silent no-op, and no die
-is spent on a refused attempt (matches the existing convention for the other three fail reasons).
+**Accept:** a policy day can spend a full hand on Main Actions AND still sign/fuel/repair the
+same day; the protocol enumerates the nine die-free and with an empty hand; the pilot is
+confirmed unaffected or a finding is filed. **Capstone (arm 2 of the pair):** policies are
+inside the fingerprint (the F-150-2 precedent — a shared-planner edit "would move every
+fingerprint"), so this task takes the second 8,000-row sweep; its diff against T-196a's arm is
+the measured value of exploitation alone, cleanly attributed. Predict before running: clear
+rate and median credits UP again, this arm's move larger than 196a's. Re-pin at all four
+sites. Gate green.
+
+### T-196c · Free the administrative actions in the UI — stop demanding a die, stop clearing the armed one — `status: TODO` · `coder: opus` · `after: T-196b`
+
+**Files:** `packages/ui/src/store.ts` — the real gate lives here, not in a per-button
+`dieArmed` prop: each freed action's creator reads `const die = state.selectedDie`, refuses
+when it is null, and **clears `selectedDie` on commit**. For exactly the nine: stop reading it,
+stop requiring it, and stop clearing it — a Free Action must neither require, consume, nor
+DISARM the die a player has armed for their next Main Action (buying fuel silently dropping
+your jump die is the UX regression this clause exists to prevent). `packages/ui/src/App.tsx` —
+the literal `dieArmed` gates (`:3471` region) and any "Pick a die to …" button copy on freed
+flows; leave every Main-Action gate exactly as-is.
+
+**Accept:** with an EMPTY hand, the UI allows all nine freed flows end to end; with a die
+armed, taking a freed action leaves that die armed; every Main Action still demands a die
+exactly as before. DOM pane tests (`packages/ui/src/__tests__/`) updated at every touched pane,
+including one test asserting the armed-die-survives-a-free-action behaviour. NO capstone: the
+UI is outside `rulesFingerprint` and this task touches no engine or sim file — if the diff
+says otherwise, stop and re-read the task boundary. Gate green.
+
+### T-197 · Free the Hangout actions, add the social pool and the rounds cap, and close the milestone capstone — `status: TODO` · `coder: opus` · `after: T-196c`
+
+Per `docs/DAWN-HAND-REDESIGN.md` §3-4 as amended at the 2026-08-04 review pass. ALL SEVEN of
+Hangout's venue sub-actions lose their die cost — Dare-open, Meet, Befriend, Insult, Rumor,
+Borrow, Repay (the earlier "six of seven" phrasing was a miscount; there is no seventh
+die-keeping venue). Peek — the one check inside an open hand — stays a Main Action, untouched.
+Two caps ride the freeing: the **social pool** (§4a — `SOCIAL_PLAYS_PER_DAY = 3` daily plays
+shared by Meet, Befriend, and Insult, the three disposition movers with no other bound;
+owner-ruled 2026-08-04, superseding the per-NPC-per-day draft) and the **Liar's Dice
+rounds-per-day cap** (§4b).
+
+**The Befriend-check question is RESOLVED (owner, 2026-08-04, spec §5):** free Befriend rolls
+an internal d20 drawn from the action's rng against the port's authored `befriend.dc` — the
+`check()` call and every port's DC content stay live; do not delete the check and do not keep a
+die parameter for it.
+
+**Files:** `packages/engine/src/actions/hangout.ts` — DELETE the shared `spendDie` at the
+venue-switch entry (`~line 319`) OUTRIGHT: verified at the review pass, no path through it
+reaches Peek — Peek's own spend lives entirely in `dare.ts:369-381` and is the only
+Hangout-family die spend that remains. `packages/engine/src/actions/dare.ts` (Peek stays exactly
+as-is). `packages/sim/src/protocol.ts`'s Hangout/Dare `legalActions` branches AND
+`packages/sim/src/index.ts`'s policy planners, same treatment (and the same empty-hand
+enumeration test) as T-196b. `packages/ui/src/App.tsx` / `store.ts` Hangout panel, same
+treatment as T-196c — a freed Hangout action neither requires nor clears the armed die — plus
+a visible plays-remaining read wherever the Hangout panel lives, so `social-limit-reached`
+never explains a button the player couldn't see coming.
+
+**4a — the social pool (spec §4a, owner-ruled 2026-08-04).** One counter on the save,
+decremented by exactly Meet/Befriend/Insult, reset to `SOCIAL_PLAYS_PER_DAY` at dawn — use
+`day.ts`'s existing dawn-reset chokepoint (the "NEXT DAY PREP" block), do not add a second one.
+`SOCIAL_PLAYS_PER_DAY = 3` is a CONTENT constant (it lives with `MEET_DISPOSITION` and friends
+in `packages/content` — tuning X later is a content edit). Accounting per the spec: a play is
+spent when the action RESOLVES regardless of outcome (a failed Befriend d20 spends the play); a
+typed refusal spends nothing. A spent-out pool refuses with a typed `social-limit-reached`
+(extending `hangout.ts`'s `no-die`/`invalid-die-index`/`die-already-spent` refusal convention)
+— never a silent no-op. Rumor, Borrow, Repay, and Dare-open do NOT touch the pool. **The
+capstone MUST still measure whether the fighter policy's encounter/combat income moves** (free
+insults × the 2.358× wronged-interceptor lift was the identified farming loop; the pool is
+predicted to hold it — this measurement verifies X = 3 does, and if it doesn't, that is a
+finding for T-198, not a license to retune X here).
 
 **4b — Liar's Dice, rounds capped per day, scaling with `liarsDiceTier` (spec §4b).** Read
 `liarsDiceTier(player.liarsDiceGamesPlayed)` (`liarsDiceRules.ts:195`) at the SAME call site
 that already freezes wager band/dice-per-side/max-quantity for an opened hand
-(`hangout.ts:351`) — do not add a second tier read elsewhere. A "round" is one settled hand
-(open through challenge/settlement), not one bid. **Confirm the exact rounds-per-tier numbers
-with the owner before locking them in** — the spec's §4b table is a starting suggestion (1/2/2/
-3/3/4 across tiers 0-5), not a ruling; the shape (more at higher tier) is what's ruled. A refused
-open past the day's cap returns a typed fail via the same four-way convention as 4a
-(`daily-round-limit`).
+(`hangout.ts:351`) — do not add a second tier read elsewhere. **The counter increments AT OPEN,
+at that same site** (ruled at the review pass: hands persist across save/reload and can
+straddle dusk, so settlement-counting would let a hand opened before dusk dodge the dawn reset;
+§4b's "a round is one settled hand" defines the round's UNIT — the open is when the day's
+allowance is spent). A refused open past the cap returns a typed `daily-round-limit` via the
+same refusal convention. **Confirm the exact rounds-per-tier numbers with the owner before
+locking them in** — the spec's table (1/2/2/3/3/4 across tiers 0-5) is a starting suggestion;
+the shape (more at higher tier) is what's ruled.
 
-**Accept:** Insult/Meet/Rumor/Borrow/Repay/Dare-open cost no die; Befriend and Dare-open cost no
-die but are newly capped as above; Peek is completely unchanged (still costs a die, still checks
-Guile vs DC). Both new caps reset at dawn, are visible in whatever event/state shape the UI
-reads to explain a refusal (never a silent button-does-nothing), and are covered by tests that
-drive the cap to its limit and confirm the typed refusal — not just that the happy path still
-works. `docs/DAWN-HAND-REDESIGN.md` §5's open questions (per-NPC-vs-per-visit grain, the exact
-rounds table) must be confirmed with the owner if this task's coder finds the spec's default
-reading ambiguous in practice — do not silently pick a resolution to an explicitly-flagged
-question. Capstone: same requirement and pattern as T-196. Gate green.
+**SAVE SHAPE — this task bumps `CURRENT_SAVE_VERSION` 13 → 14.** Both caps must survive a
+mid-day save/load (the social-plays counter and the rounds-today counter live on the save), so
+per the standing constraints this owes a migration — one that CALLS the dawn-reset rule rather
+than restating it — and a round-trip test.
+
+**Accept:** all seven venue sub-actions cost no die; Meet/Befriend/Insult draw from the social
+pool, Dare-open is rounds-per-day capped, Peek is byte-identical (still costs a die, still
+checks Guile vs DC). Befriend's internal-d20 check is covered both ways (success and failure —
+and BOTH spend a play). Both caps reset at dawn via the existing chokepoint, are visible in the
+event/state shape the UI reads to explain a refusal (never a silent dead button), and are
+covered by tests that drive each cap TO its limit and confirm the typed refusal — not just the
+happy path — including that Rumor/Borrow/Repay/Dare-open leave the pool untouched. §5's one
+remaining open question (the exact rounds table) confirmed with the owner, never silently
+resolved. The save migration ships with its round-trip test. **Capstone — the milestone closer:** same 8,000-row
+pattern, moved rows predicted first, re-pinned at all four sites — AND diffed not only against
+T-196b's arm but against `docs/balance/baseline-t182-reroll-fix.json` (the last pre-T-195
+baseline), reporting the CUMULATIVE easing of the whole dawn-hand arc (t182 → t195 → t196a →
+t196b → t197: clear rate, median credits, ships lost, encounters/run) in one table. That
+cumulative table plus the Insult measurement are T-198's brief. Gate green.
+
+### T-198 · CHECKPOINT — owner pacing read on the post-M17 economy `[BLOCKED BY = Human ruling]` — `status: TODO` · `coder: —` · `after: T-197`
+
+The dawn-hand arc is the game's second intentional easing in a week: T-195 alone moved
+`fleet.tourOneClearRate` 0.5605 → 0.6310 and `finalCredits.median` +40.5%, and M17 roughly
+doubles a trading day's useful actions (sign/fuel/repair/hire no longer compete with jumps for
+dice). The day-30 marker, contract deadlines, and loan terms were all tuned against the OLD
+action economy, and nothing inside M17's build tasks judges whether they still hold — this
+checkpoint is where that judgment happens, BEFORE T-194 bakes the new economy into tutorial
+copy.
+
+**The brief, assembled from work already done (no new sweeps):** T-197's cumulative table
+(t182 → t195 → t196a → t196b → t197), the Insult encounter-farming measurement (moved or
+clear), and one owner play session at feel level. **The orchestrator HALTS here** per the T-158
+convention — the outputs are owner rulings, not code: (1) is the pacing acceptable, or does a
+re-tuning task get filed (marker day, contract deadlines, T-195's 15%/20% magnitudes, the §4b
+rounds table) before T-194 runs; (2) whether `SOCIAL_PLAYS_PER_DAY = 3` needs tightening — the
+pool was ruled with the prediction that X = 3 holds the Insult encounter-farming loop, and
+T-197's capstone measurement either confirms that or is the finding this ruling answers. Record
+both rulings in this block, dated; T-194 un-gates on them.
 
 ---
 
