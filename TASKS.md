@@ -813,6 +813,60 @@ NON-INSTRUMENT in `balance/rules-fingerprint.ts`, no new file was added under `p
 **Delivered (2026-08-04):** T-155's Accept criteria — run the T-154 driver for real across ≥30 days × ≥3 seeds with zero illegal/fabricated actions and zero crashes, plus a same-seed determinism check — is met: 300 simulated days across two deterministic brains (`random`, `first-legal`) × 5 seeds × 30 days each recorded zero `illegalAttempts`, `blockedFromLegal`, `protocolErrors`, `diceBoundsViolations` and `fallbacks`, and zero crashes/hangs on all ten runs; Leg B ran seed 7 through two independent `node` processes to a byte-identical normalised action sequence, and Leg C reproduced that same digest a third time via `--brain recorded` replay, so the determinism requirement is met with the pinned/nondeterministic boundary documented rather than asserted. Along the way this task found and fixed two defects in the T-154 driver rather than routing around them (F-155-2's `--out`/`--replay` path-resolution split, F-155-3's phantom `random`-brain claim in T-154's own Delivered note), shipped `randomBrain`/`actionSequence`/`firstDivergence` plus 8 new tests pinning the volume and determinism floors, and updated `docs/TESTING-STRATEGY.md` Part D and `PILOT.md` with the confirmed cadence and invocation commands. **Deliberate scope boundary:** the live `--brain anthropic` leg (F-155-1) — validating `pilot-anthropic.ts`'s real request shape, its `json_schema` action enum, its prompt-cache claim, and its per-step cost ledger against the actual API — was not run and is not claimed as passing; it needs an `ANTHROPIC_API_KEY` that is not in an agent's gift to supply, so it stays filed as an open, owner-actionable follow-up (table above) rather than being force-run against an unvalidated credential path or quietly dropped. It does not gate this task's own closure — the Accept criteria as written asks for the T-154 driver run at volume with a determinism check, both satisfied by the deterministic brains — but it does gate any future claim that the live-LLM request shape itself has been validated, and M7 stays open regardless per the 2026-08-04 CORRECTION above (T-162 is still `TODO`).
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
+### T-199 · F-150-2: `smugglerPolicy`'s unguarded Explore loop, and the shared `planPacifistCombat` stall behind it — `status: TODO` · `coder: opus` · `after: —`
+
+**RENUMBERED (2026-08-04, discovered by `/orchestrate` mid-run):** this block collided with the
+pre-existing `T-177` (F-160-3, part of the T-175/T-176/T-177 trio filed together off T-160's
+bakeoff — see line 522). Same collision class as the T-175→T-183 / T-176→T-184 renumbers above;
+this one was missed at that pass. No other file references the old number (checked).
+
+**MOVED HERE (2026-08-04, Opus sequencing pass) from its original slot under M12, ahead of
+T-162.** `/orchestrate`'s Select stage picks the first eligible TODO in FILE order, and this task
+must run before every other currently-eligible task: the "Sweep gate" GitHub Actions check runs a
+FIXED seed range (`--seeds 60 --days 35`, both shards) on every push regardless of which files
+changed, so the very next task's push will re-trigger the same `assertNoIncomeStall · smuggler ·
+seed 20` failure below and halt the run again — this is not a risk, it is deterministic until this
+task lands. It must ALSO land strictly before T-196a (the M17 dawn-hand arc's first arm): T-196a/
+T-196b/T-197 each pay their own capstone sweep specifically to keep the arc's rules-easing
+measurements attributable to the arc alone, and a live shared-planner stall left unfixed means any
+of those sweeps could re-sample this SAME latent defect on a different seed, making the arc's own
+"which change moved the numbers" attribution unfalsifiable. Fixing it here first gives the arc a
+clean baseline. (Full sequencing rationale recorded in the 2026-08-04 planning pass; see git log.)
+
+`smugglerPolicy` in `packages/sim/src/index.ts` carries a byte-identical copy of F-116-1's
+unguarded Explore loop (3,891 of 23,192 queued on a recovery dawn, 17.90% refused), written up at
+`docs/EXPLORE_REDESIGN.md` §10.3. The guard was written, MEASURED and deliberately BACKED OUT: it
+re-seeds that policy's deterministic stream onto a PRE-EXISTING five-day stall in the SHARED
+`planPacifistCombat` (seed 3, Sirius-16, days 45-49, `anon-rim-pirate-15` escalating rounds 2→10
+while tribute climbs 2,000→10,000 against a 1,071cr purse, five consecutive `run` stances),
+tripping the poverty-trap invariant (`longestZeroIncomeStreak < 5`). Root fix means editing a
+planner five policies share, moving every fingerprint. Pinned by the tripwire
+`packages/sim/src/__tests__/campaign-policies.test.ts:492` ('F-150-2 TRIPWIRE · smugglerPolicy still
+queues the refusable Explore, on purpose'), which whoever fixes it must delete deliberately in the
+same change that fixes the combat stall. [harvested: T-150/F-150-2]
+
+**NEW CI EVIDENCE (2026-08-04) — this has escalated from a sim-measured finding to an active CI
+gate failure.** The `/orchestrate` run that committed T-155 (`da1190ec`, pilot/docs only — no
+engine or sim policy file touched) pushed to `redesign/explore-hangout` and the async "Sweep gate"
+GitHub Actions check failed for the first time on this branch (every prior run on this branch was
+green): `assertNoIncomeStall · smuggler · seed 20 · 5 consecutive zero-income days (limit 5)`,
+shard 2/2, run
+[30935230550](https://github.com/ArchitectVS7/SpacerQuest/actions/runs/30935230550). This is the
+same invariant and the same policy as the seed-3 case above, at the exact limit — read as the same
+root cause (this task), newly sampled by CI's seed selection rather than a regression introduced by
+T-155. Left unfixed, this leaves `redesign/explore-hangout`'s HEAD CI red on GitHub; whoever picks
+up this task should confirm seed 20 clears alongside the seed-3 case in the Accept criteria below
+before closing.
+
+**Accept:** the `planPacifistCombat` stall is fixed first (the seed-3 / Sirius-16 / days-45-49 case
+AND the seed-20 case above both re-run and shown clear), THEN `smugglerPolicy` gains the Explore
+guard; the tripwire at `campaign-policies.test.ts:492` is deleted deliberately in that same commit
+with the reason stated; the poverty-trap invariant holds across both seeds; the queued-on-
+recovery-dawn count is re-measured against 3,891/23,192; every moved fingerprint row is named up
+front as expected (a shared planner change moves them all) and `docs/EXPLORE_REDESIGN.md` §10.3 is
+updated to fixed; the Sweep gate CI check on `redesign/explore-hangout` is confirmed green after
+this lands; gate green.
+
 ### T-162 · Build: the browser/DOM-level long-horizon check — the bridge blind spot gets an owner — `status: TODO` · `coder: opus` · `after: T-158`
 
 **Scheduled 2026-08-02 (owner-directed): until now, no task owned this.**
@@ -938,7 +992,7 @@ NON-INSTRUMENT as its siblings are, so `rulesFingerprint` does not move; gate gr
 
 ## M9 — Harvested: Liar's Dice, roster and ladder
 
-### T-168 · F-146-1 / F-148-4: the raised tier-4/5 ceiling is never staked into — amend §4.6 first, then fix — `status: TODO` · `coder: opus` · `after: —`
+### T-168 · F-146-1 / F-148-4: the raised tier-4/5 ceiling is never staked into — amend §4.6 first, then fix — `status: TODO` · `coder: opus` · `after: T-198`
 
 The sim and the UGT protocol can never request a tier-4/tier-5 stake. `planDare`
 (`packages/sim/src/index.ts:3524`, seating logic at `:3487-3513`) and
@@ -960,7 +1014,7 @@ size the wager domain off the *effective* tier band; a sweep arm demonstrably re
 tier-5 stakes with the measurement recorded; the `dealer.credits < band.min` gate is re-derived
 against the effective band; fingerprint discipline stated and the expected rows named; gate green.
 
-### T-169 · F-148-2: the 42-seat gauntlet is played but never completed — `liars_dice_grand_slam` is unreachable — `status: TODO` · `coder: opus` · `after: —`
+### T-169 · F-148-2: the 42-seat gauntlet is played but never completed — `liars_dice_grand_slam` is unreachable — `status: TODO` · `coder: opus` · `after: T-198`
 
 Median 29 of 42 seats beaten, 3 of 14 ports cleared, **0 grand slams in 720 careers**, median 0
 seats drained — not a purse-depletion problem. `planDare`
@@ -977,7 +1031,7 @@ post-fix arm. [harvested: T-148/F-148-2]
 slams per 720 careers) or the spec states the fifteen deeds are deliberate-play rewards the sim is
 not expected to reach; the not-chosen shape is logged; gate green.
 
-### T-170 · F-148-5: `CONQUEROR = 38` is unreached at 120 days by every policy — run the 300-day arm — `status: TODO` · `coder: opus` · `after: —`
+### T-170 · F-148-5: `CONQUEROR = 38` is unreached at 120 days by every policy — run the 300-day arm — `status: TODO` · `coder: opus` · `after: T-198`
 
 `RENOWN_DEED_THRESHOLDS.CONQUEROR` = 38 (`packages/content/src/deeds.ts:289`) is unreached at 120
 days by every policy, dice or not. `gambler` deedCount median 25 → 28 (max 34 at n=1,000, GIGA_HERO
@@ -991,7 +1045,7 @@ per policy against the 59-deed slate; the threshold is then either confirmed as 
 re-derived with the new number stated; `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12 updated; no retune
 lands without the measurement behind it; gate green.
 
-### T-175 · F-160-1: the archetype ordering SURVIVES the F-137-1 fix — `optimal` is still the softest seat — `status: TODO` · `coder: opus` · `after: T-160`
+### T-175 · F-160-1: the archetype ordering SURVIVES the F-137-1 fix — `optimal` is still the softest seat — `status: TODO` · `coder: opus` · `after: T-160, T-198`
 
 **Filed at T-160 (2026-08-02), `docs/LIARS-DICE_REDESIGN.md` §17.8.** F-148-1 traced the inversion
 to F-137-1 and instructed: "close F-137-1 … and re-measure; if the inversion survives that, the
@@ -1016,7 +1070,7 @@ task takes its own capstone with the moved rows predicted before the run;
 `docs/LIARS-DICE-PROGRESSION_SPEC.md` F-148-1 and `docs/LIARS-DICE_REDESIGN.md` §17.8 both updated
 with the outcome; gate green.
 
-### T-176 · F-160-2: the challenger-won split is still 41.7 pp apart — price the planner's selectivity or re-derive the criterion — `status: TODO` · `coder: opus` · `after: T-160`
+### T-176 · F-160-2: the challenger-won split is still 41.7 pp apart — price the planner's selectivity or re-derive the criterion — `status: TODO` · `coder: opus` · `after: T-160, T-198`
 
 **Filed at T-160 (2026-08-02), `docs/LIARS-DICE_REDESIGN.md` §17.8.** T-160 pre-committed a ≤20 pp
 criterion for the challenger-won split (against T-137's 5.32% vs 94.92%) and **neither sanctioned
@@ -1038,7 +1092,7 @@ bakeoff'd on top of shipped (b) and shipped if it passes; the split is re-measur
 `n` on every cell; `docs/LIARS-DICE-DECISIONS.md` LD-22 updated; if `packages/engine/src` is
 touched the task takes its own capstone with the moved rows predicted first; gate green.
 
-### T-177 · F-160-3: FOLD is still never the better credit play — an owner design call — `status: TODO` · `coder: opus` · `after: T-160`
+### T-177 · F-160-3: FOLD is still never the better credit play — an owner design call — `status: TODO` · `coder: opus` · `after: T-160, T-198`
 
 **Filed at T-160 (2026-08-02), `docs/LIARS-DICE_REDESIGN.md` §17.7 / §17.8; the standing version of
 §16.8 item 6.** T-160 re-measured FOLD post-fix as the task required. It is **less dead than at
@@ -1066,7 +1120,7 @@ touched the task takes its own capstone with the moved rows predicted first; gat
 
 ## M10 — Harvested: Explore, deeds and the recovery ladder
 
-### T-171 · Deed supply after Explore's 10× event-rate drop — an owner ruling on the sealed-pod line — `status: TODO` · `coder: opus` · `after: —`
+### T-171 · Deed supply after Explore's 10× event-rate drop — an owner ruling on the sealed-pod line — `status: TODO` · `coder: opus` · `after: T-198`
 
 F-115-B left an unanswered supply question. Explore's per-outcome event rate fell ~10× by design
 (a board now draws one row of 100 instead of walking three legs), and on
@@ -1086,7 +1140,7 @@ the post-ruling per-career slate-completion number re-measured on `COVERAGE_SEED
 beside the pre-ruling two-in-sixty-five; the ruling written into the Explore spec beside §10.4's
 other open calls; gate green.
 
-### T-172 · Re-measure per-band recovery collection and forfeiture — prove band 4 is reachable after T-131 — `status: TODO` · `coder: opus` · `after: —`
+### T-172 · Re-measure per-band recovery collection and forfeiture — prove band 4 is reachable after T-131 — `status: TODO` · `coder: opus` · `after: T-198`
 
 T-116 measured that the recovery ladder forfeits 75.8% of everything it defers (1,553 of 2,049
 resolved recoveries, essentially all `departed`) with ZERO band-4 payouts in 14,400 simulated days
@@ -1118,12 +1172,15 @@ source fenced only at `docs/HANGOUT_REDESIGN.md` §10.7). Adding the fields move
 never a capstone commit. [harvested: T-125/capstone-blind-to-disposition]
 
 **Accept:** `SeedRow`, `MilestoneSample` and `CombatEncounterRecord` carry the hangout/disposition/
-interceptor-source fields the four prior probes needed; the change lands as its own commit with the
+interceptor-source fields the four prior probes needed; every field is ADDITIVE ONLY — no existing
+key on any of the three shapes is renamed, retyped, or removed — because T-197's capstone diffs a
+fresh aggregate against the pre-existing `docs/balance/baseline-t182-reroll-fix.json` and that diff
+must still resolve cleanly on every shared key; the change lands as its own commit with the
 `balance:extract` re-extract and the four-site baseline re-pin done in it; `instrumentFingerprint`
 moves and `rulesFingerprint` does NOT; the `.scratch/` probe is retired or its §10.7 fence points at
 the shipped fields; gate green.
 
-### T-174 · F-151-9: the `fighter` sim policy is bit-for-bit flat under every stat change — fix or replace it — `status: TODO` · `coder: opus` · `after: —`
+### T-174 · F-151-9: the `fighter` sim policy is bit-for-bit flat under every stat change — fix or replace it — `status: TODO` · `coder: opus` · `after: T-198`
 
 INSTRUMENT defect: the `fighter` sim policy's day-35 median is 2,825cr in ALL eight rig variants —
 bit-for-bit flat under every stat change, including +2 GRIT. The rig therefore cannot separate
@@ -1164,7 +1221,7 @@ freshly merged aggregates renders WITHOUT the "RULESET UNKNOWN" banner; `instrum
 move is paid for with the re-extract and baseline re-pin in the same commit; `rulesFingerprint`
 does NOT move; `docs/TELEMETRY-REPORT_SPEC.md` §3's now-corrected claim matches reality; gate green.
 
-### T-184 · Smuggler contract options are `chosen` more often than they were `offered` — the all-weights-zero corner — `status: TODO` · `coder: opus` · `after: —`
+### T-184 · Smuggler contract options are `chosen` more often than they were `offered` — the all-weights-zero corner — `status: TODO` · `coder: opus` · `after: T-198`
 
 **RENUMBERED (2026-08-03):** this block was filed as `T-176`, colliding with the earlier `T-176`
 (F-160-2, line 911) — same collision as the T-175→T-183 renumber above. No other file referenced
@@ -1189,48 +1246,7 @@ front; gate green.
 
 ## M12 — Harvested: sim policies under duress
 
-### T-199 · F-150-2: `smugglerPolicy`'s unguarded Explore loop, and the shared `planPacifistCombat` stall behind it — `status: TODO` · `coder: opus` · `after: —`
-
-**RENUMBERED (2026-08-04, discovered by `/orchestrate` mid-run):** this block collided with the
-pre-existing `T-177` (F-160-3, line 1041, part of the T-175/T-176/T-177 trio filed together off
-T-160's bakeoff — see line 522). Same collision class as the T-175→T-183 / T-176→T-184 renumbers
-above; this one was missed at that pass. No other file references the old number (checked).
-
-`smugglerPolicy` in `packages/sim/src/index.ts` carries a byte-identical copy of F-116-1's
-unguarded Explore loop (3,891 of 23,192 queued on a recovery dawn, 17.90% refused), written up at
-`docs/EXPLORE_REDESIGN.md` §10.3. The guard was written, MEASURED and deliberately BACKED OUT: it
-re-seeds that policy's deterministic stream onto a PRE-EXISTING five-day stall in the SHARED
-`planPacifistCombat` (seed 3, Sirius-16, days 45-49, `anon-rim-pirate-15` escalating rounds 2→10
-while tribute climbs 2,000→10,000 against a 1,071cr purse, five consecutive `run` stances),
-tripping the poverty-trap invariant (`longestZeroIncomeStreak < 5`). Root fix means editing a
-planner five policies share, moving every fingerprint. Pinned by the tripwire
-`packages/sim/src/__tests__/campaign-policies.test.ts:492` ('F-150-2 TRIPWIRE · smugglerPolicy still
-queues the refusable Explore, on purpose'), which whoever fixes it must delete deliberately in the
-same change that fixes the combat stall. [harvested: T-150/F-150-2]
-
-**NEW CI EVIDENCE (2026-08-04) — this has escalated from a sim-measured finding to an active CI
-gate failure.** The `/orchestrate` run that committed T-155 (`da1190ec`, pilot/docs only — no
-engine or sim policy file touched) pushed to `redesign/explore-hangout` and the async "Sweep gate"
-GitHub Actions check failed for the first time on this branch (every prior run on this branch was
-green): `assertNoIncomeStall · smuggler · seed 20 · 5 consecutive zero-income days (limit 5)`,
-shard 2/2, run
-[30935230550](https://github.com/ArchitectVS7/SpacerQuest/actions/runs/30935230550). This is the
-same invariant and the same policy as the seed-3 case above, at the exact limit — read as the same
-root cause (this task), newly sampled by CI's seed selection rather than a regression introduced by
-T-155. Left unfixed, this leaves `redesign/explore-hangout`'s HEAD CI red on GitHub; whoever picks
-up this task should confirm seed 20 clears alongside the seed-3 case in the Accept criteria below
-before closing.
-
-**Accept:** the `planPacifistCombat` stall is fixed first (the seed-3 / Sirius-16 / days-45-49 case
-AND the seed-20 case above both re-run and shown clear), THEN `smugglerPolicy` gains the Explore
-guard; the tripwire at `campaign-policies.test.ts:492` is deleted deliberately in that same commit
-with the reason stated; the poverty-trap invariant holds across both seeds; the queued-on-
-recovery-dawn count is re-measured against 3,891/23,192; every moved fingerprint row is named up
-front as expected (a shared planner change moves them all) and `docs/EXPLORE_REDESIGN.md` §10.3 is
-updated to fixed; the Sweep gate CI check on `redesign/explore-hangout` is confirmed green after
-this lands; gate green.
-
-### T-178 · F-159-2: the fuel-starvation strand no policy branch can escape — the fighter's spend ordering under duress — `status: TODO` · `coder: opus` · `after: —`
+### T-178 · F-159-2: the fuel-starvation strand no policy branch can escape — the fighter's spend ordering under duress — `status: TODO` · `coder: opus` · `after: T-198`
 
 A fuel-starvation strand no policy branch can escape. On the post-T-159 tree, seed 157 × 35 days is
 the single remaining `fighter` stall at ≥ 5 (19 consecutive zero-income days) and it is NOT a
@@ -1256,7 +1272,7 @@ discipline stated; gate green.
 
 ## M13 — Harvested: owner rulings and unscheduled builds
 
-### T-179 · Record the three unruled `docs/PLAYER-TRINKETS_SPEC.md` §12 questions — `status: TODO` · `coder: sonnet` · `after: —` · `[BLOCKED BY = Owner ruling]`
+### T-179 · Record the three unruled `docs/PLAYER-TRINKETS_SPEC.md` §12 questions — `status: TODO` · `coder: sonnet` · `after: T-198` · `[BLOCKED BY = Owner ruling]`
 
 `docs/PLAYER-TRINKETS_SPEC.md` §12 hands back THREE questions UNRULED and no ruling has been
 recorded since 2026-08-01: **(12.1)** the go/no-go — C "do nothing" recommended 4/4, A costs one
@@ -1274,7 +1290,7 @@ the consequence of each ruling stated (notably whether W2 opens `player.stats`, 
 F-151-5's missing `StatBlockSchema` bounds and F-151-6's missing stats pin immediately due); the
 task halts `BLOCKED` for the owner and is never self-approved.
 
-### T-180 · N8 — the actor-parameterised `resolveVisitHangout`, un-gated but unscheduled — `status: TODO` · `coder: opus` · `after: —`
+### T-180 · N8 — the actor-parameterised `resolveVisitHangout`, un-gated but unscheduled — `status: TODO` · `coder: opus` · `after: T-198`
 
 N8 is now UN-GATED but NOT scheduled: the owner's 2026-08-02 ruling on `docs/NPC_REDESIGN.md`'s
 PARITY LEDGER `| VisitHangout |` row explicitly does not commit to the build — "unblocked as future
@@ -1294,7 +1310,7 @@ explicitly re-deferred with a reason; `gambler` no longer needs its entry in
 `ACKNOWLEDGED_COVERAGE_GAPS`; its own capstone is run and the four baseline pointers re-pinned;
 `docs/NPC_REDESIGN.md`'s STATUS BOARD and PARITY LEDGER row updated; gate green.
 
-### T-181 · D7's not-built alternative: a per-port interest-rate multiplier on `LOAN_DAILY_RATE` — `status: TODO` · `coder: opus` · `after: —`
+### T-181 · D7's not-built alternative: a per-port interest-rate multiplier on `LOAN_DAILY_RATE` — `status: TODO` · `coder: opus` · `after: T-198`
 
 The per-port INTEREST RATE multiplier on `LOAN_DAILY_RATE` — the alternative logged under owner
 ruling D7 and explicitly NOT built by T-133 ("the previously-logged interest-rate-multiplier
@@ -1552,7 +1568,7 @@ demo e2e, all green.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root; oriented directly from `TASKS.md`, `packages/ui/src/{App.tsx,format.ts,store.ts}` and the T-311 e2e. · attempts=1/4.
 
-### T-186 · Visual identity reads as monochrome sameness — resolve the tension with the PRD's committed CRT-amber pillar — `status: TODO` · `coder: opus` · `after: —` · `[BLOCKED BY = Owner ruling]`
+### T-186 · Visual identity reads as monochrome sameness — resolve the tension with the PRD's committed CRT-amber pillar — `status: TODO` · `coder: opus` · `after: T-198` · `[BLOCKED BY = Owner ruling]`
 
 Owner's read: "the monochrome amber is cool, but everything blends together... even here in an IDE
 there is variety of format and color. We need to do something color-wise, I am not quite sure just
@@ -2241,7 +2257,7 @@ task as moot rather than manufacturing a state to gate on; gate green.
 
 ## M16 — Owner UAT pass 3: the dawn-hand die is illegible (2026-08-04)
 
-### T-193 · BUG: the starmap shows a "PILOT DC" for every jump, but ordinary jumps never roll against it — `status: TODO` · `coder: opus` · `after: —`
+### T-193 · BUG: the starmap shows a "PILOT DC" for every jump, but ordinary jumps never roll against it — `status: TODO` · `coder: opus` · `after: T-198`
 
 Found while explaining the dawn-hand mechanic to the owner (they could not tell what assigning a
 die to a jump does — see T-194 for the full finding). Root cause, verified in code:
@@ -2574,9 +2590,11 @@ remaining open question (the exact rounds table) confirmed with the owner, never
 resolved. The save migration ships with its round-trip test. **Capstone — the milestone closer:** same 8,000-row
 pattern, moved rows predicted first, re-pinned at all four sites — AND diffed not only against
 T-196b's arm but against `docs/balance/baseline-t182-reroll-fix.json` (the last pre-T-195
-baseline), reporting the CUMULATIVE easing of the whole dawn-hand arc (t182 → t195 → t196a →
-t196b → t197: clear rate, median credits, ships lost, encounters/run) in one table. That
-cumulative table plus the Insult measurement are T-198's brief. Gate green.
+baseline), reporting the CUMULATIVE easing of the whole dawn-hand arc (t182 → t195 → t199 →
+t196a → t196b → t197: clear rate, median credits, ships lost, encounters/run) in one table —
+t199 is named explicitly so the smuggler/`planPacifistCombat` fix isn't silently folded into
+"dawn-hand easing" it isn't part of. That cumulative table plus the Insult measurement are
+T-198's brief. Gate green.
 
 ### T-198 · CHECKPOINT — owner pacing read on the post-M17 economy `[BLOCKED BY = Human ruling]` — `status: TODO` · `coder: —` · `after: T-197`
 
@@ -2589,7 +2607,7 @@ checkpoint is where that judgment happens, BEFORE T-194 bakes the new economy in
 copy.
 
 **The brief, assembled from work already done (no new sweeps):** T-197's cumulative table
-(t182 → t195 → t196a → t196b → t197), the Insult encounter-farming measurement (moved or
+(t182 → t195 → t199 → t196a → t196b → t197), the Insult encounter-farming measurement (moved or
 clear), and one owner play session at feel level. **The orchestrator HALTS here** per the T-158
 convention — the outputs are owner rulings, not code: (1) is the pacing acceptable, or does a
 re-tuning task get filed (marker day, contract deadlines, T-195's 15%/20% magnitudes, the §4b
