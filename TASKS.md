@@ -124,7 +124,10 @@ if one flips to unexpectedly PASSING, halt and escalate — do not flip it to `i
   SAMPLE, never a moved threshold (precedent at N4 and N10).
 - **A save-shape change owes a migration and a round-trip test**, and a migration CALLS a
   rule rather than restating one. `CURRENT_SAVE_VERSION` is **12** at the start of this
-  track; two tasks below are expected to need it.
+  track; two tasks below are expected to need it. **That 12 is a frozen anchor, not a live
+  reading** — it moved to **15** at T-145 (`59833a40`, 2026-07-31) and reads 15 today in
+  `packages/engine/src/save.ts:509`. Never copy the 12 into a Delivered note: re-read
+  `save.ts` and pin the file:line, per `LESSONS.md`'s resolvable-pin rule.
 - **Sweep invocation, exactly.** Shards are **1-indexed** (`--shard 1/8` … `8/8`), then
   `--merge`; verify the merge reports **8,000 rows**. Both `--milestone-days` and
   `--aggregate` are load-bearing.
@@ -1143,7 +1146,7 @@ Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (
 Transplanted 2026-08-02 out of completed blocks before they were pruned. Each body carries its
 `harvested:` provenance marker verbatim — do not reword the markers.
 
-### T-163 · Working branches never run e2e before merge — widen the CI trigger or gate rule-deleting changes — `status: TODO` · `coder: opus` · `after: —`
+### T-163 · Working branches never run e2e before merge — widen the CI trigger or gate rule-deleting changes — `status: DONE` · `coder: opus` · `after: —`
 
 Write the check that would have caught F-112-D. Nothing runs the e2e suite on the branch that
 breaks it: `.github/workflows/ci.yml` triggers on `push` only for `branches: [main, rimward-redesign]`,
@@ -1162,6 +1165,104 @@ standing `ci-no-duplicate-runs` norm — concurrency-cancel and no double runs o
 (the workflow trigger widened, or `docs/ENGINEERING-POLICY.md` §2's local requirement replaced by
 an enforced gate step); no duplicate runs are introduced on an already-tested commit; the chosen
 shape and the not-chosen one are recorded; gate green.
+
+**Delivered (2026-08-04):** the trigger is widened, and the widening is a **test**, not a habit.
+
+**Chosen shape — `branches: ['**']` on all three workflows, with every job-level `if:` byte-identical.**
+`ci.yml`, `sweep-gate.yml` and `e2e-flake.yml` now fire on every branch. `**` and not `*`, because a
+bare `*` does not match a `/` and would still have excluded `redesign/explore-hangout` — the exact
+branch this task is about; under `push.branches` it still excludes tags. `e2e-flake.yml` **keeps its
+`paths:` filter verbatim** — that is the cost argument and it survives; only its branch list goes.
+
+**The load-bearing argument, because "widened trigger" reads as "more runs":** widening does not
+weaken the `ci-no-duplicate-runs` norm — it is what makes it TRUE for the first time. The
+same-repo-PR skip (`github.event_name == 'push' || …head.repo.full_name != github.repository`) is
+unchanged on all four `ci.yml` jobs and on `sweep-gate.yml`'s `gate`. Its premise is *"the push run
+of this same commit already tested it"*; on an unlisted branch that premise was **false**, so a
+`redesign/*` → `main` PR was skipped AND had no push run — zero coverage on the commit about to
+merge. A same-repo PR still runs exactly once, on the push; fork PRs still run, because they
+produce no push run here; `ci.yml`'s `concurrency: cancel-in-progress` still collapses superseded
+runs to the branch tip. Zero bytes changed in any `if:`, any `concurrency` block, any timeout or
+any step.
+
+**Shapes NOT chosen, all four recorded** in `docs/TESTING-STRATEGY.md` **Part H** (the primary
+record): (1) adding `npm run test:e2e` to `ENGINEERING-POLICY.md` §2's mandatory local block — 95
+specs on every commit and still a human remembering, against this repo's own line *"a stability
+gate that only runs when somebody thinks to run it is not a gate"* (L-020); (2) the task's own
+alternative, requiring e2e only for "rule-deleting changes" — it asks the author to classify their
+own change, which is precisely the judgment T-1605 ("a rule change, not a cockpit change") and
+T-195 both got wrong; (3) extending the allowlist to `[main, rimward-redesign, 'redesign/**']` —
+the same enumeration one iteration later, and `sweep-gate.yml`'s hand-added
+`redesign/explore-hangout` entry is the proof of how that ends; (4) keeping the expensive
+mac/win `package` matrix scoped to `main` — declined because the repo is public (free runners), an
+asymmetric per-job `if:` is a second condition to keep in sync, and four-jobs-one-condition is what
+makes the no-duplicate rule auditable at a glance.
+
+**The rule this encodes, stated once for the next person to edit a trigger:** narrow a workflow by
+`paths` (a COST argument — it re-opens itself when the measured thing changes), never by branch
+name (a COVERAGE argument that rots one branch at a time).
+
+**Shipped:** `.github/workflows/ci.yml`, `sweep-gate.yml`, `e2e-flake.yml` (`branches: ['**']` +
+the reasoning in each header) · **`packages/ui/src/__tests__/ci-workflow.test.ts`** (new, 18 tests)
+— it **parses** every file in `.github/workflows/` with `js-yaml` rather than string-matching, and
+asserts: `on.push.branches` deep-equals `['**']` (the WHOLE array, so re-adding an allowlist beside
+`**` also goes red); the two-state `DECLARED_BRANCH_NARROWINGS` escape hatch with totality in both
+directions (**empty today** — the `ACKNOWLEDGED_COVERAGE_GAPS`/`SIM_NON_INSTRUMENT_SOURCES`
+discipline, no silent third state); the `e2e` job's `npm run test:e2e` step at
+`working-directory: packages/ui`; all four `ci.yml` jobs carrying the identical skip string;
+`concurrency.cancel-in-progress === true` with both `pull_request.number` and `github.ref` in the
+group; `e2e-flake.yml`'s surviving `paths` entries; and `sweep-gate.yml`'s standing sweep shape
+(1-INDEXED `--shard 1/2`, `--shard 2/2`, then `--merge`, with `--milestone-days` and both
+`--out`/`--aggregate-out` under `$RUNNER_TEMP`). Devdep: `js-yaml` + `@types/js-yaml` on
+`@spacerquest/ui` — `js-yaml@4.3.0` was already resolved in the tree transitively via eslint, so
+only the types package is genuinely new; `version.test.ts` (L-029, "exactly one workspace declares
+a version") was re-run and is green, asserted rather than assumed.
+
+**NEGATIVE CONTROL, run not asserted (L-018 — every assertion here would also pass against a
+no-op).** The same `coversBranch` helper the live assertions use is run over an inline fixture of
+the PRE-FIX `on:` block: it must fail to cover `redesign/explore-hangout` while the live file
+covers it, and it is table-tested against `main`, `rimward-redesign`, `redesign/explore-hangout`,
+`fix/jump-always-arrives`, `claude/whatever-abc` plus `*` vs `**` vs `redesign/**` vs `?` vs `!`.
+**Then the real file was reverted to `branches: [main, rimward-redesign]` and the suite re-run:
+exactly two tests went RED** ('ci.yml triggers `push` on `**`, or is a declared narrowing' and
+'NEGATIVE CONTROL: the pre-fix trigger fails the same check the live one passes'), 16 passed. The
+file was restored and all 18 pass.
+
+**Docs:** `docs/TESTING-STRATEGY.md` — new **Part H** (the before/after table of all three
+workflows, the chosen shape, the four declined ones, the `paths`-not-branches rule, and the two
+accepted costs: a working-branch e2e-path push now fires the 20-run flake matrix, and F-153-1's
+default-branch-only `cron:` is unchanged and unfixable by a trigger widening); its line 123 caveat
+**rewritten in place** because this commit falsifies it (TP-18), as was
+`docs/playtests/T-162-dom-longhaul.md` §4's identical present-tense claim. `ENGINEERING-POLICY.md`
+§2 widened from "touching the cockpit" to **"the cockpit, or the rules the cockpit asserts
+against"** (naming the deleted-check / renamed-outcome / moved-rules-owned-number class), plus a
+paragraph stating the local requirement is now backstopped rather than relied on; §1's numbering
+untouched, since other documents cite it. `BALANCE-RIG-DECISIONS.md` **BR-40 amended in place**
+(TP-16) — it claimed a `gate` job on "every push/PR", which was false for unlisted branches and is
+now literally true; no new BR-n, because the numbering is strictly sequential across Parts A–G.
+`LESSONS.md` **L-036** + its Standards bullet.
+
+**No fingerprint moves, no capstone owed, no save-version change, no CHANGELOG entry.**
+`packages/sim/src/balance/rules-fingerprint.ts` hashes `packages/engine` + `packages/content`
+(rules) and `packages/sim/src` (instrument); **`packages/ui` is not hashed at all**, and this task
+touched only `.github/**`, `docs/**`, `packages/ui/src/__tests__/**`, `packages/ui/package.json`,
+`package-lock.json` and this file. Nothing in `GameState` changed, so `CURRENT_SAVE_VERSION` is
+UNMOVED — it reads **15** in `packages/engine/src/save.ts:509`, not the 12 the track intro records;
+it moved earlier in the track (T-145, `59833a40`), not here, and either way no migration is owed.
+No player-visible behaviour changed, so there is nothing for `CHANGELOG.md` to say.
+
+**Gate:** `npm run format` (before the checks, per the standing rule — prettier owns the workflow
+YAML and canonicalised `["**"]` to `['**']`; every prose reference was normalised to match), then
+`npx tsc -b`, `npm run lint`, `npm run format:check`, `npm test` (**33 + 24 files, 470 + 382
+tests, all green**) and the **full** `npm run test:e2e -w @spacerquest/ui` (**162 passed, 46.4 s**)
+— which this task of all tasks could not skip without refuting itself.
+
+**CI evidence is owed AFTER the push** (§3, the CI-evidence rule): confirm with
+`gh run list --branch redesign/explore-hangout --workflow ci.yml`, then
+`gh run view <id> --log | grep -n 'Run e2e'`, and quote it verbatim. Nothing above claims a run
+that has not happened — the acceptance criterion is satisfied *locally* by the parsed-workflow
+assertions plus the negative control, which is exactly what §3 asks for before the push.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the repo has `docs/`, `packages/`, `scripts/` only). · attempts=2/4.
 
 ### T-164 · `packages/content` has no test runner — stand one up, or record engine-suite hosting as permanent — `status: TODO` · `coder: opus` · `after: —`
 
@@ -1774,7 +1875,8 @@ depot, ship pane, Hangout switch + panel, wire), and `store.ts`'s `walkthrough` 
 Scope ruling honoured: **pure UI presentation** — `packages/ui` only, no engine, no content. So
 `rulesFingerprint` does not move and NO capstone / `balance:extract` / sweep is owed. The record is
 CLIENT meta-state (`sq.walkthrough.v1`), exactly like `onboardingSeen` — not `GameState`, so
-`CURRENT_SAVE_VERSION` stays 12 and no migration is owed (stated in the module header).
+`CURRENT_SAVE_VERSION` is UNMOVED and no migration is owed (stated in the module header). It reads
+**15** in `packages/engine/src/save.ts:509`, not the 12 the track intro records.
 
 Decisions worth carrying forward:
 - **Completion signals are monotone one-shot flags, never live predicates.** Deriving "signed" from
@@ -1996,7 +2098,8 @@ block. (2) **The geometry table lives in `packages/ui`, deliberately.** `compute
 wholesale and `computeInstrumentFingerprint` hashes `packages/sim/src` — `packages/ui` is in
 **neither**, so this pure-UI change owes **no capstone sweep and no re-extract**; putting a picture's
 coordinates in content would have staled every balance fixture for a drawing. No save-shape change,
-so no migration: `CURRENT_SAVE_VERSION` stays **12**.
+so no migration: `CURRENT_SAVE_VERSION` is UNMOVED — it reads **15** in
+`packages/engine/src/save.ts:509`, not the 12 the track intro records.
 
 **Sizing was measured, not guessed.** The pane's box is **623 x 220 CSS px** at the suite's
 1280x720 viewport (`.col.left`'s ship row is `minmax(220px, 1fr)`). A first pass drew the ship

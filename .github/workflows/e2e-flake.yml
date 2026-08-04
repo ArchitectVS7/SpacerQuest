@@ -36,11 +36,23 @@
 # parallel load, so the Tour One specs must run under the same contention CI
 # actually gives them. The GATE is still the `@tour-one` subset, exactly as the
 # acceptance line words it; the whole-suite number is reported for information.
+#
+# ---------------------------------------------------------------------------
+# T-163 · THE BRANCH LIST IS GONE; THE `paths` FILTER STAYS
+# ---------------------------------------------------------------------------
+# Round 2 above narrowed this workflow twice at once, and only ONE of the two
+# narrowings was a real argument. `paths` is the cost argument and it is kept
+# verbatim: the measurement re-opens exactly when the thing measured changes.
+# `branches: [main, rimward-redesign]` was a coverage argument wearing a cost
+# argument's clothes — a working branch editing `packages/ui/e2e/**` is precisely
+# when the stability question is due, and that is the branch this list excluded.
+# Same defect as `ci.yml`'s allowlist (F-112-D, F-162-3), same fix. See
+# `docs/TESTING-STRATEGY.md` Part H and `docs/LESSONS.md` L-036.
 name: E2E flake rate
 
 on:
   push:
-    branches: [main, rimward-redesign]
+    branches: ['**']
     paths:
       - 'packages/ui/e2e/**'
       - 'packages/ui/playwright.config.ts'

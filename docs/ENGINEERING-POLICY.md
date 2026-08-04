@@ -57,9 +57,27 @@ npm run format:check
 npm test
 ```
 
-Changes touching the cockpit additionally require `npm run test:e2e -w
-@spacerquest/ui` green locally, and changes touching the Electron shell require
-`npm run test:e2e -w @spacerquest/desktop`.
+Changes touching **the cockpit, or the rules the cockpit asserts against**,
+additionally require `npm run test:e2e -w @spacerquest/ui` green locally, and
+changes touching the Electron shell require `npm run test:e2e -w
+@spacerquest/desktop`. The second clause is not decoration: a change under
+`packages/engine` or `packages/content` that **deletes a check, renames an
+outcome, or moves a rules-owned number a spec reads** is an e2e-relevant change
+even though it touches no UI file. This rule used to read "touching the cockpit"
+alone, and that is exactly why T-1605 (a rule change) could delete the travel
+PILOT check that `starmap.spec.ts` still asserted, and why T-195 could ship
+`navDieFuelDiscount` / `navDieEvasionFactor` without anyone running the suite.
+
+**And that local requirement is now backstopped, not relied on.** Both failures
+above survived for days because CI never ran the suite on the branch either:
+`.github/workflows/ci.yml` triggered `push` on a hand-maintained branch allowlist
+while every job skipped same-repo PRs, so a working branch had zero coverage on
+the exact commit about to merge. As of **T-163** all three workflows trigger on
+`branches: ['**']`, enforced by `packages/ui/src/__tests__/ci-workflow.test.ts`.
+The reasoning, the shape chosen and the four shapes declined are recorded in
+`docs/TESTING-STRATEGY.md` **Part H**; the durable rule is `docs/LESSONS.md`
+**L-036**. Remembering to run e2e locally is still the faster feedback loop — it
+is no longer the only thing standing between a deleted rule and `main`.
 
 Per the project's global rules, UX-facing verification goes through the real UI.
 The engine-direct path is for balance simulation, never for proving that

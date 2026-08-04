@@ -201,6 +201,14 @@ spec in the suite does. That is already filed as **T-163** ("Working branches ne
 merge"); it is cited here by number rather than re-discovered, and no CI coverage is claimed for
 this branch that does not exist.
 
+**CLOSED (T-163, 2026-08-04).** The paragraph above is left standing because it is what was true
+when this report was written, and because the correction is the point: all three workflows now
+trigger on `branches: ['**']`, so the `e2e` job — and with it this spec — runs per push on
+`redesign/explore-hangout` and every other working branch. The same-repo-PR skip is unchanged and
+is now correct, because the push run it defers to actually exists. Enforced by
+`packages/ui/src/__tests__/ci-workflow.test.ts`; reasoning and declined alternatives in
+`docs/TESTING-STRATEGY.md` **Part H**.
+
 ---
 
 ## 5 · The shape that was NOT chosen, and why

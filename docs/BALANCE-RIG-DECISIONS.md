@@ -255,7 +255,14 @@ slow. Two gate limitations are recorded rather than worked around: the flat inva
 end-to-end exit is proven via `reportGate` (making a real sweep emit a negative-credits row
 would require breaking the engine), and `--merge` deliberately does not re-run the flat
 invariants because `SeedRow` carries no `daily[]`, so the merge leg rests entirely on the
-rate table. (T-153)
+rate table. (T-153) **"Every push/PR" became literally true at T-163**, and was not before:
+this workflow's `on.push.branches` was a hand-maintained allowlist that had grown a
+`redesign/explore-hangout` entry by hand, so an unlisted working branch got no `gate` job at
+all while the job's same-repo-PR skip deferred to a push run that did not exist. The list is
+now `['**']`, the skip is unchanged, and the shape is pinned by
+`packages/ui/src/__tests__/ci-workflow.test.ts` — including this job's 1-indexed
+`--shard i/2` → `--merge` invocation with `--milestone-days` and both `--out`/`--aggregate-out`
+under `$RUNNER_TEMP`. Reasoning and declined alternatives: `docs/TESTING-STRATEGY.md` Part H.
 
 **BR-41 — `assertNoIncomeStall` is scoped to `GATE_COMPETENT_POLICIES`, and that exact
 membership is pinned by a negative control** showing the identical stall on `veteran` and

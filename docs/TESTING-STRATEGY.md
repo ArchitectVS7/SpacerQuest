@@ -120,7 +120,7 @@ ANTHROPIC_API_KEY=... npm run pilot -- --brain anthropic --seed 1 --days 30 --ou
 
 **Proven, not asserted.** `e2e/long-haul-invariants.spec.ts` carries one seeded-bad fixture per invariant (a single named mutation off a clean baseline), asserts that exactly that invariant fires, and holds a totality guard so an invariant declared without a fixture fails there rather than silently never running — the same discipline T-153 applied to the sweep gate.
 
-**Cadence.** Per-push CI runs **one seed × 30 days** inside the existing `e2e` job (no new job, no new trigger) because the failure class is a *regression* class: a client crash introduced today should fail today's build. Seed breadth is bought on demand — `LONGHAUL_SEEDS=1,2,3,4,5 LONGHAUL_DAYS=35 npm run test:e2e:longhaul -w @spacerquest/ui`, ~48 s a seed. **Caveat, not glossed:** `ci.yml` triggers `push` only on `[main, rimward-redesign]` and skips same-repo PRs, so working branches get no `e2e` job at all; that gap is `TASKS.md` **T-163** and this tier inherits it.
+**Cadence.** Per-push CI runs **one seed × 30 days** inside the existing `e2e` job (no new job, no new trigger) because the failure class is a *regression* class: a client crash introduced today should fail today's build. Seed breadth is bought on demand — `LONGHAUL_SEEDS=1,2,3,4,5 LONGHAUL_DAYS=35 npm run test:e2e:longhaul -w @spacerquest/ui`, ~48 s a seed. **The caveat this line used to carry is CLOSED (T-163, 2026-08-04).** It read: "`ci.yml` triggers `push` only on `[main, rimward-redesign]` and skips same-repo PRs, so working branches get no `e2e` job at all" — true when written, false now. All three workflows trigger on `branches: ['**']`, so this tier runs per push on every branch including `redesign/*`; the same-repo-PR skip is unchanged and is now correct, because a push run really does exist for the commit it defers to. See **Part H**.
 
 **It found bugs on its first run.** F-162-1 (an unaffordable fuel fill left the whole cockpit falsely "armed", turning every die-gated control into a dead click that threw a raw engine string) and F-162-2 (a repeated identical refusal changed nothing on screen at all). Both were filed before the run continued, fixed, and encoded as deterministic regressions in `e2e/dead-affordance.spec.ts`.
 
@@ -181,3 +181,45 @@ Parts A–F answer "how do we stop what's already covered from regressing." They
 **BUILT (2026-08-02, T-157)** — `packages/sim/src/balance/coverage.ts`, wired into `reportGate` and proven by `packages/sim/src/__tests__/archetype-coverage.test.ts`. The mechanism, the warn/fail rule and the reason warnings do not exit non-zero are under Part D, "The coverage matrix (T-157)". It warns for **three** archetypes, not the two this addendum expected — see the correction on the archetype-balance bullet above.
 
 **Disposition:** this addendum is a recommendation, not a ruling — the resequencing above, the Combat go/no-go, and the coverage-matrix addition are left for the team to weigh against what else is in flight before folding into `TASKS.md`.
+
+---
+
+## Part H — The CI trigger: which branches run what, and why (T-163, 2026-08-04)
+
+Parts A–G describe *what* we test. This part describes *where it runs*, because for the first year of this repository the honest answer was "not on the branch that needed it."
+
+**The defect, twice.** A change lands on a working branch, breaks the e2e suite, and nobody finds out until a later task trips over it:
+
+- **F-112-D** — T-1605 deleted the travel PILOT check; `starmap.spec.ts` still asserted it. **7 of 95 specs sat red on `main@74403ab4` from 2026-07-28** until T-112 tripped over them a fortnight later.
+- **F-162-3** — T-195 (`8ba4e83a`) shipped `navDieFuelDiscount` and `navDieEvasionFactor` into `resolveTravel`/`generateEncounter`; **six specs sat red on `redesign/explore-hangout`** until T-162 tripped over them.
+
+Neither change touched a UI file, so `docs/ENGINEERING-POLICY.md` §2's *"changes touching the cockpit"* local e2e requirement never fired. And CI could not catch what the local gate missed, because of this:
+
+| workflow | `on.push.branches` **before** | consequence |
+| --- | --- | --- |
+| `.github/workflows/ci.yml` | `[main, rimward-redesign]` | `redesign/*` got **no** `ci`, `e2e`, `desktop` or `package` job |
+| `.github/workflows/sweep-gate.yml` | `[main, rimward-redesign, redesign/explore-hangout]` | somebody hand-added the third entry — the allowlist rotting, mid-rot |
+| `.github/workflows/e2e-flake.yml` | `[main, rimward-redesign]` + a `paths:` filter | narrowed **twice**: by cost (legitimate) and by branch name (not) |
+
+All four `ci.yml` jobs also carried `if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository` — the standing `ci-no-duplicate-runs` norm, and a correct rule. Its premise is *"the push run of this same commit already tested it."* On an unlisted branch that premise was **false**, so a `redesign/*` → `main` PR was skipped *and* had no push run: zero coverage on the exact commit about to merge.
+
+### The shape chosen
+
+**Widen the push trigger to `branches: ['**']` on all three workflows. Change no job-level `if:`, no `concurrency` block, and no `paths:` filter.**
+
+The load-bearing argument, because a reviewer will read "widened trigger" as "more runs": **widening does not weaken the no-duplicate-run rule — it is what makes that rule true for the first time.** The same-repo-PR skip is byte-identical to what it was; a same-repo PR still runs exactly once, on the push. Fork PRs still run, because they produce no push run here. `ci.yml`'s `concurrency: cancel-in-progress` still collapses superseded runs to the branch tip.
+
+`**` and not `*`: a bare `*` does not match a `/`, so it would have excluded `redesign/explore-hangout` — the very branch this is about. Under `push.branches`, `**` still excludes tags.
+
+**The general rule, for whoever edits a trigger next:** *narrow a workflow by `paths` (a cost argument — it re-opens itself automatically when the measured thing changes), never by branch name (a coverage argument that rots one branch at a time).* This is why `e2e-flake.yml` keeps its `paths` filter verbatim and loses only its branch list: a working branch editing `packages/ui/e2e/**` is exactly when the stability measurement is due.
+
+**Enforced, not documented.** `packages/ui/src/__tests__/ci-workflow.test.ts` parses every file in `.github/workflows/` and asserts `on.push.branches` deep-equals `['**']` — the whole array, so re-adding an allowlist beside `**` also goes red. A workflow may narrow by branch only by appearing in `DECLARED_BRANCH_NARROWINGS` with a written reason, and totality is asserted in both directions so a stale declaration fails as loudly as an undeclared narrowing. The map is **empty today**. The same file pins the `e2e` job's `npm run test:e2e` step, the four identical job `if:` strings, the `concurrency` block, and `sweep-gate.yml`'s 1-indexed-shards-then-`--merge` invocation. Per **L-018** it carries a negative control: the same helper run over an inline fixture of the pre-fix `on:` block, which must fail to cover `redesign/explore-hangout` while the live file covers it (verified by reverting `ci.yml` and watching two tests go red).
+
+### The shapes not chosen
+
+1. **Add `npm run test:e2e` to `docs/ENGINEERING-POLICY.md` §2's mandatory local gate block.** Declined: 95 specs of wall clock on every commit, and it is still a human remembering. This document's own line applies — *"a stability gate that only runs when somebody thinks to run it is not a gate"* — as does **L-020**, prose is not enforcement. §2 was still *sharpened* (cockpit → "the cockpit, or the rules the cockpit asserts against"), but as the fast local loop, explicitly backstopped by CI rather than relied upon.
+2. **Require e2e only for "rule-deleting changes"** — the alternative T-163's own wording offered. Declined: it asks the author to classify their own change, which is precisely the judgment both failures got wrong. T-1605 was "a rule change, not a cockpit change"; T-195 never asked the question at all. A gate whose trigger is a self-assessment is the failure mode, not the fix.
+3. **Extend the allowlist to `[main, rimward-redesign, 'redesign/**']`.** Declined: the same enumeration one iteration later. `sweep-gate.yml`'s hand-added `redesign/explore-hangout` is the proof of how that ends.
+4. **Keep the expensive `package` matrix (macOS + Windows) scoped to `main`/`rimward-redesign`.** Declined, and recorded because it is the most likely reviewer objection: the repository is public, so Actions minutes are free; a per-job asymmetric `if:` would be a second condition to keep in sync; and four-jobs-one-condition is what makes the no-duplicate-run rule auditable at a glance. If runner cost ever becomes real, the correct move is a `paths` filter on the packaging job, not a branch list.
+
+**Known and accepted:** widening `e2e-flake.yml` means a working-branch push that edits `packages/ui/e2e/**`, `playwright.config.ts`, `packages/ui/package.json` or that workflow now fires a 20-run flake matrix. That is the cost the `paths` filter was designed to bound, and it is when the measurement is actually due. **Still true and deliberately unchanged:** `sweep-gate.yml`'s nightly `cron:` fires only from the default branch (F-153-1) — a trigger widening cannot fix that, and the per-push `gate` job is what covers working branches.

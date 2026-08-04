@@ -133,7 +133,14 @@ name: Sweep gate
 
 on:
   push:
-    branches: [main, rimward-redesign, redesign/explore-hangout]
+    # T-163 · EVERY branch. This line used to read
+    # `[main, rimward-redesign, redesign/explore-hangout]` — and that hand-added
+    # third entry is the whole argument: a branch-name allowlist rots one branch
+    # at a time, and it only gets extended by whoever happens to notice. The `gate`
+    # job's same-repo-PR skip below is unchanged and is now correct for the first
+    # time, because a push run really does exist for every branch. See
+    # `docs/TESTING-STRATEGY.md` Part H.
+    branches: ['**']
   pull_request:
   schedule:
     # 04:20 UTC nightly. Off the hour, so it does not queue behind the crowd of
