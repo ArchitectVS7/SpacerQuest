@@ -44,7 +44,7 @@ import {
  * accessors (`wagerBandFor` / `venueParamsFor` / `venueOffered` / `portHangoutFor`)
  * and against `DEFAULT_PORT_HANGOUT`, never against a restated literal, so an
  * authored number can move without this file needing an edit — and a number that
- * moves at Sun-3 fails loudly instead.
+ * moves at Sol-3 fails loudly instead.
  */
 
 /** The seven, in the resolver's own switch order. */
@@ -61,7 +61,7 @@ const ALL_VENUES: readonly HangoutVenueId[] = [
 const SUN_3 = 1;
 
 /**
- * §6.3 passes 1, 2 and 3 — Sun-3 (authored at T-120, mechanically the default row
+ * §6.3 passes 1, 2 and 3 — Sol-3 (authored at T-120, mechanically the default row
  * by §2.3), the four T-122 authors, the five T-123 authors (4, 5, 11, 12, 14) and
  * the four T-124 authors (6, 7, 9, 13) over T-121's baselines. THE TABLE IS NOW
  * CLOSED AT FOURTEEN, and the T-124 block below pins this list against
@@ -69,7 +69,7 @@ const SUN_3 = 1;
  */
 const AUTHORED_PORTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
 
-/** The ports whose rows must carry a real mechanical deviation. Sun-3 is excluded
+/** The ports whose rows must carry a real mechanical deviation. Sol-3 is excluded
  *  by §2.3 (its tuple is fixed to the default) and Altair-3 by its own design —
  *  it is the deliberate numeric mean, and its distinctness is `clientele` alone. */
 const MECHANICALLY_DEVIANT_PORTS = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
@@ -140,7 +140,7 @@ function offeredVenues(systemId: number): HangoutVenueId[] {
 }
 
 /**
- * Which of §6.1's mechanical axes this port moves off the DEFAULT row (Sun-3's
+ * Which of §6.1's mechanical axes this port moves off the DEFAULT row (Sol-3's
  * resolved values, never a restated literal). Governance is §6.1's sixth axis and
  * is not counted separately — it is the four below acting jointly, which is what
  * §6.2 says it is. Returns the axis NAMES so a failure says which ones moved.
@@ -266,7 +266,7 @@ describe('T-122 · §6.4 — no two authored ports share a mechanical axis vecto
     expect(axisVector(THE_MEAN_PORT)).not.toBe(axisVector(SUN_3));
   });
 
-  it('Sun-3 is still the DEFAULT row plus prose (§2.3, unchanged by any content pass)', () => {
+  it('Sol-3 is still the DEFAULT row plus prose (§2.3, unchanged by any content pass)', () => {
     expect(PORT_HANGOUTS[SUN_3]?.wager).toBeUndefined();
     expect(PORT_HANGOUTS[SUN_3]?.venueParams).toBeUndefined();
     expect(PORT_HANGOUTS[SUN_3]?.clientele).toBeUndefined();
@@ -277,7 +277,7 @@ describe('T-122 · §6.4 — no two authored ports share a mechanical axis vecto
         dispositionOnSuccess: DEFAULT_PORT_HANGOUT.venueParams?.[venue]?.dispositionOnSuccess,
         dispositionOnFailure: DEFAULT_PORT_HANGOUT.venueParams?.[venue]?.dispositionOnFailure,
         // T-135 · the fourth arm (the Liar's Dice fold). Read off the default row
-        // like its three siblings, so this stays a statement that Sun-3 inherits
+        // like its three siblings, so this stays a statement that Sol-3 inherits
         // whatever the default authors rather than a re-recorded literal.
         dispositionOnFold: DEFAULT_PORT_HANGOUT.venueParams?.[venue]?.dispositionOnFold,
       });
@@ -339,7 +339,7 @@ describe('T-122 · every authored row is well-formed', () => {
 // least 16" or "the floor must be at least 500" — those would be numbers a later
 // pass would have to edit, and a test that has to be edited to stay true is not a
 // pin. Instead each claim is either RELATIVE TO THE DEFAULT ROW (read through
-// Sun-3's resolved values) or RELATIVE TO THE OTHER AUTHORED PORTS (a per-axis
+// Sol-3's resolved values) or RELATIVE TO THE OTHER AUTHORED PORTS (a per-axis
 // maximum). An authored number can therefore move freely as long as the port's
 // IDENTITY survives — which is the property §6 actually asks for.
 // ---------------------------------------------------------------------------
@@ -603,7 +603,7 @@ describe('T-124 · the tonal spread (§6.1)', () => {
 
   it('a `comic` port is never harsher than the default — the joke is not at the player’s expense', () => {
     // Stated as the EXACT NEGATION of the `dangerous` predicate in the T-123 block
-    // above, over the same four clauses and read through Sun-3's resolved values,
+    // above, over the same four clauses and read through Sol-3's resolved values,
     // so the two registers are graded on one axis set rather than on two invented
     // ones. Threshold-free: nothing here names a number.
     const comic = withTone('comic');

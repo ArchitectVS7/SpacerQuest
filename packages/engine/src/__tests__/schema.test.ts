@@ -75,7 +75,7 @@ const VARIED_SCRIPT: PlayerAction[][] = [
 function driveDiverseRun(seed: number): GameState {
   let state = createInitialState(seed);
 
-  // Day 1: the Sun-3 guild-auditor storylet is deterministically available at
+  // Day 1: the Sol-3 guild-auditor storylet is deterministically available at
   // the start system — exercises the Storylet* event family — plus explore and
   // travel to open the trade/travel families.
   state = advanceDay(state, [
@@ -425,7 +425,7 @@ describe('T-1303 · HangoutEvent + new DispositionChanged reasons round-trip', (
         type: 'HangoutEvent',
         day: 1,
         venue: 'rumor',
-        rumors: ['Word is Iron Vex is keeping quiet around Sun-3.'],
+        rumors: ['Word is Iron Vex is keeping quiet around Sol-3.'],
       },
       {
         type: 'DispositionChanged',

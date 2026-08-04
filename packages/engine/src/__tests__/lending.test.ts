@@ -22,16 +22,16 @@ import { DawnHand, DayPhase, GameEvent, GameState, LoanState, PlayerAction } fro
 // the debt-as-ledger law (credits never negative, a loan is only ever an out).
 // ---------------------------------------------------------------------------
 
-/** A DAY-phase state at Sun-3 (a hasHangout hub) with a hand-picked dawn hand so
+/** A DAY-phase state at Sol-3 (a hasHangout hub) with a hand-picked dawn hand so
  *  `spendDie` indices resolve to real, unspent dice. */
-/** Sun-3 — the state builder's port, named so `loanBandFor` reads as a decision. */
+/** Sol-3 — the state builder's port, named so `loanBandFor` reads as a decision. */
 const SUN_3 = 1;
 
 function lendingState(dice: number[] = [5, 5, 5, 5, 5]): GameState {
   const state = createInitialState(1);
   state.dayPhase = DayPhase.DAY;
   state.dayEventCount = 0;
-  state.player.currentSystemId = 1; // Sun-3
+  state.player.currentSystemId = 1; // Sol-3
   const spent = new Array<boolean>(dice.length).fill(false);
   state.player.dawnHand = { dice: [...dice], spent } satisfies DawnHand;
   return state;
@@ -116,9 +116,9 @@ describe('ledger — borrow → 10-dusk accrual → repay', () => {
   it('borrow clamps the requested principal into the content band', () => {
     // T-133 (owner ruling D7) · the band is the PORT's now, read through the same
     // `loanBandFor` accessor the resolver clamps with rather than off the two
-    // global constants. `lendingState()` stands at Sun-3, whose row omits
+    // global constants. `lendingState()` stands at Sol-3, whose row omits
     // `loanBand`, so the two are the same numbers today — which is the point: this
-    // test still measures the CLAMP, and it keeps doing so if Sun-3 is ever given
+    // test still measures the CLAMP, and it keeps doing so if Sol-3 is ever given
     // a band of its own. The per-port divergence itself is driven in
     // `hangout.test.ts`'s T-133 block.
     const band = loanBandFor(SUN_3);

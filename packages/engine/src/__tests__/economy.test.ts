@@ -139,7 +139,7 @@ describe('economy', () => {
 
     it('reproduces the §7.1 scenario: two jumps cost ~240 against a ~300 tank', () => {
       // PRD §7.1: "two jumps costs 240 units; you're carrying 300."
-      // Sun-3 (1) -> Vega-6 (14): distance 14 → 168; Vega-6 -> Pollux-7 (9):
+      // Sol-3 (1) -> Vega-6 (14): distance 14 → 168; Vega-6 -> Pollux-7 (9):
       // distance 6 → 72; total 240 against the starter tank of 300.
       const legOne = jumpFuelCost(starterDrives, distance(1, 14));
       const legTwo = jumpFuelCost(starterDrives, distance(14, 9));

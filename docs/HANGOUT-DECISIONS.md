@@ -12,7 +12,7 @@ not repeated here. Liar's Dice — the Dare venue's resolver — has its own fil
 
 ## 1. Reach
 
-**HO-1 — Only the fourteen core spaceports (ids 1–14, Sun-3 … Vega-6) carry `hasHangout`.**
+**HO-1 — Only the fourteen core spaceports (ids 1–14, Sol-3 … Vega-6) carry `hasHangout`.**
 (T-121, `docs/HANGOUT_REDESIGN.md` §4.5) The rim (15–20), Andromeda (21–26), MALIGNA (27) and
 NEMESIS (28) get no venue — and a non-empty un-flagged set is what keeps
 `ActionBlocked{'no-hangout'}` reachable at all. Negative/refusal tests therefore target
@@ -118,7 +118,7 @@ number the local quartermaster will not honour. (T-133)
 **HO-18 — F-101-1 is partly REFUTED at the top end: the declared wager band, not the
 dealer's purse, is the live constraint.** (T-123, confirmed T-125 §10.5 at band 88.93% /
 dealer 10.97%.) Measured over 1,319 hands: Regulus-6's declared 500/3,000 realized a max of
-3,000 with the dealer binding on 5% of hands; Sun-3's ceiling was operative on 60% of hands
+3,000 with the dealer binding on 5% of hands; Sol-3's ceiling was operative on 60% of hands
 against 0.8% dealer-capped. Cause: the N-series moved the cast's day-120 median wealth
 21,884 → 76,049. **Nothing was compensated in either direction** — the band was neither
 lowered because the floor proved affordable nor raised because the ceiling proved reachable.

@@ -156,7 +156,7 @@ function reloadWith(state: GameState, edit: (parsed: Record<string, never>) => v
 }
 
 /** The dusk-fatal encounter `legacy.test.ts` uses — a high-GUNS interceptor whose
- *  day-end free attack finishes a one-condition hull. Origin 1 (Sun-3). */
+ *  day-end free attack finishes a one-condition hull. Origin 1 (Sol-3). */
 function fatalEncounter(): EncounterState {
   return {
     id: 'enc-fatal',

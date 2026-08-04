@@ -331,7 +331,7 @@ describe('T-1305 · end-to-end travel wiring', () => {
       };
       state.player.ship.fuel = 1000;
       state.flags['signal.contraband.carrying'] = true;
-      // Core route from Sun-3 (1) to a neighboring core system.
+      // Core route from Sol-3 (1) to a neighboring core system.
       const result = resolveTravel(
         state,
         { type: 'Travel', destinationId: 2, spendDie: 0 },

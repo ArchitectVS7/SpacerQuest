@@ -25,13 +25,13 @@ import {
 // rumor table already renders for free, so a paid control would be strictly
 // dominated by one already on screen.
 //
-// FIXTURE: the player starts at Sun-3 (id 1 — the home hall, and since T-121 one
+// FIXTURE: the player starts at Sol-3 (id 1 — the home hall, and since T-121 one
 // of fourteen `hasHangout` core ports) and the
-// cast's index-0 NPC `npc-iron-vex` starts co-located at Sun-3 on ANY seed —
+// cast's index-0 NPC `npc-iron-vex` starts co-located at Sol-3 on ANY seed —
 // `createInitialState` seats NPCs at `(index % 20) + 1` and `startDay` never moves
 // them (movement is a dusk step), so Iron Vex is a valid, solvent (5000cr) Dare
 // dealer at day-1 dawn. Seed 1 additionally deals the dawn hand [17,15,15,7,4] and
-// gives an encounter-free Sun-3 -> Aldebaran-1 (1->2) jump (shared with
+// gives an encounter-free Sol-3 -> Aldebaran-1 (1->2) jump (shared with
 // starmap.spec.ts), used by the gate test to leave the Hangout cleanly.
 const SEED = 1;
 const DEALER = 'npc-iron-vex';
@@ -70,11 +70,11 @@ test('visit the Hangout, pick an opponent, and seat yourself at the dice table',
   await page.goto('/');
   await newGameSeed(page, SEED);
 
-  // 1) Visit: the Hangout launcher is present at Sun-3; open the pane.
+  // 1) Visit: the Hangout launcher is present at Sol-3; open the pane.
   await page.getByTestId('hangout-toggle').click();
   await expect(page.getByTestId('hangout-panel')).toBeVisible();
 
-  // 2) The present-NPC list carries Iron Vex (co-located at Sun-3) — pick him.
+  // 2) The present-NPC list carries Iron Vex (co-located at Sol-3) — pick him.
   await expect(npcRow(page, DEALER)).toBeVisible();
   await npcRow(page, DEALER).click();
 
@@ -160,7 +160,7 @@ test('the Hangout pane follows the engine gate to a second port', async ({ page 
   await page.goto('/');
   await newGameSeed(page, SEED);
 
-  // Sun-3 — the launcher is present at the home hall.
+  // Sol-3 — the launcher is present at the home hall.
   await expect(page.getByTestId('hangout-toggle')).toHaveCount(1);
 
   // Jump one clean, encounter-free hop to Aldebaran-1 (id 2 — a core port, and

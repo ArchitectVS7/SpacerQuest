@@ -28,7 +28,7 @@ import { FENCE_REP_FLAG, PURCHASABLE_PORTS_BY_SYSTEM } from '@spacerquest/conten
 const CREW_SEED = 1;
 
 // ---- Test B: seeded patrol contraband scan ----------------------------------
-// Seed 11 deals [20,15,13,12,11] on Sun-3. Carrying a sealed contraband pod AND a
+// Seed 11 deals [20,15,13,12,11] on Sol-3. Carrying a sealed contraband pod AND a
 // known fence reputation (FENCE_REP_FLAG lowers the scan DC by 4), the 1→2 jump is
 // intercepted by the PATROL "Lt.Savage", who rolls a GUILE scan: die 9 vs DC 6 →
 // CAUGHT. The pod is confiscated and a 500cr fine is levied. Derived offline; the
@@ -40,7 +40,7 @@ const PATROL_CHECK_DIE = 9;
 const PATROL_CHECK_DC = 6;
 
 // ---- Test C: buy a port, income ticks at dusk -------------------------------
-// Seed 1 starts on Sun-3 (system 1, a purchasable core port). The purse is staked
+// Seed 1 starts on Sol-3 (system 1, a purchasable core port). The purse is staked
 // to the price plus headroom, the buy commits, and the stake accrues its base
 // income at dusk (no era event modulates system 1 at day 1).
 //
@@ -52,7 +52,7 @@ const PATROL_CHECK_DC = 6;
 // says rather than a number someone typed twice. Same idiom `derule.spec.ts`
 // enforces on the rest of the cockpit.
 const PORT_SEED = 1;
-const PORT_SYSTEM = 1; // Sun-3 — where seed 1 starts.
+const PORT_SYSTEM = 1; // Sol-3 — where seed 1 starts.
 const PORT_PRICE = PURCHASABLE_PORTS_BY_SYSTEM[PORT_SYSTEM].purchasePrice;
 const PORT_DUSK_INCOME = PURCHASABLE_PORTS_BY_SYSTEM[PORT_SYSTEM].baseDuskIncome;
 /** Enough to buy outright and still fly afterwards — never a bare-minimum purse,

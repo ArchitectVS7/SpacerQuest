@@ -484,9 +484,9 @@ const UNCHANGED_POLICIES = [
  *
  *    MECHANISM, and it is a CONTENT change with no rule edit: `hasHangout: true`
  *    on ids 2-14 plus a baseline `PORT_HANGOUTS` row apiece (mechanically
- *    identical to Sun-3's, so no parameter moved). Three of §4.1's four
+ *    identical to Sol-3's, so no parameter moved). Three of §4.1's four
  *    mechanisms fire here — `planDare` is legal on most docked days instead of
- *    only at Sun-3; `planLoanBorrow` / `planLoanRepay` stop being routing-gated,
+ *    only at Sol-3; `planLoanBorrow` / `planLoanRepay` stop being routing-gated,
  *    so the §7.5 bad-day out is available on the day the bad day happens; and the
  *    trader's home-run preference collapses toward a no-op at 14 of 28
  *    destinations. Two sim-side edits ride along, both of which make the policy
@@ -1120,7 +1120,7 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   smuggler: '4f7889b339f76741',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
-  // when the route passes Sun-3. Entry 18: re-derived again — three of the
+  // when the route passes Sol-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
   // down (and every hand after it) re-phases. The only row entry 18 moves.
   // Entry 19: re-derived a third time — five more authored bands, two of them

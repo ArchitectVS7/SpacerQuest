@@ -16,11 +16,11 @@ import { DARE_MIN_WAGER, LIARS_DICE_OPPONENTS } from '@spacerquest/content';
 // `packages/engine/src/__tests__/liarsDiceContent.test.ts`; this is the sample
 // that proves the path exists at all.
 //
-// FIXTURE (shared with `liars-dice.spec.ts`): the player starts at Sun-3 (id 1,
-// the home hall) at day-1 dawn. Sun-3's three authored seats are `ld-1-1` /
+// FIXTURE (shared with `liars-dice.spec.ts`): the player starts at Sol-3 (id 1,
+// the home hall) at day-1 dawn. Sol-3's three authored seats are `ld-1-1` /
 // `ld-1-2` / `ld-1-3`, they are ALWAYS at their port (pool A takes no part in the
 // dusk roam), and they open at their authored bankrolls, so no seed makes them
-// unavailable. Sun-3 authors no `wager` override, so its band is the default.
+// unavailable. Sol-3 authors no `wager` override, so its band is the default.
 //
 // Reduced motion is emulated in `beforeEach`, which puts the scene on its INSTANT
 // rail: the reveal timeline is never created and the settled DOM exists on the
@@ -86,7 +86,7 @@ test('the house’s three seats render at their authored port, by NAME', async (
 test('play a hand against a roster opponent end to end, with their lines', async ({ page }) => {
   await openHangout(page);
 
-  const seat = SEATS[0]; // Sun-3 seat 1 — the journeyman
+  const seat = SEATS[0]; // Sol-3 seat 1 — the journeyman
   await rosterRow(page, seat.id).click();
   await page.getByTestId('dare-wager').fill(String(DARE_MIN_WAGER));
   // The commit button must ENABLE for a roster selection: `chosen` accepts a

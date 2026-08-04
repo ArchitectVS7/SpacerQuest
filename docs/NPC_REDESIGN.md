@@ -103,6 +103,25 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
+> **BASELINE OF RECORD RE-PINNED AT T-188 (2026-08-04)** to
+> `docs/balance/baseline-t188-orbital-3d.json`. **T-188's own changes are PROVEN INERT, not
+> assumed:** two isolated 30-seed bisects (gambler, veteran — the two archetypes any Hangout/
+> route-geometry change would most plausibly touch) diffed a pre-change and post-change tree
+> against each other and both report "NOTHING MOVED. Every compared field is equal on both
+> sides." T-188 adds `coordinates3D`/`distance3D`/`orbitalLayout2D` to `systems.ts` (additive,
+> not wired into `travel.ts`'s live formula — see the T-188 task block) and renames the display
+> name `Sun-3` -> `Sol-3` throughout; neither touches a value any sim policy reads. **What
+> DID move — `fleet` (397 fields) and `veteran` (601 fields), diffed against the outgoing
+> `baseline-t160-dealer-fix.json` — is entirely T-161's `veteranPolicy` contract-filter fix**
+> (already reviewed, gated and committed; see its own TASKS.md block), which changed real
+> `veteranPolicy` behaviour but had not yet had its own full 8,000-row capstone taken — T-188's
+> capstone is simply the first one run since, so it correctly absorbs T-161's already-accepted
+> drift rather than introducing new drift of its own. `explorer`, `fighter`, `gambler`,
+> `greedy`, `smuggler`, `trader`, `trader-degraded` are byte-identical. `rulesFingerprint`
+> `fbcfe11ab7772555` -> `5d4ddb2593cca4f6`, `instrumentFingerprint` `70d2ccbad279ff08` ->
+> `f8a237612f4c38d5`, `docsFingerprint` -> `a20d333978cfd2ca`. `CURRENT_SAVE_VERSION` does NOT
+> move (15): no persisted shape changed.
+>
 > **BASELINE OF RECORD RE-PINNED AT T-160 (2026-08-02)** to
 > `docs/balance/baseline-t160-dealer-fix.json` — the **F-137-1** capstone
 > (`docs/LIARS-DICE_REDESIGN.md` §17). An opening Liar's Dice claim must now EXCEED what the
@@ -2332,8 +2351,12 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t160-dealer-fix.json`** (1,000 seeds ×
-   > 120 days × 8 policies = 8,000 runs, re-pinned at T-160 2026-08-02 — the F-137-1
+   > **Baseline of record is `docs/balance/baseline-t188-orbital-3d.json`** (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at T-188 2026-08-04 — proven inert for
+   > T-188's own changes by isolated bisect; `fleet`/`veteran` movement is T-161's
+   > already-accepted `veteranPolicy` fix getting its first capstone, not new drift — see the
+   > standing amendment above for the full account). Before that,
+   > `docs/balance/baseline-t160-dealer-fix.json` (re-pinned at T-160 2026-08-02 — the F-137-1
    > capstone; the Liar's Dice OPENING FLOOR ships, which moves exactly the `gambler` and
    > `fleet` rows against `t182-reroll-fix` — predicted in writing before the sweep ran).
    > `baseline-t182-reroll-fix` (re-pinned at T-182 2026-08-02 — the F-156-1

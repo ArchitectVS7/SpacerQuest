@@ -141,7 +141,7 @@ Hangout beats (`types.ts:355–372`).
 
 ### 1.3 The gate, and where it is read
 
-`StarSystem.hasHangout` (`packages/content/src/systems.ts:37`) is set on **Sun-3 only**
+`StarSystem.hasHangout` (`packages/content/src/systems.ts:37`) is set on **Sol-3 only**
 (`:79`) — **1 of 28 systems**. `day.ts:382–392` emits `ActionBlocked{reason:'no-hangout'}`
 before the resolver is ever reached, with no die spent and no rng fork.
 
@@ -282,7 +282,7 @@ is no predicate, no `if`-shaped field, no rate, no term, no per-port lender and 
 `hangout.ts` keeps the tuning constants and the rumor templates; those constants become the
 values `DEFAULT_PORT_HANGOUT` is *built from*, imported, never restated. Two payoffs: a row
 that omits a field inherits today's number by construction, so T-120's behaviour-preserving
-proof for Sun-3 is trivial and mechanical; and the R-owned balance constants keep their
+proof for Sol-3 is trivial and mechanical; and the R-owned balance constants keep their
 existing provenance comments and their existing home, so a tuning change still lands in one
 reviewed place. **Rejected:** authoring 14 rows into `hangout.ts` beside the rumor templates —
 one file with two jobs, and a diff in which a tuning change and a content pass are
@@ -379,11 +379,11 @@ and T-150 owns the read.
 
 **(6) Exactly one new engine event value: `'venue-not-offered'`.** See §2.6.
 
-### 2.3 Sun-3 is `DEFAULT_PORT_HANGOUT` plus prose — the behaviour-preserving proof
+### 2.3 Sol-3 is `DEFAULT_PORT_HANGOUT` plus prose — the behaviour-preserving proof
 
 T-120's acceptance is that every pre-existing hangout test passes unchanged and the goldens
 are byte-identical. The shape above makes that a two-line argument rather than a diff review:
-Sun-3's row sets `venues` to all seven and leaves `wager` and `venueParams` **omitted**, so
+Sol-3's row sets `venues` to all seven and leaves `wager` and `venueParams` **omitted**, so
 every number the resolver reads is imported from the same constant it reads today. Only
 `prose` is new, and prose is not read by any assertion in the engine suite.
 
@@ -517,7 +517,7 @@ confirm it stays green.
 
 The mechanical form of the constraint: after T-120, `packages/content/src/portHangouts.ts`
 contains no `if (`, and `packages/engine/src/actions/hangout.ts` contains no port id — the
-`grep` for `Sun-3` / `systemId === 1` that T-120's acceptance names.
+`grep` for `Sol-3` / `systemId === 1` that T-120's acceptance names.
 
 ---
 
@@ -535,7 +535,7 @@ contains no `if (`, and `packages/engine/src/actions/hangout.ts` contains no por
 from content, **the sim's policies change behaviour with zero sim edits.** Four mechanisms, all
 verified against the source:
 
-1. **`planDare` (`sim/index.ts:3401`) becomes legal on most days instead of only at Sun-3.**
+1. **`planDare` (`sim/index.ts:3401`) becomes legal on most days instead of only at Sol-3.**
    The gambler currently plays the tables only when its route happens to pass home; after
    T-121 nearly every docked day is a table day, up to `GAMBLER_MAX_DARES_PER_DAY = 2`.
 2. **`planLoanBorrow` (`:2036`) and `planLoanRepay` (`:2064`) become legal nearly
@@ -559,7 +559,7 @@ implementing task measures and reports.
 | `packages/ui/e2e/hangout.spec.ts:126–146` ("the Hangout is offered only where the engine says one exists") | **BREAKS** | It jumps to Aldebaran-1 expecting the launcher to vanish. **Do not retarget it to a rim system**: the rim shell is ~20–24 units out (`systems.ts` layout note) and a fresh start cannot fund that hop, so the test would become unrunnable. **Recommended fix:** invert it — assert the launcher is *present* after the jump (the gate is still tracked, positively, and the assertion is now stronger because it proves the pane follows content to a second port) — and cover the negative case with a unit test over `hangoutOpen()` at a rim id in `packages/ui/src/__tests__`. Also fix the fixture comment at `:16` ("the sole `hasHangout` system"). |
 | `packages/sim/src/__tests__/protocol.test.ts:461–471` (`no-hangout` ActionBlocked parity) | **BREAKS** | Retarget to a rim/gated id. This is why §4.5 keeps a non-empty no-Hangout set. |
 | `packages/engine/src/__tests__/hangout.test.ts:305–318` (the `no-hangout` gate test) | **BREAKS** | Same retarget. |
-| `packages/sim/src/__tests__/support/deed-hunter.ts:110`, `:298`, `:324`, `:349` | **comments false; routing degrades** | `HANGOUT_SYSTEM = 1` and "Sun-3 is the ONLY `hasHangout` system" are load-bearing *prose* for the veteran deed hunter's errand. The logic still runs (Sun-3 keeps its bar) but the errand becomes redundant. Fix the comments; consider routing to the nearest Hangout instead of the constant. |
+| `packages/sim/src/__tests__/support/deed-hunter.ts:110`, `:298`, `:324`, `:349` | **comments false; routing degrades** | `HANGOUT_SYSTEM = 1` and "Sol-3 is the ONLY `hasHangout` system" are load-bearing *prose* for the veteran deed hunter's errand. The logic still runs (Sol-3 keeps its bar) but the errand becomes redundant. Fix the comments; consider routing to the nearest Hangout instead of the constant. |
 | `dareWagerBounds` (`packages/ui/src/format.ts:297`) | **signature change** | Takes no argument today; must take the game (or port id) to show the port's band. Its only caller is `App.tsx:1765`. |
 | `packages/sim/src/index.ts:3417–3421` (`planDare`'s clamp) | **must read the port band** | It clamps with `DARE_MIN_WAGER` / `DARE_MAX_WAGER` directly, under a comment that says "clamped with the CONTENT band constants, never with restated numbers". After T-120 it must read the port's band through the same accessor the engine uses, or the gambler will size a stake the engine then re-clamps and the measured `expectedValuePerDare` will drift. |
 | `packages/sim/src/protocol.ts:795` (`wager` param domain) | **must read the port band** | Same reason, one line up from `venueChoices`. |
@@ -587,7 +587,7 @@ T-102 is **one bump for the whole 0.5.2 track (Explore's, 12 → 13)**, and the 
 ### 4.5 The rim/gated ruling — the 14 core ports only
 
 **Ruled here because T-121's acceptance depends on it: `hasHangout` is set on ids 1–14
-(Sun-3, Aldebaran-1, Altair-3, Arcturus-6, Deneb-4, Denebola-5, Fomalhaut-2, Mira-9, Pollux-7,
+(Sol-3, Aldebaran-1, Altair-3, Arcturus-6, Deneb-4, Denebola-5, Fomalhaut-2, Mira-9, Pollux-7,
 Procyon-5, Regulus-6, Rigel-8, Spica-3, Vega-6) and nowhere else.** The rim (15–20), Maligna
 (27) and Nemesis (28) get **no venue**.
 
@@ -761,7 +761,7 @@ Keyed to real ids from `packages/content/src/systems.ts`. Concept **labels** onl
 
 | id | System | Concept label | Axis notes |
 | --- | --- | --- | --- |
-| 1 | Sun-3 | the home-port hall | **must reproduce today's behaviour exactly** — the default row plus prose (§2.3) |
+| 1 | Sol-3 | the home-port hall | **must reproduce today's behaviour exactly** — the default row plus prose (§2.3) |
 | 2 | Aldebaran-1 | the exchange-floor bar | trader clientele; modest band; everything offered |
 | 3 | Altair-3 | the lane-side stopover | **numerically the mean; distinct on clientele alone** — one port must be the mean *(corrected in place at T-122; see the note below the table)* |
 | 8 | Mira-9 | the fuellers' canteen | the cheap-fuel working port; low `min`, low ceiling, warm deltas |
@@ -769,8 +769,8 @@ Keyed to real ids from `packages/content/src/systems.ts`. Concept **labels** onl
 
 > **T-122's in-place correction to the Altair-3 row.** As originally written, §6.3 asked for a
 > port that is "fully generic, deliberately" while §6.4 requires cardinality 14 over the axis
-> vectors **and** fixes Sun-3's vector to the default row. Both cannot hold literally: a fully
-> generic port *is* Sun-3's vector. §6.4's own closing sentence settles it — "Sun-3 is the one
+> vectors **and** fixes Sol-3's vector to the default row. Both cannot hold literally: a fully
+> generic port *is* Sol-3's vector. §6.4's own closing sentence settles it — "Sol-3 is the one
 > port whose tuple is fixed … which means the other thirteen are the ones that must move."
 > **Resolution taken:** Altair-3 is the *numeric* mean (default band, default DCs, default
 > deltas, all seven venues, `wager` and `venueParams` OMITTED rather than restated) and is
@@ -832,7 +832,7 @@ Keyed to real ids from `packages/content/src/systems.ts`. Concept **labels** onl
 > least one consequence axis, then a `comic` port must be **no harsher than the default on
 > any** of them — because *the joke is never at the player's expense*. That is the assertion in
 > `hangoutContent.test.ts`, over the same four clauses the `dangerous` test uses and read
-> through Sun-3's resolved values, so the two registers are graded on one axis set rather than
+> through Sol-3's resolved values, so the two registers are graded on one axis set rather than
 > two invented ones. Denebola-5 is additionally pinned as the strict per-axis **softest**
 > authored port on `insult` and on the dare-failure arm — the mirror of Arcturus-6's
 > maximality test, which is what makes "the forgiving pole" a measurement rather than a claim.
@@ -877,7 +877,7 @@ as a **set-cardinality assertion over the serialized parameter tuples** — `ven
 may not share a mechanical fingerprint. The check T-124 runs at the close: the set of
 serialized tuples has cardinality **14**.
 
-Sun-3 is the one port whose tuple is fixed by §2.3, which means the other thirteen are the
+Sol-3 is the one port whose tuple is fixed by §2.3, which means the other thirteen are the
 ones that must move — a useful constraint, not an exception.
 
 ---
@@ -916,7 +916,7 @@ existed, and every `HangoutEvent{venue:'dare'}` with the stake the resolver actu
 | --- | --- | --- | --- | --- | --- |
 | **Regulus-6** (the high table) | 500 / 3,000 | 99 | 0 / 1,383 / **3,000** | 41 of 99 (41%) | **5 of 99 (5%)** |
 | Rigel-8 (the underbelly) | 10 / 3,000 | 108 | 53 / 865 / **3,000** | 24 of 108 (22%) | 5 of 108 (5%) |
-| Sun-3 (the default band) | 25 / 1,000 | 124 | 39 / 1,000 / **1,000** | 75 of 124 (**60%**) | 1 of 124 (0.8%) |
+| Sol-3 (the default band) | 25 / 1,000 | 124 | 39 / 1,000 / **1,000** | 75 of 124 (**60%**) | 1 of 124 (0.8%) |
 
 **The plain gap sentence: declared max 3,000 versus realized max 3,000 — at the high table there
 is no gap at the top at all.** The declared ceiling is reached on 41 of 99 hands, and the
@@ -930,7 +930,7 @@ ledger entries 6, 9 and 10 of `campaign-degraded.test.ts`. A dealer that rich ca
 nothing. The constraint the finding names is real in the ALGEBRA (`hangout.ts:279`, the stake is
 still `min(band.max, player.credits, dealer.credits)`) and it still bites on ~5% of hands, but
 it is no longer the operative limit on a Tour One captain's table. **What binds instead is the
-BAND ITSELF**, and it binds hardest where the band is smallest: at Sun-3's default 1,000 the
+BAND ITSELF**, and it binds hardest where the band is smallest: at Sol-3's default 1,000 the
 ceiling is the operative limit on 60% of hands.
 
 **And the floor does not price the run out either — measured, not assumed.** At Regulus-6 the
@@ -1030,7 +1030,7 @@ reported to T-130 if T-121 chooses to keep its diff to the reach change alone.
 > (the authored port, a second differently-voiced port, and the rowless fallback).
 
 **Found by T-122, reported and not fixed.** `HangoutProse.houseName`, `.roomLine` and
-`.flavour` are authored by T-120 (Sun-3), by T-121 (thirteen baseline house names) and now by
+`.flavour` are authored by T-120 (Sol-3), by T-121 (thirteen baseline house names) and now by
 T-122 (four houses, four room lines, twenty-eight flavour lines), and **nothing reads any of
 them**. `grep` over the workspace finds no consumer of `prose` outside the content file and
 this spec; the Hangout pane header is a literal — `App.tsx:1805` renders
@@ -1107,7 +1107,7 @@ the idiom. **Do not land that inside a content pass.**
 deed (`content/src/deeds.ts:604`) requires a 250cr Dare stake. Mira-9's authored ceiling is
 200 — §6.1's named dive shape, "min 5 and a ceiling far under the global 1,000" — so the deed
 **cannot** be earned at that port. It stays reachable at the other four pass-1 ports
-(Sun-3 1,000, Aldebaran-1 750, Altair-3 1,000, Procyon-5 500) and at the nine unauthored ones.
+(Sol-3 1,000, Aldebaran-1 750, Altair-3 1,000, Procyon-5 500) and at the nine unauthored ones.
 
 This is a *correct* consequence of a dive bar and **is not a reason to inflate the band**;
 inflating it would be tuning a number to reach an answer. It is recorded because per-port
@@ -1130,7 +1130,7 @@ Regulus-6 saturation, and a Regulus-6 count that rises with career age rather th
 > `venueOffered` — and the repay controls on `'repay'` independently, so Arcturus-6 shows no
 > desk at all rather than a desk that refuses. Asserted by `packages/ui/e2e/hangout.spec.ts`
 > ("a port with no credit desk shows none"; the offering case stays covered by the existing
-> Sun-3 loan test) and by the 14-ports × 7-venues agreement table in
+> Sol-3 loan test) and by the 14-ports × 7-venues agreement table in
 > `packages/ui/src/__tests__/hangout-pane.test.ts`. (2) The prose moved to
 > `hangoutFailExplanation` / `loanFailExplanation` (`packages/ui/src/format.ts`), both
 > exhaustive `switch`es with **no `default`** — the T-131 mechanism — so `'venue-not-offered'`
@@ -1277,7 +1277,7 @@ nobody forever.
 
 The two rows this task first drafted hit it exactly. `npc-wild-card` (the Denebola-5 storylet's
 own captain, `storylets.ts:2950`) is seeded at system **16** — a rim system with no bar at all;
-`npc-rust-bucket` (the Fomalhaut-2 salvage storylet, `storylets.ts:4549`) is seeded at **Sun-3**.
+`npc-rust-bucket` (the Fomalhaut-2 salvage storylet, `storylets.ts:4549`) is seeded at **Sol-3**.
 Both are the thematically obvious regular for their port and both would have been dead the day
 they shipped. T-123's three `regulars` lists are all simulated captains and were correct by
 luck rather than by rule.
@@ -1357,9 +1357,9 @@ satisfy**, now enforced.
 
 | Task | Implements | The accept criterion this spec makes checkable |
 | --- | --- | --- |
-| **T-120** | §2 (all), §3 (all), §2.6 | `portHangouts.ts` + `hangoutRules.ts` exist; Sun-3's row is `DEFAULT_PORT_HANGOUT` + prose and reproduces today's behaviour with every hangout test unchanged and **all four day-loop golden hashes byte-identical** (stated in the commit body); the resolver reads `venueParamsFor` / `wagerBandFor` and contains no port id; `'venue-not-offered'` lands in `types.ts` + `schema.ts` + a unit test + the `protocol.ts` mirror; `grep 'if ('` over `portHangouts.ts` finds nothing that decides an outcome; `balance-rig.test.ts` still classifies every engine source |
-| **T-121** | §4 (all), §2.2 ruling 3 | ids 1–14 carry `hasHangout: true` and a placeholder row, asserted by an enumerating test; **the `hasHangout` ↔ `PORT_HANGOUTS` two-way equality test**; a `VisitHangout` driven successfully at a non-Sun-3 port; the six test/comment retargets in §4.2's table; replay goldens regenerated with the event-count diff and **both `rngState`s verified unchanged**; no rim or gated system flagged (§4.5); **no `npc.ts` edit** (§5.2's obligation) |
-| **T-122** | §6.3 pass 1, §6.4 | five everyday ports authored; distinctness asserted as a cardinality check over the axis tuples; Sun-3's mechanical tuple still the default row; no placeholder strings; zero lines under `packages/engine/src` |
+| **T-120** | §2 (all), §3 (all), §2.6 | `portHangouts.ts` + `hangoutRules.ts` exist; Sol-3's row is `DEFAULT_PORT_HANGOUT` + prose and reproduces today's behaviour with every hangout test unchanged and **all four day-loop golden hashes byte-identical** (stated in the commit body); the resolver reads `venueParamsFor` / `wagerBandFor` and contains no port id; `'venue-not-offered'` lands in `types.ts` + `schema.ts` + a unit test + the `protocol.ts` mirror; `grep 'if ('` over `portHangouts.ts` finds nothing that decides an outcome; `balance-rig.test.ts` still classifies every engine source |
+| **T-121** | §4 (all), §2.2 ruling 3 | ids 1–14 carry `hasHangout: true` and a placeholder row, asserted by an enumerating test; **the `hasHangout` ↔ `PORT_HANGOUTS` two-way equality test**; a `VisitHangout` driven successfully at a non-Sol-3 port; the six test/comment retargets in §4.2's table; replay goldens regenerated with the event-count diff and **both `rngState`s verified unchanged**; no rim or gated system flagged (§4.5); **no `npc.ts` edit** (§5.2's obligation) |
+| **T-122** | §6.3 pass 1, §6.4 | five everyday ports authored; distinctness asserted as a cardinality check over the axis tuples; Sol-3's mechanical tuple still the default row; no placeholder strings; zero lines under `packages/engine/src` |
 | **T-123** | §6.3 pass 2, §6.2 | five ports authored; at least one **measurably hostile** and one **measurably exotic** against §6.1's axes; the governance axis exercised without touching `isRim` / `allowsContraband`; **F-101-1's realized-vs-declared stake measurement reported** for the high-band port; any house rule wanted reported in F-101-3's format; zero engine changes |
 | **T-124** | §6.3 pass 3, §6.4 | the last four, including `tone: 'comic'`; the full 14 enumerated and distinct (cardinality 14); tonal spread asserted against the axes; zero engine changes. **Delivered as written, plus two things the criterion did not ask for and the work required:** the T-121 baseline-row builder is DELETED and its "the unauthored rows are still baseline rows" test inverted rather than emptied (§6.3 correction (e)), and **F-124-1** closes the frozen-quest-captain `regulars` trap with an `isSimulatedCaptain` assertion |
 | **T-125** | §4.2, §5.1's and §5.2's obligations, §10 | `npm run format`, THEN the milestone's single capstone; 8,000 merged rows from 1-indexed shards through `--merge`; fixture re-extracted with `spreads harvested`; reports hangout usage per run, the before/after disposition spread, **the dealer-purse distribution** (§5.1), **the re-measured off-Hangout Socialize percentage** (§5.2), and a measured statement about disposition's effect on `chooseWeighted`'s interceptor draw; appends to §10; **tunes nothing to reach a result**, and escalates rather than adjusts if `balance-targets.test.ts:180` went red. **Delivered 2026-07-30** — `baseline-t125-hangout.json` (8,000 rows, `spreads harvested`), baseline of record re-pinned, and a two-arm probe (HEAD vs `e0dbd40a`, 960 runs each) run in the T-116 shape. **The verdict is YES for the captain who plays the tables**: wronged-captain named interceptions 4.22% → **29.28%** on the `gambler` arm against a 9.90% uniform counterfactual, with the inertness rate falling 76.26% → **31.65%** — but disposition still reaches the draw only ~25% of the time and is inert on 69.56% of fleet named draws. §5.1's obligation discharged at §10.5 (the BAND binds 88.93% of stakes, the DEALER 10.97%), §5.2's at §10.6 (**95.91% → 37.96%**). **Zero constants, bands, DCs, thresholds, goldens or fingerprints edited**; F-123-3 re-measured (2.67%) and filed, not fixed |
@@ -1413,7 +1413,7 @@ dawn → actions → dusk order and its `policy / day-N / index-i` rng forks exa
 | | arm BEFORE | arm AFTER |
 | --- | --- | --- |
 | commit | **`e0dbd40a`** (T-116) | HEAD (T-124 + this commit's docs) |
-| Hangout reach | **1 of 28** (Sun-3) | **14 of 28** (ids 1–14) |
+| Hangout reach | **1 of 28** (Sol-3) | **14 of 28** (ids 1–14) |
 | built in | a `git worktree` with its **own** `node_modules` (third-party symlinked, `@spacerquest/*` pointed at the worktree's own packages) and its own `tsc -b` output | the repo |
 | sample | seeds 1..120 × 120 days × 8 policies = **960 runs** | identical |
 
@@ -1689,7 +1689,7 @@ dawn (days 21, 29, 30, 41, 60, 120):
 | max | 2,149,459 | 2,307,108 |
 | mean | 39,867 | 57,479 |
 
-The BEFORE column samples only the captains who happened to be at Sun-3; the AFTER column
+The BEFORE column samples only the captains who happened to be at Sol-3; the AFTER column
 samples the captains at any of 14 ports. **They are different populations, not a time series**,
 which is why only the shape is comparable and not the level. The shape that matters is the
 same in both: a median dealer carries 5,000 credits against a default band ceiling of

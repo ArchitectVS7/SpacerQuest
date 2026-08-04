@@ -41,7 +41,7 @@ re-derive any of it.
 
 | id | name | house | tone | `wager.min` | `wager.max` | ante @T0 | ante @T4 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Sun-3 | the Long Table | everyday | 25 | 1000 | 30 | 90 |
+| 1 | Sol-3 | the Long Table | everyday | 25 | 1000 | 30 | 90 |
 | 2 | Aldebaran-1 | the Weighbridge | everyday | 50 | 750 | 23 | 68 |
 | 3 | Altair-3 | the Waypost | everyday | 25 | 1000 | 30 | 90 |
 | 4 | Arcturus-6 | the Garrison Mess | dangerous | 100 | 400 | 12 | 36 |
@@ -86,7 +86,7 @@ feed is `liarsDiceGamesPlayed`.
 *Why, written down so a later reader cannot "simplify" it away:* pool B is unbounded replay
 against a pool that respawns its willingness to play every single day. If a roaming win counted
 toward a completion set, the achievements would degrade from a gauntlet into a grind timer — a
-player would clear them by sitting at Sun-3 pressing the same key. The 42 are finite, authored,
+player would clear them by sitting at Sol-3 pressing the same key. The 42 are finite, authored,
 positionally distributed across the whole map, and beat-once. That is what makes clearing them
 mean something.
 
@@ -207,7 +207,7 @@ Copy this; do not recompute it.
 
 | port | `wager.max` | seat 1 (×3) | seat 2 (×5) | seat 3 (×8) | port total |
 | --- | --- | --- | --- | --- | --- |
-| 1 Sun-3 | 1000 | 3000 | 5000 | 8000 | 16000 |
+| 1 Sol-3 | 1000 | 3000 | 5000 | 8000 | 16000 |
 | 2 Aldebaran-1 | 750 | 2250 | 3750 | 6000 | 12000 |
 | 3 Altair-3 | 1000 | 3000 | 5000 | 8000 | 16000 |
 | 4 Arcturus-6 | 400 | 1200 | 2000 | 3200 | 6400 |

@@ -4,6 +4,19 @@ export interface StarCoordinates {
   y: number;
 }
 
+/**
+ * T-188 · 3c — a system's position on the generated 3D "orbital/atomic" layout.
+ * NOT wired into gameplay: `distance`/`calculateDistance` (used by
+ * `travel.ts`'s `jumpFuelCost`/`travelDc`/`calculateRouteDanger`) still read
+ * the 2D `coordinates` above. See {@link distance3D} and the module-scope
+ * population loop below {@link STAR_SYSTEMS} for how these are derived.
+ */
+export interface Star3DCoordinates {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface StarSystem {
   id: number;
   name: string;
@@ -24,13 +37,13 @@ export interface StarSystem {
   /**
    * T-1303 · Whether this port hosts a Spacers Hangout the player can visit.
    * The Hangout is a core PRD verb ("Visit the Hangout", §7) and the site of the
-   * §7.3 / §7.5 sample turns ("The Spacers Hangout, Sun-3"). This flag is the
+   * §7.3 / §7.5 sample turns ("The Spacers Hangout, Sol-3"). This flag is the
    * extensible GATE: only systems flagged here surface the die-costed
    * `VisitHangout` player action (Spacer's Dare + social beats + rumor slot).
    *
    * T-121 · THE REACH CHANGE — a bar at all fourteen CORE spaceports, ids 1–14
-   * (Sun-3 … Vega-6), and nowhere else (`docs/HANGOUT_REDESIGN.md` §4.5). It was
-   * set on Sun-3 alone from T-1303 until now, which made the whole Hangout pillar
+   * (Sol-3 … Vega-6), and nowhere else (`docs/HANGOUT_REDESIGN.md` §4.5). It was
+   * set on Sol-3 alone from T-1303 until now, which made the whole Hangout pillar
    * reachable only when a route happened to pass home.
    *
    * THE RIM (15–20), ANDROMEDA (21–26), MALIGNA (27) AND NEMESIS (28) CARRY NO
@@ -54,6 +67,16 @@ export interface StarSystem {
    * VisitHangout at a flagged system. Surfaced to the player by T-1404.
    */
   hasHangout?: boolean;
+  /**
+   * T-188 · 3c — see {@link Star3DCoordinates}. Optional ONLY at the type
+   * level because the 28 literal entries below predate this field; every
+   * entry is populated unconditionally by the loop directly under
+   * {@link STAR_SYSTEMS}'s declaration, so by the time any importer sees this
+   * module, every system carries one. Read through {@link coordinates3D} (a
+   * non-optional accessor) rather than this field directly when you want the
+   * type system to hold that guarantee for you.
+   */
+  coordinates3D?: Star3DCoordinates;
 }
 
 /**
@@ -72,7 +95,7 @@ export const NEMESIS_SYSTEM_ID = 28;
 // These coordinates are AUTHORED for T-1101, not lifted from foundation
 // (ref f2f95fa9): the shipped `y=0, x=id-1` line was degenerate — it collapsed
 // `calculateDistance` (real Math.hypot) into the plain `|id difference|` it was
-// chartered to replace, and it stacked NEMESIS on top of Sun-3 at (0,0), one
+// chartered to replace, and it stacked NEMESIS on top of Sol-3 at (0,0), one
 // jump from home. §9 keeps the MAP (its systems/names), not any particular
 // route cost, so authoring a genuine 2D spread contradicts no foundation
 // number; fuel/danger repricing is out of scope here (T-1102) and left as-is.
@@ -88,12 +111,19 @@ export const STAR_SYSTEMS: Record<number, StarSystem> = {
   // Core Systems (clustered near origin; genuine 2D route choice)
   1: {
     id: 1,
-    name: 'Sun-3',
+    // T-188 · renamed from 'Sun-3' (owner, 2026-08-04) — "Sol-3" is the base
+    // game's name and reads more sci-fi. Display text only: the numeric id
+    // (1) is unchanged, as is the persisted deed id `liars_dice_cleared_sun_3`
+    // (`deeds.ts`) and the `SUN_3_HANGOUT` code identifier (`portHangouts.ts`)
+    // — neither is player-visible text, and renaming either is a distinct,
+    // separately-scoped save-migration / rename question the owner did not
+    // ask for here.
+    name: 'Sol-3',
     isRim: false,
     coordinates: { x: 0, y: 0 },
     fuelBuyPrice: 8,
     fuelSellPrice: 1,
-    // T-1303: the Spacers Hangout of the §7.3 / §7.5 sample turns. Sun-3 is the
+    // T-1303: the Spacers Hangout of the §7.3 / §7.5 sample turns. Sol-3 is the
     // player's home port, so the Hangout verb is reachable from day 1.
     // T-121: no longer the only one — every core port below carries the flag too.
     hasHangout: true,
@@ -196,6 +226,52 @@ export const STAR_SYSTEMS: Record<number, StarSystem> = {
   27: { id: 27, name: 'MALIGNA', isRim: false, coordinates: { x: -50, y: 42 } },
   28: { id: NEMESIS_SYSTEM_ID, name: 'NEMESIS', isRim: false, coordinates: { x: 52, y: 96 } }, // moved off (0,0): the far-side black hole
 };
+
+// T-188 · 3a-3c — populate `coordinates3D` for every system above, once, at
+// module load. RADIUS PRESERVED FROM THE EXISTING 2D LAYOUT: each system's
+// distance from Sol on the sphere below is EXACTLY its distance from Sol in
+// the hand-authored 2D `coordinates` above (`calculateDistance` against
+// system 1), so every Sol-relative number this repo has tuned against — the
+// rim ring at ~20-24, the core mean at ~11, the fuel/DC/danger baselines in
+// `docs/balance/BASELINE-T-1603a.md` — is unchanged by this step. What's new
+// is the ANGULAR placement: a Fibonacci-sphere point distribution (the
+// standard even-coverage algorithm — golden-angle steps in longitude, an
+// arccos step in latitude) instead of the old flat scatter's ad hoc x/y, so
+// systems disperse across a sphere rather than collapsing onto one plane.
+// Iteration order is by id (ascending) so the layout is deterministic and
+// reproducible from this file alone, with no separate seed to keep in sync.
+const GOLDEN_ANGLE_RADIANS = Math.PI * (3 - Math.sqrt(5)); // ~137.5°
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+(function populateOrbitalCoordinates3D(): void {
+  const sol = STAR_SYSTEMS[1];
+  const ids = Object.values(STAR_SYSTEMS)
+    .map((system) => system.id)
+    .sort((a, b) => a - b);
+  const n = ids.length;
+  ids.forEach((id, index) => {
+    const system = STAR_SYSTEMS[id];
+    const radius = id === sol.id ? 0 : calculateDistance(sol.coordinates, system.coordinates);
+    if (radius === 0) {
+      system.coordinates3D = { x: 0, y: 0, z: 0 };
+      return;
+    }
+    // Fibonacci-sphere: latitude from an evenly-spaced arccos step, longitude
+    // from the golden-angle increment. Both are functions of INDEX (this
+    // system's rank among all 28 by id), not of radius, so two systems at the
+    // same Sol-distance still land at different points on their shared shell.
+    const phi = Math.acos(1 - (2 * (index + 0.5)) / n);
+    const theta = index * GOLDEN_ANGLE_RADIANS;
+    system.coordinates3D = {
+      x: round2(radius * Math.sin(phi) * Math.cos(theta)),
+      y: round2(radius * Math.sin(phi) * Math.sin(theta)),
+      z: round2(radius * Math.cos(phi)),
+    };
+  });
+})();
 
 // T-1101 · Destination gating. Andromeda (21–26) and the special systems
 // MALIGNA / NEMESIS (27–28) are sealed in v1: PRD §10 puts Andromeda out of
@@ -338,4 +414,72 @@ export function distance(originSystemId: number, destinationSystemId: number): n
     throw new Error(`Unknown star system route: ${originSystemId} -> ${destinationSystemId}`);
   }
   return calculateDistance(origin.coordinates, destination.coordinates);
+}
+
+/** Typed, non-optional read of a system's 3c sphere position — see
+ *  {@link Star3DCoordinates} and the population loop above `STAR_SYSTEMS`.
+ *  Throws rather than returning `undefined`, since by construction every
+ *  system is populated at module load; a throw here means that invariant
+ *  broke, not that the caller passed a bad id (an unknown id is its own
+ *  distinct failure — see {@link distance3D}). */
+export function coordinates3D(systemId: number): Star3DCoordinates {
+  const system = STAR_SYSTEMS[systemId];
+  if (!system) {
+    throw new Error(`Unknown star system: ${systemId}`);
+  }
+  if (!system.coordinates3D) {
+    throw new Error(
+      `System ${systemId} has no coordinates3D — the population loop above STAR_SYSTEMS did not run for it.`,
+    );
+  }
+  return system.coordinates3D;
+}
+
+/**
+ * T-188 · 3d — 3D Euclidean distance between any two systems' sphere
+ * positions ({@link coordinates3D}). Same rounding convention as
+ * {@link calculateDistance} (ceil, minimum 1) so the two are directly
+ * comparable, but this is a SEPARATE function from {@link distance} and is
+ * NOT wired into `travel.ts`'s live fuel/DC/danger formulas (see the T-188
+ * task block in `TASKS.md` for why — swapping the live formula is a
+ * rulesFingerprint-moving, balance-affecting change filed as its own
+ * follow-on step, not bundled into this geometry-data commit).
+ */
+export function distance3D(originSystemId: number, destinationSystemId: number): number {
+  const origin = coordinates3D(originSystemId);
+  const destination = coordinates3D(destinationSystemId);
+  const raw = Math.hypot(
+    destination.x - origin.x,
+    destination.y - origin.y,
+    destination.z - origin.z,
+  );
+  return raw === 0 ? 1 : Math.ceil(raw);
+}
+
+/**
+ * T-188 · 3b — the 2D "orbital/atomic" layout: every system placed at its
+ * EXACT 2D-derived Sol-distance ({@link calculateDistance} against system 1,
+ * same radius {@link coordinates3D} preserves onto the sphere), spread by a
+ * golden-angle increment per id-rank rather than the old hand-authored
+ * scatter or a linear line (explicitly rejected — see the T-188 task block).
+ * Exported for the T-188 flat-map prototype; not read by gameplay or by the
+ * live `Starmap` component, which still projects the original `coordinates`.
+ */
+export function orbitalLayout2D(): Record<number, StarCoordinates> {
+  const sol = STAR_SYSTEMS[1];
+  const ids = Object.values(STAR_SYSTEMS)
+    .map((system) => system.id)
+    .sort((a, b) => a - b);
+  const result: Record<number, StarCoordinates> = {};
+  ids.forEach((id, index) => {
+    const system = STAR_SYSTEMS[id];
+    const radius = id === sol.id ? 0 : calculateDistance(sol.coordinates, system.coordinates);
+    if (radius === 0) {
+      result[id] = { x: 0, y: 0 };
+      return;
+    }
+    const theta = index * GOLDEN_ANGLE_RADIANS;
+    result[id] = { x: round2(radius * Math.cos(theta)), y: round2(radius * Math.sin(theta)) };
+  });
+  return result;
 }

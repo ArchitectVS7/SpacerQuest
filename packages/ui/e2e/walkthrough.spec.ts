@@ -21,7 +21,7 @@ import { WALKTHROUGH_KEY } from './support/career';
 //       anti-soft-lock guarantee.
 //
 // FIXTURE NOTES (verified by running, not assumed):
-//   Default seed 424242: day 1 at Sun-3, dawn hand [19,14,14,13,3]. Contract 0
+//   Default seed 424242: day 1 at Sol-3, dawn hand [19,14,14,13,3]. Contract 0
 //   routes to system 9 (Pollux-7) — a CORE port, so it carries a Hangout and
 //   step 7 works at the destination. The guided jump needs a fuel top-off first,
 //   which is why step 4's rails open the depot (the same hinge `onboarding.spec.ts`

@@ -28,7 +28,7 @@ import { achievementManifest } from '../src/steam';
 // still be on screen. Same technique `action-blocked-parity.spec.ts` established.
 //
 // WHERE STATE IS INJECTED, AND WHY. Two of the four tests seed a career through
-// the store's own save key, because the gated purchases have PRICES (the Sun-3
+// the store's own save key, because the gated purchases have PRICES (the Sol-3
 // port stake and every crew role cost more than a day-1 captain's 1,000cr), so a
 // fresh career's buy button is disabled for AFFORDABILITY on both builds and the
 // mirror assertion would be vacuous. Injection is the established idiom here
@@ -42,7 +42,7 @@ const FULL = 'http://localhost:5173';
 const DEMO = 'http://localhost:5174';
 const SEED = 17030;
 
-/** A DAY-phase career at Sun-3 with money in hand — so the two gated purchases
+/** A DAY-phase career at Sol-3 with money in hand — so the two gated purchases
  *  are refused by the GATE and never by the price. */
 function affluentSave(edition: 'full' | 'demo', seed = SEED): string {
   const state: GameState = startDay(createInitialState(seed, edition)).state;

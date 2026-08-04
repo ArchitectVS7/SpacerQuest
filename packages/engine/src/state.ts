@@ -156,7 +156,7 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
       // starting band is unchanged, but the field is honest to the formula that
       // every later write site (day.ts, legacy.ts, deserialize) recomputes.
       tier: computePlayerTier('LIEUTENANT', starterShip()),
-      currentSystemId: 1, // Sun-3
+      currentSystemId: 1, // Sol-3
       ship: starterShip(),
       // N11 · Through the same one seeding function every captain's registry comes
       // from (`deeds.ts` `emptyDeedRegistry`). It was an inline literal here; one rule,

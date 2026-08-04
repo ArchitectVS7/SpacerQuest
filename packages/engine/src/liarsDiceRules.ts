@@ -490,7 +490,7 @@ export function resolveChallenge(hand: DareHandState): {
  * (`packages/content/src/liarsDice.ts`), and this is the one accessor every engine
  * and UI reader goes through rather than reaching into the table. It is keyed on
  * BOTH the port and the id deliberately — an opponent authored at Deneb-4 is not
- * seatable at Sun-3, and a lookup that ignored the port would let a stale UI
+ * seatable at Sol-3, and a lookup that ignored the port would let a stale UI
  * selection open a hand at the wrong house.
  */
 export function liarsDiceOpponentFor(

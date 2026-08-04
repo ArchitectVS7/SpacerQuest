@@ -7,7 +7,7 @@ import { createInitialState, startDay, createSave, type GameState } from '@space
 // engine use here is OFFLINE save-fixture construction — exactly as the wire/combat
 // specs do — never an in-page engine call that bypasses a screen the player uses.
 //
-//   Fresh default seed 424242 (Test A): Day 1 at Sun-3, dawn hand [19,14,14,13,3].
+//   Fresh default seed 424242 (Test A): Day 1 at Sol-3, dawn hand [19,14,14,13,3].
 //     - Contract 0 carries cargo to system 9.
 //     - Sign with die index 0, top the tank off (a visible fuel affordance), then
 //       jump with die index 2 → delivery pays out (1,000 → 3,420cr, hold empties).
@@ -182,7 +182,7 @@ const SEEN_DELIVERY = { 'dawn-roll': true, 'first-sign': true } as const;
 test('first-hangout coach fires once at a Hangout system, anchored, and persists', async ({
   page,
 }) => {
-  // Sun-3 (system 1) hosts the only Tour One Hangout. With the delivery chain
+  // Sol-3 (system 1) hosts the only Tour One Hangout. With the delivery chain
   // pre-seen, the highest-priority new prompt at a hangout system is first-hangout.
   await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY });
 
@@ -210,7 +210,7 @@ test('first-hangout never fires where no Hangout exists', async ({ page }) => {
 test('first-loan coach fires once inside the open Hangout panel, anchored, and persists', async ({
   page,
 }) => {
-  // Delivery chain + the hangout nudge pre-seen. Sun-3 is ALSO a purchasable,
+  // Delivery chain + the hangout nudge pre-seen. Sol-3 is ALSO a purchasable,
   // unowned port with an affordable sweep, so first-port and first-explore are
   // pre-seen too — otherwise one of them (now correctly, per-mount) claims the
   // screen slot alongside first-loan's independent hangout-mount slot, which

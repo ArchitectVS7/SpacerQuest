@@ -32,7 +32,7 @@ import { NpcState } from '../types.js';
 // T-120 · The per-port Hangout venue definition, and the engine rule that reads
 // it (docs/HANGOUT_REDESIGN.md §2.2, §2.3, §2.4, §2.6).
 //
-// THE POINT OF THIS FILE IS INERTNESS. Sun-3's row omits `wager`, `venueParams`
+// THE POINT OF THIS FILE IS INERTNESS. Sol-3's row omits `wager`, `venueParams`
 // and `clientele`, so every number the resolver reads there must still be the
 // shipped constant it read before the extraction — asserted against the content
 // constants themselves, never against a restated literal.
@@ -51,7 +51,7 @@ const ALL_VENUES: readonly HangoutVenueId[] = [
   'repay',
 ];
 
-describe('Sun-3 resolves to today’s shipped constants (the behaviour-preserving proof)', () => {
+describe('Sol-3 resolves to today’s shipped constants (the behaviour-preserving proof)', () => {
   it('inherits the shipped wager band, because its row omits `wager`', () => {
     expect(PORT_HANGOUTS[SUN_3]?.wager).toBeUndefined();
     expect(wagerBandFor(SUN_3)).toEqual({ min: DARE_MIN_WAGER, max: DARE_MAX_WAGER });
@@ -133,7 +133,7 @@ describe('rankClientele ranks, never adds (and is the identity under the default
     const shuffled: NpcState[] = [state.npcs[4], state.npcs[0], state.npcs[2]];
     const expected = shuffled.map((n) => n.id);
     expect(rankClientele(state, SUN_3, shuffled).map((n) => n.id)).toEqual(expected);
-    // Sun-3 authors no clientele at all — that is what keeps T-120 inert.
+    // Sol-3 authors no clientele at all — that is what keeps T-120 inert.
     expect(PORT_HANGOUTS[SUN_3]?.clientele).toBeUndefined();
     expect(DEFAULT_PORT_HANGOUT.clientele).toEqual({});
   });
@@ -154,7 +154,7 @@ describe('rankClientele ranks, never adds (and is the identity under the default
 });
 
 describe('the venue vocabulary is one vocabulary', () => {
-  it('the default row, Sun-3’s row and the engine’s accessor all use the same seven', () => {
+  it('the default row, Sol-3’s row and the engine’s accessor all use the same seven', () => {
     // The compile-time `AssertEqual` in hangoutRules.ts pins HangoutVenueId to the
     // engine's VisitHangout union; this documents the same fact at runtime.
     expect([...(DEFAULT_PORT_HANGOUT.venues ?? [])].sort()).toEqual([...ALL_VENUES].sort());
@@ -186,7 +186,7 @@ describe('PORT_HANGOUTS is data', () => {
 // drifting apart in either direction.
 // ---------------------------------------------------------------------------
 
-/** ids 1–14, Sun-3 … Vega-6 — the fourteen CORE ports §4.5 rules in. */
+/** ids 1–14, Sol-3 … Vega-6 — the fourteen CORE ports §4.5 rules in. */
 const CORE_HANGOUT_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 /** The first rim id. Named rather than spelled inline, because it is what keeps
  *  `ActionBlocked{'no-hangout'}` reachable. */
@@ -258,7 +258,7 @@ describe('T-121 · the reach change — a bar at all fourteen core spaceports', 
     // `baselineHangout` built `the <system> Hangout` per port, so the generated
     // name is the shape to test against — read off `STAR_SYSTEMS` rather than
     // restated, so a renamed system cannot make this pass by accident. This test
-    // is about the VOICE; Sun-3's and Altair-3's numeric inertness is pinned in
+    // is about the VOICE; Sol-3's and Altair-3's numeric inertness is pinned in
     // `hangoutContent.test.ts`, which is where the content axes live.
     //
     // NON-VACUITY: the list must be the fourteen, or the loop says nothing.
@@ -348,7 +348,7 @@ describe('T-133 · the per-port loan band', () => {
   });
 
   it('Arcturus-6 deals a band STRICTLY INSIDE the global one', () => {
-    // Threshold-free, and stated against Sun-3's resolved band rather than against
+    // Threshold-free, and stated against Sol-3's resolved band rather than against
     // the constants, so this reads as "tighter than everyone else" rather than as
     // "tighter than 5,000". The floor may match; the ceiling may not.
     const tight = loanBandFor(THE_TIGHT_DESK);

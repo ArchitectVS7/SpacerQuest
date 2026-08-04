@@ -97,7 +97,7 @@ export interface PortStakeDefinition {
  *
  * HONEST CAVEAT, stated because it shapes the answer: outside the home port that
  * spread is under +/-10%, which cannot by itself carry a purchase decision. So the
- * fourteen are BANDED by measured share (Sun-3 alone; then 11; then 8/9/12; then
+ * fourteen are BANDED by measured share (Sol-3 alone; then 11; then 8/9/12; then
  * 7/4/10; then 13/5/2; then 14; 3; 6) and the bands are spaced wider than the raw
  * traffic to make the choice real. The ordering is measured; the spacing is a
  * design call, and this sentence is the place it is admitted.
@@ -112,7 +112,7 @@ export interface PortStakeDefinition {
  * registry at `7ca606d7^:SQ/SP.BANK` stores each port's price in units of 10,000cr
  * (`7ca606d7^:Decompile/Source-Text/SP.REAL.txt` prints it as `m6"0,000 cr"` and
  * charges it at `buy1`). The fourteen ports THERE are the fourteen systems here,
- * by name, priced linearly 10,000 (Vega-6) to 140,000 (Sun-3) — i.e. the source's
+ * by name, priced linearly 10,000 (Vega-6) to 140,000 (Sol-3) — i.e. the source's
  * own assignment is `(15 - systemId) * 10_000`.
  *
  * WHAT WAS RECOVERED, AND WHAT WAS NOT — read this before citing the formula above
@@ -120,7 +120,7 @@ export interface PortStakeDefinition {
  * price multiset here is precisely {10,000, 20,000, ... 140,000}, every rung of the
  * 1991 ladder, once each. The per-port ASSIGNMENT is deliberately NOT the source's:
  * the rungs are handed out in measured-traffic-band order (the banding documented
- * above), not by `systemId`. Only Sun-3 (1) and Fomalhaut-2 (7) land on the same
+ * above), not by `systemId`. Only Sol-3 (1) and Fomalhaut-2 (7) land on the same
  * price both ways; the other twelve do not, so `(15 - systemId) * 10_000` describes
  * the 1991 registry and NOT this table.
  *
@@ -171,14 +171,14 @@ export interface PortStakeDefinition {
  *     what forces the per-port income down.
  *   - PAYBACK WINDOW: SUPERSEDED BY R2d — was [110, 150] dusks, now [154, 1044]:
  *     Denebola-5 pays back fastest at 154, Mira-9 slowest at 1044. Note the slowest
- *     is NOT the dearest — Sun-3, the 140,000cr hub, pays back in 483 — which is
+ *     is NOT the dearest — Sol-3, the 140,000cr hub, pays back in 483 — which is
  *     the whole content of the next invariant. The test pins the window at
  *     [150, 1050]; see the R2d block above, and the per-port `// payback N dusks`
  *     comments are regenerated and correct.
  *   - THE DEAREST PORTS ARE THE BUSIEST ONES. This REPLACES the pre-R2d "the hub
  *     pays a premium" form, which said payback rises with traffic (Denebola-5 110
- *     dusks → Sun-3 150) and is simply not true any more: the 14x price ladder
- *     against a ~4.5x income spread makes payback non-monotone in traffic (Sun-3
+ *     dusks → Sol-3 150) and is simply not true any more: the 14x price ladder
+ *     against a ~4.5x income spread makes payback non-monotone in traffic (Sol-3
  *     483 against Mira-9 1044). What survives is true by construction, because the
  *     ladder is assigned in income rank order — price and income move together, so
  *     no port is strictly dominated by a cheaper one, and the decision is what you
@@ -188,7 +188,7 @@ export interface PortStakeDefinition {
  * port; a sane payback window then forces prices into roughly 7k–44k. There is no
  * table that keeps a 25,000cr price, a >=110-dusk payback, AND a sub-1,630 board
  * total at fourteen ports — the arithmetic does not permit it, and the ceiling is
- * the invariant that addresses the measured defect, so it wins. Sun-3 at 43,500cr
+ * the invariant that addresses the measured defect, so it wins. Sol-3 at 43,500cr
  * remains a genuine long-term goal; Denebola-5 at 7,150cr is reachable by a
  * competent captain shortly after Tour One (and is a deliberate trap DURING it —
  * 65cr/dusk against a 25,000cr marker on a 30-day clock never pays).
@@ -196,7 +196,7 @@ export interface PortStakeDefinition {
 export const PURCHASABLE_PORTS: readonly PortStakeDefinition[] = [
   {
     systemId: 1,
-    name: 'Sun-3 Port Authority',
+    name: 'Sol-3 Port Authority',
     alliance: 'league',
     // 14.3% of measured core departures — the hub: start port, only Hangout, 2.0x the next busiest.
     purchasePrice: 140000,

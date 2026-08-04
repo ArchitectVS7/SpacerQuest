@@ -30,7 +30,7 @@ import { DayPhase, type EarnedDeedState, type GameEvent, type GameState } from '
 // the gate itself.
 // ---------------------------------------------------------------------------
 
-/** A DAY-phase state at Sun-3 in the given edition, with an optional pre-day
+/** A DAY-phase state at Sol-3 in the given edition, with an optional pre-day
  *  mutation (credits, day, crew). Mirrors `crew.test.ts` / `port.test.ts`'s
  *  `dayState` so the three read alike. */
 function dayState(

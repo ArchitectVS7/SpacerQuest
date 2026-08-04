@@ -55,7 +55,7 @@ const ARCS: readonly Arc[] = [
     name: 'Astro League',
     faction: 'league',
     others: ['dragons', 'confederation', 'rebels'],
-    anchor: 5, // Deneb-4, a League port off the Sun-3 start (see storylets.ts)
+    anchor: 5, // Deneb-4, a League port off the Sol-3 start (see storylets.ts)
     episodes: ['alliance.league.writ', 'alliance.league.sweep', 'alliance.league.commission'],
     resolvedFlag: 'alliance.league.resolved',
     ep3Gate: 6,

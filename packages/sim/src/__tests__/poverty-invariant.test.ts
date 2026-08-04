@@ -464,7 +464,7 @@ interface AdversarialState {
   dawn: GameState;
 }
 
-/** A · INDEBTED TO PENNY WISE. A real borrow at the real desk (Sun-3 — the home
+/** A · INDEBTED TO PENNY WISE. A real borrow at the real desk (Sol-3 — the home
  *  hall, and since T-121 one of fourteen `hasHangout` ports) for the maximum
  *  principal, then LOAN_TERM_DAYS + 6 real
  *  dusks so the ENGINE itself accrues the interest and flips `status` to

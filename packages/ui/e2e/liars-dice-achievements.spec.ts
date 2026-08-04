@@ -21,7 +21,7 @@ import { DARE_MIN_WAGER, LIARS_DICE_OPPONENTS, PORT_HANGOUTS } from '@spacerques
 // THE HAND IS DERIVED, NOT HOPED FOR. Verified offline by replaying the exact UI
 // dispatch path (`startDay(createInitialState(1))` → the same
 // `VisitHangout{venue:'dare'}` → `Dare{move:'bid'}` the buttons dispatch, in the
-// same order, on the same die index): on SEED 1, against Sun-3's third seat, at
+// same order, on the same die index): on SEED 1, against Sol-3's third seat, at
 // the minimum stake, with die 0, the single opening bid `2 × 3s` is answered by
 // the dealer's challenge and settles as `challenge-win` in that same action. So
 // ONE bid closes the set — there is no tolerant "loop and hope" here, because a
@@ -31,7 +31,7 @@ import { DARE_MIN_WAGER, LIARS_DICE_OPPONENTS, PORT_HANGOUTS } from '@spacerques
 const SEED = 1;
 const SUN_3 = 1;
 const SEATS = LIARS_DICE_OPPONENTS[SUN_3].map((seat) => seat.id);
-/** Sun-3's third seat — the one every fixture below leaves unbeaten. */
+/** Sol-3's third seat — the one every fixture below leaves unbeaten. */
 const TARGET = SEATS[2];
 /** Every authored roster id, derived — never a hand-listed 42. */
 const ALL_SEATS = Object.values(LIARS_DICE_OPPONENTS)

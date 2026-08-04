@@ -1384,7 +1384,7 @@ describe('T-140 · decision tracing', () => {
   });
 
   // A board built so that one archetype has a strict argmax and another has a
-  // real tie — the tie is the thing §2 says is discarded today. Origin is Sun-3.
+  // real tie — the tie is the thing §2 says is discarded today. Origin is Sol-3.
   const OFFERS: CargoContract[] = [
     { destination: 2, cargoType: 9, payment: 40000, pods: 4 },
     { destination: 2, cargoType: 1, payment: 20000, pods: 2 },

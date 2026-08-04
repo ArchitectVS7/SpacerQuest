@@ -11,13 +11,13 @@ import { DawnHand, DayPhase, GameState } from '../types.js';
 // T-1303 · Spacers Hangout: the place + Spacer's Dare.
 // ---------------------------------------------------------------------------
 
-const DEALER = 'npc-iron-vex'; // cast index 0 — starts co-located at Sun-3 (id 1).
+const DEALER = 'npc-iron-vex'; // cast index 0 — starts co-located at Sol-3 (id 1).
 
 /** A DAY-phase state at a hasHangout port with a hand-picked dawn hand and a
  *  co-located, solvent dealer. `dice` become the player's Dare die by index, so a
  *  nat-20 / nat-1 is dialled in directly.
  *
- *  T-121 · `systemId` defaults to Sun-3 so no existing test moves, and is a
+ *  T-121 · `systemId` defaults to Sol-3 so no existing test moves, and is a
  *  parameter so the reach change can be driven at a port that is not the home
  *  hub. The dealer is moved to WHEREVER the player is put, which is what keeps a
  *  Dare off-hub from decaying into a 'no-opponent' fail. */
@@ -229,7 +229,7 @@ describe('rumor slot renders ≥1 fact from live NPC state', () => {
   // type, details, position, disposition).
   it('fills ≥3 dynamic slots from live NPC state (distinct co-located NPCs)', () => {
     const state = hangoutState([10, 3, 3, 3, 3]);
-    // Seat three distinct NPCs at the player's table (Sun-3), each with a
+    // Seat three distinct NPCs at the player's table (Sol-3), each with a
     // different live action-type + details, and a distinct disposition sign.
     const seated = state.npcs.slice(0, 3);
     expect(seated).toHaveLength(3);
@@ -238,10 +238,10 @@ describe('rumor slot renders ≥1 fact from live NPC state', () => {
     seated[0].lastAction = { type: 'Trade', details: 'hauled Spices to Aldebaran-1' };
     seated[1].currentSystemId = 1;
     seated[1].disposition = -6; // grudge → cold phrasing
-    seated[1].lastAction = { type: 'Combat', details: 'traded fire near Sun-3' };
+    seated[1].lastAction = { type: 'Combat', details: 'traded fire near Sol-3' };
     seated[2].currentSystemId = 1;
     seated[2].disposition = 0; // neutral → warm phrasing
-    seated[2].lastAction = { type: 'Patrol', details: 'ran a clean sweep of the Sun-3 lanes' };
+    seated[2].lastAction = { type: 'Patrol', details: 'ran a clean sweep of the Sol-3 lanes' };
     // Push every other NPC out of system so the three seated ones lead the roster.
     for (const npc of state.npcs.slice(3)) npc.currentSystemId = 5;
 
@@ -249,8 +249,8 @@ describe('rumor slot renders ≥1 fact from live NPC state', () => {
     expect(rumors.length).toBeGreaterThanOrEqual(3);
     // Each seated NPC's live details clause appears in a slot.
     expect(rumors.some((r) => r.includes('hauled Spices to Aldebaran-1'))).toBe(true);
-    expect(rumors.some((r) => r.includes('traded fire near Sun-3'))).toBe(true);
-    expect(rumors.some((r) => r.includes('ran a clean sweep of the Sun-3 lanes'))).toBe(true);
+    expect(rumors.some((r) => r.includes('traded fire near Sol-3'))).toBe(true);
+    expect(rumors.some((r) => r.includes('ran a clean sweep of the Sol-3 lanes'))).toBe(true);
 
     // The slots are genuinely dynamic: distinct action types + dispositions
     // produce three DISTINCT authored phrasings (not one repeated template).
@@ -259,10 +259,10 @@ describe('rumor slot renders ≥1 fact from live NPC state', () => {
 
     // And disposition is live: the grudge-holder's line uses the cold variant,
     // which is NOT the warm phrasing for the same action + fields.
-    const combatLine = rumors.find((r) => r.includes('traded fire near Sun-3'))!;
+    const combatLine = rumors.find((r) => r.includes('traded fire near Sol-3'))!;
     seated[1].disposition = 5; // flip to warm and re-log
     const warmRumors = hangoutRumors(state);
-    const warmCombatLine = warmRumors.find((r) => r.includes('traded fire near Sun-3'))!;
+    const warmCombatLine = warmRumors.find((r) => r.includes('traded fire near Sol-3'))!;
     expect(warmCombatLine).not.toBe(combatLine);
   });
 });
@@ -375,7 +375,7 @@ describe('hangout-system gate', () => {
 // in `day.ts` is precisely the thing that changed, so a test that calls the
 // resolver directly would have passed before this task and proves nothing.
 //
-// The numbers here were Sun-3's numbers, on purpose: at T-121 ids 2–14 all carried
+// The numbers here were Sol-3's numbers, on purpose: at T-121 ids 2–14 all carried
 // BASELINE rows that resolved field-wise to `DEFAULT_PORT_HANGOUT`, so this was a
 // proof about REACH and not about parameters.
 //
@@ -387,7 +387,7 @@ describe('hangout-system gate', () => {
 // is that the action resolves off-hub at all, that the transfer is zero-sum, and
 // that the die is spent.
 // ---------------------------------------------------------------------------
-describe('T-121 · VisitHangout resolves at a port that is not Sun-3', () => {
+describe('T-121 · VisitHangout resolves at a port that is not Sol-3', () => {
   it('a Dare plays at Vega-6 (id 14) — no ActionBlocked, credits move, the die is spent', () => {
     const VEGA_6 = 14;
     const state = hangoutState([20, 3, 3, 3, 3], VEGA_6); // die[0] = 20 → player wins
@@ -446,7 +446,7 @@ describe('T-121 · VisitHangout resolves at a port that is not Sun-3', () => {
 // the two lending venues report a LoanEvent.
 //
 // F-120-1 · THE REFUSAL WAS NOT REACHABLE END TO END AT T-120, and that was
-// deliberate rather than an omission: Sun-3's row and `DEFAULT_PORT_HANGOUT` both
+// deliberate rather than an omission: Sol-3's row and `DEFAULT_PORT_HANGOUT` both
 // offer all seven venues, so no state could drive `resolveVisitHangout` into that
 // branch while exactly one port existed. What is asserted here is the SERIALIZED
 // SHAPE of both event variants (the schema mirror + the drift guard); the

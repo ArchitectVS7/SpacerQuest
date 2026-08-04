@@ -113,7 +113,7 @@ function assertBlindOpenIsLegal(variants: readonly number[][]): void {
   }
 }
 
-const DEALER = 'npc-iron-vex'; // cast index 0 — starts co-located at Sun-3 (id 1).
+const DEALER = 'npc-iron-vex'; // cast index 0 — starts co-located at Sol-3 (id 1).
 const SUN_3 = 1;
 
 /** A DAY-phase state at a hasHangout port with a hand-picked dawn hand and a
@@ -326,7 +326,7 @@ describe('T-135 · a full hand plays through startDay/applyPlayerAction', () => 
   });
 });
 
-/** A DAWN-phase state standing at Sun-3 with a solvent co-located dealer, for the
+/** A DAWN-phase state standing at Sol-3 with a solvent co-located dealer, for the
  *  tests that want `startDay` to roll the hand rather than a fixture. */
 function createInitialStateAtHangout(seed: number): GameState {
   const state = createInitialState(seed);

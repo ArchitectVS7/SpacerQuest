@@ -508,7 +508,7 @@ const RESOLVER_ROWS: readonly ResolverRow[] = [
     action: { type: 'Explore', spendDie: 0 },
   },
   {
-    name: 'VisitHangout (rumor at Sun-3)',
+    name: 'VisitHangout (rumor at Sol-3)',
     setup: (state) => {
       state.player.currentSystemId = 1;
     },

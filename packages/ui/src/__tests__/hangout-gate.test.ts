@@ -13,7 +13,7 @@ import { hangoutOpen } from '../format';
 // in `format.ts` all read, so proving it here proves all three.
 //
 // WHY THIS FILE EXISTS AT ALL. The NEGATIVE case used to live in
-// `e2e/hangout.spec.ts`, which jumped from Sun-3 to Aldebaran-1 and asserted the
+// `e2e/hangout.spec.ts`, which jumped from Sol-3 to Aldebaran-1 and asserted the
 // launcher vanished. T-121 gives Aldebaran-1 a bar, and the obvious repair —
 // retarget the hop to a rim port — is not available: the rim shell sits ~20–24
 // units out and a fresh day-1 start cannot fund the jump, so the e2e would become
@@ -22,7 +22,7 @@ import { hangoutOpen } from '../format';
 // negative half moved here, where a rim id costs no fuel.
 // ---------------------------------------------------------------------------
 
-/** ids 1–14, Sun-3 … Vega-6 — the fourteen core ports §4.5 rules in. */
+/** ids 1–14, Sol-3 … Vega-6 — the fourteen core ports §4.5 rules in. */
 const CORE_HANGOUT_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 /** Antares-5 — the first rim id, and the cheapest proof that the un-flagged set is
  *  not empty. §4.5 keeps it un-flagged on purpose. */

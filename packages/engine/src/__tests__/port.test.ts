@@ -16,7 +16,7 @@ function clonePorts(ports: PortStake[]): PortStake[] {
   return JSON.parse(JSON.stringify(ports)) as PortStake[];
 }
 
-/** A DAY-phase state at a core port (system 1 = Sun-3) with an optional pre-day
+/** A DAY-phase state at a core port (system 1 = Sol-3) with an optional pre-day
  *  mutation (credits, ports). */
 function dayState(seed: number, mutate?: (state: GameState) => void): GameState {
   const state = createInitialState(seed);
@@ -38,7 +38,7 @@ const SUN3 = 1; // a core, purchasable port (STAR_SYSTEMS[1])
 const PRICE = PURCHASABLE_PORTS_BY_SYSTEM[SUN3].purchasePrice;
 const BASE_INCOME = PURCHASABLE_PORTS_BY_SYSTEM[SUN3].baseDuskIncome;
 
-/** A live regional blockade whose scope covers the whole core band (incl. Sun-3).
+/** A live regional blockade whose scope covers the whole core band (incl. Sol-3).
  *  Built directly the way era.test.ts constructs an EraEventState. */
 function coreBlockade(day: number): EraEventState {
   return {
@@ -90,13 +90,13 @@ describe('T-1307 · buy a port stake', () => {
     base.eraEvent = null;
     expect(portDuskIncome(base)).toBe(BASE_INCOME);
 
-    // B: a core-band blockade covering Sun-3 → income scaled by 1.5.
+    // B: a core-band blockade covering Sol-3 → income scaled by 1.5.
     base.eraEvent = coreBlockade(1);
     const modulated = portDuskIncome(base);
     expect(modulated).toBe(Math.round(BASE_INCOME * 1.5));
     expect(modulated).not.toBe(BASE_INCOME);
 
-    // Region-gated: an event whose scope does NOT cover Sun-3 leaves it at base.
+    // Region-gated: an event whose scope does NOT cover Sol-3 leaves it at base.
     base.eraEvent = {
       defId: 'blockade',
       startedDay: 1,

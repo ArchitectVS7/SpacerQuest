@@ -21,7 +21,7 @@ recorded under THE THREE VERB RULINGS in `docs/NPC_REDESIGN.md`:
   leaves that policy **richer on 101 of 120 seeds**. The verb is not mistuned income — it is
   the Nemesis-lore faucet wearing an income action's costume, and the redesign is to give it
   a payoff worth the price.
-- **The Hangout exists at ONE system out of 28** (Sun-3, the starting system). The social
+- **The Hangout exists at ONE system out of 28** (Sol-3, the starting system). The social
   pillar has never been tested at a size where it could matter. It is also the only
   _voluntary_ input to disposition — every other disposition change is a by-product of
   violence or competition — and disposition demonstrably weights **who intercepts you**
@@ -1471,36 +1471,116 @@ Four findings from the owner's second live session, one per board quadrant. Capt
 the Bug Discovery Policy. All four are UX/design, filed as tasks rather than `F-` findings for the
 same reason as M14: each is substantial enough to need its own implementation pass.
 
-### T-188 · Galaxy map: port spacing gives near-zero travel payoff, and a jump is imperceptible — an owner design decision — `status: TODO` · `coder: opus` · `after: —` · `[BLOCKED BY = Owner ruling]`
+### T-188 · Galaxy map: port spacing gives near-zero travel payoff, and a jump is imperceptible — an owner design decision — `status: BLOCKED(Owner pick — 4a/4b/4c)` · `coder: opus` · `after: —`
 
-Owner's read: "the galaxy on the top left is too crowded. All the space ports are super close
-together. There is basically zero payoff to travelling between ports... The OG game had a real-time
-ascii animation which was too slow, we just have instant jump to port, and it is barely noticeable
-that any game action has happened. We need to come up with a design decision on this."
+Owner's original read: "the galaxy on the top left is too crowded. All the space ports are super
+close together. There is basically zero payoff to travelling between ports... The OG game had a
+real-time ascii animation which was too slow, we just have instant jump to port, and it is barely
+noticeable that any game action has happened. We need to come up with a design decision on this."
 
-Current state, verified in code: `packages/content/src/systems.ts:87-341`'s `STAR_SYSTEMS` (31
-entries — 14 core + 6 rim + 3 remote specials) uses a fixed hand-authored `{x,y}` coordinate list;
-the core cluster sits within roughly ±11 units, the rim shell ~20-24 units out. `travelTo()`
-(`store.ts` ~1417-1460) resolves a jump synchronously against the engine with **zero animation or
-transition** — `theme.css` has no starmap transition rule at all. This is TWO coupled asks: (a) port
-spacing/distinctiveness (a content/layout question — is 31 systems too many for a legible map, or
-does spacing need real variance so "far" ports read as far?), and (b) travel feedback (the owner
-explicitly rejected both extremes already tried — real-time ASCII was too slow, instant is
-imperceptible — so this needs a THIRD option, not a revert to either). **This starts BLOCKED
-because it's a design tradeoff the owner needs to choose between, not a build call**, per the house
-pattern this repo already uses for exactly this shape of decision (T-160's dealer fix: "bakeoff the
-two sanctioned shapes, ship the winner").
+**SUPERSEDING SPEC (owner, 2026-08-04) — the ruling arrived as a concrete build plan, not a
+`/bakeoff` request.** Verbatim, in order:
 
-**Accept (the ruling, first):** run `/bakeoff` (or an equivalent structured comparison) over at
-least: (1) a spacing/layout pass on `STAR_SYSTEMS`'s coordinates so distance reads as meaningful
-without reintroducing the old ASCII crawl, and (2) 2-3 candidate jump-feedback treatments strictly
-between "instant, silent" and "real-time ASCII" (e.g. a bounded-duration animated transition, a
-non-blocking async travel state the player can still act during, a diegetic ship's-log entry that
-stamps the jump) — each with a rough implementation cost and a screenshot/gif so the owner is
-choosing between working prototypes, not prose. Once ruled: the chosen spacing and feedback
-treatment ship together (spacing changes alone would leave the "imperceptible jump" complaint
-open); `docs/PRD-REIMAGINED.md` is updated if the ruling changes the "one screen" travel story;
-gate green.
+1. **A standing quality gate:** "already you should be flagging and failing this since the port
+   names are overlapping with other ports and names." A regression test for label-collision on the
+   starmap, independent of whichever layout ships — it must hold for ANY coordinate set, not just
+   today's.
+2. **Rename `Sun-3` → `Sol-3`** — "the base game" name, reads more sci-fi. On the screen; swept
+   through docs and tests. **NOT** the persisted deed id `liars_dice_cleared_sun_3`
+   (`packages/content/src/deeds.ts:921`) or the `SUN_3_HANGOUT` code identifier
+   (`packages/content/src/portHangouts.ts:278`) — those are data/code identifiers, not display
+   text, and renaming a persisted id is a save-migration question the owner did not ask for here.
+3. **A real geometry pipeline, replacing the hand-authored `{x,y}` scatter:**
+   - **3a.** Distance-from-Sol per system — already derivable (`distance(1, id)` in
+     `systems.ts`), used as the FIXED radius input to what follows so every existing Sol-relative
+     balance number (rim ring ~20-24, core mean ~11, the fuel/DC/danger tuning in
+     `docs/balance/BASELINE-T-1603a.md`) is preserved exactly.
+   - **3b.** A generated 2D radial ("orbital/atomic," explicitly NOT the old game's linear line)
+     layout: systems placed on rings at their 3a radius, spread by angle within each ring.
+   - **3c.** Lift 3b into 3D: same radius-from-Sol as 3a/3b, dispersed across a sphere. New
+     `coordinates3D: {x,y,z}` field on `StarSystem`. Owner's own note: **nothing about Sol-relative
+     distance, fuel cost or travel time changes at this step.**
+   - **3d.** Pairwise distance between EVERY system pair, from the 3c coordinates. Owner's own
+     note: **this DOES change non-Sol-to-non-Sol route numbers** versus today's ad hoc 2D scatter.
+4. **Three prototype visualizations, screenshotted, not built into the live game yet:**
+   - **4a.** Flat 2D, current system highlighted, connecting lines to every other system.
+   - **4b.** The 3c sphere, draggable/zoomable, same connecting lines.
+   - **4c.** Wildcard — web research for sci-fi galaxy-map UI, mocked up.
+   Owner: "I will pick one and we will build it" — so 4a-4c are comparison artifacts, not a
+   shipped feature yet; whichever is picked becomes its own follow-on build task (wiring it into
+   `App.tsx`'s `Starmap`, replacing the current SVG projection).
+
+**Scope call made during implementation, stated rather than left implicit:** item 3d's new
+pairwise-distance function is additive (`distance3D`, alongside the existing 2D `distance`) —
+it is NOT wired into `travel.ts`'s live `jumpFuelCost`/`travelDc`/`calculateRouteDanger` in this
+pass. The owner's own text acknowledges 3d "will directly affect" contract-run distances once it's
+the live formula, and `packages/content/src/systems.ts` is a hashed rule source
+(`rules-fingerprint.ts`), so swapping the ACTIVE distance formula is a rulesFingerprint-moving
+change with real balance consequences (every rim/danger/fuel number in
+`docs/balance/BASELINE-T-1603a.md` is tuned against the current 2D numbers) — that swap belongs
+with whichever map (4a/4b/4c) the owner picks, not bundled silently into a geometry-data commit.
+Building the 3D data and the comparison prototypes does not itself require moving that live
+formula.
+
+**Accept:** (1) a starmap label-overlap test exists, generic to any coordinate set, and is
+currently RED against today's live map (documented, not silently fixed) unless the map is
+redesigned in the same pass; (2) `Sol-3` is the display name everywhere a player or reader sees
+it, with the deed-id/code-identifier exceptions above stated explicitly, not silently skipped; (3)
+`StarSystem` carries `coordinates3D`, `distanceFromSol` is derivable, and a tested `distance3D`
+function returns real pairwise 3D distances; (4) three screenshotted prototypes exist for the
+owner to choose from; (5) the live travel formula is UNCHANGED by this task (verified: `travel.ts`
+still imports the 2D `distance`); gate green; `rulesFingerprint`'s move (if any) is stated and
+paid for with a capstone re-pin.
+
+**Delivered (2026-08-04) — items 1-3 built, item 4 prototyped; BLOCKED on the owner's pick, not
+DONE.**
+
+1. **The overlap tripwire:** `packages/ui/src/__tests__/starmap-label-overlap.test.ts`, an
+   `it.fails` tripwire (this repo's standing pattern for a documented, intentional red) generic to
+   whatever `starmapProjection` returns — approximate label bounding boxes from `.smlabel`'s actual
+   CSS (8px font, text-anchor middle, `(0,16)` offset), asserting no two intersect. It currently
+   fails against today's live map — confirmed by an out-of-band run: 4 real collisions (Arcturus-6/
+   Procyon-5, Deneb-4/Rigel-8, Fomalhaut-2/Mira-9, Fomalhaut-2/Spica-3) — matching the screenshot
+   the owner flagged. Flips green the moment a redesigned map (4a/4b/4c) ships.
+2. **`Sun-3` → `Sol-3`**, swept across ~75 live source/doc/test files (display text, comments, test
+   assertions). Explicitly NOT renamed: the persisted deed id `liars_dice_cleared_sun_3`
+   (its player-visible citation text WAS updated) and the `SUN_3_HANGOUT` code identifier.
+   Deliberately NOT renamed: dated historical/archival documents (`docs/archive/`, the two
+   `T-16xx`-era balance reports, `TODO.md`'s harvested provenance) — those describe what the game
+   was called at the time, not what it's called now.
+3. **The geometry pipeline, in `packages/content/src/systems.ts`:** `Star3DCoordinates`, a
+   `coordinates3D` field populated for all 28 systems at module load (radius from Sol preserved
+   exactly from the existing 2D `coordinates` — verified: `distance(1, id)` and each system's 3D
+   radius match to rounding), a Fibonacci-sphere point distribution for the angular spread
+   (golden-angle longitude, arccos latitude — the standard even-coverage algorithm), `distance3D`
+   (pairwise 3D Euclidean, additive, NOT wired into `travel.ts`), and `orbitalLayout2D` (the 3b
+   flat radial layout, golden-angle spread, for the 4a prototype). **rulesFingerprint moved**
+   (any edit to a hashed rule-source file does, even purely additive code) — **paid for with a real
+   8,000-run capstone**, `docs/balance/baseline-t188-orbital-3d.json`, re-pinned at all four sites
+   (`balance-targets.test.ts`, `docs/NPC_REDESIGN.md` ×2, `docs/balance/smoke/tiers.json`).
+   **This task's own changes are PROVEN INERT, not assumed** — two isolated 30-seed bisects
+   (gambler, veteran) each report "NOTHING MOVED." The `fleet`/`veteran` movement in the full
+   8,000-row diff against the outgoing baseline is T-161's `veteranPolicy` fix (already reviewed,
+   gated, committed) getting its first capstone — see the standing amendment in `docs/NPC_REDESIGN.md`
+   for the full account, attributed there so it isn't mistaken for new drift from this task.
+4. **Three screenshotted, standalone prototypes** (not wired into `App.tsx`'s live `Starmap`),
+   built from the REAL 3b/3c/3d data: **4a** flat orbital, Sol highlighted, lanes to every system;
+   **4b** the 3c sphere, drag-to-rotate + scroll-to-zoom (genuinely interactive, not just a static
+   mock); **4c** wildcard — a long-range-scan radar console (range rings, a nearest-neighbour lane
+   graph instead of pure hub-and-spoke, a rotating sweep), informed by a web sweep of FTL/Star
+   Traders/Sunless Sea-style node maps. Sent to the owner as screenshots plus the live HTML files.
+   **THE HALT.** Whichever the owner picks becomes its own follow-on build task (wiring the chosen
+   layout/interaction into `App.tsx`'s `Starmap`, replacing the current SVG projection) — not
+   self-selected here.
+
+Gate: `npm test` 118 files / 2,295 tests green across all five workspaces, `npx tsc -b`,
+`npm run lint`, `npm run format:check` clean.
+
+**NOTE (owner, 2026-08-04): the interactive HTML prototypes (4a/4b, sent as standalone files)
+did not work when opened on the owner's mobile app/device.** Not investigated — the screenshots
+sent alongside them were viewable and are the actual basis for comparison; the live HTML was a
+bonus for drag/zoom feel on desktop. **Still BLOCKED — the owner has not yet picked a direction
+and needs to revisit this later.** Do not treat silence on this as a default pick.
 
 ### T-189 · Ship state panel is an unreadable ledger — replace the number-blur with a real ship diagram — `status: DONE` · `coder: opus` · `after: —`
 

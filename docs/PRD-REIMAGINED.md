@@ -68,7 +68,7 @@ The game launches as a premium title ($15–20, no microtransactions, ever) with
 
 ### 5.1 Tour One — the first session (60–120 minutes)
 
-You are a nobody with a junker ship and a 25,000-credit debt to the Merchant Guild of Sun-3, due in 30 days. The object is simple and stated on the first screen: **clear the debt and make your name.**
+You are a nobody with a junker ship and a 25,000-credit debt to the Merchant Guild of Sol-3, due in 30 days. The object is simple and stated on the first screen: **clear the debt and make your name.**
 
 Tour One is a complete, authored arc that doubles as the tutorial. It introduces the dice, the manifest board, fuel logistics, the first handful of NPCs, and one full combat. It ends on a decisive Day-30 beat: debt cleared (or not), your first rank earned, and a hook — a fragment of a signal that shouldn't exist, sold to you by the Wise One of Polaris-1 — that opens the veteran game.
 
@@ -160,7 +160,7 @@ You burn the **[3]** on a shipwide sweep before you leave — a low roll, and it
 
 ### 7.3 Sample Turn — ALLIES
 
-*Day 23. The Spacers Hangout, Sun-3. Hand: [18] [13] [8] [6] [5].*
+*Day 23. The Spacers Hangout, Sol-3. Hand: [18] [13] [8] [6] [5].*
 
 The wire, this morning: *"Doc Salvage impounded at Regulus-6 — unpaid landing fees, ship seized."* Doc is Tier-2, harmless, beloved, and the only spacer with the parts network to fix an Astraxial hull. You've never worked together. That's the point.
 
@@ -190,7 +190,7 @@ You dock at Fomalhaut-2 on fumes, deliver the Medicinals into the outbreak, and 
 
 *Day 30. Debt due. 22,400 of 25,000 banked. Hand: [7] [5] [4] [3] [2].*
 
-The dice are a disaster and you can see it at dawn — which means you can *plan* it. No checks today that a smart route can avoid: no combat lanes, no haggling with sharps. The one sure thing on the board is a short, dull freight run, Sun-3 to Spica-3, DC so low even a **[5]** clears it. It pays 2,100. Not enough.
+The dice are a disaster and you can see it at dawn — which means you can *plan* it. No checks today that a smart route can avoid: no combat lanes, no haggling with sharps. The one sure thing on the board is a short, dull freight run, Sol-3 to Spica-3, DC so low even a **[5]** clears it. It pays 2,100. Not enough.
 
 The gap is 500. Options: the Hangout (Spacer's Dare, GUILE, terrible dice — a mug's game tonight); a quiet word with Penny Wise, who lends at rates that become their own quest line; or the sealed Contraband pod still bolted in your hold from Day 19, which Smuggler Ray would buy tonight, no roll needed — for a price that solves everything and a reputation flag that never fully washes out.
 

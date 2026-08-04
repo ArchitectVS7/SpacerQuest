@@ -774,7 +774,7 @@ the second by precisely the top 50%, the best by 3%.
 >   10,000cr (`SP.REAL.txt` prints it `m6"0,000 cr"` and charges it at `buy1`), and
 >   which is `15 - systemId` for all fourteen ports.
 > - **The per-port ASSIGNMENT is deliberately ours, not the source's.** The rungs are
->   handed out in measured-traffic-band order, not by `systemId`. Only Sun-3 (1) and
+>   handed out in measured-traffic-band order, not by `systemId`. Only Sol-3 (1) and
 >   Fomalhaut-2 (7) coincide; the other twelve do not. The aggregate row in the table
 >   above is what R2d claimed and it holds — but `(15 - systemId) * 10_000` describes
 >   the 1991 registry, **not** this table, and should never be cited as if it did.

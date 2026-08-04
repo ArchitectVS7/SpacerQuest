@@ -214,7 +214,7 @@ export function resolveVisitHangout(
   // n.currentSystemId === …` filter below still governs pool B, untouched; the
   // roster branch is keyed on the `ld-` id NAMESPACE and resolves through the
   // engine's own `liarsDiceOpponentFor`, which is keyed on the PORT as well as the
-  // id — so a roster opponent authored at Deneb-4 is not seatable at Sun-3.
+  // id — so a roster opponent authored at Deneb-4 is not seatable at Sol-3.
   //
   // ONE DETERMINED CONSEQUENCE, implemented rather than discovered: **a roster id
   // resolves only for `venue: 'dare'`.** `meet` / `befriend` / `insult` all need an

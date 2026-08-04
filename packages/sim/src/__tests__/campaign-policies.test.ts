@@ -192,7 +192,7 @@ describe('T-201 competent policies', () => {
     const report = reportFor('trader');
 
     // Lending (T-1304, exercised by a policy for the first time here). Measured
-    // on seed 1: one 2,000cr advance taken on day 1 at the Sun-3 desk (the
+    // on seed 1: one 2,000cr advance taken on day 1 at the Sol-3 desk (the
     // working-capital case — 1,000 credits against a 25,000 marker), 800 credits
     // of interest accrued over 8 dusks with the loan live, 2,800 repaid in full
     // at the desk, 0 defaults.

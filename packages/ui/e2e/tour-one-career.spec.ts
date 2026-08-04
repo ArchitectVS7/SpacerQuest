@@ -95,7 +95,7 @@ async function flyTourOne(page: Page, branch: 'cleared' | 'unpaid'): Promise<Run
   const started = Date.now();
 
   await startCareer(page, TOUR_ONE_SEED, report);
-  // Day 1 opens at Sun-3, the only Tour One Hangout — the one day every screen
+  // Day 1 opens at Sol-3, the only Tour One Hangout — the one day every screen
   // is reachable at once. Every click in here is rng-free, so the tour is free.
   await sightseeingPass(page, report);
 

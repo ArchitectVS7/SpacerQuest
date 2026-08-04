@@ -11,7 +11,7 @@ import { skipFirstTurnWalkthrough } from './support/career';
 //   destination-locked → nemesis-crossing.spec.ts (sealed systems are not even
 //                        rendered as starmap nodes while the crossing is locked)
 //   no-hangout         → hangout.spec.ts (the hangout-toggle launcher is present
-//                        at Sun-3 and absent one hop away)
+//                        at Sol-3 and absent one hop away)
 //   career-ended       → nemesis-crossing.spec.ts / nemesis-ending.spec.ts (the
 //                        ending screen REPLACES the cockpit; only ending-return)
 //

@@ -1005,7 +1005,7 @@ describe('T-1504 deed slate', () => {
     const port = earnedFrom([liarsDiceSetCleared('port', 1)]);
     expect(port).toContain('liars_dice_cleared_sun_3');
     expect(port).not.toContain('liars_dice_grand_slam');
-    // ...and a port clear at Sun-3 earns no OTHER port's deed.
+    // ...and a port clear at Sol-3 earns no OTHER port's deed.
     expect(port.filter((id) => id.startsWith('liars_dice_cleared_'))).toEqual([
       'liars_dice_cleared_sun_3',
     ]);

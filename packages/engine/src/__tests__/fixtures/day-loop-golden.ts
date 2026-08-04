@@ -627,10 +627,10 @@ export function runDayLoopGolden(
 //
 // Regenerated via gen-day-loop-golden.ts. Never hand-edited.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '816a1e2a8ef5d4a5dd191a5a6ae1034c74f7d256dcae678d21473bccafb84eeb';
+  '048237ac8f7ec493e90a44217640f490277d6e3cb954f201648ec4e630586045';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '2cea1c44ec61a39c1a13de7ec9a50f8af9140b13ea08713b623428565e8d7a0a';
+  '826751b0ba1f7b6f86fd49e655ccc226ca8cdacb2f54c87d6e999563acd389e4';
 export const STORYLET_GOLDEN_STATE_HASH =
-  'e81bfa052cc6404e6497ad18c68b5f1fd61b7e8a9c6add6de1888458c819d2c3';
+  '080d6f499f1c75526d7b66a71f5735e7408bc9ba41cc328077f7d082bd8b1937';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  'e9092e600bcc04c5d9ebc72989bbdfb3701c56a498932a27c6ff786bb58824fe';
+  'b5c319890f2947fc33898011e57f175996114fb8b989086a9ad13b6b9bad73ae';

@@ -1120,7 +1120,7 @@ export const ANONYMOUS_INTERCEPTORS: AnonymousInterceptorProfile[] = [
     name: 'Cruncher',
     shipName: 'Big Mac',
     shipClass: 'N1.Sloop',
-    homeSystem: 'Sun-3',
+    homeSystem: 'Sol-3',
     stats: { PILOT: 0, GUNS: 0, TRADE: 2, GRIT: 0, GUILE: 1 },
     tier: 1,
   },

@@ -486,7 +486,7 @@ export function hangoutNpcs(game: GameState): HangoutNpc[] {
   // in-system set by the port's authored `clientele` — regulars first, then the
   // preferred archetypes, then everyone else, each bucket keeping its incoming
   // order. It never adds an NPC, so the pane still lists exactly the captains the
-  // Dare resolver will accept as an opponent. Under Sun-3's default (empty)
+  // Dare resolver will accept as an opponent. Under Sol-3's default (empty)
   // clientele it is the identity and this list is unchanged.
   //
   // T-132 (F-101-5) · `!n.dead` is load-bearing, not defensive. `rankClientele`'s

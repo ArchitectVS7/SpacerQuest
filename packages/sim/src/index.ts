@@ -854,7 +854,7 @@ export function travelableSystemIds(): number[] {
 /** T-1601a: the systems that actually host a Spacers Hangout — the only places
  *  the Penny Wise desk (borrow/repay) is legal, per the engine's `hasHangout`
  *  gate in day.ts. DERIVED from content (`STAR_SYSTEMS[...].hasHangout`), never a
- *  hard-coded id: today Sun-3 is the only one, and a policy that hard-coded `1`
+ *  hard-coded id: today Sol-3 is the only one, and a policy that hard-coded `1`
  *  would silently stop finding the desk the moment content flags a second. */
 export function hangoutSystemIds(): number[] {
   return systemIds().filter((id) => STAR_SYSTEMS[id]?.hasHangout === true);
@@ -2655,7 +2655,7 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
   //    25,000 marker and a month to clear it BORROWS. Every real spacer does; the
   //    advance buys the fuel for the runs that pay the Guild, and the strict
   //    duress cases above almost never coincide with being AT the desk (measured
-  //    over seeds 1..50: the trader passes through Sun-3 about five dawns per 60
+  //    over seeds 1..50: the trader passes through Sol-3 about five dawns per 60
   //    days, and is rarely there on the one day the tank runs dry). Without this
   //    case the lending band ships unexercised by any policy, which is precisely
   //    what this task exists to prevent.
@@ -3178,7 +3178,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   // interdiction is enough to leave a smuggler holding a contract it can neither
   // fly nor abandon — the activeContract lock the T-1310 comments call a silent
   // strand. Measured without this block (seeds 1..8 × 300 days): seeds 3, 5, 7
-  // and 8 locked inside the first week and never recovered (seed 3 sat at Sun-3
+  // and 8 locked inside the first week and never recovered (seed 3 sat at Sol-3
   // re-attempting the same jump for 294 days on 1 credit). The trader survives
   // the identical day-1 corner precisely BECAUSE it borrows. Sized to the larger
   // of the day's fuel shortfall and the working-capital gap, clamped by

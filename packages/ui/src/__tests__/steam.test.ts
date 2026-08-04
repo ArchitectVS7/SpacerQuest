@@ -250,7 +250,7 @@ function gameAt(currentSystemId: number, day: number): GameState {
 
 describe('T-1702b · presenceLine — pure, and total over any state', () => {
   it('reads the current system’s authored name and the current day', () => {
-    expect(presenceLine(gameAt(1, 1))).toEqual({ system: 'Sun-3', day: 1 });
+    expect(presenceLine(gameAt(1, 1))).toEqual({ system: 'Sol-3', day: 1 });
     expect(presenceLine(gameAt(2, 12))).toEqual({ system: 'Aldebaran-1', day: 12 });
   });
 
@@ -269,27 +269,27 @@ describe('T-1702b · syncPresence — deduped, guarded, and never fatal', () => 
     syncPresence(gameAt(1, 1));
     syncPresence(gameAt(1, 1));
     syncPresence(gameAt(1, 1));
-    expect(presence).toEqual(['Sun-3|1']);
+    expect(presence).toEqual(['Sol-3|1']);
   });
 
   it('republishes when the day moves and when the system moves', () => {
     syncPresence(gameAt(1, 1));
     syncPresence(gameAt(1, 2));
     syncPresence(gameAt(2, 2));
-    expect(presence).toEqual(['Sun-3|1', 'Sun-3|2', 'Aldebaran-1|2']);
+    expect(presence).toEqual(['Sol-3|1', 'Sol-3|2', 'Aldebaran-1|2']);
   });
 
   it('NEVER THROWS when the sink throws — a friends-list line is not worth an action', () => {
     presenceThrows = true;
     expect(() => syncPresence(gameAt(1, 1))).not.toThrow();
-    expect(presence).toEqual(['Sun-3|1']);
+    expect(presence).toEqual(['Sol-3|1']);
   });
 
   it('resetSentForTests clears the presence dedupe too, so suites cannot leak', () => {
     syncPresence(gameAt(1, 1));
     resetSentForTests();
     syncPresence(gameAt(1, 1));
-    expect(presence).toEqual(['Sun-3|1', 'Sun-3|1']);
+    expect(presence).toEqual(['Sol-3|1', 'Sol-3|1']);
   });
 });
 

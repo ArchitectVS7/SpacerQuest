@@ -8,7 +8,7 @@ import { createInitialState, deserializeState, serializeState, starterShip } fro
 import { DayPhase, EncounterState, GameState } from '../types.js';
 
 /** A dusk-fatal encounter: a high-GUNS interceptor whose day-end free attack
- *  finishes a one-condition hull. Origin 1 (Sun-3), destination 2. */
+ *  finishes a one-condition hull. Origin 1 (Sol-3), destination 2. */
 function fatalEncounter(overrides: Partial<EncounterState> = {}): EncounterState {
   return {
     id: 'enc-fatal',

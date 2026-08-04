@@ -59,9 +59,9 @@ function openingBid(state: GameState, face: number, atLeast = 1): PlayerAction {
 // the shipped ladder the moment content moved.
 // ---------------------------------------------------------------------------
 
-const DEALER = 'npc-iron-vex'; // cast index 0 — starts co-located at Sun-3 (id 1).
+const DEALER = 'npc-iron-vex'; // cast index 0 — starts co-located at Sol-3 (id 1).
 const SUN_3 = 1;
-/** Sun-3's three authored seats: `bad`, `mixed`, `optimal` in seat order. */
+/** Sol-3's three authored seats: `bad`, `mixed`, `optimal` in seat order. */
 const SUN3_BAD = 'ld-1-1';
 const SUN3_MIXED = 'ld-1-2';
 const SUN3_OPTIMAL = 'ld-1-3';
@@ -157,7 +157,7 @@ describe('T-146 · liarsDiceTier is a total function with five exact steps', () 
 
 describe('T-146 · effectiveWagerBand is the port band until tier 4 moves it', () => {
   // One WIDE band and one NARROW one, so the multiplier is proven to ride the
-  // port's own number rather than a constant that happens to match at Sun-3.
+  // port's own number rather than a constant that happens to match at Sol-3.
   const PORTS = [SUN_3, 11];
 
   it('tiers 0–3 return the port’s authored band verbatim', () => {

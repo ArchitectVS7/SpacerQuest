@@ -65,7 +65,7 @@ describe('Starmap geography (T-1101)', () => {
   });
 
   it('NEMESIS is remote, not home-adjacent (regression for the (0,0) collision)', () => {
-    // NEMESIS (28) sat at (0,0) — identical to Sun-3 (1), one jump from home.
+    // NEMESIS (28) sat at (0,0) — identical to Sol-3 (1), one jump from home.
     expect(STAR_SYSTEMS[28].coordinates).not.toEqual(STAR_SYSTEMS[1].coordinates);
     // Farther from home than the farthest rim port.
     const farthestRim = Math.max(...RIM_IDS.map((id) => distance(1, id)));

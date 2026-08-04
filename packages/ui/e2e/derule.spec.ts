@@ -19,7 +19,7 @@ import { RENOWN_RANKS } from '@spacerquest/content';
 //   3. Storylet locks and the rank readout are asserted against the IMPORTED engine
 //      exports (quoteStoryletChoice / nextRankFor), not hard-coded literals.
 //
-// The store's default career is the deterministic seed 424242 → Day 1, Sun-3; the
+// The store's default career is the deterministic seed 424242 → Day 1, Sol-3; the
 // headless state below is built the exact way the store boots a fresh game
 // (startDay(createInitialState(DEFAULT_SEED))), so the engine truth the DOM is
 // checked against is the same run the UI renders.

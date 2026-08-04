@@ -106,7 +106,7 @@ const COMIC_MIX: Readonly<LiarsDiceMix> = { optimal: 20, bad: 40, random: 40 };
  */
 export const LIARS_DICE_OPPONENTS: Readonly<Record<number, readonly LiarsDiceOpponent[]>> =
   defineLiarsDiceOpponents({
-    // --- 1 · Sun-3 · the Long Table · everyday · band 25-1000 ---------------
+    // --- 1 · Sol-3 · the Long Table · everyday · band 25-1000 ---------------
     1: [
       {
         id: 'ld-1-1',

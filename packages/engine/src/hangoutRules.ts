@@ -178,7 +178,7 @@ function npcArchetype(npc: NpcState): NpcArchetype | undefined {
  * content decree.
  *
  * Under `DEFAULT_PORT_HANGOUT`'s empty `clientele` this is the IDENTITY, which is
- * what keeps T-120's extraction inert at Sun-3.
+ * what keeps T-120's extraction inert at Sol-3.
  *
  * `state` is carried for call-site symmetry with the other engine accessors (and
  * because the set handed in is always derived from it); the ranking itself reads

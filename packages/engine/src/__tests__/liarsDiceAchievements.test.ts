@@ -44,16 +44,16 @@ function openingBid(state: GameState, face: number, atLeast = 1): PlayerAction {
 // ---------------------------------------------------------------------------
 
 const SUN_3 = 1;
-/** Sun-3's three authored seats, in seat order (`bad`, `mixed`, `optimal`). */
+/** Sol-3's three authored seats, in seat order (`bad`, `mixed`, `optimal`). */
 const [SUN3_BAD, SUN3_MIXED, SUN3_OPTIMAL] = LIARS_DICE_OPPONENTS[SUN_3].map((row) => row.id);
-/** Cast index 0 — a POOL B roaming captain, starting co-located at Sun-3. */
+/** Cast index 0 — a POOL B roaming captain, starting co-located at Sol-3. */
 const ROAMER = 'npc-iron-vex';
 /** Every authored id, derived — never a hand-listed 42. */
 const ALL_ROSTER_IDS = Object.values(LIARS_DICE_OPPONENTS)
   .flat()
   .map((row) => row.id);
 
-/** A DAY-phase state at Sun-3 with a fat dawn hand, a solvent co-located roaming
+/** A DAY-phase state at Sol-3 with a fat dawn hand, a solvent co-located roaming
  *  dealer, and a chosen beaten set. `liarsDiceGamesPlayed` is pinned at 0 — see
  *  the header. */
 function tableState(beaten: readonly string[], seed = 1): GameState {
@@ -236,7 +236,7 @@ describe('T-147 · once means once — the rematch and the roaming pool', () => 
 });
 
 describe('T-147 · the whole roster closes exactly once, alongside its port', () => {
-  /** All 42 authored ids except Sun-3's `optimal` seat — the one win away state. */
+  /** All 42 authored ids except Sol-3's `optimal` seat — the one win away state. */
   const ALL_BUT_ONE = ALL_ROSTER_IDS.filter((id) => id !== SUN3_OPTIMAL);
 
   it('the 42nd win fires PORT then ROSTER, in that order, both once', () => {

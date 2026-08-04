@@ -190,7 +190,7 @@ describe('T-182 · a spent die never destroys the day’s re-roll charge', () =>
     expectChargeSurvivedSpend(before, after);
   });
 
-  /** `storylets.ts:238` — the Sun-3 guild auditor's `argue` choice carries a
+  /** `storylets.ts:238` — the Sol-3 guild auditor's `argue` choice carries a
    *  GUILE stat check, which is what makes the choice die-costed. */
   it('Storylet · a die-costed choice', () => {
     const dawn = chargedDay(110, (s) => {

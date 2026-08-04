@@ -300,9 +300,9 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
 });
 
 describe('Local fuel price comes from canon tables', () => {
-  it('prices Sun-3 at 8 credits per unit (SP.LIFT.S: sp=1 fh=8)', () => {
+  it('prices Sol-3 at 8 credits per unit (SP.LIFT.S: sp=1 fh=8)', () => {
     const state = createInitialState(11);
-    state.player.currentSystemId = 1; // Sun-3
+    state.player.currentSystemId = 1; // Sol-3
     const { state: next } = advanceDay(state, []);
     expect(next.market.localFuelPrice).toBe(8);
   });
@@ -312,7 +312,7 @@ describe('Starmap distance', () => {
   it('T-1101: the degenerate same-line layout is replaced by real 2D coordinates', () => {
     // The shipped layout put every core/rim system on y=0 at x=id-1, so distance
     // collapsed into |id difference|. T-1101 authors genuine 2D coordinates
-    // (PRD §9 geography): Sun-3 stays at the origin, but Vega-6 no longer sits on
+    // (PRD §9 geography): Sol-3 stays at the origin, but Vega-6 no longer sits on
     // the x-axis, and distance(1,14) now reflects Math.hypot — NOT the |id-1|=13
     // the old collinear layout produced.
     const sun = STAR_SYSTEMS[1];

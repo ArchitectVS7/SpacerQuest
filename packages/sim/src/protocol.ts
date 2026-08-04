@@ -883,7 +883,7 @@ export function legalActions(state: GameState): LegalActions {
     // the port's venue definition decides which it OFFERS. Advertising a venue the
     // house does not run would burn a die on a guaranteed 'venue-not-offered'
     // refusal, so the harness drops it here — the same rule the engine enforces,
-    // read through the same accessor. At Sun-3 all seven are offered, so this
+    // read through the same accessor. At Sol-3 all seven are offered, so this
     // filter is the identity and the advertised array is byte-identical to before.
     const venueChoices: string[] = liveVenues.filter((venue) =>
       venueOffered(player.currentSystemId, venue),

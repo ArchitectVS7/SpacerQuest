@@ -918,10 +918,15 @@ export const DEEDS: readonly DeedDefinition[] = defineDeeds([
   //     asserts its rows against DEEDS ORDER, so a contiguous block at the end is
   //     one contiguous block of new rows in the partner table.
   {
+    // T-188 · id stays 'liars_dice_cleared_sun_3' (owner, 2026-08-04): the id
+    // is a persisted deed key in every existing save's DeedRegistry, and
+    // renaming a persisted id is a save-migration question distinct from the
+    // display-text rename this task scoped. Only the player-visible citation
+    // below changes.
     id: 'liars_dice_cleared_sun_3',
     title: 'The Long Table Swept',
     citationTemplate:
-      'On day {day}, the last cup at the Long Table came up short, and Sun-3 had nobody left to sit down.',
+      'On day {day}, the last cup at the Long Table came up short, and Sol-3 had nobody left to sit down.',
     trigger: {
       eventType: 'LiarsDiceSetCleared',
       match: [

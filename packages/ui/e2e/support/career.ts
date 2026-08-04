@@ -328,7 +328,7 @@ export async function startCareer(page: Page, seed: number, report: RunReport): 
 // ---- the sightseeing pass (RNG-free) --------------------------------------
 
 /**
- * Walk every screen the cockpit offers, on day 1, at Sun-3 (the only Tour One
+ * Walk every screen the cockpit offers, on day 1, at Sol-3 (the only Tour One
  * Hangout). Every interaction here is RNG-free — panels open and close, nothing
  * is chosen — so the whole tour costs the pinned seed nothing. Storylets are
  * OPENED but never resolved: resolution is already proven by
@@ -365,7 +365,7 @@ export async function sightseeingPass(page: Page, report: RunReport): Promise<vo
   await page.getByTestId('wire-log-close').click();
   await expect(page.getByTestId('wire-log')).toHaveCount(0);
 
-  // The Hangout (Sun-3 is the only one in Tour One) and the lender's terms.
+  // The Hangout (Sol-3 is the only one in Tour One) and the lender's terms.
   await page.getByTestId('hangout-toggle').click();
   await expect(page.getByTestId('hangout-panel')).toBeVisible();
   await expect(page.getByTestId('loan-terms')).toBeVisible();

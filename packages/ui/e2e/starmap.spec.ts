@@ -115,7 +115,7 @@ test('unreachable systems are visibly gated, not clickable-then-error', async ({
   // A full ship reaches everything, so gating is only demonstrable after a drain.
   // T-1102: under the per-distance cost the old 1<->14 lane (168 fuel/jump) can no
   // longer bounce — one leg leaves 132 fuel, short of the 168 return. Bounce the
-  // cheap adjacent pair Sun-3 (1) <-> Aldebaran-1 (2) instead: distance 5, 60
+  // cheap adjacent pair Sol-3 (1) <-> Aldebaran-1 (2) instead: distance 5, 60
   // fuel/jump, so 300 fuel drains to exactly 0 in 5 jumps. T-1103: the encounter
   // -rate repair (core 0.08 -> 0.30) means seed 3's drain now hits an interceptor
   // that would stall the loop; re-derived offline to seed 8, whose full 1<->2

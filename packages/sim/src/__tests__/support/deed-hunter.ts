@@ -136,7 +136,7 @@ const PORT_HEADROOM = 3000;
 const REPAY_HEADROOM = 2000;
 /** The Guild marker's due day (PRD §5.1 / engine day.ts day-30 resolution). */
 const TOUR_ONE_LAST_DAY = 30;
-/** Sun-3. T-121 gave all fourteen core ports a bar, so this is no longer the only
+/** Sol-3. T-121 gave all fourteen core ports a bar, so this is no longer the only
  *  place a Dare or the Penny Wise desk exists — it is now only the errand's
  *  FALLBACK DESTINATION, the port the hunter flies to when it wants Hangout
  *  business and is not already standing at one. The `atHangout` test below reads
@@ -269,7 +269,7 @@ function advancesAChain(choice: StoryletDefinition['choices'][number]): boolean 
  * choice — a CHAIN-ADVANCING one by preference. Costs no die and no credits, so it never competes
  * with the Tour One marker, and it is what walks the TOUR_ONE-gated chains (Doc
  * Salvage's distress-ping → follow-up is `beacon_keeper`'s only source, and its
- * head is only ever offered on a day the ship happens to share Sun-3 with Doc —
+ * head is only ever offered on a day the ship happens to share Sol-3 with Doc —
  * so taking it FIRST, rather than whichever offer sorts earliest, is what makes
  * that deed reachable at all). The shipped `veteranPolicy` already answers offers
  * in phase 2; the lean `traderPolicy` does not, so the hunter does it here.
@@ -361,7 +361,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
     // the day's Travel moves the ship out of the system that offered it — so a
     // beat appended AFTER the trader's plan is refused every time. (This is
     // exactly what kept `beacon_keeper` unreachable: Doc's distress-ping is a
-    // Sun-3 offer and the trader leaves Sun-3 on day 1.)
+    // Sol-3 offer and the trader leaves Sol-3 on day 1.)
     const offer = pickOffer(state, need);
     if (offer) actions.unshift(offer);
 
@@ -437,7 +437,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
 
   // --- The Hangout errand (T-1303 gambling + T-1304 lending) ---------------
   // The shipped veteran never flies anywhere without a contract to deliver, and
-  // until T-121 Sun-3 was the ONLY `hasHangout` system — so a career left to
+  // until T-121 Sol-3 was the ONLY `hasHangout` system — so a career left to
   // itself passed the tables perhaps twice in three hundred days and the Dare /
   // Penny Wise deeds went begging. With fourteen core ports now running bars the
   // errand is far less often NEEDED (`atHangout` is true on most docked days), but
@@ -445,8 +445,8 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
   // incidental, and because the errand stops itself the moment the deeds land. When Hangout business is outstanding the hunter
   // makes a DELIBERATE ERRAND of it, exactly as the shipped explorer flies
   // straight to Polaris-1 for the Wise One (T-1310):
-  //   - away from Sun-3 with a free hold → refuel and fly there;
-  //   - at Sun-3 → spend the day AT THE TABLES (a standalone day, the same idiom
+  //   - away from Sol-3 with a free hold → refuel and fly there;
+  //   - at Sol-3 → spend the day AT THE TABLES (a standalone day, the same idiom
   //     the shipped policies use for storylets) so the errand never has to
   //     scavenge whatever die the veteran's trade day left over.
   // It is registry-driven: once the gambling and lending deeds are in the file
@@ -458,7 +458,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
 
   // Only make the trip when the errand can actually be transacted on arrival: a
   // Dare needs a stake, the desk needs either no marker (to borrow) or the price
-  // of clearing the one it has. Flying to Sun-3 to stare at an unaffordable
+  // of clearing the one it has. Flying to Sol-3 to stare at an unaffordable
   // balance just burned days.
   const loanErrand =
     wantsLoan &&

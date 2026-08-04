@@ -45,7 +45,7 @@ describe('T-111 · recoveryReadout', () => {
     // The name comes off `charts`, never off the outcome row — every legacy row's
     // `wireFound` is deliberately empty, so inventing a name here would be fiction.
     expect(readout!.outcomeName).toBe('a gutted freighter hulk');
-    expect(readout!.systemName).toBe('Sun-3');
+    expect(readout!.systemName).toBe('Sol-3');
     expect(readout!.daysRemaining).toBe(3);
   });
 

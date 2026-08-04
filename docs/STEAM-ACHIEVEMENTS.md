@@ -157,7 +157,7 @@ implemented honestly against this API.
 | `DEED_TOLL_PAID` | Toll Paid | A demand was met in credits rather than fire, and both ships flew on. |
 | `DEED_SIGNAL_HUNTER` | Signal Hunter | A fragment of something older than the Confederation entered this captain’s file. |
 | `DEED_COLD_CASE` | Cold Case | Three separate signals said the same impossible thing, and the file stopped being a curiosity. |
-| `DEED_LIARS_DICE_CLEARED_SUN_3` | The Long Table Swept | The last cup at the Long Table came up short, and Sun-3 had nobody left to sit down. |
+| `DEED_LIARS_DICE_CLEARED_SUN_3` | The Long Table Swept | The last cup at the Long Table came up short, and Sol-3 had nobody left to sit down. |
 | `DEED_LIARS_DICE_CLEARED_ALDEBARAN_1` | The Weighbridge Swept | The Weighbridge weighed three losing claims in a row and booked every one of them against the house. |
 | `DEED_LIARS_DICE_CLEARED_ALTAIR_3` | The Waypost Swept | The Waypost’s regulars ran out of dice to hide behind, one bench at a time. |
 | `DEED_LIARS_DICE_CLEARED_ARCTURUS_6` | The Garrison Mess Swept | The Garrison Mess lost its last hand to a civilian, and not one hand went near a sidearm. |

@@ -159,7 +159,7 @@ function fixtureEncounter(): EncounterState {
 /** T-135 · A DAY state carrying an OPEN Liar's Dice hand, produced by the REAL
  *  open arm (`VisitHangout{venue:'dare'}` through `applyPlayerAction`) rather than
  *  by assigning `state.dareHand` — a poked scene would prove nothing about what a
- *  driver actually meets. Sun-3 (id 1) runs tables and seats the whole starting
+ *  driver actually meets. Sol-3 (id 1) runs tables and seats the whole starting
  *  cast, so the first co-located captain is a valid dealer. */
 function openDareHand(): GameState {
   const state = createInitialState(9);
@@ -169,7 +169,7 @@ function openDareHand(): GameState {
   const dealer = state.npcs.find(
     (npc) => !npc.dead && npc.currentSystemId === state.player.currentSystemId,
   );
-  if (!dealer) throw new Error('fixture: no co-located dealer at Sun-3');
+  if (!dealer) throw new Error('fixture: no co-located dealer at Sol-3');
   dealer.credits = 5_000;
   return applyPlayerAction(state, {
     type: 'VisitHangout',
@@ -840,7 +840,7 @@ describe('legal-actions enumerator', () => {
     const dayStarted = handleMessage(opened.session, { type: 'start-day' });
     // T-1102: a fresh ship now starts with a FULL hull-derived tank (300/300), so
     // buy-fuel is not a legal action at game start. Burn some fuel with a clean
-    // jump first (seed 3, Sun-3 → Aldebaran-1 is encounter-free and clears the
+    // jump first (seed 3, Sol-3 → Aldebaran-1 is encounter-free and clears the
     // pilot DC on die 0), leaving 240/300 so the depot has room to sell.
     const afterJump = handleMessage(dayStarted.session, {
       type: 'apply-action',
@@ -1146,7 +1146,7 @@ describe('legal-actions enumerator', () => {
   });
 
   it('T-1303 · advertises VisitHangout at a Hangout system with an in-system NPC', () => {
-    const state = createInitialState(1); // player at Sun-3 (hasHangout); Iron Vex co-located
+    const state = createInitialState(1); // player at Sol-3 (hasHangout); Iron Vex co-located
     state.dayPhase = DayPhase.DAY;
     state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
 
@@ -1190,10 +1190,10 @@ describe('legal-actions enumerator', () => {
   });
 
   it('T-1304/T-145 · with no in-system NPC: lending/rumor AND the roster dare, but not the social beats', () => {
-    const state = createInitialState(1); // Sun-3
+    const state = createInitialState(1); // Sol-3
     state.dayPhase = DayPhase.DAY;
     state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
-    // Scatter every NPC off Sun-3 — no one to face at the tables.
+    // Scatter every NPC off Sol-3 — no one to face at the tables.
     for (const npc of state.npcs) npc.currentSystemId = 5;
 
     const legal = legalActions(state);
@@ -1231,7 +1231,7 @@ describe('legal-actions enumerator', () => {
   });
 
   it('T-145 · a BROKE roster opponent is not advertised at all', () => {
-    const state = createInitialState(1); // Sun-3
+    const state = createInitialState(1); // Sol-3
     state.dayPhase = DayPhase.DAY;
     state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
     // The engine refuses a broke roster opponent with `HangoutEvent
@@ -1250,7 +1250,7 @@ describe('legal-actions enumerator', () => {
   });
 
   it('T-1304 · advertises repay (not borrow) while a loan is active', () => {
-    const state = createInitialState(1); // Sun-3, has Hangout
+    const state = createInitialState(1); // Sol-3, has Hangout
     state.dayPhase = DayPhase.DAY;
     state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
     state.player.loan = {
@@ -1375,7 +1375,7 @@ describe('state summary', () => {
     const summary = buildStateSummary(createInitialState(1));
     expect(summary.credits).toBe(1000);
     expect(summary.debt).toBe(25000);
-    expect(summary.systemName).toBe('Sun-3');
+    expect(summary.systemName).toBe('Sol-3');
     expect(summary.encounter).toBeNull();
     expect(summary.activeContract).toBeNull();
     expect(wireRoundTrip(summary)).toEqual(summary);
@@ -1558,7 +1558,7 @@ describe('T-1604b · F2 poverty/immobility trap', () => {
 // ---------------------------------------------------------------------------
 
 describe('T-1703 · demo gate — legal-actions and the summary', () => {
-  /** A DAY-phase state at Sun-3 (a purchasable port with a Hangout) with money in
+  /** A DAY-phase state at Sol-3 (a purchasable port with a Hangout) with money in
    *  hand, so both gated verbs WOULD be advertised on a full career. */
   function richDayState(edition: 'full' | 'demo', seed = 1703): GameState {
     const state = startDay(createInitialState(seed, edition)).state;

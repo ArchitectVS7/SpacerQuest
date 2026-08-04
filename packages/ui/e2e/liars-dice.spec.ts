@@ -17,11 +17,11 @@ import { DARE_MIN_WAGER } from '@spacerquest/content';
 //      (no `data-face` attribute, no `.d6` cube mounted inside the slot, and the
 //      `dare-dealer-face` class absent from the scene's whole innerHTML).
 //
-// FIXTURE (shared with `hangout.spec.ts`): the player starts at Sun-3 (id 1, the
+// FIXTURE (shared with `hangout.spec.ts`): the player starts at Sol-3 (id 1, the
 // home hall) and the cast's index-0 NPC `npc-iron-vex` starts co-located there on
 // ANY seed — `createInitialState` seats NPCs at `(index % 20) + 1` and `startDay`
 // never moves them (movement is a dusk step), so Iron Vex is a valid, solvent
-// (5000cr) dealer at day-1 dawn. Sun-3 authors NO `wager` override, so its band is
+// (5000cr) dealer at day-1 dawn. Sol-3 authors NO `wager` override, so its band is
 // the default `DARE_MIN_WAGER`–`DARE_MAX_WAGER`; the band is READ off the pane
 // below rather than assumed.
 //
@@ -67,7 +67,7 @@ async function openHand(page: Page): Promise<void> {
   await expect(page.getByTestId('hangout-panel')).toBeVisible();
 
   // The band is the PORT's, read off the pane rather than guessed. The floor keeps
-  // plenty of headroom against Sun-3's ceiling for the antes a hand will charge.
+  // plenty of headroom against Sol-3's ceiling for the antes a hand will charge.
   await expect(page.getByTestId('dare-wager-bounds')).toContainText(`WAGER ${DARE_MIN_WAGER}`);
   await npcRow(page, DEALER).click();
   await page.getByTestId('dare-wager').fill(String(DARE_MIN_WAGER));

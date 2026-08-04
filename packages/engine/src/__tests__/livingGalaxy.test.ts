@@ -331,7 +331,7 @@ describe('N10 · the shared job pool is galaxy-wide, persists, and restocks', ()
 
 describe('N10 · pickContract — each archetype reads a board differently', () => {
   // A board built so every archetype's answer is DIFFERENT and hand-checkable.
-  // Origin is system 1 (Sun-3) throughout.
+  // Origin is system 1 (Sol-3) throughout.
   const OFFERS: CargoContract[] = [
     // 0 — the fattest cheque, in the core, close by.
     { destination: 2, cargoType: 9, payment: 40000, pods: 4 },

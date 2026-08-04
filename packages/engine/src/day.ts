@@ -424,7 +424,7 @@ export function applyPlayerAction(
   }
 
   // T-1303 · Hangout gate. A VisitHangout is only legal at a system flagged
-  // `hasHangout` (Sun-3 first, systems.ts). Elsewhere it is a player-possible act,
+  // `hasHangout` (Sol-3 first, systems.ts). Elsewhere it is a player-possible act,
   // not malformed input — surface a typed ActionBlocked (mirrors the destination
   // gate above: refusal logged, no die spent, no RNG fork, dayEventCount not
   // bumped, no throw). READER of `hasHangout`: this branch (and the sim protocol's
@@ -1306,7 +1306,7 @@ export function endDay(
     // TIMING is safe: the flip is at dusk, AFTER the DAY-phase T-113a Wise One
     // hook (`eras:['TOUR_ONE'] + day:30`) has had its chance to fire, so it is
     // not clobbered; from the day-31 dawn onward all TOUR_ONE-gated storylets
-    // (guild-pressure, the Sun-3 auditor, etc.) go ineligible via the
+    // (guild-pressure, the Sol-3 auditor, etc.) go ineligible via the
     // `trigger.eras` gate. READERS already written against this flip: the
     // storylet eligibility gate (`storylets.ts` triggerMatches, `trigger.eras`)
     // that expires TOUR_ONE content and admits VETERAN content, and

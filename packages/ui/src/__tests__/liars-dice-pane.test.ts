@@ -52,10 +52,10 @@ import {
 // no `.tsx`; the real-clicks half lives in `packages/ui/e2e/liars-dice.spec.ts`.
 // ---------------------------------------------------------------------------
 
-const DEALER = 'npc-iron-vex'; // cast index 0 — co-located at Sun-3 on any seed.
+const DEALER = 'npc-iron-vex'; // cast index 0 — co-located at Sol-3 on any seed.
 const SUN_3 = 1;
 
-/** A live day-1 career at Sun-3, driven through the engine's own day loop — no
+/** A live day-1 career at Sol-3, driven through the engine's own day loop — no
  *  poked phase, no hand-written dawn hand. `createInitialState` seats NPCs at
  *  `(index % 20) + 1` and `startDay` never moves them, so Iron Vex is a valid,
  *  solvent dealer at the home hall on every seed. */

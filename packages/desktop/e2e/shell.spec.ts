@@ -614,7 +614,7 @@ test.describe('T-1702b · Steam Cloud & rich presence', () => {
         { key: 'day', value: '2' },
       ]);
 
-    // …and the quit clears it, so a stale "Day 2 — Sun-3" does not outlive the
+    // …and the quit clears it, so a stale "Day 2 — Sol-3" does not outlive the
     // process on the player's friends list.
     await app.close();
     expect(presenceLog(steamFakeLog).at(-1)).toEqual({ key: 'steam_display', value: null });

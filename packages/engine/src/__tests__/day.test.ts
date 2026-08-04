@@ -94,7 +94,7 @@ describe('Day loop', () => {
   });
 
   it('matches the committed golden across a Storylet action', () => {
-    // Anchors the Storylet action path (Sun-3 guild-auditor is deterministically
+    // Anchors the Storylet action path (Sol-3 guild-auditor is deterministically
     // available on day 1 at seed 555) against committed golden hashes — the
     // coverage the deleted batch-vs-stepped storylet test provided, now guarded
     // by a golden instead of a tautological self-comparison.
