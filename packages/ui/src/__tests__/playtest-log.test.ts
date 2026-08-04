@@ -62,11 +62,15 @@ describe('T-141 · the toggle is a client preference, never save state', () => {
     resetPlaytestLogForTests();
   });
 
-  it('defaults OFF on a virgin profile', () => {
-    // Spec §3: "OFF by default." Discharged by the READ (an absent key is not
-    // `'on'`), not by a constant someone could forget to apply.
+  it('defaults ON on a virgin profile (interim pre-public setting)', () => {
+    // Spec §3's shipped design is OFF by default; the pre-public internal build
+    // deviates to ON (spec header, "INTERIM DEVIATION", 2026-08-03) so a UAT
+    // session isn't lost to a forgotten toggle. Discharged by the READ (an
+    // absent key is not `'off'`), not by a constant someone could forget to
+    // apply. Revert this assertion to `false`/`toBeNull` when reverting the
+    // default for public release.
     expect(storage.getItem(PLAYTEST_LOGGING_KEY)).toBeNull();
-    expect(isPlaytestLoggingEnabled()).toBe(false);
+    expect(isPlaytestLoggingEnabled()).toBe(true);
   });
 
   it('persists through storage.ts’s KeyValueStore, under the sq. prefix', () => {

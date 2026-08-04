@@ -1030,7 +1030,12 @@ in `docs/PLAYER-TRINKETS_SPEC.md` §5.3 and the instrument row in §13 are updat
 fixed instrument; fingerprint discipline stated (instrument moves, rules does not) and the expected
 pinned rows named; gate green.
 
-### T-175 · F-142-1: a merged aggregate carries no `rulesFingerprint`/`gitCommit` — stamp it at write time — `status: TODO` · `coder: opus` · `after: —`
+### T-183 · F-142-1: a merged aggregate carries no `rulesFingerprint`/`gitCommit` — stamp it at write time — `status: TODO` · `coder: opus` · `after: —`
+
+**RENUMBERED (2026-08-03):** this block was filed as `T-175`, colliding with the earlier `T-175`
+(F-160-1, line 886) — two unrelated task blocks sharing one ID, discovered incidentally while
+adding new UAT-feedback tasks below. Renumbered to the next free id; no other file referenced the
+old number (checked).
 
 A `BaselineAggregate` does NOT carry its own `rulesFingerprint`/`gitCommit` —
 `packages/sim/src/balance/aggregate.ts` defines seven top-level keys
@@ -1051,7 +1056,11 @@ freshly merged aggregates renders WITHOUT the "RULESET UNKNOWN" banner; `instrum
 move is paid for with the re-extract and baseline re-pin in the same commit; `rulesFingerprint`
 does NOT move; `docs/TELEMETRY-REPORT_SPEC.md` §3's now-corrected claim matches reality; gate green.
 
-### T-176 · Smuggler contract options are `chosen` more often than they were `offered` — the all-weights-zero corner — `status: TODO` · `coder: opus` · `after: —`
+### T-184 · Smuggler contract options are `chosen` more often than they were `offered` — the all-weights-zero corner — `status: TODO` · `coder: opus` · `after: —`
+
+**RENUMBERED (2026-08-03):** this block was filed as `T-176`, colliding with the earlier `T-176`
+(F-160-2, line 911) — same collision as the T-175→T-183 renumber above. No other file referenced
+the old number (checked).
 
 Real T-140 trace data shows several smuggler contract options are CHOSEN more often than they were
 reachable (`chosen > offered`, share above 100%) — the all-weights-zero corner of the picker handing
@@ -1172,6 +1181,96 @@ distinction is recorded first; then either a per-port `LOAN_DAILY_RATE` multipli
 (read through an accessor, never an `if (systemId === ...)` branch in the engine, per T-133's
 standing rule) with its band pinned by accessor rather than literal, or the alternative is closed
 with the reason recorded in the D7 log; gate green.
+
+---
+
+## M14 — Owner UAT pass 1 feedback (2026-08-03)
+
+Three findings from the owner's first hands-on session (build launched via `npm run dev -w
+@spacerquest/ui` + `npm run dev -w @spacerquest/desktop`, playtest logging **not** enabled for this
+particular pass — the session itself produced no exportable log; these are the owner's direct
+verbal notes, captured per the Bug Discovery Policy rather than left in conversation). All three are
+UX/design, not correctness defects — filed as tasks, not as `F-` findings, because each is
+substantial enough to need its own implementation pass.
+
+### T-185 · Zero audio feedback in play — investigate before rebuilding, then add music — `status: TODO` · `coder: opus` · `after: —`
+
+Owner's read after a live session: "music and sound FX is going to be a must. There is just zero
+feedback, and it is hard to feel like we are playing anything." **This is surprising given what's
+already in the tree**: `packages/ui/src/sound.ts` (T-310, 612 lines) is a fully wired WebAudio SFX +
+ambient system — synthesized cues for relay clicks, key presses, die-spend thunks, jump whoosh,
+combat rattle, a nat-20 flourish and more, dispatched from `store.ts:85`'s
+`for (const cue of sound.cuesForEvents(events)) sound.play(cue)`, with `master`/`sfx`/`ambient`
+buses all unmuted by default (`DEFAULT_MIXER`). So the owner's "zero feedback" is either (a) a real
+bug — cues not firing/not audible in the desktop build, a stuck `AudioContext.suspended` state
+(`resume()` needs a `pointerdown`/`keydown`, per the file header), or a mixer regression — or (b) an
+accurate read that synthesized WebAudio cues, however wired, don't read as "feedback" the way a
+mixed SFX pass and a real score would. **Do not assume which one before checking.**
+
+**UPDATE (owner, 2026-08-03): after this finding was filed, the owner noticed their OS output
+volume was turned all the way down during the UAT session that produced it.** So this specific
+"zero feedback" report may be explained entirely by that, not by a code defect — but it does NOT
+close the investigation step below on its own: confirm the cues are actually audible (fresh session,
+volume up, `AudioContext` not stuck `suspended`) before crediting the OS-volume explanation and
+moving straight to the music ask.
+
+**Accept:** first, confirm whether `sound.ts`'s existing cues are actually audible during normal
+play in the packaged/dev desktop build with system volume confirmed up (repro steps recorded either
+way, including whether OS volume alone explains the original report). If broken, the bug is fixed
+and the fix is verified by ear, not just by a passing unit test. Then — the owner's actual
+ask — add a genuine music/score layer: there is currently no `music` bus, only `master`/`sfx`/
+`ambient` (`sound.ts` `MixerBus`/`DEFAULT_MIXER`), so a looping ambient/dynamic score is new
+surface, not a fix. Follow `sound.ts`'s own constraint (synthesized, zero asset files, CC0) unless
+the owner explicitly waives it for music specifically. Closes with a second owner playtest pass
+confirming the game now "feels like something," not by test count alone — this is a feel finding,
+not one FX events can auto-verify.
+
+### T-187 · No literal walked-through first turn — the existing onboarding coach is contextual, not sequenced — `status: TODO` · `coder: opus` · `after: —`
+
+**ORDERED ABOVE T-186 (2026-08-03) — same reason T-154 was moved above T-158.** T-186 is a human
+ruling gate and halts the whole run when reached; this task has no dependency on it, so it stays
+reachable by keeping it earlier in file order (Select picks the first eligible TODO in file order).
+Do not move this block back below T-186.
+
+Owner's read, after playing without prior design context: "I think what I want out of the early
+turn is to have you literally walk the player through a turn... on rails and with the pop ups...
+There is a lot of cool features in the game, and if I wasn't here designing it with you, I would
+have been entirely lost." **Also a tension worth naming, not silently overriding:** the existing
+onboarding coach (T-311, `App.tsx`'s `onboarding` callout + `format.ts`'s `activeOnboardingPrompt`)
+is explicitly a NON-MODAL, contextual system — the code comment states "no modal tutorial walls" as
+a deliberate guarantee. What's being asked for now is closer to the opposite: a scripted, ordered,
+modal-or-near-modal walkthrough of one specific sequence — dawn hand, taking a contract, assigning a
+die, making the jump, collecting the contract, using Explore, playing one hand of Liar's Dice — "on
+rails," i.e. the player's next legal action is constrained to the scripted one until each step is
+done.
+
+**Accept:** a new-career flow that walks a first-time player through exactly that seven-step
+sequence end to end, gated so each step must be completed (or the walkthrough explicitly skipped by
+the player) before the next unlocks, with a popup/callout at each step naming what to do and why;
+does not remove or replace T-311's later contextual coaching (the two systems can coexist — this one
+scoped to turn one/two only); an explicit "Skip tutorial" affordance exists for a returning/expert
+player load; and a fresh-profile playtest (owner or LLM pilot) confirms a first-time player reaches
+"collect the contract" and "play one Liar's Dice hand" without asking what to do next.
+
+### T-186 · Visual identity reads as monochrome sameness — resolve the tension with the PRD's committed CRT-amber pillar — `status: TODO` · `coder: opus` · `after: —` · `[BLOCKED BY = Owner ruling]`
+
+Owner's read: "the monochrome amber is cool, but everything blends together... even here in an IDE
+there is variety of format and color. We need to do something color-wise, I am not quite sure just
+yet." **This is in direct tension with a COMMITTED design pillar, not a blank slate** —
+`docs/PRD-REIMAGINED.md` §4 states "rendered in committed amber-phosphor CRT style... Duskers-grade
+commitment, not scanline shader on a menu," and `docs/TECH-STACK.md`:164/247-248 name the CRT
+aesthetic as the *reason* Electron and the DOM/WebGL renderer were chosen over alternatives. Silently
+reworking the palette would override an explicit prior commitment the owner made themselves — so
+this is a ruling, not a build-and-ship task, and it starts BLOCKED for exactly that reason.
+
+**Accept (the ruling, first):** the owner reviews candidate directions that add legibility/variety
+*within* the committed CRT-terminal frame (e.g. diegetic per-module accent hues — combat vs. trade
+vs. Hangout rendered as different "instruments" on the one screen, still phosphor-style, still not a
+generic web palette — vs. a harder break from monochrome) before any implementation, ideally via
+`/bakeoff` so the options are compared with mockups rather than argued in prose. Once ruled: `docs/
+PRD-REIMAGINED.md` §4 is updated to match (never silently left to contradict shipped behaviour), the
+chosen direction is implemented (`packages/ui/src/theme.css` and call sites), and a screenshot pass
+confirms it reads as a game, not an IDE-neutral palette bolted onto the existing CRT chrome.
 
 ---
 

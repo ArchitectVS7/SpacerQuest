@@ -5,11 +5,14 @@
 // internal UAT / Alpha / Beta: a tester who hits a dead end or a crash can hand
 // back the exact action stream that produced it, instead of a paraphrase.
 //
-// OFF BY DEFAULT, AND THE DEFAULT IS STRUCTURAL. Every recorder below re-reads
-// {@link isPlaytestLoggingEnabled} at CALL TIME rather than caching a boolean at
-// module scope, so "the player never turned it on" and "the player turned it off
-// mid-session" are the same code path, and a cached `true` cannot outlive the
-// consent that produced it (spec §3).
+// DEFAULT-ON FOR THE PRE-PUBLIC INTERNAL BUILD (owner directive, 2026-08-03) —
+// spec §3's shipped design is OFF by default and MUST be restored to that before
+// any public/Steam release; this is a deliberate, temporary flip for internal
+// UAT so a session isn't lost to a forgotten toggle. Every recorder below
+// re-reads {@link isPlaytestLoggingEnabled} at CALL TIME rather than caching a
+// boolean at module scope, so "the player never touched the toggle" and "the
+// player turned it off mid-session" are the same code path, and a cached `true`
+// cannot outlive the consent that produced it (spec §3).
 //
 // THE SEAM IS `store.ts`'s `applyAction`, not each action thunk. Spec §1 taps
 // "every `PlayerAction` passed to `applyPlayerAction`" — the engine's existing,
@@ -151,14 +154,16 @@ export function playtestSessionId(): string {
 /**
  * Is capture on right now?
  *
- * TOTAL over a blocked or unreadable store: a private-mode browser that throws
- * on `getItem` reads as OFF, which is the safe answer for a consent flag. This
- * mirrors `store.ts`'s `readReducedMotion` exactly — a settings read must never
- * cost a player their turn.
+ * DEFAULT ON for the pre-public build (see the file header) — an absent key
+ * reads as ON, an explicit `'off'` still opts out. A blocked or unreadable
+ * store still reads OFF: a private-mode browser that throws on `getItem` can't
+ * persist a toggle either way, so OFF is the safe answer there. This mirrors
+ * `store.ts`'s `readReducedMotion` — a settings read must never cost a player
+ * their turn.
  */
 export function isPlaytestLoggingEnabled(): boolean {
   try {
-    return storage.getItem(PLAYTEST_LOGGING_KEY) === 'on';
+    return storage.getItem(PLAYTEST_LOGGING_KEY) !== 'off';
   } catch {
     return false;
   }

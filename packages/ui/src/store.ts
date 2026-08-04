@@ -49,9 +49,10 @@ import { storage } from './storage';
 // T-141 · The opt-in playtest log (`docs/PLAYTEST-TELEMETRY_SPEC.md`). Like
 // `sound.ts` and `steam.ts`, a pure CLIENT of what the store already has: it
 // reads the action and the events the engine already returned, owns no rule, and
-// adds no `GameState` field. OFF BY DEFAULT — every recorder re-checks the
-// player's toggle at call time, so with logging off this import costs one
-// `storage.getItem` per action and stores nothing.
+// adds no `GameState` field. Default (on/off) lives in `playtestLog.ts`, not
+// here — every recorder re-checks the player's toggle at call time, so with
+// logging off this import costs one `storage.getItem` per action and stores
+// nothing.
 import * as playtest from './playtestLog';
 // T-1703 · THIS BUNDLE'S EDITION, compiled in by Vite. The store is the only
 // place that stamps it: `newGame` births a career in it, and every load path
@@ -379,8 +380,10 @@ export interface CockpitState {
   /**
    * T-141 · Whether the opt-in playtest log is capturing (spec §3).
    *
-   * OFF BY DEFAULT, persisted under `sq.playtest.logging` through the SAME
-   * `storage.ts` `KeyValueStore` `fx` / `reducedMotion` / `textSize` use. Like
+   * Default is set in `playtestLog.ts` (ON for the pre-public build, per its
+   * file header — revert before public release), persisted under
+   * `sq.playtest.logging` through the SAME `storage.ts` `KeyValueStore`
+   * `fx` / `reducedMotion` / `textSize` use. Like
    * every one of those, this is CLIENT presentation state, NOT `GameState`: a
    * JSON round-trip of game state is unaffected, `CURRENT_SAVE_VERSION` does not
    * move and NO save migration is owed. Spec §3 requires exactly that — the

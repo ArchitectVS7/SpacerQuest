@@ -10,6 +10,14 @@ two share a trace-entry shape (§6) so one analysis pipeline can read both.
 opt-in only, with explicit disclosure copy: **gameplay actions only — no personally
 identifying information, no location.**
 
+**INTERIM DEVIATION (owner directive, 2026-08-03):** the pre-public internal build ships
+with the toggle defaulting **ON** instead, so an internal UAT session isn't lost to a
+forgotten toggle — implemented in `packages/ui/src/playtestLog.ts`'s
+`isPlaytestLoggingEnabled`. Consent, disclosure copy, and opt-out all still work exactly as
+specified below; only the virgin-profile default changed. **This must be reverted to OFF
+before any public/Steam release** — the shipped-design sections below are unchanged and
+remain the source of truth for that release.
+
 ## 0. Platform context
 
 Steam-first, commercial, desktop shell (`docs/TECH-STACK.md` §3, Electron via
