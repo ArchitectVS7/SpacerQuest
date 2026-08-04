@@ -1189,7 +1189,12 @@ front; gate green.
 
 ## M12 — Harvested: sim policies under duress
 
-### T-177 · F-150-2: `smugglerPolicy`'s unguarded Explore loop, and the shared `planPacifistCombat` stall behind it — `status: TODO` · `coder: opus` · `after: —`
+### T-199 · F-150-2: `smugglerPolicy`'s unguarded Explore loop, and the shared `planPacifistCombat` stall behind it — `status: TODO` · `coder: opus` · `after: —`
+
+**RENUMBERED (2026-08-04, discovered by `/orchestrate` mid-run):** this block collided with the
+pre-existing `T-177` (F-160-3, line 1041, part of the T-175/T-176/T-177 trio filed together off
+T-160's bakeoff — see line 522). Same collision class as the T-175→T-183 / T-176→T-184 renumbers
+above; this one was missed at that pass. No other file references the old number (checked).
 
 `smugglerPolicy` in `packages/sim/src/index.ts` carries a byte-identical copy of F-116-1's
 unguarded Explore loop (3,891 of 23,192 queued on a recovery dawn, 17.90% refused), written up at
@@ -1203,12 +1208,27 @@ planner five policies share, moving every fingerprint. Pinned by the tripwire
 queues the refusable Explore, on purpose'), which whoever fixes it must delete deliberately in the
 same change that fixes the combat stall. [harvested: T-150/F-150-2]
 
+**NEW CI EVIDENCE (2026-08-04) — this has escalated from a sim-measured finding to an active CI
+gate failure.** The `/orchestrate` run that committed T-155 (`da1190ec`, pilot/docs only — no
+engine or sim policy file touched) pushed to `redesign/explore-hangout` and the async "Sweep gate"
+GitHub Actions check failed for the first time on this branch (every prior run on this branch was
+green): `assertNoIncomeStall · smuggler · seed 20 · 5 consecutive zero-income days (limit 5)`,
+shard 2/2, run
+[30935230550](https://github.com/ArchitectVS7/SpacerQuest/actions/runs/30935230550). This is the
+same invariant and the same policy as the seed-3 case above, at the exact limit — read as the same
+root cause (this task), newly sampled by CI's seed selection rather than a regression introduced by
+T-155. Left unfixed, this leaves `redesign/explore-hangout`'s HEAD CI red on GitHub; whoever picks
+up this task should confirm seed 20 clears alongside the seed-3 case in the Accept criteria below
+before closing.
+
 **Accept:** the `planPacifistCombat` stall is fixed first (the seed-3 / Sirius-16 / days-45-49 case
-re-run and shown clear), THEN `smugglerPolicy` gains the Explore guard; the tripwire at
-`campaign-policies.test.ts:492` is deleted deliberately in that same commit with the reason stated;
-the poverty-trap invariant holds; the queued-on-recovery-dawn count is re-measured against
-3,891/23,192; every moved fingerprint row is named up front as expected (a shared planner change
-moves them all) and `docs/EXPLORE_REDESIGN.md` §10.3 is updated to fixed; gate green.
+AND the seed-20 case above both re-run and shown clear), THEN `smugglerPolicy` gains the Explore
+guard; the tripwire at `campaign-policies.test.ts:492` is deleted deliberately in that same commit
+with the reason stated; the poverty-trap invariant holds across both seeds; the queued-on-
+recovery-dawn count is re-measured against 3,891/23,192; every moved fingerprint row is named up
+front as expected (a shared planner change moves them all) and `docs/EXPLORE_REDESIGN.md` §10.3 is
+updated to fixed; the Sweep gate CI check on `redesign/explore-hangout` is confirmed green after
+this lands; gate green.
 
 ### T-178 · F-159-2: the fuel-starvation strand no policy branch can escape — the fighter's spend ordering under duress — `status: TODO` · `coder: opus` · `after: —`
 
