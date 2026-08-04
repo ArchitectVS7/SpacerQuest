@@ -554,31 +554,275 @@ body {
   font-size: 12px;
 }
 
-/* fuel-curve readout — a compact instrument strip, tabular data */
-.ship-fuelcurve {
-  display: grid;
-  grid-template-columns: auto 1fr auto 1fr auto 1fr;
-  gap: 2px 8px;
-  align-items: baseline;
-  font-family: var(--font-data);
+/* =========================================================================
+   T-189 · THE SHIP DIAGRAM — an annotated outline where a ledger used to be.
+
+   This block replaced `.ship-fuelcurve`, the flat six-cell instrument strip:
+   its four numbers now hang off the part of the hull they describe, inside
+   `.ship-region` callouts.
+
+   THE ONE STRUCTURAL RULE HERE: the callouts are HTML absolutely positioned
+   over the SVG in PERCENTAGES of the same box the viewBox draws into. That
+   alignment only holds while the svg's rendered box is exactly the viewBox
+   aspect — so the diagram is sized by `max-width` on the wrapper and NEVER by
+   a `max-height` on the svg, which would letterbox it and slide every callout
+   off its region.
+
+   Colour discipline (theme header): one phosphor. Damage is `--ember-hi` plus
+   glow; a dead system is REVERSE VIDEO, the same language as `.ship-reason`.
+   ========================================================================= */
+.shipdiagram {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
   border: 1px solid var(--hair);
-  padding: 6px 8px;
+  background:
+    radial-gradient(120% 90% at 50% 42%, rgba(255, 176, 0, 0.05), transparent 70%),
+    linear-gradient(180deg, #150e07, #0c0805);
 }
-.ship-fuelcurve .fc-k {
+.shipsvg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* --- the hull and its marks --- */
+.ship-mark {
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.ship-mark .hull-outline {
+  stroke: var(--ember);
+  stroke-width: 1.4;
+  fill: rgba(255, 176, 0, 0.05);
+  filter: drop-shadow(0 0 2px rgba(255, 176, 0, 0.35));
+}
+.mark-shields ellipse {
+  stroke: var(--amber-dim);
+  stroke-dasharray: 5 4;
+}
+.mark-pods rect {
+  stroke: var(--ember);
+  stroke-width: 1.2;
+  fill: rgba(255, 176, 0, 0.07);
+}
+.mark-drives rect {
+  stroke: var(--ember);
+  stroke-width: 1.2;
+  fill: rgba(255, 176, 0, 0.12);
+}
+.mark-drives path {
+  stroke: var(--amber-dim);
+  stroke-width: 0.8;
+}
+.mark-navigation path,
+.mark-weapons ellipse,
+.mark-weapons rect {
+  fill: rgba(255, 176, 0, 0.12);
+}
+.rg-leader {
+  stroke: var(--amber-dim);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+.hull-fitting rect {
+  fill: var(--ember);
+  stroke: none;
+  opacity: 0.85;
+}
+
+/* A damaged system lights up on the HULL as well as in its callout — that is
+   the whole point of the diagram: you see WHERE the ship is hurt. */
+.ship-mark.damaged {
+  stroke: var(--ember-hi);
+  filter: drop-shadow(0 0 3px rgba(255, 176, 0, 0.55));
+}
+.ship-mark.damaged rect,
+.ship-mark.damaged ellipse,
+.ship-mark.damaged path {
+  stroke: var(--ember-hi);
+}
+.ship-mark.critical rect,
+.ship-mark.critical ellipse,
+.ship-mark.critical path {
+  fill: var(--ember);
+  stroke: var(--ember-hi);
+}
+
+/* --- the cargo-bay fill meter (texture, not a per-pod count) --- */
+.bay-seg {
+  fill: none;
+  stroke: var(--amber-dim);
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.bay-seg.lit {
+  fill: rgba(255, 176, 0, 0.55);
+  stroke: var(--ember);
+}
+.bay-seg.used {
+  fill: var(--ember-hi);
+  stroke: var(--ember-hi);
+}
+
+/* --- the fuel bar under the drives --- */
+.fuel-bar {
+  pointer-events: none;
+}
+.fb-track {
+  fill: none;
+  stroke: var(--hair);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+.fb-fill {
+  fill: rgba(255, 176, 0, 0.5);
+  stroke: none;
+}
+
+/* --- the callouts: the numbers, AT the region they describe --- */
+.ship-callouts {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+}
+.ship-region {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  display: grid;
+  gap: 0;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  line-height: 1.15;
+  padding: 1px 2px;
+}
+.ship-region.anchor-end {
+  transform: translate(-100%, -50%);
+  text-align: right;
+  justify-items: end;
+}
+.ship-region.anchor-start {
+  transform: translate(0, -50%);
+  text-align: left;
+  justify-items: start;
+}
+.ship-region.anchor-middle {
+  transform: translate(-50%, -50%);
+  text-align: center;
+  justify-items: center;
+}
+.ship-region .rg-label {
   color: var(--amber);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-family: var(--font-display);
+  font-size: 8px;
+  letter-spacing: 0.12em;
 }
-.ship-fuelcurve .fc-v {
+.ship-region .rg-ro {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.ship-region .rg-k {
+  color: var(--amber);
+  font-style: normal;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  margin-right: 3px;
+}
+.ship-region .rg-v {
   color: var(--ember-hi);
-  text-shadow: var(--glow);
   font-weight: 600;
+  text-shadow: var(--glow);
+}
+/* The hold is the hero readout — it is the largest shape on the diagram and it
+   carries the largest numerals, so "how much can I carry" is answered without
+   reading a single label. */
+.ship-region[data-region='pods'] .rg-v {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+.ship-region[data-region='pods'] .rg-label {
+  font-size: 7px;
+}
+.ship-region:hover .rg-v {
+  text-shadow: var(--glow-hi);
+}
+/* Damage speaks in brightness; a dead system speaks in reverse video. Never a
+   second hue (theme header, design commitment 1). */
+.ship-region.damaged .rg-label,
+.ship-region.damaged .rg-k {
+  color: var(--ember);
+}
+.ship-region.damaged .rg-v {
+  text-shadow: var(--glow-hi);
+}
+.ship-region.critical {
+  background: var(--ember);
+}
+.ship-region.critical .rg-label,
+.ship-region.critical .rg-k,
+.ship-region.critical .rg-v {
+  color: #140e07;
+  text-shadow: none;
+}
+
+/* =========================================================================
+   T-189 · THE YARD BENCH — the diagram above is the READOUT, this is the
+   CONTROLS. Framing the grid, the repair-all button and the equipment list
+   inside one labelled tray is what stops them reading as "the ship's state".
+   Nothing is hidden: every row still renders, in full, exactly as before.
+   ========================================================================= */
+.ship-bench {
+  border: 1px solid var(--hair);
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  background: linear-gradient(180deg, rgba(255, 176, 0, 0.03), transparent 40%);
+}
+.ship-bench .bench-head {
+  color: var(--amber);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 4px;
 }
 
 /* component grid */
 .ship-grid {
   display: grid;
   gap: 4px;
+}
+/* T-189 · A click on a hull region lands here: the bench row it controls is
+   scrolled into view and flashes. Static under reduced motion — the border
+   still marks the row, only the bloom is dropped. */
+.comp-row.focused {
+  border-color: var(--ember);
+}
+@media not (prefers-reduced-motion: reduce) {
+  .comp-row.focused {
+    animation: comp-focus 0.7s ease-out 1;
+  }
+}
+@keyframes comp-focus {
+  0% {
+    box-shadow: inset 0 0 0 1px var(--ember-hi);
+    background: rgba(255, 176, 0, 0.18);
+  }
+  100% {
+    box-shadow: none;
+    background: transparent;
+  }
 }
 .comp-row {
   border: 1px solid var(--hair);

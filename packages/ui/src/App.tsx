@@ -38,6 +38,7 @@ import {
   type DareMoveKind,
   type GameState,
   type CheckResult,
+  type ShipComponentId,
   type StoryletOffer,
 } from '@spacerquest/engine';
 import {
@@ -133,6 +134,15 @@ import {
   combatFuelStatus,
   tributeThisRound,
   shipComponents,
+  shipDiagram,
+  ASTRAXIAL_PATH,
+  JUNKER_PATH,
+  SHIP_DIAGRAM_BAY,
+  SHIP_DIAGRAM_BAY_SEGMENTS,
+  SHIP_DIAGRAM_FITTING_ORIGIN,
+  SHIP_DIAGRAM_FUEL_BAR,
+  SHIP_DIAGRAM_GEOMETRY,
+  SHIP_DIAGRAM_VIEWBOX,
   specialEquipmentRows,
   shipyardQuote,
   honorList,
@@ -172,6 +182,9 @@ import {
   type OnboardingMount,
   type ResolutionCeremonyView,
   type ShipComponentRow,
+  type ShipDiagramMark,
+  type ShipDiagramRegion,
+  type ShipDiagramRegionId,
   type SuccessionSummary,
   type WireLogEntry,
   type StoryletChoice,
@@ -3696,6 +3709,226 @@ function Starmap({ state }: { state: CockpitState }) {
   );
 }
 
+// T-189 · One hull mark. The shapes come from `format.ts`'s geometry table; this
+// only chooses the SVG element. Every mark is decorative (`pointer-events: none`
+// in CSS) — the callout div over it is what a player clicks.
+function ShipMark({ mark }: { mark: ShipDiagramMark }) {
+  switch (mark.kind) {
+    case 'rect':
+      return <rect x={mark.x} y={mark.y} width={mark.w} height={mark.h} rx={mark.rx} />;
+    case 'ellipse':
+      return <ellipse cx={mark.cx} cy={mark.cy} rx={mark.rx} ry={mark.ry} />;
+    case 'path':
+      return <path d={mark.d} />;
+  }
+}
+
+/** viewBox unit -> percentage of the diagram box. The SVG is drawn with
+ *  `preserveAspectRatio="xMidYMid meet"` at `width:100%; height:auto`, so its
+ *  box is EXACTLY the viewBox aspect and these percentages land on the same
+ *  point the SVG drew. */
+function pct(v: number, span: number): string {
+  return `${((v / span) * 100).toFixed(3)}%`;
+}
+
+/** The leader line for a region: from the point ON the hull toward its callout,
+ *  stopping `TICK` units short so the line ends at the edge of the text instead
+ *  of running under it. Direction-agnostic, so a callout may sit above, below or
+ *  beside its mark without a second table of endpoints. */
+const LEADER_TICK = 14;
+function leaderEnd(g: { x: number; y: number; labelX: number; labelY: number }): {
+  x: number;
+  y: number;
+} {
+  const dx = g.x - g.labelX;
+  const dy = g.y - g.labelY;
+  const len = Math.hypot(dx, dy);
+  if (len <= LEADER_TICK) return { x: g.x, y: g.y };
+  return { x: g.labelX + (dx / len) * LEADER_TICK, y: g.labelY + (dy / len) * LEADER_TICK };
+}
+
+/**
+ * T-189 · THE SHIP, DRAWN.
+ *
+ * The pane's numbers used to be a ledger: eight table rows plus a flat six-cell
+ * strip, all legible and none of them locatable. Here the same numbers hang off
+ * the part of the hull they describe — the hold's count sits IN the cargo bay,
+ * the fuel curve sits AT the engine bells, the berths sit at the cabin.
+ *
+ * TWO STRUCTURAL CHOICES worth stating, because they are not obvious:
+ *
+ *  · THE CALLOUTS ARE HTML, ABSOLUTELY POSITIONED OVER THE SVG, not `<text>`
+ *    inside it. Two reasons, both hard: (1) SVG text scales with the viewBox, so
+ *    a narrow column would shrink the instrument data below legibility, while
+ *    HTML text stays at its CSS size; (2) `SVGElement` has no `innerText`, and
+ *    `shipyard.spec.ts` reads `fuel-per-jump` with `Number(await ...innerText())`
+ *    — that spec must pass UNMODIFIED, which is the mechanical proof that this
+ *    task re-presented the data rather than losing it.
+ *
+ *  · THE DIAGRAM IS THE READOUT; THE BENCH BELOW IS THE CONTROLS. Clicking a
+ *    region does not buy anything — it scrolls that system's existing bench row
+ *    into view and flashes it. Nothing about the ship model or the purchase path
+ *    changed; this is render-layer only.
+ */
+function ShipDiagram({
+  game,
+  onFocusRegion,
+}: {
+  game: GameState;
+  onFocusRegion: (id: ShipDiagramRegionId) => void;
+}) {
+  const model = shipDiagram(game);
+  const W = SHIP_DIAGRAM_VIEWBOX.width;
+  const H = SHIP_DIAGRAM_VIEWBOX.height;
+  const hullPath = model.hullVariant === 'astraxial' ? ASTRAXIAL_PATH : JUNKER_PATH;
+
+  // The hold meter: TEN segments lit in proportion to the hull's capacity, never
+  // one cell per pod (`maxCargoPods` reaches 100). The exact numerals are in the
+  // callout; the segments are texture, so you can see the hold is nearly empty
+  // without reading a single digit.
+  const bay = SHIP_DIAGRAM_BAY;
+  const segInset = 8;
+  const segPitch = (bay.w - segInset * 2) / SHIP_DIAGRAM_BAY_SEGMENTS;
+  const segLit = Math.round(model.podFill * SHIP_DIAGRAM_BAY_SEGMENTS);
+  const segUsed = Math.min(segLit, Math.round(model.podUseFill * SHIP_DIAGRAM_BAY_SEGMENTS));
+  const segY = bay.y + bay.h - 20;
+  const segH = 10;
+
+  const regionClass = (r: ShipDiagramRegion, base: string): string =>
+    [base, r.critical ? 'critical' : r.damaged ? 'damaged' : ''].filter(Boolean).join(' ');
+
+  return (
+    <div className="shipdiagram">
+      <svg
+        className="shipsvg"
+        data-testid="ship-diagram"
+        data-hull={model.hullVariant}
+        viewBox={model.viewBox}
+        role="img"
+        aria-label={`Ship — ${model.hullVariant} hull, ${model.podsOwned} of ${model.podsMax} cargo pods, ${model.fuel} of ${model.maxFuel} fuel`}
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {model.regions.map((r) => {
+          const g = SHIP_DIAGRAM_GEOMETRY[r.id];
+          return (
+            <g
+              key={r.id}
+              className={regionClass(r, `ship-mark mark-${r.id}`)}
+              data-mark-region={r.id}
+            >
+              <title>{r.title}</title>
+              {r.id === 'hull' && <path className="hull-outline" d={hullPath} />}
+              {g.marks.map((mark, i) => (
+                <ShipMark key={i} mark={mark} />
+              ))}
+              {g.leader && (
+                <line
+                  className="rg-leader"
+                  x1={g.x}
+                  y1={g.y}
+                  x2={leaderEnd(g).x}
+                  y2={leaderEnd(g).y}
+                />
+              )}
+            </g>
+          );
+        })}
+
+        {/* The hold's fill meter, drawn inside the bay it measures. */}
+        <g className="bay-meter" data-testid="bay-meter" data-lit={segLit} data-used={segUsed}>
+          {Array.from({ length: SHIP_DIAGRAM_BAY_SEGMENTS }).map((_, i) => (
+            <rect
+              key={i}
+              className={i < segUsed ? 'bay-seg used' : i < segLit ? 'bay-seg lit' : 'bay-seg'}
+              x={bay.x + segInset + i * segPitch}
+              y={segY}
+              width={segPitch - 2}
+              height={segH}
+            />
+          ))}
+        </g>
+
+        {/* The fuel bar, under the drives it feeds. */}
+        <g className="fuel-bar">
+          <rect
+            className="fb-track"
+            x={SHIP_DIAGRAM_FUEL_BAR.x}
+            y={SHIP_DIAGRAM_FUEL_BAR.y}
+            width={SHIP_DIAGRAM_FUEL_BAR.w}
+            height={SHIP_DIAGRAM_FUEL_BAR.h}
+            rx={2}
+          />
+          <rect
+            className="fb-fill"
+            data-testid="fuel-bar-fill"
+            x={SHIP_DIAGRAM_FUEL_BAR.x}
+            y={SHIP_DIAGRAM_FUEL_BAR.y}
+            width={SHIP_DIAGRAM_FUEL_BAR.w * model.fuelFill}
+            height={SHIP_DIAGRAM_FUEL_BAR.h}
+            rx={2}
+          />
+        </g>
+
+        {/* T-112 salvaged fittings as pips clamped to the hull spine. The named
+            list stays below the diagram, unchanged — these only say "something
+            is fitted, and it is part of this ship". */}
+        {model.fittings.map((f, i) => (
+          <g
+            className="hull-fitting"
+            key={f.id}
+            transform={`translate(${SHIP_DIAGRAM_FITTING_ORIGIN.x + i * SHIP_DIAGRAM_FITTING_ORIGIN.step} ${SHIP_DIAGRAM_FITTING_ORIGIN.y})`}
+          >
+            <title>{f.name}</title>
+            <rect x={-3} y={-3} width={6} height={6} rx={1} />
+          </g>
+        ))}
+      </svg>
+
+      {/* The readouts. `fuel-curve` kept its id here: the flat strip it named is
+          gone, but the four numbers it carried are all in this group. */}
+      <div className="ship-callouts" data-testid="fuel-curve">
+        {model.regions.map((r) => {
+          const g = SHIP_DIAGRAM_GEOMETRY[r.id];
+          const podAttrs =
+            r.id === 'pods'
+              ? {
+                  'data-pods-owned': model.podsOwned,
+                  'data-pods-max': model.podsMax,
+                  'data-pods-in-use': model.podsInUse,
+                }
+              : {};
+          return (
+            <div
+              key={r.id}
+              className={regionClass(r, `ship-region anchor-${g.anchor}`)}
+              data-testid="ship-region"
+              data-region={r.id}
+              data-damaged={r.damaged ? '1' : '0'}
+              data-critical={r.critical ? '1' : '0'}
+              data-strength={r.strength ?? undefined}
+              data-condition={r.condition ?? undefined}
+              {...podAttrs}
+              style={{ left: pct(g.labelX, W), top: pct(g.labelY, H) }}
+              title={r.title}
+              onClick={() => onFocusRegion(r.id)}
+            >
+              <span className="rg-label">{r.label}</span>
+              {r.readouts.map((ro) => (
+                <span className="rg-ro" key={`${r.id}-${ro.key}-${ro.testId ?? ''}`}>
+                  {ro.key !== '' && <i className="rg-k">{ro.key}</i>}
+                  <b className="rg-v" data-testid={ro.testId}>
+                    {ro.value}
+                  </b>
+                </span>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // The ship & shipyard instrument (T-308). A pure CLIENT of the shipyard rules:
 // every price, every before→after projection, and every "disabled, here's why"
 // reason is read from the engine's `quoteShipyard` (via format.ts), and the only
@@ -3708,6 +3941,28 @@ function ShipPane({ state }: { state: CockpitState }) {
   const components = shipComponents(game);
   const equipment = specialEquipmentRows(game);
   const [podQty, setPodQty] = useState(10);
+  // T-189 · The diagram is the readout and the bench below is the controls, so a
+  // click on a hull region has to LAND somewhere: it scrolls that system's bench
+  // row into view and flashes it. Pure presentation — no engine call, no state
+  // shape, and the flash is gated behind `prefers-reduced-motion` in CSS.
+  const [focusedComponent, setFocusedComponent] = useState<ShipComponentId | null>(null);
+  const benchRef = useRef<HTMLDivElement | null>(null);
+  const podsBlockRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (focusedComponent === null) return;
+    const t = window.setTimeout(() => setFocusedComponent(null), 700);
+    return () => window.clearTimeout(t);
+  }, [focusedComponent]);
+  const focusRegion = (id: ShipDiagramRegionId) => {
+    if (id === 'pods' || id === 'fuel') {
+      podsBlockRef.current?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    setFocusedComponent(id);
+    benchRef.current
+      ?.querySelector(`[data-testid="ship-component"][data-component="${id}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  };
 
   // Fuel curve + hold instruments read from any quote's `before` (a pure read of
   // the current ship). Use a cheap no-op-ish repair-all quote just for `before`.
@@ -3744,27 +3999,13 @@ function ShipPane({ state }: { state: CockpitState }) {
         </span>
       </header>
       <div className="body">
-        {/* ---- fuel-curve readout (persistent, auto-updates on drive change) ---- */}
-        <div className="ship-fuelcurve" data-testid="fuel-curve">
-          <span className="fc-k">FUEL/JUMP</span>
-          <span className="fc-v" data-testid="fuel-per-jump">
-            {curve.fuelPerJump}
-          </span>
-          <span className="fc-k">RANGE</span>
-          <span className="fc-v" data-testid="jump-range">
-            {curve.maxJumpDistance}
-          </span>
-          <span className="fc-k">FUEL</span>
-          <span className="fc-v">
-            {ship.fuel.toLocaleString()}/{ship.maxFuel.toLocaleString()}
-          </span>
-          {/* T-1205 cabin → crew capacity: a reader of the cabin component, grows
-              when the cabin is upgraded (T-1306 socket for real crew rules). */}
-          <span className="fc-k">CREW</span>
-          <span className="fc-v" data-testid="crew-capacity">
-            {curve.crewCapacity}
-          </span>
-        </div>
+        {/* ---- T-189 · the ship itself ----
+            This replaced the flat `.ship-fuelcurve` strip, which is why the four
+            ids it carried (`fuel-curve`, `fuel-per-jump`, `jump-range`,
+            `crew-capacity`) now live INSIDE the diagram's regions — the fuel
+            curve at the engine bells, the berths at the cabin. Nothing was
+            dropped: `shipyard.spec.ts` reads `fuel-per-jump` unchanged. */}
+        <ShipDiagram game={game} onFocusRegion={focusRegion} />
 
         {/* ---- T-112 salvaged fittings (explore-granted modules) ----
             Rendered only when something is fitted, so a fresh junker's pane is
@@ -3787,12 +4028,144 @@ function ShipPane({ state }: { state: CockpitState }) {
           </div>
         )}
 
-        {/* ---- component grid ---- */}
-        <div className="ship-grid" data-testid="component-grid">
-          {components.map((c) => (
-            <ComponentRow key={c.id} row={c} game={game} armed={armed} />
-          ))}
+        {/* ---- cargo pods ----
+            T-189 promoted this next to the diagram: the bay is now where a player
+            looks for the hold, so the control that grows it belongs directly under
+            the picture of it rather than four blocks down the ledger. The block
+            itself is untouched (`pods-block` still reads `10/100`). */}
+        <div className="ship-pods-block" data-testid="pods-block" ref={podsBlockRef}>
+          <div className="pods-head">
+            CARGO PODS · <b>{ship.cargoPods}</b>/{curve.maxCargoPods}
+          </div>
+          <div className="pods-controls">
+            <input
+              aria-label="pods amount"
+              data-testid="pods-amount"
+              inputMode="numeric"
+              value={podQty}
+              onChange={(e) => setPodQty(Math.max(1, Number.parseInt(e.target.value, 10) || 1))}
+            />
+            <button
+              className="btn"
+              data-testid="buy-pods"
+              disabled={!armed || !podQuote.ok}
+              title={
+                armed
+                  ? `Buy ${podQty} pods · ${podQuote.cost.toLocaleString()}cr`
+                  : 'Pick a die first'
+              }
+              onClick={() => shipyard({ action: 'buy-cargo-pods', quantity: Math.max(1, podQty) })}
+            >
+              {armed ? `Buy pods · ${podQuote.cost.toLocaleString()}cr` : 'Pick a die to buy'}
+            </button>
+          </div>
+          <div className="pods-preview" data-testid="pods-preview">
+            {podQuote.before.cargoPods} &rarr; <b>{podQuote.after.cargoPods}</b> pods
+          </div>
+          {!podQuote.ok && podQuote.failure && (
+            <span className="ship-reason" data-testid="pods-reason">
+              {shipyardFailureExplanation(podQuote.failure)}
+            </span>
+          )}
         </div>
+
+        {/* ---- T-189 · THE YARD BENCH ----
+            The component grid, the repair-all button and the special-equipment
+            list are all CONTROLS, and framing them under one heading is what stops
+            them reading as "the ship's state" — that job now belongs to the diagram
+            above. Nothing inside is hidden or restyled away: every row, id and
+            button is exactly as it was, because Playwright text assertions fail on
+            hidden elements and because none of it was the problem. */}
+        <div className="ship-bench" data-testid="yard-bench" ref={benchRef}>
+          <div className="bench-head">YARD BENCH · UPGRADE &amp; REPAIR</div>
+          <div className="ship-grid" data-testid="component-grid">
+            {components.map((c) => (
+              <ComponentRow
+                key={c.id}
+                row={c}
+                game={game}
+                armed={armed}
+                focused={focusedComponent === c.id}
+              />
+            ))}
+          </div>
+          <div className="ship-repair-all">
+            <button
+              className="btn"
+              data-testid="repair-all"
+              disabled={!armed || !anyDamaged || !repairAllQuote.ok}
+              title={
+                !anyDamaged
+                  ? 'All systems at full condition'
+                  : armed
+                    ? `Repair every system · ${repairAllQuote.cost.toLocaleString()}cr`
+                    : 'Pick a die first'
+              }
+              onClick={() => shipyard({ action: 'repair', repairMode: 'all' })}
+            >
+              {anyDamaged
+                ? `Repair all · ${repairAllQuote.cost.toLocaleString()}cr`
+                : 'All systems nominal'}
+            </button>
+            {anyDamaged && !repairAllQuote.ok && repairAllQuote.failure && (
+              <span className="ship-reason" data-testid="repair-all-reason">
+                {shipyardFailureExplanation(repairAllQuote.failure)}
+              </span>
+            )}
+          </div>
+
+          {/* ---- special equipment (ALL rows, disabled-not-hidden) ---- */}
+          <div className="ship-equip" data-testid="equipment-list">
+            <div className="equip-head">SPECIAL EQUIPMENT</div>
+            {equipment.map((row) => (
+              <div
+                className={row.owned ? 'equip-row owned' : 'equip-row'}
+                key={row.id}
+                data-testid="equipment-row"
+                data-equipment={row.id}
+                data-owned={row.owned ? '1' : '0'}
+              >
+                <div className="equip-main">
+                  <span className="equip-name">{row.name}</span>
+                  {row.owned ? (
+                    <span className="equip-tag" data-testid="equipment-installed">
+                      INSTALLED
+                    </span>
+                  ) : (
+                    <span className="equip-price">{row.quote.cost.toLocaleString()}cr</span>
+                  )}
+                  <button
+                    className="btn small"
+                    data-testid="buy-equipment"
+                    disabled={row.owned || !armed || !row.quote.ok}
+                    title={
+                      row.owned
+                        ? 'Already installed'
+                        : !armed
+                          ? 'Pick a die first'
+                          : row.quote.ok
+                            ? `Install · ${row.quote.cost.toLocaleString()}cr`
+                            : row.quote.failure
+                              ? shipyardFailureExplanation(row.quote.failure)
+                              : 'Unavailable'
+                    }
+                    onClick={() => shipyard({ action: 'buy-special-equipment', equipment: row.id })}
+                  >
+                    {row.owned ? 'Owned' : 'Install'}
+                  </button>
+                </div>
+                {/* The "exclusion conflict shows why" surface — the typed reason,
+                  rendered rather than hidden, whenever the item can't be bought. */}
+                {!row.owned && row.quote.failure && (
+                  <span className="ship-reason" data-testid="equipment-reason">
+                    {shipyardFailureExplanation(row.quote.failure)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* ---- T-1406 / N6 · Top Gun Honor List ----
             The 1991 board (`sp.top.s`), recovered from this repo's own history, and
             since N1 the FULL 31-WAY BOARD it was in the original: the player plus
@@ -3839,119 +4212,6 @@ function ShipPane({ state }: { state: CockpitState }) {
               >
                 #{t.playerRank}
               </span>
-            </div>
-          ))}
-        </div>
-
-        <div className="ship-repair-all">
-          <button
-            className="btn"
-            data-testid="repair-all"
-            disabled={!armed || !anyDamaged || !repairAllQuote.ok}
-            title={
-              !anyDamaged
-                ? 'All systems at full condition'
-                : armed
-                  ? `Repair every system · ${repairAllQuote.cost.toLocaleString()}cr`
-                  : 'Pick a die first'
-            }
-            onClick={() => shipyard({ action: 'repair', repairMode: 'all' })}
-          >
-            {anyDamaged
-              ? `Repair all · ${repairAllQuote.cost.toLocaleString()}cr`
-              : 'All systems nominal'}
-          </button>
-          {anyDamaged && !repairAllQuote.ok && repairAllQuote.failure && (
-            <span className="ship-reason" data-testid="repair-all-reason">
-              {shipyardFailureExplanation(repairAllQuote.failure)}
-            </span>
-          )}
-        </div>
-
-        {/* ---- cargo pods ---- */}
-        <div className="ship-pods-block" data-testid="pods-block">
-          <div className="pods-head">
-            CARGO PODS · <b>{ship.cargoPods}</b>/{curve.maxCargoPods}
-          </div>
-          <div className="pods-controls">
-            <input
-              aria-label="pods amount"
-              data-testid="pods-amount"
-              inputMode="numeric"
-              value={podQty}
-              onChange={(e) => setPodQty(Math.max(1, Number.parseInt(e.target.value, 10) || 1))}
-            />
-            <button
-              className="btn"
-              data-testid="buy-pods"
-              disabled={!armed || !podQuote.ok}
-              title={
-                armed
-                  ? `Buy ${podQty} pods · ${podQuote.cost.toLocaleString()}cr`
-                  : 'Pick a die first'
-              }
-              onClick={() => shipyard({ action: 'buy-cargo-pods', quantity: Math.max(1, podQty) })}
-            >
-              {armed ? `Buy pods · ${podQuote.cost.toLocaleString()}cr` : 'Pick a die to buy'}
-            </button>
-          </div>
-          <div className="pods-preview" data-testid="pods-preview">
-            {podQuote.before.cargoPods} &rarr; <b>{podQuote.after.cargoPods}</b> pods
-          </div>
-          {!podQuote.ok && podQuote.failure && (
-            <span className="ship-reason" data-testid="pods-reason">
-              {shipyardFailureExplanation(podQuote.failure)}
-            </span>
-          )}
-        </div>
-
-        {/* ---- special equipment (ALL rows, disabled-not-hidden) ---- */}
-        <div className="ship-equip" data-testid="equipment-list">
-          <div className="equip-head">SPECIAL EQUIPMENT</div>
-          {equipment.map((row) => (
-            <div
-              className={row.owned ? 'equip-row owned' : 'equip-row'}
-              key={row.id}
-              data-testid="equipment-row"
-              data-equipment={row.id}
-              data-owned={row.owned ? '1' : '0'}
-            >
-              <div className="equip-main">
-                <span className="equip-name">{row.name}</span>
-                {row.owned ? (
-                  <span className="equip-tag" data-testid="equipment-installed">
-                    INSTALLED
-                  </span>
-                ) : (
-                  <span className="equip-price">{row.quote.cost.toLocaleString()}cr</span>
-                )}
-                <button
-                  className="btn small"
-                  data-testid="buy-equipment"
-                  disabled={row.owned || !armed || !row.quote.ok}
-                  title={
-                    row.owned
-                      ? 'Already installed'
-                      : !armed
-                        ? 'Pick a die first'
-                        : row.quote.ok
-                          ? `Install · ${row.quote.cost.toLocaleString()}cr`
-                          : row.quote.failure
-                            ? shipyardFailureExplanation(row.quote.failure)
-                            : 'Unavailable'
-                  }
-                  onClick={() => shipyard({ action: 'buy-special-equipment', equipment: row.id })}
-                >
-                  {row.owned ? 'Owned' : 'Install'}
-                </button>
-              </div>
-              {/* The "exclusion conflict shows why" surface — the typed reason,
-                  rendered rather than hidden, whenever the item can't be bought. */}
-              {!row.owned && row.quote.failure && (
-                <span className="ship-reason" data-testid="equipment-reason">
-                  {shipyardFailureExplanation(row.quote.failure)}
-                </span>
-              )}
             </div>
           ))}
         </div>
@@ -4065,10 +4325,15 @@ function ComponentRow({
   row,
   game,
   armed,
+  focused = false,
 }: {
   row: ShipComponentRow;
   game: GameState;
   armed: boolean;
+  /** T-189 · Set for ~700ms after its region is clicked on the ship diagram, so
+   *  a click on the hull lands visibly on the bench row that controls it. Pure
+   *  presentation; the flash itself is gated behind `prefers-reduced-motion`. */
+  focused?: boolean;
 }) {
   const upgradeQuote =
     row.nextTier !== null
@@ -4101,7 +4366,9 @@ function ComponentRow({
   // junker (hull str 1 / cond 9, drives str 10, …).
   return (
     <div
-      className={row.damaged ? 'comp-row damaged' : 'comp-row'}
+      className={[row.damaged ? 'comp-row damaged' : 'comp-row', focused ? 'focused' : '']
+        .filter(Boolean)
+        .join(' ')}
       data-testid="ship-component"
       data-component={row.id}
       data-damaged={row.damaged ? '1' : '0'}

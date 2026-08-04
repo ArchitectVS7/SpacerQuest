@@ -1851,6 +1851,428 @@ export function shipComponents(game: GameState): ShipComponentRow[] {
   });
 }
 
+// ===========================================================================
+// T-189 · THE SHIP DIAGRAM — the ledger becomes a ship
+//
+// The ship pane used to be eight table rows and a flat six-cell instrument
+// strip: every number was legible and none of them were LOCATABLE. "How many
+// cargo pods do I have" and "what do my engines burn" were the same act of
+// scanning a column. This model turns the pane's existing readouts into an
+// annotated top-down outline: one region per ship system, each carrying the
+// numbers that belong to THAT part of the hull, at THAT part of the hull.
+//
+// TWO RULES GOVERN THIS BLOCK, and both are load-bearing:
+//
+//  1. IT INVENTS NOTHING. Every strength, condition, effect string, capacity and
+//     berth count below is a re-projection of a reader the pane ALREADY called —
+//     `shipComponents` (engine `componentEffect`), `quoteShipyard(...).before`
+//     (the same no-op repair-all quote the pane's fuel-curve strip read),
+//     `crewRoster`, `fittedModuleRows`, and the raw ship/contract fields. There
+//     is no second derivation of a rule here, so the diagram cannot disagree
+//     with the grid beneath it.
+//
+//  2. THE GEOMETRY IS UI, NOT CONTENT. `SHIP_DIAGRAM_GEOMETRY` is hand-authored
+//     here in `packages/ui` deliberately: `computeRulesFingerprint`
+//     (`packages/sim/src/balance/rules-fingerprint.ts`) hashes
+//     `packages/engine/src` + `packages/content/src` wholesale, so putting a
+//     picture's coordinates in content would stale every balance fixture for a
+//     drawing. Nothing here is a rule; nothing here is persisted.
+//
+// The projection follows `starmapProjection`'s precedent — SVG geometry and the
+// derived readouts are computed in this file and `App.tsx` only renders them —
+// which is what makes the whole surface unit-testable without a DOM.
+// ===========================================================================
+
+/** The ten diagram regions: the eight ship components plus the two instruments
+ *  that have no component of their own (the cargo hold and the fuel load). */
+export type ShipDiagramRegionId = ShipComponentId | 'pods' | 'fuel';
+
+/** One labelled number inside a region's callout. `testId` is set only where a
+ *  spec already reads that number by id — those ids moved onto the diagram with
+ *  the readouts they name, and must stay BARE (the value and nothing else). */
+export interface ShipDiagramReadout {
+  key: string;
+  value: string;
+  testId?: string;
+}
+
+/** A hull mark: the shape (or shapes) drawn for a region, in viewBox units. */
+export type ShipDiagramMark =
+  | { kind: 'rect'; x: number; y: number; w: number; h: number; rx: number }
+  | { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
+  | { kind: 'path'; d: string };
+
+/** Where a region sits on the hull and where its callout hangs. `x`/`y` is the
+ *  leader-line origin ON the hull; `labelX`/`labelY` is the callout anchor. */
+export interface ShipDiagramGeometry {
+  x: number;
+  y: number;
+  labelX: number;
+  labelY: number;
+  anchor: 'start' | 'middle' | 'end';
+  /** False for the two callouts that sit ON their own mark (hold, fuel bar). */
+  leader: boolean;
+  marks: ShipDiagramMark[];
+}
+
+/** One region of the diagram — a part of the ship and the numbers that live at
+ *  it. `componentId` is null for the two non-component instruments. */
+export interface ShipDiagramRegion {
+  id: ShipDiagramRegionId;
+  componentId: ShipComponentId | null;
+  label: string;
+  readouts: ShipDiagramReadout[];
+  /** Component strength / condition (0-9), or null for `pods` / `fuel`. */
+  strength: number | null;
+  condition: number | null;
+  /** Condition below the 9 maximum — the same flag the grid row highlights. */
+  damaged: boolean;
+  /** Condition at zero — the failure state, drawn in reverse video. */
+  critical: boolean;
+  /** Hover text: the long form of what the callout says in shorthand. */
+  title: string;
+}
+
+export interface ShipDiagramModel {
+  hullVariant: 'junker' | 'astraxial';
+  regions: ShipDiagramRegion[];
+  podsOwned: number;
+  podsMax: number;
+  podsInUse: number;
+  /** Owned pods as a fraction of hull capacity, 0..1. Zero (never NaN) when the
+   *  hull holds nothing — an SVG attribute must not receive NaN. */
+  podFill: number;
+  /** Contracted pods as a fraction of the SAME capacity, 0..1. */
+  podUseFill: number;
+  fuel: number;
+  maxFuel: number;
+  fuelFill: number;
+  crewUsed: number;
+  crewBerths: number;
+  fittings: { id: string; name: string }[];
+  viewBox: string;
+}
+
+/**
+ * The diagram's coordinate space — WIDE AND SHORT, and measured rather than
+ * guessed: the ship pane's box in the cockpit's left column is 623 x 220 CSS px
+ * at the suite's 1280x720 viewport (`.col.left`'s ship row is
+ * `minmax(220px, 1fr)`). A tall diagram would eat the whole pane and push the
+ * pods block and the yard bench below the fold, so the ship lies along the long
+ * axis — nose right, engine bells left — with the callouts in the top and bottom
+ * gutters. At the CSS cap of 480px wide the diagram is 156px tall, leaving the
+ * pane's own controls visible beneath it.
+ */
+export const SHIP_DIAGRAM_VIEWBOX = { width: 480, height: 156 } as const;
+
+/** The stock hull, seen from above and lying nose-right: a pointed fore hull, a
+ *  wide cargo midsection (the largest shape on the diagram, deliberately), a
+ *  narrow neck, and a tail block carrying twin engine bells. */
+export const JUNKER_PATH =
+  'M466 78 L440 64 L336 64 L330 46 L196 46 L192 64 L120 64 L120 56 L92 56 ' +
+  'L92 100 L120 100 L120 92 L192 92 L196 110 L330 110 L336 92 L440 92 Z';
+
+/** The Astraxial hull: the same anatomy, longer and swept — the silhouette is
+ *  the ONLY thing the hull upgrade changes here (it changes no readout). */
+export const ASTRAXIAL_PATH =
+  'M472 78 L438 62 L332 60 L326 42 L192 44 L188 62 L114 60 L114 52 L86 52 ' +
+  'L86 104 L114 104 L114 96 L188 94 L192 112 L326 114 L332 96 L438 94 Z';
+
+/** The cargo bay's interior, in viewBox units — the fill meter is drawn inside
+ *  it. Ten segments, NOT one cell per pod: `maxCargoPods` reaches 100, so the
+ *  segments are texture and the callout carries the exact numerals. */
+export const SHIP_DIAGRAM_BAY = { x: 196, y: 46, w: 134, h: 64 } as const;
+export const SHIP_DIAGRAM_BAY_SEGMENTS = 10;
+
+/** The fuel bar, drawn under the engine bells it feeds. */
+export const SHIP_DIAGRAM_FUEL_BAR = { x: 46, y: 114, w: 56, h: 8 } as const;
+
+/** Where the salvaged-fitting pips ride: along the neck's spine, one per fitted
+ *  module. The named list stays below the diagram, unchanged. */
+export const SHIP_DIAGRAM_FITTING_ORIGIN = { x: 132, y: 78, step: 12 } as const;
+
+/**
+ * Where each region lives. Hand-authored, and checked by
+ * `ship-diagram.test.ts`: every region id has an entry, every coordinate is
+ * finite and inside the viewBox, and no two callout anchors stack closer than
+ * the line height (which is what would make the diagram unreadable).
+ */
+export const SHIP_DIAGRAM_GEOMETRY: Record<ShipDiagramRegionId, ShipDiagramGeometry> = {
+  // --- top gutter, read fore-to-aft ---------------------------------------
+  drives: {
+    x: 74,
+    y: 46,
+    labelX: 74,
+    labelY: 22,
+    anchor: 'middle',
+    leader: true,
+    // Twin bells on the tail block — mirrored, so "the engines" is a shape a
+    // player recognises before reading a single digit.
+    marks: [
+      { kind: 'rect', x: 56, y: 46, w: 36, h: 24, rx: 3 },
+      { kind: 'rect', x: 56, y: 86, w: 36, h: 24, rx: 3 },
+      // Grille bars, so a bell reads as an engine rather than a box.
+      { kind: 'path', d: 'M62 52 L86 52 M62 58 L86 58 M62 64 L86 64' },
+      { kind: 'path', d: 'M62 92 L86 92 M62 98 L86 98 M62 104 L86 104' },
+    ],
+  },
+  lifeSupport: {
+    x: 157,
+    y: 64,
+    labelX: 157,
+    labelY: 22,
+    anchor: 'middle',
+    leader: true,
+    marks: [{ kind: 'rect', x: 134, y: 70, w: 46, h: 16, rx: 2 }],
+  },
+  shields: {
+    x: 262,
+    y: 12,
+    labelX: 262,
+    labelY: 22,
+    anchor: 'middle',
+    // The envelope is the whole ship, so the callout sits ON it rather than
+    // pointing at one spot.
+    leader: false,
+    marks: [{ kind: 'ellipse', cx: 262, cy: 78, rx: 214, ry: 66 }],
+  },
+  weapons: {
+    x: 360,
+    y: 64,
+    labelX: 360,
+    labelY: 22,
+    anchor: 'middle',
+    leader: true,
+    marks: [
+      { kind: 'rect', x: 358.5, y: 66, w: 3, h: 12, rx: 1 },
+      { kind: 'ellipse', cx: 360, cy: 78, rx: 10, ry: 7 },
+    ],
+  },
+  navigation: {
+    x: 440,
+    y: 64,
+    labelX: 440,
+    labelY: 22,
+    anchor: 'middle',
+    leader: true,
+    marks: [{ kind: 'path', d: 'M466 78 L438 68 L438 88 Z' }],
+  },
+  // --- bottom gutter -------------------------------------------------------
+  fuel: {
+    x: 74,
+    y: 122,
+    labelX: 74,
+    labelY: 138,
+    anchor: 'middle',
+    leader: false,
+    marks: [
+      {
+        kind: 'rect',
+        x: SHIP_DIAGRAM_FUEL_BAR.x,
+        y: SHIP_DIAGRAM_FUEL_BAR.y,
+        w: SHIP_DIAGRAM_FUEL_BAR.w,
+        h: SHIP_DIAGRAM_FUEL_BAR.h,
+        rx: 2,
+      },
+    ],
+  },
+  robotics: {
+    x: 220,
+    y: 121,
+    labelX: 220,
+    labelY: 138,
+    anchor: 'middle',
+    leader: false,
+    marks: [{ kind: 'rect', x: 205, y: 112, w: 30, h: 9, rx: 2 }],
+  },
+  cabin: {
+    x: 297,
+    y: 121,
+    labelX: 300,
+    labelY: 138,
+    anchor: 'middle',
+    leader: false,
+    marks: [{ kind: 'rect', x: 280, y: 112, w: 34, h: 9, rx: 2 }],
+  },
+  hull: {
+    x: 400,
+    y: 92,
+    labelX: 400,
+    labelY: 138,
+    anchor: 'middle',
+    leader: true,
+    // No mark of its own: the hull IS the silhouette, drawn from the variant
+    // path above and owned by this region's group.
+    marks: [],
+  },
+  // --- inside the bay it measures -----------------------------------------
+  pods: {
+    x: 262,
+    y: 78,
+    labelX: 262,
+    labelY: 72,
+    anchor: 'middle',
+    leader: false,
+    marks: [
+      {
+        kind: 'rect',
+        x: SHIP_DIAGRAM_BAY.x,
+        y: SHIP_DIAGRAM_BAY.y,
+        w: SHIP_DIAGRAM_BAY.w,
+        h: SHIP_DIAGRAM_BAY.h,
+        rx: 2,
+      },
+    ],
+  },
+};
+
+/** The short name printed at each region. Deliberately terse — the long form is
+ *  the hover title, and the authored component name is in the grid below. */
+const SHIP_DIAGRAM_LABEL: Record<ShipDiagramRegionId, string> = {
+  hull: 'HULL',
+  drives: 'DRIVES',
+  cabin: 'CABIN',
+  lifeSupport: 'LIFE',
+  weapons: 'WEAPONS',
+  navigation: 'NAV',
+  robotics: 'ROBOTICS',
+  shields: 'SHIELDS',
+  pods: 'CARGO HOLD',
+  fuel: 'FUEL',
+};
+
+/** A fraction guarded against a zero (or absent) denominator, clamped to 0..1.
+ *  An SVG width/x attribute must never receive NaN. */
+function fill(part: number, whole: number): number {
+  if (!Number.isFinite(part) || !Number.isFinite(whole) || whole <= 0) return 0;
+  return Math.min(1, Math.max(0, part / whole));
+}
+
+/**
+ * The ship diagram model: the pane's existing numbers, re-projected onto the
+ * hull they describe. Pure — reads `game`, mutates nothing.
+ *
+ * READER: `App.tsx` `ShipDiagram`, inside `ShipPane`.
+ */
+export function shipDiagram(game: GameState): ShipDiagramModel {
+  const ship = game.player.ship;
+  // The SAME no-op repair-all quote the pane already used for its fuel curve:
+  // `before` is a pure read of the current ship, so the diagram's capacity /
+  // fuel-curve / berth numbers are the engine's, not the UI's.
+  const curve = quoteShipyard(game.player, {
+    type: 'Shipyard',
+    action: 'repair',
+    repairMode: 'all',
+    spendDie: 0,
+  }).before;
+  const components = shipComponents(game);
+  const roster = crewRoster(game);
+
+  const podsOwned = ship.cargoPods;
+  const podsMax = curve.maxCargoPods;
+  const podsInUse = game.player.activeContract?.pods ?? 0;
+
+  /** The per-component readouts. Every value is a string the engine produced. */
+  const componentReadouts = (row: ShipComponentRow): ShipDiagramReadout[] => {
+    switch (row.id) {
+      // The hull's own effect IS the fuel capacity, and that number already has
+      // a region of its own (the bar under the drives, `300/300`) — so the hull
+      // callout carries only what nothing else says. The long form is still in
+      // the bench row below, verbatim, and in this region's hover title.
+      case 'hull':
+        return [{ key: 'STR', value: `${row.strength}` }];
+      case 'drives':
+        // The two ids that moved off the deleted flat strip; both stay bare
+        // numbers (`shipyard.spec.ts` reads `fuel-per-jump` with `innerText`).
+        return [
+          { key: 'FUEL/JUMP', value: `${curve.fuelPerJump}`, testId: 'fuel-per-jump' },
+          { key: 'RANGE', value: `${curve.maxJumpDistance}`, testId: 'jump-range' },
+        ];
+      case 'cabin':
+        return [
+          { key: 'BERTHS', value: `${roster.berths}`, testId: 'crew-capacity' },
+          { key: 'ABOARD', value: `${roster.berthsUsed}` },
+        ];
+      case 'weapons':
+        return [{ key: 'HP/VOLLEY', value: row.effectNow }];
+      case 'shields':
+        return [{ key: 'ABSORB', value: row.effectNow }];
+      // Two engine strings that are already self-describing ("+0 / x1.00",
+      // "holding") take no key: in a gutter this shallow a redundant word is what
+      // turns a callout back into a ledger line.
+      case 'navigation':
+        return [{ key: '', value: row.effectNow }];
+      case 'lifeSupport':
+        return [{ key: '', value: row.effectNow }];
+      case 'robotics':
+        return [{ key: 'REPAIR', value: row.effectNow }];
+    }
+  };
+
+  // Built by mapping the CONTENT table (via `shipComponents`), never a literal
+  // list, so a ninth component cannot be silently missing from the diagram.
+  const regions: ShipDiagramRegion[] = components.map((row) => ({
+    id: row.id,
+    componentId: row.id,
+    label: SHIP_DIAGRAM_LABEL[row.id],
+    readouts: componentReadouts(row),
+    strength: row.strength,
+    condition: row.condition,
+    damaged: row.damaged,
+    critical: row.condition === 0,
+    title: `${row.name} — strength ${row.strength}, condition ${row.condition}/9 · ${row.effectLabel}: ${row.effectNow}`,
+  }));
+
+  regions.push({
+    id: 'pods',
+    componentId: null,
+    label: SHIP_DIAGRAM_LABEL.pods,
+    readouts: [
+      { key: '', value: `${podsOwned}/${podsMax}` },
+      ...(podsInUse > 0 ? [{ key: 'IN USE', value: `${podsInUse}` }] : []),
+    ],
+    strength: null,
+    condition: null,
+    damaged: false,
+    critical: false,
+    title:
+      podsInUse > 0
+        ? `Cargo hold — ${podsOwned} of ${podsMax} pods fitted, ${podsInUse} loaded`
+        : `Cargo hold — ${podsOwned} of ${podsMax} pods fitted, empty`,
+  });
+
+  regions.push({
+    id: 'fuel',
+    componentId: null,
+    label: SHIP_DIAGRAM_LABEL.fuel,
+    readouts: [
+      { key: '', value: `${ship.fuel.toLocaleString()}/${ship.maxFuel.toLocaleString()}` },
+    ],
+    strength: null,
+    condition: null,
+    damaged: false,
+    critical: false,
+    title: `Fuel — ${ship.fuel.toLocaleString()} of ${ship.maxFuel.toLocaleString()} units`,
+  });
+
+  return {
+    hullVariant: ship.isAstraxialHull === true ? 'astraxial' : 'junker',
+    regions,
+    podsOwned,
+    podsMax,
+    podsInUse,
+    podFill: fill(podsOwned, podsMax),
+    podUseFill: fill(podsInUse, podsMax),
+    fuel: ship.fuel,
+    maxFuel: ship.maxFuel,
+    fuelFill: fill(ship.fuel, ship.maxFuel),
+    crewUsed: roster.berthsUsed,
+    crewBerths: roster.berths,
+    fittings: fittedModuleRows(game).map((m) => ({ id: m.id, name: m.name })),
+    viewBox: `0 0 ${SHIP_DIAGRAM_VIEWBOX.width} ${SHIP_DIAGRAM_VIEWBOX.height}`,
+  };
+}
+
 /** Whether the player already owns a special-equipment item (read from the
  *  ship's install flags — the same booleans the engine sets on purchase). */
 function equipmentOwned(game: GameState, id: SpecialEquipmentId): boolean {

@@ -297,11 +297,55 @@ export async function expectQuitsCleanly(app: ElectronApplication): Promise<void
 // ---- player-level driving (no store, no engine, no save file) ---------------
 
 /**
+ * T-187 · RETIRE THE FIRST-TURN WALKTHROUGH, THROUGH ITS OWN CONTROL.
+ *
+ * WHY THIS EXISTS. T-187 arms a scripted seven-step walkthrough for a genuinely
+ * first-time player — no save in storage — and while its rails are up every
+ * non-scripted pane carries React's `inert`, so a click into one lands on a dead
+ * subtree (Playwright reports it as `<div class="body"> intercepts pointer
+ * events`). EVERY launch in this suite is that boot: a fresh `SQ_SAVE_DIR` and a
+ * fresh Chromium profile is the definition of a first-time player. T-187 made
+ * the same declaration in the web suite (`packages/ui/e2e/support/career.ts`'s
+ * `skipFirstTurnWalkthrough`) for all twenty of its specs but left this suite
+ * out, which is what turned the desktop battery red: the shell tests are about
+ * saves, achievements, cloud and logging, not about the tutorial.
+ *
+ * WHY IT IS A CLICK RATHER THAN THE WEB SUITE'S STORAGE STAMP. The web helper
+ * writes the walkthrough record with `page.addInitScript` before its own
+ * `page.goto('/')`. There is no such seam here — Electron's window has already
+ * navigated by the time `app.firstWindow()` hands it over, and the desktop
+ * backend is a FILE in the save dir, not `localStorage`, so a stamp would mean
+ * this suite writing into a save dir it otherwise only ever reads (the header's
+ * rule: files are read only to assert; every mutation is a click). Pressing the
+ * card's own "Skip tutorial" is the gesture a player who does not want the
+ * tutorial makes, so the suite keeps driving the product rather than its state.
+ *
+ * Tolerant by design and NOT racy: the card renders in the same React pass as
+ * the bezel, so once `day` is on screen the walkthrough is either up or was
+ * never armed (a launch that loads an existing save — every relaunch in this
+ * suite — is by definition not a first-time player's).
+ */
+export async function skipFirstTurnWalkthrough(page: Page): Promise<void> {
+  await expect(page.getByTestId('day')).toBeVisible();
+  const card = page.getByTestId('walkthrough');
+  if ((await card.count()) === 0) return;
+  await page.getByTestId('walkthrough-skip').click();
+  await expect(card).toHaveCount(0);
+}
+
+/**
  * Tour One, start of career — the same four assertions
  * `packages/ui/e2e/support/career.ts`'s `startCareer` makes, minus its
  * `page.goto('/')` (the Electron window is already showing the cockpit).
+ *
+ * The walkthrough is retired FIRST, for the reason {@link
+ * skipFirstTurnWalkthrough} states: `newGame` re-arms only a record that has
+ * never run (`store.ts`), so a skip taken before the roll stays taken through
+ * this career and every relaunch of it.
  */
 export async function startCareer(page: Page, seed: number): Promise<void> {
+  await skipFirstTurnWalkthrough(page);
+
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(seed));
   await page.getByRole('button', { name: 'Roll' }).click();

@@ -1502,7 +1502,7 @@ treatment ship together (spacing changes alone would leave the "imperceptible ju
 open); `docs/PRD-REIMAGINED.md` is updated if the ruling changes the "one screen" travel story;
 gate green.
 
-### T-189 · Ship state panel is an unreadable ledger — replace the number-blur with a real ship diagram — `status: TODO` · `coder: opus` · `after: —`
+### T-189 · Ship state panel is an unreadable ledger — replace the number-blur with a real ship diagram — `status: DONE` · `coder: opus` · `after: —`
 
 Owner's read: "ship state lower left. I want to see an outline of a spaceship. We should see
 numbers associated with certain areas like cargo pods and engines. The whole board right now blurs
@@ -1519,6 +1519,129 @@ curve, salvaged fittings, component damage flags, crew) is not lost, only re-pre
 `ShipPane`'s underlying state or the engine's ship model changes, this is render-layer only; a
 screenshot pass confirms cargo pods and engines are visually locatable at a glance, not just
 readable by scanning a table; gate green.
+
+**DONE (2026-08-04).** The ship pane draws a ship.
+
+**What shipped.** A pure selector `shipDiagram(game)` + a hand-authored `SHIP_DIAGRAM_GEOMETRY`
+table in `packages/ui/src/format.ts` (following `starmapProjection`'s precedent: geometry and
+readouts computed in `format.ts`, `App.tsx` only renders), consumed by a new `ShipDiagram`
+component rendered at the top of `ShipPane` (`packages/ui/src/App.tsx`). The diagram is a
+top-down amber outline lying nose-right — pointed fore hull, a wide cargo bay carrying a
+ten-segment fill meter, a neck, a tail block with twin grilled engine bells, a dashed shield
+envelope — with ten `[data-region]` callouts hung at the part of the hull each describes.
+The flat `.ship-fuelcurve` strip is **deleted**; its four ids moved onto the diagram
+(`fuel-per-jump` / `jump-range` into `[data-region="drives"]`, `crew-capacity` into
+`[data-region="cabin"]`, `fuel-curve` onto the callout group). The pane's body was reordered to
+**diagram → salvaged fittings → cargo pods → `YARD BENCH · UPGRADE & REPAIR` (the grid +
+repair-all + equipment, framed as one tray) → honor list → crew**, which is what stops the grid
+reading as "the ship's state".
+
+**It invents nothing.** Every value is a re-projection of a reader the pane already called —
+`shipComponents` (engine `componentEffect`), the SAME no-op repair-all `quoteShipyard(...).before`
+the old strip read, `crewRoster`, `fittedModuleRows`, `ship.cargoPods`,
+`activeContract.pods`. `shipDiagram` is `(GameState) => model`, mutates nothing.
+
+**Two structural decisions, both load-bearing.** (1) The callouts are **HTML absolutely positioned
+over the SVG in percentages**, not SVG `<text>`: `SVGElement` has no `innerText`, and
+`shipyard.spec.ts:78,83` reads `fuel-per-jump` with `Number(await ...innerText())` — SVG text would
+have forced that spec to change, which is exactly the signal that data was lost. (HTML text also
+does not shrink with the viewBox.) The alignment holds only while the svg's box is the viewBox
+aspect, so the diagram is capped by `max-width`, never `max-height`; that is written into the CSS
+block. (2) **The geometry table lives in `packages/ui`, deliberately.** `computeRulesFingerprint`
+(`packages/sim/src/balance/rules-fingerprint.ts`) hashes `packages/engine/src` + `packages/content/src`
+wholesale and `computeInstrumentFingerprint` hashes `packages/sim/src` — `packages/ui` is in
+**neither**, so this pure-UI change owes **no capstone sweep and no re-extract**; putting a picture's
+coordinates in content would have staled every balance fixture for a drawing. No save-shape change,
+so no migration: `CURRENT_SAVE_VERSION` stays **12**.
+
+**Sizing was measured, not guessed.** The pane's box is **623 x 220 CSS px** at the suite's
+1280x720 viewport (`.col.left`'s ship row is `minmax(220px, 1fr)`). A first pass drew the ship
+vertically at 300x220 and ate the entire pane; the shipped viewBox is **480 x 156** (ship along the
+long axis, callouts in the top/bottom gutters), 155px tall at the 480px cap, leaving the pane's own
+controls in view.
+
+**"Nothing was lost" is proved mechanically:** `shipyard.spec.ts`, `tour-one-death.spec.ts` and
+`walkthrough.spec.ts` pass **UNMODIFIED** (`git status` shows zero changes to any e2e file except
+the new one). Every id they read still resolves: `ship-pane` + rails attrs, `ship-pods`,
+`pods-block`/`pods-amount`/`buy-pods`/`pods-preview`, `ship-component` rows with
+`component-strength`/`data-strength`/`data-condition`, `repair-all`, `equipment-*`,
+`explore-modules`, `honor-list`, `crew-list`.
+
+**Tests added.** `packages/ui/src/__tests__/ship-diagram.test.ts` (15 selector tests: exhaustive
+against content `SHIP_COMPONENTS` so a ninth component cannot be silently dropped; geometry coverage
++ in-bounds + a minimum callout separation guard; "re-projects, invents nothing"; damaged/critical
+flags; pods-in-use; the divide-by-zero guard — `maxCargoPods 0` / `maxFuel 0` give a finite 0, never
+NaN in an SVG attribute; hull variant). `packages/ui/e2e/ship-diagram.spec.ts` (7 tests, all through
+the UI, no API shortcuts): the diagram is an `<svg>` with a `.hull-outline` and exactly 10 regions;
+the hold reads `10/10` with 10 lit meter segments and moves to `10/100` with 1 lit after a hull
+upgrade; **`fuel-per-jump`/`jump-range` resolve as DESCENDANTS of `[data-region="drives"]` and
+`crew-capacity` of `[data-region="cabin"]`** — the mechanical proof of the "positioned AT the region"
+clause; the diagram is live (hull upgrade moves `data-pods-max` 10 → 100, buying pods moves
+`data-pods-owned` 10 → 20, a drives upgrade drops `fuel-per-jump`); a fresh junker is
+`data-damaged="0"` everywhere; a region click flashes its bench row.
+
+**Damaged/critical coverage, stated honestly.** The e2e spec asserts the NOMINAL state only.
+Reaching a damaged component through the UI alone means driving combat or a hazard to a specific
+outcome — a probabilistic multi-day route with no deterministic hook in `e2e/support/career.ts`.
+Since the flags are a pure projection of `shipComponents(game)` (the same read the bench rows already
+render as `data-damaged`), the unit test proves both branches and the e2e proves the wiring; the
+reasoning is written into the spec beside the assertion, not left implicit.
+
+**Screenshot pass (the accept demands one), read and judged.** Two PNGs written to the gitignored
+`packages/ui/test-results/` — `T-189-ship-pane-junker.png` (fresh junker) and
+`T-189-ship-pane-upgraded.png` (after a hull upgrade, +40 pods and a drives upgrade, driven by real
+clicks). **Judgement: yes, at a glance.** The cargo bay is the largest shape on the hull, dead centre,
+carrying the only large numerals on the diagram (`10/10` → `50/100`) over a segment meter that reads
+full-then-half without any digits being read at all; the engines are the only mirrored pair, grilled,
+at the aft end, with `FUEL/JUMP` and `RANGE` hung directly off them and the fuel bar beneath (which
+visibly collapses to a stub when the hull upgrade takes the tank 300/300 → 300/3,000). The first
+geometry pass FAILED this judgement — a vertical 300x220 ship filled the whole pane and pushed every
+control below the fold — and was re-laid horizontally rather than accepted; that iteration is the
+deliverable the accept asked for. No raster art and no new binary of any kind: the silhouette is two
+authored path strings, `git status` shows only `.ts`/`.tsx`/`.css`/`TASKS.md`.
+
+**Gate green:** `npm test` 2,271/2,271 across every workspace (0 failures; the `[gate] t153-bad …
+FAIL` lines are a passing test's own fixture output, not a failure), `npx tsc -b` clean,
+`npm run lint` clean, `npm run format` run BEFORE this write-up then `npm run format:check` clean,
+`npm run test:e2e -w @spacerquest/ui` **131/131**, `npm run test:e2e -w @spacerquest/desktop`
+**8/8**. No sweep run, by the fingerprint argument above.
+
+**Fix round 1 — the desktop shell battery was red, and it was NOT this task's diagram.** The gate
+ran the Electron suite (`packages/desktop/e2e/shell.spec.ts`) and found 6/8 failing, every one of
+them on the same click: `<div class="body"> intercepts pointer events` at `payDebt`. ROOT CAUSE,
+diagnosed by hit-testing the live DOM rather than by reading the diff: the trade pane's
+`debt-ledger` block carries `inert` + `data-rails-off="1"`, so the click lands on a subtree React
+has made non-hit-testable and Playwright names the nearest interactive ancestor. That is **T-187's
+first-turn walkthrough** — its rails are up for a genuinely first-time player, and every desktop
+launch is one (fresh `SQ_SAVE_DIR`, fresh Chromium profile). T-187 declared "not testing the
+first-time flow" in all twenty web specs via `career.ts`'s `skipFirstTurnWalkthrough` **but left
+`packages/desktop/e2e` out**, so the desktop suite has been red since `eed2f3fe` and this gate is
+where it surfaced. Verified on a plain 1280x740 Chromium against the same preview build — the
+diagram is not in the causal path (`packages/desktop` imports nothing from `packages/ui/src`).
+
+**The repair** is the desktop suite's own `skipFirstTurnWalkthrough` (`e2e/support/cockpit.ts`),
+called first thing in `startCareer` so both the dev and packaged specs get it. It presses the
+card's **"Skip tutorial"** control rather than stamping storage: the web helper's `addInitScript`
+seam does not exist here (Electron's window has already navigated when `firstWindow()` hands it
+over) and the desktop backend is a FILE in the save dir, so a stamp would break this suite's
+standing rule that files are read only to assert and every mutation is a click. `newGame` re-arms
+only a record whose status is `off`, so the skip taken before the roll holds for the career and
+every relaunch of it. Nothing was narrowed, skipped or deleted: 8/8 now run and pass.
+
+**Delivered (2026-08-04):** `ShipPane` now draws the ship instead of listing it — a pure
+`shipDiagram(game)` selector plus a hand-authored `SHIP_DIAGRAM_GEOMETRY` table in
+`packages/ui/src/format.ts` feeds a new `ShipDiagram` SVG component in `App.tsx`, with ten
+`[data-region]` callouts (cargo bay meter, twin engines, drives, cabin, etc.) laid over the hull
+and the old flat `.ship-fuelcurve` strip deleted, its ids re-homed onto the diagram so
+`shipyard.spec.ts` and the other untouched e2e specs keep passing unmodified. Unit coverage
+(`ship-diagram.test.ts`) and a UI-driven e2e spec (`ship-diagram.spec.ts`) both landed, plus the
+incidental fix of the desktop suite's `skipFirstTurnWalkthrough` gap surfaced by the gate run. The
+deliberate scope boundary: the diagram proves only the nominal (undamaged) render through the e2e
+layer — reaching a damaged component via the UI alone has no deterministic hook in
+`e2e/support/career.ts`, so that branch is covered by the unit test only, with the reasoning
+written into the spec rather than left implicit; no save-shape, engine, or content change of any
+kind shipped alongside it.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified `MISSING`); oriented from `TASKS.md`, `App.tsx`, `format.ts`, `theme.css`, and the e2e suite inst · attempts=2/4.
 
 ### T-190 · Contract manifest should feel like a discrete, port-bound object, not a permanent fixture — `status: TODO` · `coder: opus` · `after: —`
 
