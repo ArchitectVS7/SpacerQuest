@@ -154,14 +154,6 @@ item, put it in the section where comparable work already lives.
   T-157 UAT pre-brief and the R-series/PARITY-LEDGER row in `TASKS.md`; it must survive T-116's
   deletion. [harvested: T-116/explore-repricing-owner-call]
 
-- **Write the check that fails when the four baseline-of-record pointers disagree:**
-  `packages/sim/src/__tests__/balance-targets.test.ts:103`, standing amendment 1's pointer in
-  `TASKS.md`, `docs/NPC_REDESIGN.md`'s status banner, and `docs/balance/smoke/README.md`'s
-  "current baseline" line. T-116 had to hand-fix the stale `smoke/README.md` line, and T-137
-  hand-caught another stale pointer left by T-131/T-133 — the four-place re-pin is enforced only
-  by a human remembering it. Scheduled as its own task in `TASKS.md`.
-  [harvested: T-116/baseline-pointer-check]
-
 - **The "engine contains no port-specific branch" guarantee is verified only by hand.** T-120's
   Accept was a manual `grep` for `Sun-3` / `systemId === 1` in
   `packages/engine/src/actions/hangout.ts`, and T-123's was a manual

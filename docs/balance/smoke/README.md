@@ -92,17 +92,33 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t160-dealer-fix.json`, re-pinned at T-160
-2026-08-02 — the F-137-1 capstone, which shipped the Liar's Dice OPENING FLOOR and moves
-exactly the `gambler` and `fleet` rows against `t182-reroll-fix`;
+exactly like drift. The current baseline (`baseline-t199-pacifist.json`, re-pinned at T-199
+2026-08-04 — the F-150-2 capstone, which took `assertNoIncomeStall` from 7 violations to 0 and
+moves all eight policy rows except `greedy`;
+before that `baseline-t195-dawn-dice.json` at T-195 — the travel-die bake-off, a real and
+intended broad easing in which all eight policies moved; before that
+`baseline-t188-orbital-3d.json` at T-188 — proven inert for its own changes, its movement being
+T-161's already-accepted `veteranPolicy` fix getting its first capstone; before that
+`baseline-t160-dealer-fix.json` at T-160 — the F-137-1 capstone, which shipped the Liar's Dice
+OPENING FLOOR and moves exactly the `gambler` and `fleet` rows against `t182-reroll-fix`;
 before that `baseline-t182-reroll-fix.json` at T-182 — the F-156-1 `spendDie` capstone, which
 moved `rulesFingerprint` and moved NO number, `balance:diff` from `n13-shipped` reporting
 NOTHING MOVED; before that `baseline-n13-shipped.json` at T-156,
 `baseline-t150-postfix.json` at T-150, `baseline-t148-roster-ladder.json` at T-148
-and `baseline-t137-liars-dice.json` at T-137, and this line was left stale at
-`baseline-t125-hangout.json` through T-131 and T-133 before being corrected at T-137) used
+and `baseline-t137-liars-dice.json` at T-137.) Every capstone in that chain used
 `--milestone-days 21,29,30,41,60,120` over all eight policies including
 `trader-degraded` — the same shape every capstone back to `baseline-r2c-explorer-remit.json`.
+
+**This line has now gone stale twice, and is no longer enforced by hand.** It sat at
+`baseline-t125-hangout.json` through T-131 and T-133 before T-137 caught it; it then went stale
+AGAIN through T-188, T-195 and T-199, each of which re-pinned the baseline without moving this
+pointer (T-199 moved two of the five sites and said so), and was corrected at T-165. That task
+is also why it should not happen a third time:
+`packages/sim/src/__tests__/baseline-pointers.test.ts` reads all five pointer sites — this line,
+`balance-targets.test.ts`'s `BASELINE_OF_RECORD_PATH`, `docs/NPC_REDESIGN.md`'s status banner and
+standing amendment 1, and BR-14's own sentence in `docs/BALANCE-RIG-DECISIONS.md` — and fails
+when any of them disagrees.
+
 Note also that `docs/balance/` keeps every historical capstone: **`baseline-n9-shipped.json`
 is superseded**, and diffing against it reports ~2,000 already-accounted-for fields.
 

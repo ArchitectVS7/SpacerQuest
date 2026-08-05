@@ -1339,7 +1339,7 @@ file move with no behaviour change. Each of the three carries an in-file comment
 engine-hosted **permanently**.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent). · attempts=1/4.
 
-### T-165 · Baseline-of-record pointer consistency check — fail when the four sites disagree — `status: TODO` · `coder: opus` · `after: —`
+### T-165 · Baseline-of-record pointer consistency check — fail when the four sites disagree — `status: DONE` · `coder: opus` · `after: —`
 
 Write the check that catches a stale baseline-of-record pointer. T-137 found
 `docs/balance/smoke/README.md` still pointing at `baseline-t125-hangout.json` — missed by BOTH
@@ -1355,6 +1355,27 @@ This is the task behind the same-named backlog bullet in `TODO.md`.
 **Accept:** a test (or gate step) reads all four pointer sites and fails when any disagrees,
 demonstrated by deliberately de-syncing one and watching it go red; `BASELINE_OF_RECORD_PATH`'s
 comment names all four; gate green.
+
+**Delivered (2026-08-04):** `packages/sim/src/__tests__/baseline-pointers.test.ts`, a new suite
+that reads all FIVE baseline-of-record pointer sites — the task and `TODO.md`'s harvested bullet
+both said four, written before T-182 added BR-14's own sentence as a fifth — and fails when any
+disagrees with the one site a test actually reads at runtime, `balance-targets.test.ts`'s
+`BASELINE_OF_RECORD_PATH`. It was RED ON ARRIVAL: T-188, T-195 and T-199 had each re-pinned the
+baseline while moving only some of the five sites, leaving the status banner, the smoke README,
+and BR-14's own sentence stale (three of five), and this task's own fix re-pinned all five to
+`baseline-t199-pacifist.json` alongside shipping the check. The suite is proven able to go red
+permanently, not just at introduction: `disagreements()` is a pure function driven with seeded-bad
+reading sets (de-synced site, unresolved anchor, four-stale-one-correct), independent of the live
+file contents; a doc-reword that stops an extractor from matching is treated as a failure, not
+agreement; and a totality pass walks every `.md` under `docs/` for the pointer phrases and requires
+each hit be either a checked site or a reasoned `ACKNOWLEDGED_NON_POINTERS` entry, so a sixth
+pointer cannot appear unnoticed the way the fifth did. `BASELINE_OF_RECORD_PATH`'s comment in
+`balance-targets.test.ts` now lists and numbers all five sites and records the check's existence.
+**Deliberate scope boundary:** the check lives under `__tests__`, not `packages/sim/src/balance/`
+— a module there is a hashed instrument source, and adding a pointer-consistency step there would
+move `instrumentFingerprint` and owe a capstone for what is a documentation-consistency check, not
+a rules change; `rulesFingerprint` is unmoved by this task.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
 
 ### T-166 · An Accept criterion citing a precedent commit is never checked against that commit — `status: TODO` · `coder: opus` · `after: —`
 

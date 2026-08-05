@@ -103,6 +103,26 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
+> **BASELINE OF RECORD RE-PINNED AT T-199 (2026-08-04)** to
+> `docs/balance/baseline-t199-pacifist.json` — the **F-150-2** capstone. The shared
+> `planPacifistCombat` no longer plays one stance against an unaffordable tribute, `smugglerPolicy`
+> gains the Explore recovery guard T-150 had to back out, and the rim-strand class (`trader`,
+> `fighter`) is closed structurally by a shared `planHomewardBurn` / `planStrandedExplore`.
+> **PREDICTED BEFORE THE RUN and held:** all eight rows move except `greedy`, which never reaches
+> the changed planner. **The change it exists for is `assertNoIncomeStall`: 7 violations → 0** at
+> 1,000 seeds × 35 days. Fleet deltas are deliberately small — `fleet.tourOneClearRate` 0.6310 ->
+> 0.6320, median final credits 50,813 -> 49,729 (-2.1%), ships lost 411 -> 436 (+6.1%), with the
+> `fighter` row alone falling 14 -> 8 (-42.9%) on its new crippled repair. `rulesFingerprint`
+> **unmoved** at `febc55edd3a94b3f` — T-199 changed `packages/sim/src/index.ts`, the INSTRUMENT,
+> and zero lines under `packages/engine/src`, `packages/content/src` or `packages/ui/src` — while
+> `instrumentFingerprint` `f8a237612f4c38d5` -> `836f9e8804ea2637` and `docsFingerprint`
+> `26e3998c51814e72` -> `f827fddcbb3fa446` (all three transcribed from the T-199-re-extracted
+> `docs/balance/smoke/tiers.json`, `spreads harvested`). `CURRENT_SAVE_VERSION` does NOT move (15):
+> no persisted shape changed. **This block was written at T-165, not at T-199** — T-199 re-pinned
+> only two of the five pointer sites, and this banner was one of the three left stale (see the
+> T-165 note under BR-14 in `docs/BALANCE-RIG-DECISIONS.md`; agreement is now machine-checked by
+> `packages/sim/src/__tests__/baseline-pointers.test.ts`).
+>
 > **BASELINE OF RECORD RE-PINNED AT T-195 (2026-08-04)** to
 > `docs/balance/baseline-t195-dawn-dice.json` — a `/bakeoff` result: the travel die now sets a
 > 0-15% fuel discount (`navDieFuelDiscount`) and a 0-20% encounter-evasion bonus

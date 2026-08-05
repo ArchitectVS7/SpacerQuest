@@ -94,10 +94,26 @@ const TRADER_CLEAR_DAY_MAX = 30;
  *
  * Read from disk rather than imported so that re-pinning the baseline is a data
  * change, not a code change, and so a MISSING or RENAMED baseline fails loudly here
- * instead of silently grading nothing. The path is deliberately the single string
- * that must be updated when the baseline is re-pinned — the same commit that writes
- * the new file updates this line and the pointer in
- * `docs/NPC_REDESIGN.md`'s standing amendment 1.
+ * instead of silently grading nothing.
+ *
+ * THIS IS THE AUTHORITATIVE POINTER — the only one of the five that is READ at
+ * runtime; the other four are prose that describes it. BR-14
+ * (`docs/BALANCE-RIG-DECISIONS.md`) requires the same commit that writes a new
+ * capstone to move ALL FIVE:
+ *
+ *   1. this line;
+ *   2. `docs/NPC_REDESIGN.md` — standing amendment 1's "Baseline of record is …";
+ *   3. `docs/NPC_REDESIGN.md` — the status banner's newest "BASELINE OF RECORD
+ *      RE-PINNED AT T-nnn" block, which goes at the TOP of the banner;
+ *   4. `docs/balance/smoke/README.md` — the "The current baseline (…)" line;
+ *   5. `docs/BALANCE-RIG-DECISIONS.md` — BR-14's own "current baseline of record
+ *      is …" sentence (the fifth site, added at T-182).
+ *
+ * (T-165's task block and `TODO.md` both said FOUR; they predate T-182's fifth.)
+ * Agreement is no longer a matter of anyone remembering: since T-165,
+ * `packages/sim/src/__tests__/baseline-pointers.test.ts` reads all five and fails
+ * when any disagrees — it was RED ON ARRIVAL against three genuinely stale sites
+ * left by T-188, T-195 and T-199.
  */
 // T-199 re-pin (t195-dawn-dice -> t199-pacifist). Same shape, same 8,000 rows, same
 // eight policies, same milestone days: the capstone was re-taken because

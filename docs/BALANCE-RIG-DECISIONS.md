@@ -93,20 +93,35 @@ instead by a gitignored `.scratch/` two-arm probe (the T-116 split) — adding `
 same commit that takes the capstone, so the fixture would record numbers measured under a
 different instrument.
 
-**BR-14 — Re-pinning the baseline of record moves ALL its pointers in the same commit.**
-(T-116, T-125) Under standing amendment 1's "does the baseline describe HEAD?" rule:
-`packages/sim/src/__tests__/balance-targets.test.ts`, amendment 1's own pointer,
+**BR-14 — Re-pinning the baseline of record moves ALL FIVE of its pointers in the same commit,
+and since T-165 a test says so.** (T-116, T-125; fifth pointer added T-182; machine-enforced
+T-165) Under standing amendment 1's "does the baseline describe HEAD?" rule the five sites are
+`packages/sim/src/__tests__/balance-targets.test.ts`'s `BASELINE_OF_RECORD_PATH` (the only one
+read at runtime, and therefore the authoritative one), amendment 1's own pointer,
 `docs/NPC_REDESIGN.md`'s status banner, `docs/balance/smoke/README.md`'s "current
 baseline" line, and — added at T-182 — **this rule's own "current baseline of record"
-sentence below** — with the smoke fixture re-extracted FROM the new capstone file. Recorded
-because the last pointer was missed twice (T-131 and T-133 both left it stale). The current
-baseline of record is `docs/balance/baseline-t182-reroll-fix.json` (8,000 rows, 8 one-indexed
-shards, spreads harvested, `sweepLabel t182-reroll-fix`; re-pinned at T-182 2026-08-02, all
-four pointers moved in the same change — plus THIS line, which is a FIFTH pointer the rule's
-own text carries and which BR-14 did not previously name. T-182 adds it to the list: a rule
-that says "move all the pointers" while its own copy of the baseline name goes stale is the
-failure it exists to prevent. Before that: `baseline-n13-shipped.json`, re-pinned at T-156
-2026-08-02.)
+sentence below** — with the smoke fixture re-extracted FROM the new capstone file. The current
+baseline of record is `docs/balance/baseline-t199-pacifist.json` (8,000 rows, 8 one-indexed
+shards, spreads harvested, `sweepLabel t199-pacifist`; re-pinned at T-199 2026-08-04 — the
+F-150-2 capstone. Before that: `baseline-t195-dawn-dice.json` at T-195, `baseline-t188-orbital-3d.json`
+at T-188, `baseline-t160-dealer-fix.json` at T-160, `baseline-t182-reroll-fix.json` at T-182,
+`baseline-n13-shipped.json` at T-156.)
+
+**BR-14 IS NO LONGER ENFORCED BY A HUMAN REMEMBERING IT — and the record of why is not flattering
+to the rule.** It was recorded in the first place because the smoke README was missed twice
+(T-131 and T-133 both left it stale, T-137 caught it by hand). T-182 then found the rule's own
+sentence stale and added it as a fifth pointer. **T-165 found THREE of the five stale at once** —
+the status banner (two re-pins behind, at `t195-dawn-dice`), the smoke README (three behind, at
+`t160-dealer-fix`) and this rule's own sentence (four behind, at `t182-reroll-fix`) — because
+T-188, T-195 and T-199 each re-pinned the baseline while moving only some of the pointers (T-199's
+own delivery note says plainly that it moved it "in both places that name it", which was two of
+five). A rule violated at three consecutive re-pins is not a rule; it is a hope. So T-165 built
+`packages/sim/src/__tests__/baseline-pointers.test.ts`, which reads all five sites, fails when any
+disagrees, fails just as loudly when a site's anchor sentence is reworded so it stops resolving,
+and holds an allowlist of the `docs/**` files that mention a baseline of record WITHOUT being a
+pointer — so a sixth pointer cannot appear unnoticed the way the fifth did. The test lives under
+`__tests__` deliberately: a module under `packages/sim/src/balance/` would move
+`instrumentFingerprint` and make every future pointer check owe a capstone.
 
 **BR-15 — A known-failing balance target stays an `it.fails` tripwire across every
 re-pin — never converted, never deleted — and the re-pin is explicitly re-read against it in
