@@ -131,6 +131,33 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > one shared path moved. The `.scratch/t125-hangout.ts` lineage is retired
 > (`docs/HANGOUT_REDESIGN.md` §10.7 carries the counter → field map).
 >
+> **BASELINE OF RECORD RE-PINNED AT T-206 (2026-08-05)** to
+> `docs/balance/baseline-t206-captain-voice.json` — a **CONTENT-ONLY** capstone shipping the
+> authored VOICE of the cast: `tableTalk` (2-4 Liar's Dice lines) and `catchphrases`
+> (enter / duringBattle / win / loss) for the 27 captains T-205 carried on its
+> `VOICE_AUTHORING_PENDING` worklist, which is deleted here along with the `waived` branch
+> and the three hygiene rules that policed it. **Presence is now REQUIRED of all 30
+> `NPC_PROFILES` unconditionally**, and still never required of the 11 `QUEST_PROFILES`.
+> 245 authored lines, every one of them distinct across the roster, longest 72 chars against
+> the 120 cap. Same shape as the outgoing capstone: 1,000 seeds × 120 days × 8 policies =
+> 8,000 rows, eight one-indexed shards then `--merge`, `--milestone-days 21,29,30,41,60,120`,
+> spreads harvested. Gate PASS, **0 invariant violations**. One fingerprint moves and one
+> does not, by construction: `rulesFingerprint` `5ae9a5d473827024` → `cbb087860825aa35`
+> (content is hashed WHOLESALE, so prose with no reader still moves it — that is what this
+> capstone pays for, rather than editing a fingerprint or a golden), while
+> `instrumentFingerprint` is **UNMOVED** at `5c230e99648cddee` (nothing under
+> `packages/sim/src` outside `__tests__` was touched) and `docsFingerprint` moves
+> `22c4de362494c36a` → `5ca4979722c55ee1`. `CURRENT_SAVE_VERSION` does NOT move (**16**,
+> re-read live at `packages/engine/src/save.ts:562`): `createInitialState` maps `NpcProfile`
+> into `NpcState` field by field with no spread, so nothing new reaches a persisted record
+> and no migration or round-trip test is owed. **`balance:diff` = "NOTHING MOVED. Every
+> compared field is equal on both sides"** — PREDICTED IN WRITING BEFORE THE RUN (`TASKS.md`
+> T-206), and the only correct result for data nothing reads until T-207: a moved
+> `outcomeHash` or a moved policy row would have meant something consumes the profile object
+> wholesale, and was pre-committed as a FINDING to escalate rather than a thing to
+> re-baseline around. The re-extracted fixture moves exactly four lines — the two
+> fingerprints, `sweepLabel` and `gitCommit` — with every tier number byte-identical.
+>
 > **BASELINE OF RECORD RE-PINNED AT T-204 (2026-08-05)** to
 > `docs/balance/baseline-t204-cantina-rename.json` — a **TEXT-ONLY** capstone shipping the
 > player-facing rename of "Hangout" to "Cantina". Scoped deliberately narrow: authored PROSE
@@ -2555,7 +2582,21 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t204-cantina-rename.json`** (1,000
+   > **Baseline of record is `docs/balance/baseline-t206-captain-voice.json`** (1,000
+   > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-206 2026-08-05 — a
+   > CONTENT-ONLY capstone shipping the cast's authored VOICE: `tableTalk` and the four
+   > `catchphrases` slots for the 27 captains T-205 left on its `VOICE_AUTHORING_PENDING`
+   > worklist, which T-206 deletes along with the branch that read it, so voice is now
+   > required of all 30 `NPC_PROFILES` unconditionally. `rulesFingerprint` moves
+   > `5ae9a5d473827024` → `cbb087860825aa35` (content is hashed wholesale, so authored prose
+   > moves it even with no reader until T-207); `instrumentFingerprint` does NOT (unmoved at
+   > `5c230e99648cddee`). **EVERY POLICY ROW IS BYTE-IDENTICAL** — `balance:diff` reported
+   > "NOTHING MOVED. Every compared field is equal on both sides" — PREDICTED IN WRITING
+   > BEFORE THE RUN (`TASKS.md` T-206), where a moved row was pre-committed as a finding to
+   > escalate rather than something to re-baseline around. Gate PASS, 0 invariant violations.
+   > `CURRENT_SAVE_VERSION` unmoved at 16 (re-read live at `packages/engine/src/save.ts:562`);
+   > no persisted shape changed, so no migration is owed.
+   > Before that: **`docs/balance/baseline-t204-cantina-rename.json`** (1,000
    > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-204 2026-08-05 — a
    > TEXT-ONLY capstone shipping the player-facing "Hangout" → "Cantina" rename (prose string
    > values only; no rule, DC, band, threshold or code path changed). `rulesFingerprint` moves

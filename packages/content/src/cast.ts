@@ -76,8 +76,9 @@ export interface NpcProfile {
    * `castValidation.ts` enforces it here for the same reason.
    *
    * OPTIONAL, AND THAT IS A DECISION (T-205), not laxity — the same shape as
-   * `bondHook` above. On the 30 `NPC_PROFILES` it is REQUIRED in practice: the
-   * validator demands it of every captain not on its T-206 worklist. On the 11
+   * `bondHook` above. On the 30 `NPC_PROFILES` it is REQUIRED, unconditionally and
+   * with no exceptions, since T-206 authored the last of them and deleted the
+   * `VOICE_AUTHORING_PENDING` worklist that had carried the unauthored rows. On the 11
    * `QUEST_PROFILES`, which reuse this interface, it is ABSENT BY DESIGN and is
    * never given a placeholder or an empty array: a quest captain takes no
    * simulated turn ({@link isSimulatedCaptain}), is never dealt a roaming Liar's
@@ -223,6 +224,26 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
      *  captain on the roster): the broad, seasoned game the archetype names */
     archetype: 'veteran',
     bondHook: { beat: 'drive-off', activateAt: 3, dc: 12 },
+    /** T-206 · VETERAN, Order, sworn to the Astro League, Overcautious at flawDc 10 — the
+     *  most disciplined line on the roster. He speaks in doctrine and procedure, and a
+     *  loss is a fault in the procedure rather than a run of bad luck. */
+    tableTalk: [
+      'A hand is a formation. Hold the line and the line holds you.',
+      'I raise when the numbers permit it. Not one moment before.',
+      'Sit up. This table keeps standards, even out here.',
+    ],
+    catchphrases: {
+      enter: [
+        'Iron Curtain on station. Identify yourself and stand down.',
+        'This lane is League-protected. You are trespassing in it.',
+      ],
+      duringBattle: [
+        'Steady. Doctrine wins engagements. Temper loses them.',
+        'Correcting. Hold fire until I call it.',
+      ],
+      win: ['Logged, filed, closed. Move along.'],
+      loss: ['A procedural failure. Mine. It will be reviewed.'],
+    },
   },
   {
     id: 'npc-nova-blitz',
@@ -235,6 +256,20 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 15,
     tier: 3,
     archetype: 'fighter',
+    /** T-206 · FIGHTER, Glory, Rebel Alliance, Reckless at flawDc 15 — the young one, still
+     *  CHASING a name. Compare Crimson Hawk below, who already has one and defends it:
+     *  same ideal, same faction, same flaw, opposite position in a career. */
+    tableTalk: [
+      'I never fold. Folding is how nobody learns your name.',
+      'Push it. Bored captains lose more than broke ones.',
+      'Someday they sing about this hand. Make it worth singing.',
+    ],
+    catchphrases: {
+      enter: ['Supernova, burning in! Try to keep up.', 'Finally. Somebody worth the fuel.'],
+      duringBattle: ['Faster! Always faster!', 'Did you see that? Tell me you saw that.'],
+      win: ['Write the name down. Nova Blitz. Spell it right.'],
+      loss: ['Again. Right now, again!'],
+    },
   },
   {
     id: 'npc-black-tide',
@@ -249,6 +284,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     /** N4 · tier 5 and rules a faction — a career, not a specialism; GUNS 4 + GRIT 4 + GUILE 2
      *  fights, endures and negotiates, which is the veteran stance exactly */
     archetype: 'veteran',
+    /** T-206 · VETERAN, Power, RULES the Space Dragons, Cruel at flawDc 12. Quiet, unhurried,
+     *  and more interested in the other captain's discomfort than in the pot. */
+    tableTalk: [
+      'Sit. I enjoy watching a captain work out what they can afford to lose.',
+      'The Dragons do not bluff. We wait, and you spend.',
+      'Keep talking. It tells me more than your bid ever will.',
+    ],
+    catchphrases: {
+      enter: ['Undertow. You never feel it pulling until it is far too late.'],
+      duringBattle: [
+        'Slower. I want to watch this part.',
+        'Shout if it helps. Nobody out here is listening.',
+      ],
+      win: ['Leave them adrift. Adrift teaches better than dead.'],
+      loss: ['Enjoy it. I remember every face I am shown.'],
+    },
   },
   {
     id: 'npc-frost-helm',
@@ -263,6 +314,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     /** N4 · the flattest stat line in the cast (3/2/3/3/0) under a Logic ideal and flawDc 10 —
      *  a methodical all-rounder, not a specialist trader */
     archetype: 'veteran',
+    /** T-206 · VETERAN, Logic, Rebel Alliance, Rigid at flawDc 10. Probability and procedure
+     *  end to end; nothing he says carries a temperature, including the loss. */
+    tableTalk: [
+      'Every bid is a probability wearing a costume.',
+      'I do not read faces. A face is noise with eyebrows.',
+      'The correct play is rarely the entertaining one. I make it regardless.',
+    ],
+    catchphrases: {
+      enter: ['Glacier, engaging. Your approach vector was predictable.'],
+      duringBattle: [
+        'Your pattern repeats on the third pass. Adjusting.',
+        'Emotion is a targeting error.',
+      ],
+      win: ['Outcome consistent with the estimate.'],
+      loss: ['My variance estimate was wrong. Noted and corrected.'],
+    },
   },
   {
     id: 'npc-atlas-prime',
@@ -275,6 +342,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 12,
     tier: 3,
     archetype: 'trader',
+    /** T-206 · TRADER, Industry, Warlord Confed, Slothful at flawDc 12. Everything is tonnage
+     *  and schedule, and he would rather be doing none of it. */
+    tableTalk: [
+      'Deal slowly. I am in no hurry and neither is my freight.',
+      'A full hold pays whether I am awake for it or not.',
+      'The Confed likes tonnage. I like naps.',
+    ],
+    catchphrases: {
+      enter: ['Titan Haul, laden and slow. Must we really do this?'],
+      duringBattle: [
+        "This is a great deal of effort for somebody else's tonnage.",
+        'Wake me when the shooting part is over.',
+      ],
+      win: ['Salvage it later. It is not going anywhere.'],
+      loss: ['Take the hold. Just do not make me file the report.'],
+    },
   },
   {
     id: 'npc-crimson-ace',
@@ -287,6 +370,26 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 13,
     tier: 4,
     archetype: 'fighter',
+    /** T-206 · FIGHTER, Excellence, Rebel Alliance, Prideful at flawDc 13. Duelist's courtesy
+     *  stretched over a superiority complex — he compliments you as an inferior, and a
+     *  loss is an error to be corrected rather than a defeat. */
+    tableTalk: [
+      'You play well. For someone at your level.',
+      'Excellence is a habit. I practise it even in here.',
+      'I will tell you when you make a good bid. It should be quiet tonight.',
+    ],
+    catchphrases: {
+      enter: [
+        'Red Baron. I am told you fly. Show me.',
+        'A duel, then. Do try to make it memorable.',
+      ],
+      duringBattle: [
+        'Better. Still not good.',
+        'You fly to survive. That is precisely why you will not.',
+      ],
+      win: ['A clean pass. Salute them — they earned the ending.'],
+      loss: ['An error. Mine. It will not survive to a second meeting.'],
+    },
   },
   {
     id: 'npc-zero-risk',
@@ -299,6 +402,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 15,
     tier: 2,
     archetype: 'trader',
+    /** T-206 · TRADER, Survival, Astro League, Cowardly at flawDc 15. Hedged everything; talks
+     *  in insurance and exits, and opens a fight by negotiating his withdrawal from it. */
+    tableTalk: [
+      'I hedge. It is not glamorous, but I am still here.',
+      'Small bets, long life. Ask the loud ones how they are getting on.',
+      'Before we start — where are the exits?',
+    ],
+    catchphrases: {
+      enter: ['Safe Haven here. Fully insured, and entirely willing to leave.'],
+      duringBattle: [
+        'Withdrawing! Note for the record that I withdrew politely.',
+        'Can we talk about this? I have League forms that say we can.',
+      ],
+      win: ['I survived. That was the entire plan.'],
+      loss: ['Take it. Take all of it, and let me go.'],
+    },
   },
   {
     id: 'npc-neon-fox',
@@ -311,6 +430,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 14,
     tier: 4,
     archetype: 'gambler',
+    /** T-206 · GAMBLER, Advantage, loyal to NO ONE, Treacherous at flawDc 14 on GUILE 5. Every
+     *  friendly line has a hook in it, and betrayal is framed as sound commerce. */
+    tableTalk: [
+      'Friends at the table, strangers at the payout. Everyone gets something.',
+      'I would never cheat you. I would simply be better informed.',
+      'Trust me exactly as far as this stays profitable for both of us.',
+    ],
+    catchphrases: {
+      enter: ['Trickster, and no hard feelings. This is only business.'],
+      duringBattle: [
+        'I sold your route to three people. One of them paid extra.',
+        'Do not take it badly. You were merely the smaller offer.',
+      ],
+      win: ['Pleasure doing business. Do not look me up.'],
+      loss: ['Ah. Then I back you. I have always backed you.'],
+    },
   },
   {
     id: 'npc-warp-hound',
@@ -323,6 +458,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 14,
     tier: 3,
     archetype: 'explorer',
+    /** T-206 · EXPLORER, Discovery, Rebel Alliance, Wanderlust at flawDc 14 on GUNS 0 — he
+     *  fights only in order to leave, and is already thinking about the next jump. */
+    tableTalk: [
+      'One hand, then I am gone. There is a system out there nobody has named.',
+      'I play fast. Sitting still gives me a rash.',
+      'Bid, call, whatever you like. My engines are already warm.',
+    ],
+    catchphrases: {
+      enter: ['Lightchaser. I carry no guns and no interest. Let me past.'],
+      duringBattle: [
+        'I am not fighting you, I am leaving you.',
+        'Plotting out. Enjoy the empty sky.',
+      ],
+      win: ['You chased. That was the mistake.'],
+      loss: ['Fine, strip it. Somewhere out there is a sky I have not seen.'],
+    },
   },
   {
     id: 'npc-gold-rush',
@@ -335,6 +486,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 15,
     tier: 4,
     archetype: 'trader',
+    /** T-206 · TRADER, Opulence, Warlord Confed, Greedy at flawDc 15 — greed as APPETITE. Dust
+     *  Devil below is greedy too, out of thinness; this one wants the whole pot and says so. */
+    tableTalk: [
+      'I want the pot. All of it. Do not make this awkward.',
+      'Half a fortune is just a fortune somebody gave up on.',
+      'Bet it all. Then bet the thing you were saving.',
+    ],
+    catchphrases: {
+      enter: ['Vault Breaker. Open your holds and we can skip the shouting.'],
+      duringBattle: [
+        'More. There is always more in there.',
+        'I can hear the clamps. Do not lie to me.',
+      ],
+      win: ['Everything. I did say everything.'],
+      loss: ['You took my share. I take that personally.'],
+    },
   },
   // The 10 New Cast Members (minus 3 extracted) = 7
   {
@@ -348,6 +515,20 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 15,
     tier: 1,
     archetype: 'explorer',
+    /** T-206 · EXPLORER, Truth, loyal to the cosmos, Distracted at flawDc 15 — tier 1, GUNS 0.
+     *  The sky is more interesting than the table or the fight, and she loses the thread
+     *  mid-line. Star Chaser below is distracted too, but FORWARD — impatient, not dreamy. */
+    tableTalk: [
+      'Sorry, did you bid? There is a variable star doing something remarkable.',
+      'Truth lives in the spectrum. In here it is mostly lying.',
+      'I lose a great deal. I am not really present.',
+    ],
+    catchphrases: {
+      enter: ['Observatory. Please do not shoot, my instruments are irreplaceable.'],
+      duringBattle: ['You are occluding my view!', 'Hold on, I have to save this reading.'],
+      win: ['Oh. Did I do that? I was somewhere else entirely.'],
+      loss: ['That is quite all right. The sky was better anyway.'],
+    },
   },
   {
     id: 'npc-the-warden',
@@ -363,6 +544,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
      *  deed-chaser, which is what the sim's veteran policy is. Justice vetoes Trade outright,
      *  so the blend leaves them on Combat and Patrol without an archetype needing to say so */
     archetype: 'veteran',
+    /** T-206 · VETERAN, Justice, HUNTS for the Astro League, Relentless at flawDc 13. Procedural
+     *  bounty work: he reads charges rather than banter, and a loss only resets a pursuit. */
+    tableTalk: [
+      'I am not here to socialise. I am here because you are.',
+      'Bid. I have read your file, so very little you do will surprise me.',
+      'Justice is patient. So is the seat I am in.',
+    ],
+    catchphrases: {
+      enter: [
+        'Lockdown. Cut your engines and present your registry.',
+        'You carry outstanding charges. I am the collection.',
+      ],
+      duringBattle: ['Resisting adds a count to the list.', 'Nobody has ever outrun a warrant.'],
+      win: ['Cuffed and logged. The League will see you shortly.'],
+      loss: ['The pursuit resumes tomorrow. It always does.'],
+    },
   },
   {
     id: 'npc-nebula-rose',
@@ -377,6 +574,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     /** N4 · TRADE 4 beside GUILE 4, a Beauty ideal weighted on Socialize, and a bond that
      *  literally reads "loves high society" — the Hangout is her venue, not the manifest board */
     archetype: 'gambler',
+    /** T-206 · GAMBLER, Beauty, loves high society, Vain at flawDc 12. Salon manners at the
+     *  table: she cares how the hand LOOKED, and losing badly offends her more than losing. */
+    tableTalk: [
+      'Darling, a bid ought to have some elegance. Yours has none.',
+      'I play for the story. The credits are a lovely accessory.',
+      'Do sit where the light is kinder. Consider it a gift.',
+    ],
+    catchphrases: {
+      enter: ['Stardust — and really, must we? I have only just had the hull redone.'],
+      duringBattle: [
+        'You have scratched the paint. That is unforgivable.',
+        'Do try to lose gracefully, at least.',
+      ],
+      win: ['Beautifully done, if I say so. And I do.'],
+      loss: ['Ugly. Not the losing — the manner of it.'],
+    },
   },
   {
     id: 'npc-the-phantom',
@@ -391,6 +604,20 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     /** N4 · tier 5, PILOT 5, TRADE 0, and a Mystery ideal already weighted Travel 5 — nothing
      *  about this captain trades, and "loyal to the unknown" is the explorer's remit */
     archetype: 'explorer',
+    /** T-206 · EXPLORER, Mystery, loyal to the unknown, Enigmatic at flawDc 10 — the FEWEST
+     *  words on the roster, answering nothing directly. Neon Shade shares the Mystery ideal
+     *  and is the opposite temperament: nervy and watching the door, where this is serene. */
+    tableTalk: [
+      'You may call. You will not know.',
+      'Ask the hall about me. The hall will invent something.',
+      'I was not here. Neither, I think, were you.',
+    ],
+    catchphrases: {
+      enter: ['You saw nothing.'],
+      duringBattle: ['Still nothing.'],
+      win: ['As expected. By me.'],
+      loss: ['Ah. So you were real after all.'],
+    },
   },
   {
     id: 'npc-crash-override',
@@ -403,6 +630,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 13,
     tier: 3,
     archetype: 'gambler',
+    /** T-206 · GAMBLER, Control, loyal to the datastream, Arrogant at flawDc 13. The arrogance
+     *  is TECHNICAL — machine metaphor throughout — where Solar Flare's is pure swagger. */
+    tableTalk: [
+      'Your tell compiles cleanly. Mine does not exist.',
+      'I have already run this hand. You lose in most branches.',
+      'Control is knowing the output before the input has finished.',
+    ],
+    catchphrases: {
+      enter: ['Syntax Error. Your fire control is running a patch I wrote.'],
+      duringBattle: [
+        'Rerouting. You are three cycles behind me.',
+        'That was not luck. That was a subroutine.',
+      ],
+      win: ['Process terminated. Rather cleanly, I thought.'],
+      loss: ['An exception. Unhandled. I will patch it.'],
+    },
   },
   {
     id: 'npc-the-chef',
@@ -418,6 +661,19 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
      *  mechanical signature (`executeTrade`'s rim preference), and this is the captain it was
      *  authored for */
     archetype: 'smuggler',
+    /** T-206 · SMUGGLER, Flavor, feeds the rim, Perfectionist at flawDc 12. Kitchen vocabulary
+     *  end to end: a fight is a badly-run service and a loss is a dish sent back. */
+    tableTalk: [
+      'Sit, eat, then bid. In that order or not at all.',
+      'A hand is a sauce. Rush it and everyone tastes the panic.',
+      'The rim eats what I carry. That is worth more than any pot.',
+    ],
+    catchphrases: {
+      enter: ['Bistro, inbound. My service is running and you are late for it.'],
+      duringBattle: ['You are burning my galley!', 'Out of my kitchen.'],
+      win: ['Plated. Send it back and I will do worse.'],
+      loss: ['Sent back, then. I will remake it better.'],
+    },
   },
   {
     id: 'npc-junk-lord',
@@ -432,6 +688,19 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     /** N4 · GUNS 3, TRADE 3, GRIT 4 under a Possession ideal — a scrapyard baron who fights,
      *  hauls and holds ground rather than doing one of the three */
     archetype: 'veteran',
+    /** T-206 · VETERAN, Possession, ruler of the scrap yards, Possessive at flawDc 13. Everything
+     *  in view is already his, including the player's hull; he values wrecks over credits. */
+    tableTalk: [
+      'That pot is mine. It has been mine since you sat down.',
+      'I do not collect credits. I collect things.',
+      'Everything ends up in my yard. You will, eventually.',
+    ],
+    catchphrases: {
+      enter: ['Scrap Iron. That hull of yours has a shelf waiting for it.'],
+      duringBattle: ['Careful with the plating! I want that intact!', 'Mine. All of it, mine.'],
+      win: ['Tow it in whole. I hate cutting.'],
+      loss: ['You have taken something of mine. I never forget inventory.'],
+    },
   },
   // 11 Newly Generated Simulation Characters
   {
@@ -445,6 +714,24 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 14,
     tier: 4,
     archetype: 'fighter',
+    /** T-206 · FIGHTER, Dominance, Warlord Confed, Stubborn at flawDc 14 — and the DELIBERATE
+     *  contrast with Iron Vex above, who shares the ideal, the faction and the archetype.
+     *  Vex is eager and bloodthirsty and comes at you; this captain does not chase anything.
+     *  He occupies ground and absorbs, and his loss slot concedes the hull but not the spot. */
+    tableTalk: [
+      'I do not chase a pot. I sit on it until everyone else tires.',
+      'Raise if you like. It changes nothing about where I am sitting.',
+      'The Confed pays me to hold ground. The habit carries over.',
+    ],
+    catchphrases: {
+      enter: ['Dreadnought. I am in your way, and I intend to stay there.'],
+      duringBattle: [
+        'Keep hitting. I have all afternoon.',
+        'Is that the whole of it? Then we are nearly done.',
+      ],
+      win: ['You moved first. That was your mistake.'],
+      loss: ['Hull gone. Position unchanged.'],
+    },
   },
   {
     id: 'npc-stellar-drift',
@@ -457,6 +744,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 12,
     tier: 2,
     archetype: 'explorer',
+    /** T-206 · EXPLORER, Freedom, loyal to the open stars, Flighty at flawDc 12. Non-committal,
+     *  drifts off the topic, and stays in neither a hand nor a fight past the mood. */
+    tableTalk: [
+      'I might play. I might wander off mid-hand. Both have happened.',
+      'Nothing owns me. Not a route, not a flag, not this chair.',
+      'What were we betting on again?',
+    ],
+    catchphrases: {
+      enter: ['Wanderer. I had no plan to be here and no plan to stay.'],
+      duringBattle: [
+        'Losing interest. Losing altitude, come to that.',
+        'This was fun for about a minute.',
+      ],
+      win: ['Right. Off I go.'],
+      loss: ['Easy come. The stars are still free.'],
+    },
   },
   {
     id: 'npc-void-runner',
@@ -472,6 +775,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
      *  TRADE 1 means thin margins, which is the point — the archetype is not a promise of
      *  profit */
     archetype: 'smuggler',
+    /** T-206 · SMUGGLER, Thrill, hunts the fastest routes, Impulsive at flawDc 15 on PILOT 5.
+     *  Speed is the identity; deliberation bores him and he bids before he has thought. */
+    tableTalk: [
+      'Bid already. I can hear my engines cooling.',
+      'I do not think about it. Thinking is how captains get caught.',
+      'Quick hands. Slow tables are what kill me.',
+    ],
+    catchphrases: {
+      enter: ['Slipstream, wide open. Blink and you miss the entire thing.'],
+      duringBattle: [
+        'Too slow. Everything you do is too slow.',
+        'Threading the rocks. Follow if you dare.',
+      ],
+      win: ['Gone before your sensors caught up.'],
+      loss: ['Should have run sooner. I never do.'],
+    },
   },
   {
     id: 'npc-crimson-hawk',
@@ -484,6 +803,23 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 13,
     tier: 4,
     archetype: 'fighter',
+    /** T-206 · FIGHTER, Glory, Rebel Alliance, Reckless at flawDc 13 — the OTHER half of the
+     *  Nova Blitz pair above. Blitz is chasing a name; this captain already has one and
+     *  every line is spent maintaining the legend rather than earning it. */
+    tableTalk: [
+      'You know who I am. Bid accordingly.',
+      'I have a reputation to feed. It eats every hand I play.',
+      'They tell the Bloodwing story wrong. I let them.',
+    ],
+    catchphrases: {
+      enter: ['Bloodwing. You have heard the stories. Most of them are true.'],
+      duringBattle: [
+        'This is the part they tell in the halls.',
+        'You are fighting a legend. Act like it.',
+      ],
+      win: ['One more for the song. They know the words by now.'],
+      loss: ['Say it was close. They will believe you.'],
+    },
   },
   {
     id: 'npc-neon-shade',
@@ -496,6 +832,20 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 14,
     tier: 2,
     archetype: 'smuggler',
+    /** T-206 · SMUGGLER, Mystery, loyal to the shadows, Paranoid at flawDc 14. Shares the Mystery
+     *  ideal with The Phantom and lands nowhere near it: Shade suspects the deal, the deck
+     *  and the room, and watches the exits while the Phantom simply is not there. */
+    tableTalk: [
+      'Who told you I would be here? No, seriously. Who.',
+      'I sit facing the door. Always the door.',
+      'Somebody at this table works for somebody. It is not me.',
+    ],
+    catchphrases: {
+      enter: ['Nightfall. I saw you three jumps back. You are not subtle.'],
+      duringBattle: ['I knew it. I knew this was a setup.', 'Who paid you? Somebody paid you.'],
+      win: ['Now I have to change ports again.'],
+      loss: ['This was arranged. I will find out by whom.'],
+    },
   },
   {
     id: 'npc-dust-devil',
@@ -510,6 +860,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     /** N4 · frontier-loyal, but GUILE 0 — a captain who cannot keep a secret is not a smuggler,
      *  whatever their bond says */
     archetype: 'trader',
+    /** T-206 · TRADER, Profit, loyal to the frontier, Greedy at flawDc 12 — frontier greed, the
+     *  hardscrabble kind. Gold Rush above wants the whole pot; this captain is scraping. */
+    tableTalk: [
+      'Out here you take the small pots. There are no big ones.',
+      'I have eaten grit for a living. I am not leaving your credits behind.',
+      'Ante up. Every scrap counts when the frontier is your only market.',
+    ],
+    catchphrases: {
+      enter: ['Sandstorm. I need what is in your hold rather more than you do.'],
+      duringBattle: [
+        'Every round you fire is a round you paid for.',
+        'Drop something and we can both go home.',
+      ],
+      win: ['Thin pickings. I will take them anyway.'],
+      loss: ['Cleaned out again. Frontier luck.'],
+    },
   },
   {
     id: 'npc-star-chaser',
@@ -522,6 +888,23 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 11,
     tier: 3,
     archetype: 'explorer',
+    /** T-206 · EXPLORER, Discovery, loyal to the next horizon, Distracted at flawDc 11. Shares
+     *  Discovery with Warp Hound and the flaw with Star Gazer, and is neither: not restless
+     *  for its own sake, not dreamy — impatient, leaning at the NEXT thing. */
+    tableTalk: [
+      'Quick hand, then I am away. There is a horizon with my name on it.',
+      'I never finish a drink in the port I bought it in.',
+      'Deal. Sorry. Deal faster.',
+    ],
+    catchphrases: {
+      enter: ['Comet, passing through. Whatever this is, be quick about it.'],
+      duringBattle: [
+        'You are costing me a departure window.',
+        'Not now! I am half a day from somewhere new!',
+      ],
+      win: ['Good. Now let me go and see it.'],
+      loss: ['Whatever. There is a better system past this one.'],
+    },
   },
   {
     id: 'npc-rogue-star',
@@ -537,6 +920,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
      *  past the patrols of the faction they hate. GUNS 3 keeps them dangerous when the run goes
      *  wrong */
     archetype: 'smuggler',
+    /** T-206 · SMUGGLER, Chaos, HATES the Astro League, Defiant at flawDc 14. The grudge flavours
+     *  everything, and a loss is converted into a principle on the way out. */
+    tableTalk: [
+      'Every credit I take off a League man tastes better than the rest.',
+      "Rules are only somebody else's bid.",
+      'I do not play to win. I play to make the table nervous.',
+    ],
+    catchphrases: {
+      enter: ['Rebellion. Fly the wrong flag near me and find out what that costs.'],
+      duringBattle: [
+        'That one is for every checkpoint I have sat through.',
+        'Burn the paperwork. Burn all of it.',
+      ],
+      win: ['One fewer badge in the lane.'],
+      loss: ['Take the ship. You will not make me sign anything.'],
+    },
   },
   {
     id: 'npc-plasma-burn',
@@ -549,6 +948,20 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 16,
     tier: 3,
     archetype: 'fighter',
+    /** T-206 · FIGHTER, Power, loyal to CHAOS, Destructive at flawDc 16 — the highest flawDc on
+     *  the roster, i.e. barely governed. He enjoys the damage itself and is indifferent to
+     *  whether he wins, which is what separates him from the other Power captains. */
+    tableTalk: [
+      'I like the moment it all goes wrong. Best part of any hand.',
+      'Win, lose, whichever. Did you see how big that pile got?',
+      'Shove it all in. Watch what it does to their faces.',
+    ],
+    catchphrases: {
+      enter: ['Scorcher. I am not here to board you. I am here to watch you come apart.'],
+      duringBattle: ['Look at it come apart!', 'More heat. Give me more heat.'],
+      win: ['Leave nothing that floats.'],
+      loss: ['Ha! Did you see the size of that? Worth every bit.'],
+    },
   },
   {
     id: 'npc-comet-tail',
@@ -561,6 +974,23 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
     flawDc: 12,
     tier: 2,
     archetype: 'trader',
+    /** T-206 · TRADER, Wealth, loyal to the trade routes, Miserly at flawDc 12. Shares the Wealth
+     *  ideal with Cargo King and spends it in the opposite direction: the King buys his way
+     *  out of trouble, where this captain counts the ante and resents it. */
+    tableTalk: [
+      'The ante is already too high. It is always too high.',
+      'I have never spent a credit I could not see again.',
+      'You bought a round? Then you are behind before we start.',
+    ],
+    catchphrases: {
+      enter: ['Icebreaker. Whatever this costs me, I will be counting it afterwards.'],
+      duringBattle: [
+        'Do you know what a hull plate costs? Do you?',
+        'Stop shooting. Every shot is money.',
+      ],
+      win: ['I keep the salvage. And the fuel. And the crates.'],
+      loss: ['My credits. Mine. I counted them twice this morning.'],
+    },
   },
   {
     id: 'npc-solar-flare',

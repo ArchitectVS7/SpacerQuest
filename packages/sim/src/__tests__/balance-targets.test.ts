@@ -161,8 +161,19 @@ const TRADER_CLEAR_DAY_MAX = 30;
 // the ruled ceiling, so it plays `1,2,2,2,2,2` hands by tier under BOTH tables. See F-202-1
 // in `TASKS.md`'s T-202 block. The bands below are UNTOUCHED — nothing here was re-derived
 // to accommodate the new sample (there was nothing to re-derive: the sample did not move).
+// T-206 re-pin (t204-cantina-rename -> t206-captain-voice). Same shape, same 8,000 rows,
+// same eight policies, same milestone days. A CONTENT-ONLY capstone in the same class as
+// T-204's rename: it ships the authored `tableTalk` and `catchphrases` lines for the 27
+// captains T-205 left on its worklist, so `rulesFingerprint` moves (content is hashed
+// WHOLESALE, so even prose with no reader moves it — `5ae9a5d473827024` on the outgoing
+// baseline -> `cbb087860825aa35`) and `instrumentFingerprint` does NOT (unmoved at
+// `5c230e99648cddee`). `balance:diff` printed "NOTHING MOVED. Every compared field is equal
+// on both sides", which was PREDICTED IN WRITING BEFORE THE RUN (`TASKS.md` T-206) and is the
+// only correct outcome: nothing reads either field until T-207, so a moved row would have
+// meant something consumes the profile object wholesale and would have been filed as a
+// finding. The bands below are UNTOUCHED — there was nothing to re-derive.
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
-  new URL('../../../../docs/balance/baseline-t204-cantina-rename.json', import.meta.url),
+  new URL('../../../../docs/balance/baseline-t206-captain-voice.json', import.meta.url),
 );
 const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
   label: string;

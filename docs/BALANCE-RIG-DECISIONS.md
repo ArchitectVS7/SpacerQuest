@@ -121,9 +121,20 @@ read at runtime, and therefore the authoritative one), amendment 1's own pointer
 `docs/NPC_REDESIGN.md`'s status banner, `docs/balance/smoke/README.md`'s "current
 baseline" line, and — added at T-182 — **this rule's own "current baseline of record"
 sentence below** — with the smoke fixture re-extracted FROM the new capstone file. The current
-baseline of record is `docs/balance/baseline-t204-cantina-rename.json` (8,000 rows, 8
-one-indexed shards, spreads harvested, `sweepLabel t204-cantina-rename`; re-pinned at T-204
-2026-08-05 — a TEXT-ONLY capstone shipping the player-facing "Hangout" -> "Cantina" rename:
+baseline of record is `docs/balance/baseline-t206-captain-voice.json` (8,000 rows, 8
+one-indexed shards, spreads harvested, `sweepLabel t206-captain-voice`; re-pinned at T-206
+2026-08-05 — a CONTENT-ONLY capstone shipping the cast's authored VOICE: `tableTalk` and the
+four `catchphrases` slots for the 27 captains T-205 left on its `VOICE_AUTHORING_PENDING`
+worklist, which T-206 deletes along with the branch that read it, so voice is required of all
+30 `NPC_PROFILES` unconditionally. It moves `rulesFingerprint` (5ae9a5d473827024 ->
+cbb087860825aa35 — content is hashed wholesale into the fingerprint, so authored prose moves
+it even though nothing reads these lines until T-207) and NOT `instrumentFingerprint`
+(unmoved at 5c230e99648cddee), so it is a clean single-arm attribution. EVERY ONE OF THE
+EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL — "NOTHING MOVED. Every compared field is equal on
+both sides." — predicted in writing before the run (`TASKS.md` T-206), where a moved row was
+pre-committed as a finding to escalate rather than something to re-baseline around. Gate
+PASS, 0 invariant violations. Before that: `baseline-t204-cantina-rename.json` at T-204 — a
+TEXT-ONLY capstone shipping the player-facing "Hangout" -> "Cantina" rename:
 authored prose STRING VALUES only, with no rule, DC, band, threshold or code path changed. It
 moves `rulesFingerprint` (f33b6af1ee21dffa -> 5ae9a5d473827024 — content is hashed wholesale
 into the fingerprint, so even a pure-text edit moves it) and NOT `instrumentFingerprint`

@@ -11,6 +11,12 @@
  * malformed cast can never reach a running game (importing `@spacerquest/content`
  * at all fails loudly instead). Every rule below names the READER it protects.
  *
+ * T-206 CLOSED THE ONE EXEMPTION T-205 SHIPPED WITH. T-205 authored three examples
+ * and waived the other 27 captains through `VOICE_AUTHORING_PENDING`; T-206
+ * authored all 27 and deleted the set, the `waived` branch and the three hygiene
+ * rules that policed it. Presence is now REQUIRED of all 30 `NPC_PROFILES`
+ * unconditionally, and still never required of the 11 `QUEST_PROFILES`.
+ *
  * IT DECIDES NOTHING. This file has no bearing on any outcome: it throws on
  * malformed content and is otherwise inert, which is how `cast.ts` stays pure data
  * under the standing engine/content constraint. The two new fields are likewise
@@ -73,59 +79,26 @@ export const CATCHPHRASE_SLOTS: readonly (keyof BattleCatchphrases)[] = [
 export const CAST_DICE_COUNT_PHRASE =
   /\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|a|an)\s+(?:dice|die|d6s?)\b/i;
 
-/**
- * THE T-206 WORKLIST, and the reason this validator can be strict TODAY.
+/*
+ * THE T-206 WORKLIST IS GONE, and its absence is the point.
  *
- * T-205 is the schema task: it ships the two fields, the rules below, and THREE
- * worked examples (Iron Vex, Cargo King, Solar Flare — one fighter, one trader,
- * one gambler, so the example proves voice differentiation rather than a
- * template). The remaining 27 captains are T-206's authoring pass.
+ * T-205 shipped the two fields, the rules below and three worked examples (Iron
+ * Vex, Cargo King, Solar Flare), and carried the other 27 captains on a
+ * self-staling `VOICE_AUTHORING_PENDING` set — without it `defineNpcProfiles`
+ * would have thrown on 27 unauthored rows at import and reddened every suite in
+ * the repository. That set named its own exit condition: "author a captain, delete
+ * their id from this set. When the set is empty, DELETE IT and the one `waived`
+ * branch in `validateNpcVoices` that reads it."
  *
- * Without this set, `defineNpcProfiles` would throw on 27 unauthored rows at
- * import — i.e. `import '@spacerquest/content'` would throw, and every suite in
- * the repository would be red. With it, the coverage rule is LIVE and unconditional
- * for every captain not named here, which is what "fails loudly on any of the 30
- * missing a slot" has to mean while the roster is half-authored.
- *
- * IT CANNOT ROT SILENTLY. Three rules hold it honest: an id here that is not on
- * the roster is an error; a captain here who HAS been authored is an error naming
- * the fix; and a `QUEST_PROFILES` id here is an error (their voice is optional by
- * design, so waiving them would be meaningless).
- *
- * T-206'S JOB, stated so it is mechanical: author a captain, delete their id from
- * this set. When the set is empty, DELETE IT and the one `waived` branch in
- * `validateNpcVoices` that reads it — the rule underneath is already the final
- * rule, and an empty waiver left in place is an invitation to refill it.
+ * T-206 AUTHORED THE REMAINING 27 AND DID EXACTLY THAT — the set, the `waived`
+ * branch and the three waiver-hygiene rules that kept the set honest are all
+ * deleted here, because the rule underneath them was always the final rule and an
+ * empty waiver left in place is an invitation to refill it. The record is kept
+ * rather than erased (the T-204 precedent: mark resolved, do not wipe the trail),
+ * and `__tests__/castValidation.test.ts` asserts the symbol is no longer exported,
+ * so refilling the waiver is a visible test failure rather than a quiet
+ * regression.
  */
-export const VOICE_AUTHORING_PENDING: ReadonlySet<string> = new Set([
-  'npc-admiral-stern',
-  'npc-nova-blitz',
-  'npc-black-tide',
-  'npc-frost-helm',
-  'npc-atlas-prime',
-  'npc-crimson-ace',
-  'npc-zero-risk',
-  'npc-neon-fox',
-  'npc-warp-hound',
-  'npc-gold-rush',
-  'npc-star-gazer',
-  'npc-the-warden',
-  'npc-nebula-rose',
-  'npc-the-phantom',
-  'npc-crash-override',
-  'npc-the-chef',
-  'npc-junk-lord',
-  'npc-iron-clad',
-  'npc-stellar-drift',
-  'npc-void-runner',
-  'npc-crimson-hawk',
-  'npc-neon-shade',
-  'npc-dust-devil',
-  'npc-star-chaser',
-  'npc-rogue-star',
-  'npc-plasma-burn',
-  'npc-comet-tail',
-]);
 
 /** Own type guard rather than a bare `Array.isArray`, which narrows a typed value
  *  to `any[]` and would erase `readonly string[]` for every read below — the trap
@@ -200,10 +173,12 @@ function validateBarkList(
 /**
  * The shape rules, applied to whatever voice a profile carries.
  *
- * `requirePresence` is the ONLY thing the T-206 waiver relaxes. Once a field is
- * present it is validated in full, waived or not — a half-authored captain is the
- * state that would reach a player, and it must never be cheaper than authoring
- * them properly.
+ * `requirePresence` is the ONE axis the two rosters differ on: it is `true` for
+ * every one of the 30 simulated captains and `false` for the 11 quest captains,
+ * whose voice is optional by design. Everything else applies identically to both —
+ * once a field is present it is validated in full, because a half-authored captain
+ * is the state that would reach a player and it must never be cheaper than
+ * authoring them properly.
  */
 function validateVoice(
   errors: string[],
@@ -227,7 +202,7 @@ function validateVoice(
     }
   }
 
-  // ALL OR NOTHING, checked even when waived. Half a voice is worse than none:
+  // ALL OR NOTHING, and checked on BOTH rosters. Half a voice is worse than none:
   // T-207 would render a captain who enters a fight silently and then quips on the
   // win, which reads as a bug rather than as unfinished content.
   if (hasTalk !== hasPhrases) {
@@ -249,9 +224,9 @@ function validateVoice(
   }
   for (const slot of CATCHPHRASE_SLOTS) {
     const lines = phrases[slot];
-    // A partial catchphrase object is malformed regardless of the waiver: the
-    // waiver excuses an UNVOICED captain, never a captain voiced for three of the
-    // four moments a fight has.
+    // A partial catchphrase object is malformed on either roster: optional presence
+    // excuses an UNVOICED captain, never a captain voiced for three of the four
+    // moments a fight has.
     if (lines === undefined) {
       errors.push(`${path}.catchphrases.${slot} is missing`);
       continue;
@@ -265,38 +240,21 @@ function validateVoice(
 }
 
 /**
- * The 30 SIMULATED captains (`NPC_PROFILES`). Voice is REQUIRED here — these are
- * the records that can deal a roaming Liar's Dice hand and the only ones the
- * grudge weighting can draw as a named interceptor — except for the ids still on
- * {@link VOICE_AUTHORING_PENDING}, which T-206 is emptying.
+ * The 30 SIMULATED captains (`NPC_PROFILES`). Voice is REQUIRED here, for every
+ * one of them and with no exemptions — these are the records that can deal a
+ * roaming Liar's Dice hand and the only ones the grudge weighting can draw as a
+ * named interceptor, so a silent one is a captain who says nothing at the moment
+ * T-207 asks them to speak. T-205 ran this rule with a `VOICE_AUTHORING_PENDING`
+ * waiver while the roster was half-authored; T-206 authored the last 27 and
+ * deleted both the set and the branch that read it (see the note above).
  */
 export function validateNpcVoices(profiles: readonly NpcProfile[]): string[] {
   const errors: string[] = [];
-  const rosterIds = new Set<string>();
 
   profiles.forEach((profile, index) => {
     const path = `npcProfiles[${index}](${String(profile.id)})`;
-    rosterIds.add(profile.id);
-    const waived = VOICE_AUTHORING_PENDING.has(profile.id);
-    validateVoice(errors, path, profile, { requirePresence: !waived });
-    // WAIVER HYGIENE 1 · authoring a captain must SHRINK the worklist. Without
-    // this, T-206 could author all 27 and leave a 27-name set behind that exempts
-    // the very rows it names, and the next captain added to the roster would
-    // inherit an exemption nobody granted.
-    if (waived && (profile.tableTalk !== undefined || profile.catchphrases !== undefined)) {
-      errors.push(
-        `${path} is authored — delete '${profile.id}' from VOICE_AUTHORING_PENDING (T-206)`,
-      );
-    }
+    validateVoice(errors, path, profile, { requirePresence: true });
   });
-
-  // WAIVER HYGIENE 2 · a typo'd or stale id here exempts nobody, and would sit in
-  // the set forever looking like work outstanding.
-  for (const pendingId of VOICE_AUTHORING_PENDING) {
-    if (!rosterIds.has(pendingId)) {
-      errors.push(`VOICE_AUTHORING_PENDING names '${pendingId}', which is not an NPC_PROFILES id`);
-    }
-  }
 
   return errors;
 }
@@ -317,13 +275,6 @@ export function validateQuestVoices(profiles: readonly NpcProfile[]): string[] {
   profiles.forEach((profile, index) => {
     const path = `questProfiles[${index}](${String(profile.id)})`;
     validateVoice(errors, path, profile, { requirePresence: false });
-    // WAIVER HYGIENE 3 · waiving a quest captain is meaningless (nothing is
-    // required of them), so an id here is a sign somebody mistook the two rosters.
-    if (VOICE_AUTHORING_PENDING.has(profile.id)) {
-      errors.push(
-        `${path} is a quest captain and must not appear in VOICE_AUTHORING_PENDING (their voice is optional by design)`,
-      );
-    }
   });
 
   return errors;

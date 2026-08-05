@@ -4670,7 +4670,7 @@ or golden was edited.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only the source tree is present). · attempts=1/4.
 
-### T-206 · Content pass: author table-talk and catchphrases for all 30 captains — `status: TODO` · `coder: opus` · `after: T-205`
+### T-206 · Content pass: author table-talk and catchphrases for all 30 captains — `status: DONE` · `coder: opus` · `after: T-205`
 
 Fill in the remaining ~27-28 captains' `tableTalk` and `catchphrases` (T-205 seeds a few as the
 worked example). Voice each captain's lines from their EXISTING authored `ideal`/`bond`/`flaw`
@@ -4688,6 +4688,118 @@ four sites.
 content (not a copy-pasted template — a spot-check comparing two captains' lines must show real
 voice difference); capstone lands with the predicted flat row-movement confirmed or a finding
 filed. Gate green.
+
+**CAPSTONE PREDICTION, written down BEFORE the sweep ran** (per the Standing constraints; the
+point of the prediction is that it is falsifiable, so it is recorded here at the moment it was
+made rather than reconstructed afterwards).
+
+- **MOVES:** `rulesFingerprint` — content is hashed wholesale, and the incoming value
+  `6635ee318436f99f` is T-205's, measured with 3 captains voiced; 27 more must move it.
+  `docsFingerprint` (this file and `docs/NPC_REDESIGN.md` are edited). `provenance.gitCommit`.
+- **DOES NOT MOVE:** `instrumentFingerprint` (`5c230e99648cddee` — nothing under
+  `packages/sim/src/balance/` is touched), `saveSchemaVersion` **16** (re-read live from
+  `packages/engine/src/save.ts:562`, not copied), `productVersion` `0.5.3`,
+  `spreadSource: "harvested"`, and **every `outcomeHash` and every number in all four tiers**.
+  `balance:diff` against `baseline-t204-cantina-rename.json` = `NOTHING MOVED`.
+- **WHY FLAT IS THE RIGHT PREDICTION:** nothing reads `tableTalk` or `catchphrases` until T-207,
+  so these rows are inert prose — the same class as T-204's rename capstone, which printed
+  `NOTHING MOVED`. A moved outcome hash or a moved row would mean something consumes the profile
+  object wholesale; that is a FINDING to file and escalate, never something to re-baseline around.
+
+**Delivered (2026-08-05).** All 27 remaining captains authored, the waiver retired, and the batched capstone
+paid — **the prediction above held on every clause, with nothing edited to make it hold.**
+
+**THE AUTHORING PASS (`packages/content/src/cast.ts`).** 27 captains × 5 slots = **245 authored
+lines**, every one of them read off that captain's OWN `ideal` / `bond` / `flaw` / `flawDc` /
+`archetype` / stat line, with the reasoning written at the entry rather than left to be
+re-derived. Each row carries a short docblock naming the archetype and the read (e.g. Admiral
+Stern: "VETERAN, Order, sworn to the Astro League, Overcautious at flawDc 10 — the most
+disciplined line on the roster … a loss is a fault in the procedure rather than a run of bad
+luck"). DATA ONLY: `git diff packages/content/src/cast.ts | grep '^+' | grep -c 'if ('` = **0** —
+no rule was added to content, and the engine/content constraint is untouched. `QUEST_PROFILES` was
+not touched: T-205's ruling is that ABSENT means "no voiced surface", and the eleven-unvoiced test
+still pins it. The three T-205 worked examples (Iron Vex, Cargo King, Solar Flare) are
+byte-identical — their lines are quoted in T-205's own Delivered note.
+
+**THE ANTI-TEMPLATE STANDARD IS MECHANIZED, NOT ASSERTED.** The Accept's "not a copy-pasted
+template" is now four tests in `castValidation.test.ts` §10, over all 30 captains: (1) **global raw
+uniqueness** — 245 lines, 245 distinct; (2) **normalized uniqueness** — lowercased, punctuation
+stripped, whitespace collapsed, so `Deal me in.` vs `Deal me in!` would fail; (3) **per-captain
+signature token** — every captain owns at least one 4+ letter word no other captain uses (the
+thinnest is The Phantom at 3 words — `invent`, `expected`, `real` — which is correct for the
+deliberately terse captain; the richest is Admiral Stern at 27); (4) **the named spot-check**,
+Iron Clad vs Iron Vex. SIX SHARED-IDEAL / SHARED-FLAW PAIRS were written back to back so the
+contrast is deliberate rather than lucky: Iron Vex / Iron Clad (Dominance + Confed + fighter),
+Nova Blitz / Crimson Hawk (Glory + Rebel + Reckless), The Phantom / Neon Shade (Mystery), Star
+Gazer / Star Chaser (Distracted), Warp Hound / Star Chaser (Discovery), Gold Rush / Dust Devil
+(Greedy), Cargo King / Comet Tail (Wealth). **THE SPOT-CHECK, quoted, because the Accept asks for
+it** — Iron Vex and Iron Clad share the ideal, the faction and the archetype, so they are the pair
+most likely to collapse into one voice. Vex is eager and comes at you: *"Hammerfall, closing. Do
+not make this quick."* / *"Good. I was getting bored out here."* / loss *"Not finished. Just out of
+hull."* Iron Clad does not chase anything — he occupies ground and absorbs: *"Dreadnought. I am in
+your way, and I intend to stay there."* / *"Keep hitting. I have all afternoon."* / loss *"Hull
+gone. Position unchanged."* Same doctrine, opposite temperament; the loss slots are the tell.
+Longest line 72 chars against the 120 cap, so terseness is real and not cap-adjacent.
+
+**THE WAIVER IS GONE, ON THE WORKLIST'S OWN INSTRUCTIONS.** `VOICE_AUTHORING_PENDING` said in its
+docblock: *"When the set is empty, DELETE IT and the one `waived` branch in `validateNpcVoices`
+that reads it."* Done exactly: the 27-id set, the `waived` local, the `rosterIds` set and all three
+WAIVER HYGIENE rules are deleted, and `validateVoice(..., { requirePresence: true })` is now
+unconditional for the 30. `grep -rn "VOICE_AUTHORING_PENDING" packages/**/*.ts` finds **no live
+symbol** — the only surviving mentions are the deliberate history trail in three docblocks (the
+T-204 precedent: mark resolved, do not wipe the trail) and the string literal in the ANTI-REFILL
+test, which asserts `'VOICE_AUTHORING_PENDING' in contentIndex === false` against the module
+namespace, so reintroducing the waiver is a visible failure rather than a quiet regression that
+would exempt a future captain. §7's waiver-hygiene describe is deleted with the rules it tested,
+and a comment stands where it was recording exactly what it covered and what replaces it, so its
+absence does not read as dropped coverage. Net battery change: −3 tests (hygiene) +1 (§2's
+completion pair) +3 (§10's new checks) = **+1**.
+
+**NO MIGRATION OWED, with the reasoning.** `createInitialState` (`packages/engine/src/state.ts`)
+maps `NpcProfile` → `NpcState` field by field with no `...p` spread, so nothing new reaches a
+persisted record; T-206 adds no field at all, only rows of data in an existing optional one.
+`CURRENT_SAVE_VERSION` **re-read live** from `packages/engine/src/save.ts:562` = **16** (read, not
+copied from T-205's note or a header) and unchanged.
+
+**THE CAPSTONE, in the ruled order.** `npm run format` FIRST (the fingerprint is not
+formatting-invariant), `format:check` clean, then eight **1-indexed** shards
+(`--shard i/8`, i = 1..8, each exit 0) at `--seeds 1000 --days 120 --policies
+trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy --milestone-days
+21,29,30,41,60,120`, then `--merge`: **`merged · 8000 rows · PASS`, `invariants: 0 violations`**,
+writing `docs/balance/baseline-t206-captain-voice.json` stamped rules `cbb087860825aa35` /
+instrument `5c230e99648cddee`. **`balance:diff` against `baseline-t204-cantina-rename.json` printed
+`NOTHING MOVED. Every compared field is equal on both sides.`** — the predicted result, so no
+`F-206-n` finding is owed. Re-extracted with the load-bearing `--aggregate` (F-146-0: omitting it
+falls back to `baseline-n1.json` and flips `spreadSource` to `estimated`); `tiers.json` carries
+`spreadSource "harvested"` and `sweepLabel "t206-captain-voice"`, and the fixture diff is **exactly
+four lines** — `rulesFingerprint` `6635ee318436f99f` → `cbb087860825aa35`, `docsFingerprint`
+`22c4de362494c36a` → `5ca4979722c55ee1`, `sweepLabel`, `gitCommit` — with **every number in all
+four tiers byte-identical**. `instrumentFingerprint` unmoved at `5c230e99648cddee`,
+`saveSchemaVersion` 16, `productVersion` 0.5.3, all as predicted.
+
+**RE-PINNED AT ALL FIVE SITES IN THIS COMMIT, not the four the task block says.**
+`baseline-pointers.test.ts:22-34` records that T-182 added a fifth and that T-188/T-195/T-199 each
+left three stale, so the count was checked against the test rather than taken from the block:
+`balance-targets.test.ts`'s `BASELINE_OF_RECORD_PATH` (the authoritative one, read at runtime),
+`docs/NPC_REDESIGN.md` standing amendment 1, `docs/NPC_REDESIGN.md`'s status banner (a NEW newest
+block inserted at the TOP — appended, with T-204's block left intact below it), `docs/balance/smoke/README.md`,
+and `docs/BALANCE-RIG-DECISIONS.md` BR-14's own sentence. `baseline-pointers.test.ts` **8/8 green**.
+`pacing-brief-figures.test.ts`'s `ARC_BASELINES` deliberately NOT extended — the T-204 precedent:
+every row there must appear in the frozen 2026-08-05 pre-session brief.
+
+**Gate green.** `npx tsc -b`, `npm run lint`, `npm run format:check` all exit 0; `npm test` =
+**2,533 passed, 0 failed** across all six workspaces (2,532 at T-205, +1 as accounted above). The
+transient reds seen after the content edit and before the re-extract were EXACTLY the four
+predicted stale-fixture ones — `balance-smoke.test.ts` "is not stale" plus the three
+`balance-rig.test.ts` `fixtureFreshness` cases that assert exactly one stale field — and no fifth.
+All four cleared on the re-extract. No fingerprint, band, threshold or golden was edited.
+
+**Deliverables grepped at their named call sites before marking DONE:** `grep -c "tableTalk:"
+packages/content/src/cast.ts` = **30**; `grep -c "catchphrases:" packages/content/src/cast.ts` =
+**30**; no live `VOICE_AUTHORING_PENDING` symbol anywhere in `packages/`; `git diff cast.ts | grep
+'^+' | grep -c 'if ('` = **0**; `baseline-t206-captain-voice` present at all five pointer sites.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only the source tree is present) · attempts=1/4.
 
 ### T-207 · UI: surface table-talk and catchphrases at the table and in combat — `status: TODO` · `coder: opus` · `after: T-206, T-203`
 

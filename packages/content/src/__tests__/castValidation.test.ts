@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import * as contentIndex from '../index.js';
 import {
   CAST_DICE_COUNT_PHRASE,
   CATCHPHRASE_SLOTS,
   LIARS_DICE_DICE_COUNT_PHRASE,
   NPC_PROFILES,
   QUEST_PROFILES,
-  VOICE_AUTHORING_PENDING,
   defineNpcProfiles,
   validateNpcVoices,
   validateQuestVoices,
@@ -28,20 +28,28 @@ import {
  *
  * IT COSTS NO CAPSTONE: `__tests__` is in `HASHED_ROOT_IGNORED_DIRECTORIES`
  * (`packages/sim/src/balance/rules-fingerprint.ts`), so nothing here is hashed into
- * `rulesFingerprint`. The AUTHORED LINES in `cast.ts` are — that capstone is
- * batched into T-206 per the Standing constraints' "re-extract once" rule.
+ * `rulesFingerprint`. The AUTHORED LINES in `cast.ts` are — that capstone was
+ * batched into T-206 and PAID there (`baseline-t206-captain-voice.json`), per the
+ * Standing constraints' "re-extract once" rule.
+ *
+ * T-206 · THE WAIVER IS GONE. T-205 ran the coverage rule with a
+ * `VOICE_AUTHORING_PENDING` set carrying the 27 unauthored captains; T-206
+ * authored all 27 and deleted the set, the `waived` branch and the three hygiene
+ * rules that policed it, so every assertion below now describes the UNCONDITIONAL
+ * rule. Section 2 pins the completion, and section 7's slot records what the
+ * removed waiver-hygiene suite covered so a reader does not read its absence as
+ * dropped coverage.
  *
  * FIXTURES ARE ALWAYS CLONES. Every negative case below is built by copying the
  * REAL roster and replacing one entry, never by mutating `NPC_PROFILES` (which is
- * a live exported array) and never by passing a one-row array — a short array
- * would make the waiver-hygiene rule fire 27 times and drown the assertion under
- * test.
+ * a live exported array) and never by passing a one-row array.
  */
 
-/** An id that is NOT on the T-206 worklist, so the coverage rule is live for it. */
+/** The captain every single-row negative case is built on. */
 const AUTHORED_ID = 'npc-iron-vex';
-/** An id that IS on the worklist, so presence is excused for it. */
-const WAIVED_ID = 'npc-nova-blitz';
+/** A SECOND captain, so a case that needs two distinct rows has one. Authored like
+ *  all 30 since T-206 — it was T-205's waived example. */
+const SECOND_ID = 'npc-nova-blitz';
 
 function profileFor(id: string): NpcProfile {
   const found = NPC_PROFILES.find((profile) => profile.id === id);
@@ -89,32 +97,32 @@ describe('T-205 · the shipped cast validates', () => {
   });
 
   it('the roster is still 30 captains', () => {
-    // A cheap anchor: the two-set partition below is only meaningful against the
+    // A cheap anchor: the completion assertion below is only meaningful against the
     // roster size every other test in this repo assumes.
     expect(NPC_PROFILES).toHaveLength(30);
   });
 });
 
 // ---------------------------------------------------------------------------
-// 2 · The T-205/T-206 split is airtight — no captain can fall between the sets
+// 2 · T-206 finished the job — all 30 voiced, and the worklist is gone
 // ---------------------------------------------------------------------------
 
-describe('T-205 · the authored set and the T-206 worklist partition the roster', () => {
-  const voiced = NPC_PROFILES.filter((profile) => profile.tableTalk !== undefined).map(
-    (profile) => profile.id,
-  );
-
-  it('T-205 authored exactly the three worked examples', () => {
-    expect(voiced.sort()).toEqual(['npc-cargo-king', 'npc-iron-vex', 'npc-solar-flare']);
+describe('T-206 · every simulated captain is authored and the waiver is retired', () => {
+  it('all 30 captains carry `tableTalk`', () => {
+    expect(NPC_PROFILES.filter((profile) => profile.tableTalk !== undefined)).toHaveLength(30);
   });
 
-  it('voiced ∪ pending covers all 30, with no overlap', () => {
-    // THE assertion that makes T-206 mechanical: a captain is either authored or
-    // on the worklist, never neither (silently unvoiced) and never both.
-    const union = new Set([...voiced, ...VOICE_AUTHORING_PENDING]);
-    expect(union.size).toBe(NPC_PROFILES.length);
-    expect(new Set(NPC_PROFILES.map((profile) => profile.id))).toEqual(union);
-    expect(voiced.filter((id) => VOICE_AUTHORING_PENDING.has(id))).toEqual([]);
+  it('all 30 captains carry `catchphrases`', () => {
+    expect(NPC_PROFILES.filter((profile) => profile.catchphrases !== undefined)).toHaveLength(30);
+  });
+
+  it('`VOICE_AUTHORING_PENDING` is no longer exported at all', () => {
+    // THE anti-refill assertion. T-205's worklist named its own exit condition
+    // ("when the set is empty, DELETE IT"), and an empty waiver left in place is an
+    // invitation to refill it. Asserting on the module namespace — rather than on
+    // the set's size — means reintroducing the symbol is a visible failure here
+    // rather than a quiet regression that exempts a future captain.
+    expect('VOICE_AUTHORING_PENDING' in contentIndex).toBe(false);
   });
 });
 
@@ -122,7 +130,7 @@ describe('T-205 · the authored set and the T-206 worklist partition the roster'
 // 3 · The Accept criterion: it fails LOUDLY on any of the 30 missing a slot
 // ---------------------------------------------------------------------------
 
-describe('T-205 · a missing or empty slot on an unwaived captain is an error', () => {
+describe('T-205 · a missing or empty slot on any of the 30 is an error', () => {
   it('names the captain and the slot when `tableTalk` is absent', () => {
     const errors = validateNpcVoices(rosterWith(AUTHORED_ID, { tableTalk: undefined }));
     expect(errors.some((error) => error.includes(AUTHORED_ID) && error.includes('tableTalk'))).toBe(
@@ -171,11 +179,11 @@ describe('T-205 · a missing or empty slot on an unwaived captain is an error', 
     ).toBe(true);
   });
 
-  it('a partial `catchphrases` object is malformed even for a WAIVED captain', () => {
-    // The waiver excuses an unvoiced captain, never one voiced for three of the
-    // four moments a fight has.
+  it('a partial `catchphrases` object is malformed on any captain', () => {
+    // Optional presence (the quest roster) excuses an unvoiced captain, never one
+    // voiced for three of the four moments a fight has.
     const errors = validateNpcVoices(
-      rosterWith(WAIVED_ID, {
+      rosterWith(SECOND_ID, {
         tableTalk: ['One line here.', 'And a second line here.'],
         catchphrases: {
           enter: ['Only this slot.'],
@@ -192,16 +200,17 @@ describe('T-205 · a missing or empty slot on an unwaived captain is an error', 
 // ---------------------------------------------------------------------------
 
 describe('T-205 · half a voice is refused', () => {
-  it('rejects `tableTalk` with no `catchphrases`, even on a waived captain', () => {
+  it('rejects `tableTalk` with no `catchphrases`', () => {
     const errors = validateNpcVoices(
-      rosterWith(WAIVED_ID, { tableTalk: ['A line.', 'Another line.'] }),
+      rosterWith(SECOND_ID, { tableTalk: ['A line.', 'Another line.'], catchphrases: undefined }),
     );
     expect(errors.some((error) => error.includes('half a voice'))).toBe(true);
   });
 
-  it('rejects `catchphrases` with no `tableTalk`, even on a waived captain', () => {
+  it('rejects `catchphrases` with no `tableTalk`', () => {
     const errors = validateNpcVoices(
-      rosterWith(WAIVED_ID, {
+      rosterWith(SECOND_ID, {
+        tableTalk: undefined,
         catchphrases: { enter: ['a'], duringBattle: ['b'], win: ['c'], loss: ['d'] },
       }),
     );
@@ -298,42 +307,16 @@ describe("T-205 · the Liar's Dice dice-count ban", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 7 · Waiver hygiene — the set cannot rot silently
+// 7 · (was: waiver hygiene)
+//
+// T-206 DELETED THIS SUITE WITH THE THING IT TESTED. It covered the three rules
+// that kept `VOICE_AUTHORING_PENDING` honest while the roster was half-authored —
+// a stale id on the set, an authored captain still on it, and a quest id on it.
+// All three rules are gone because the set is gone (T-206 authored the last 27),
+// so this is not dropped coverage: what replaces it is section 2's unconditional
+// "all 30 are voiced, and the symbol is no longer exported" pair, which is
+// strictly stronger — the waiver cannot rot if it cannot exist.
 // ---------------------------------------------------------------------------
-
-describe('T-205 · `VOICE_AUTHORING_PENDING` hygiene', () => {
-  it('errors when a pending id is not on the roster', () => {
-    const short = NPC_PROFILES.filter((profile) => profile.id !== WAIVED_ID);
-    const errors = validateNpcVoices(short);
-    expect(
-      errors.some((error) => error.includes(WAIVED_ID) && error.includes('not an NPC_PROFILES id')),
-    ).toBe(true);
-  });
-
-  it('errors when a pending captain HAS been authored, and says how to fix it', () => {
-    const errors = validateNpcVoices(
-      rosterWith(WAIVED_ID, {
-        tableTalk: ['A line.', 'Another line.'],
-        catchphrases: { enter: ['a'], duringBattle: ['b'], win: ['c'], loss: ['d'] },
-      }),
-    );
-    expect(
-      errors.some(
-        (error) => error.includes(WAIVED_ID) && error.includes('VOICE_AUTHORING_PENDING'),
-      ),
-    ).toBe(true);
-  });
-
-  it('errors when a QUEST captain id is on the worklist', () => {
-    const quest = QUEST_PROFILES.map((profile) => ({ ...profile }));
-    const stolen = [...VOICE_AUTHORING_PENDING][0];
-    quest[0] = { ...quest[0], id: stolen };
-    const errors = validateQuestVoices(quest);
-    expect(
-      errors.some((error) => error.includes(stolen) && error.includes('must not appear in VOICE')),
-    ).toBe(true);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // 8 · The `defineX` contract
@@ -390,21 +373,96 @@ describe('T-205 · quest captains are UNVOICED by design, not by omission', () =
 });
 
 // ---------------------------------------------------------------------------
-// 10 · The worked examples are three VOICES, not one template
+// 10 · Thirty VOICES, not one template — T-206's Accept, mechanized
 // ---------------------------------------------------------------------------
 
-describe('T-205 · the three worked examples are differentiated', () => {
-  it('share no identical line in any slot', () => {
-    // Cheap, and it guards the standard T-206 inherits: a fighter, a trader and a
-    // gambler were chosen precisely so the example cannot be read as a template.
-    const authored = NPC_PROFILES.filter((profile) => profile.tableTalk !== undefined);
-    const lines: string[] = [];
-    for (const profile of authored) {
-      lines.push(...(profile.tableTalk ?? []));
-      for (const slot of CATCHPHRASE_SLOTS) {
-        lines.push(...(profile.catchphrases?.[slot] ?? []));
-      }
-    }
+/** Every authored line a captain owns, across all five slots. */
+function linesOf(profile: NpcProfile): string[] {
+  const lines = [...(profile.tableTalk ?? [])];
+  for (const slot of CATCHPHRASE_SLOTS) {
+    lines.push(...(profile.catchphrases?.[slot] ?? []));
+  }
+  return lines;
+}
+
+/** Lowercased, stripped of punctuation, whitespace collapsed — so `Deal me in.`
+ *  and `Deal me in!` are the SAME line for the duplicate check below. */
+function normalize(line: string): string {
+  return line
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Distinct 4+ letter words across all of a captain's lines. Shared by the
+ *  signature-token rule and the named spot-check so both read the same way. */
+function words(profile: NpcProfile): Set<string> {
+  return new Set(
+    linesOf(profile)
+      .join(' ')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((word) => word.length >= 4),
+  );
+}
+
+describe('T-206 · the 30 captains are 30 voices, not one template', () => {
+  const authored = NPC_PROFILES.filter((profile) => profile.tableTalk !== undefined);
+
+  it('no line is repeated anywhere across all 30 captains', () => {
+    // The single strongest anti-copy-paste guard: ~200 lines, all distinct. A
+    // captain built by pasting another captain's slot fails here immediately.
+    const lines = authored.flatMap(linesOf);
+    expect(lines.length).toBeGreaterThan(150);
     expect(new Set(lines).size).toBe(lines.length);
+  });
+
+  it("no line is a punctuation-only variant of another captain's line", () => {
+    // The rename-only template that raw uniqueness would let through: "Deal me in."
+    // for one captain and "Deal me in!" for the next is one line, not two.
+    const normalized = authored.flatMap((profile) => linesOf(profile).map(normalize));
+    const seen = new Map<string, number>();
+    for (const line of normalized) seen.set(line, (seen.get(line) ?? 0) + 1);
+    const repeated = [...seen.entries()].filter(([, count]) => count > 1).map(([line]) => line);
+    expect(repeated).toEqual([]);
+  });
+
+  it('every captain owns at least one word no other captain uses', () => {
+    // The mechanical form of "a spot-check comparing two captains' lines must show
+    // real voice difference" (T-206's Accept). A captain whose every word is drawn
+    // from the shared pool is a captain assembled from the house template.
+    //
+    // IF THIS GOES RED, GIVE THE CAPTAIN A LINE THAT EARNS A SIGNATURE WORD — never
+    // lower the length floor and never delete the check, which is the same move as
+    // widening a band to clear a gate.
+    const byCaptain = new Map(authored.map((profile) => [profile.id, words(profile)]));
+    const unsigned: string[] = [];
+    for (const [id, own] of byCaptain) {
+      const elsewhere = new Set<string>();
+      for (const [otherId, other] of byCaptain) {
+        if (otherId !== id) for (const word of other) elsewhere.add(word);
+      }
+      if ([...own].every((word) => elsewhere.has(word))) unsigned.push(id);
+    }
+    expect(
+      unsigned,
+      `${unsigned.join(', ')} share every word with the rest of the roster — those captains read ` +
+        `as the house template rather than as themselves. Write them a line only they would say.`,
+    ).toEqual([]);
+  });
+
+  it('Iron Clad and Iron Vex do not collapse into each other', () => {
+    // THE NAMED SPOT-CHECK, and the hardest pair on the roster: same ideal
+    // (Dominance), same faction (Warlord Confed), same archetype (fighter). Vex is
+    // eager and bloodthirsty; Iron Clad is immovable and does not chase. If any two
+    // captains were going to be written once and pasted twice, it is these two.
+    const vex = words(profileFor('npc-iron-vex'));
+    const clad = words(profileFor('npc-iron-clad'));
+    const shared = [...vex].filter((word) => clad.has(word));
+    // Function words alone will overlap; a template would overlap far harder.
+    expect(shared.length).toBeLessThan(Math.min(vex.size, clad.size) / 2);
+    expect(linesOf(profileFor('npc-iron-vex'))).not.toEqual(linesOf(profileFor('npc-iron-clad')));
   });
 });

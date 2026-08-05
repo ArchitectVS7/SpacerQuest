@@ -107,8 +107,18 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t204-cantina-rename.json`, re-pinned at
-T-204 2026-08-05 — a TEXT-ONLY capstone shipping the player-facing "Hangout" -> "Cantina"
+exactly like drift. The current baseline (`baseline-t206-captain-voice.json`, re-pinned at
+T-206 2026-08-05 — a CONTENT-ONLY capstone shipping the cast's authored VOICE: `tableTalk`
+and the four `catchphrases` slots for the 27 captains T-205 left on its
+`VOICE_AUTHORING_PENDING` worklist, which T-206 deletes, so voice is required of all 30
+`NPC_PROFILES` unconditionally. It moves `rulesFingerprint` (5ae9a5d473827024 ->
+cbb087860825aa35 — content is hashed wholesale, so authored prose moves it even though
+nothing reads these lines until T-207) and NOT `instrumentFingerprint` (unmoved at
+5c230e99648cddee). EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL — "NOTHING
+MOVED. Every compared field is equal on both sides." — predicted in writing before the run
+(`TASKS.md` T-206), where a moved row was pre-committed as a finding to escalate rather than
+something to re-baseline around. Gate PASS, 0 invariant violations;
+before that `baseline-t204-cantina-rename.json` at T-204 — a TEXT-ONLY capstone shipping the player-facing "Hangout" -> "Cantina"
 rename: authored prose STRING VALUES only, with no rule, DC, band, threshold or code path
 changed. It moves `rulesFingerprint` (f33b6af1ee21dffa -> 5ae9a5d473827024 — content is hashed
 wholesale, so even pure text moves it) and NOT `instrumentFingerprint` (unmoved at
