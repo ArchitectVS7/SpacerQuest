@@ -128,16 +128,30 @@ comparison on an untraced sweep, not by inspection.
 
 ## 6. Suggested acceptance shape for the implementation task
 
+**The third bullet below is MACHINE-CHECKED as of T-166**, by
+`packages/sim/src/__tests__/smoke-reextraction.test.ts`. That suite reads
+`3468ef5f` and its parent out of git and asserts this bullet against the
+precedent's real diff, then asserts the same rule over a live re-extraction of
+`docs/balance/smoke/tiers.json`. This criterion is therefore enforced, not
+remembered — which is the point, because it was written wrong twice (see below).
+
 - The trace shape from §3 is implemented and asserted by a unit test driving `pickIntent`/
   `pickContract` directly and inspecting the emitted entries against a known weight table.
 - An untraced sweep run is byte-identical to the pre-change run (goldens, `campaign-degraded`
   pins) — proving the addition is behaviorally inert despite moving `rulesFingerprint`.
-- The re-extraction moves fingerprints and `provenance` only; every recorded
-  measurement (checkpoints, tier spreads, seed lists) is byte-identical, and any
-  fingerprint beyond `rulesFingerprint` that moves is named in the commit body
-  with the file that moved it. **(Reworded by owner ruling on F-140-3, §7.7(A),
-  2026-08-01 — see that section for why the original wording was unsatisfiable
-  even by the T-110 precedent it cited.)**
+- The re-extraction moves `productVersion`, the fingerprints and `provenance` — and
+  nothing else; every recorded measurement (checkpoints, tier spreads, seed lists)
+  and `saveSchemaVersion` are byte-identical, and any fingerprint beyond
+  `rulesFingerprint` that moves is named in the commit body with the file that
+  moved it. **(Reworded by owner ruling on F-140-3, §7.7(A), 2026-08-01 — see
+  that section for why the original wording was unsatisfiable even by the T-110
+  precedent it cited. AMENDED AGAIN 2026-08-04, T-166: the 2026-08-01 wording —
+  "fingerprints and `provenance` only" — was itself ONE FIELD SHORT. `3468ef5f`
+  also moved `productVersion`, which is neither a fingerprint nor `provenance`;
+  §7.7's own evidence block lists it, and the reword still omitted it. The
+  corrected set above is now asserted against that commit by
+  `packages/sim/src/__tests__/smoke-reextraction.test.ts`, so a third wrong
+  transcription fails the suite instead of surviving in a doc.)**
 - A `grep` for the trace-sink parameter/callback under `packages/ui` and `packages/desktop`
   returns nothing.
 - A dedicated `--trace-npc-decisions` sweep run produces the gitignored JSONL and, if §4(4)'s
@@ -424,3 +438,19 @@ the implementation changes.
 T-110 actually set, exceeds it with §7.5's row-level sha256 identity, and §6's third
 bullet is repaired above to the property it meant. T-140 is `DONE`; this track's
 remaining fingerprint-moving tasks inherit the repaired wording.
+
+**CLOSED (T-166, 2026-08-04) — the defect CLASS, not just this instance.** The
+F-140-3 class is "an Accept criterion cites a precedent commit, and nothing ever
+checks the criterion against that commit's diff". It recurred inside its own
+remedy: the 2026-08-01 reword above says "fingerprints and `provenance` only",
+while the four-field evidence block at the top of this section — written in the
+same session — lists `productVersion` too. A rule and its own evidence
+disagreed, in one section, for four days, because neither was executable.
+`packages/sim/src/__tests__/smoke-reextraction.test.ts` now makes the rule
+executable: it reads `3468ef5f^` and `3468ef5f` out of git, asserts the moved set
+is exactly `productVersion` + `rulesFingerprint` + `docsFingerprint` +
+`provenance.gitCommit` with `checkpoints` byte-identical, and applies the same
+classification to a live re-extraction of the committed fixture. The historical
+quotations in §7.3 and above are deliberately LEFT AS THEY WERE — they are the
+record of what was found, and editing them would destroy the evidence that makes
+this ruling auditable.

@@ -81,6 +81,14 @@ change to *code* — a constant, an operator, an import — still moves the hash
 When the fingerprint moves, that is not a problem to route around: it means the rules
 changed, the checkpoints describe the old rules, and the honest fix is a new capstone.
 
+**Which fields a re-extraction may move is CHECKED, not remembered** (T-166).
+`packages/sim/src/__tests__/smoke-reextraction.test.ts` re-extracts `tiers.json` from the
+baseline its own `provenance.sweepLabel` names and requires that only `productVersion`, the
+three fingerprints and `provenance` differ — every checkpoint, tier spread, seed list and
+`saveSchemaVersion` byte-identical. The same rule is asserted against the T-110 precedent
+(`3468ef5f`) that BR-8 cites, read out of git rather than out of a summary. If it goes red,
+re-extract; never hand-edit this fixture.
+
 **The one exception, and it is narrow.** If the hash *algorithm* changes, every fingerprint
 moves at once while no rule has changed — re-extract from the unchanged baseline of record
 rather than re-measuring, and say so explicitly in the commit. This has happened twice: at

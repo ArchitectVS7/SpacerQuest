@@ -65,6 +65,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # T-166: FULL HISTORY IS REQUIRED IN THIS JOB. It is the only one that
+          # runs `npm test`, and `packages/sim/src/__tests__/smoke-reextraction.test.ts`
+          # reads the precedent commit `3468ef5f` and its parent out of git — the
+          # whole point of that check is that a rule is verified against the commit
+          # it cites rather than against a summary of it. The default depth-1
+          # clone cannot produce those blobs, and the test fails loudly (never
+          # skips) when it cannot reach them. No other job needs this:
+          # `sweep-gate.yml` and the e2e/desktop/package jobs never run `npm test`.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v6

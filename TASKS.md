@@ -1377,7 +1377,7 @@ move `instrumentFingerprint` and owe a capstone for what is a documentation-cons
 a rules change; `rulesFingerprint` is unmoved by this task.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
 
-### T-166 · An Accept criterion citing a precedent commit is never checked against that commit — `status: TODO` · `coder: opus` · `after: —`
+### T-166 · An Accept criterion citing a precedent commit is never checked against that commit — `status: DONE` · `coder: opus` · `after: —`
 
 Write the missing check for the F-140-3 defect class: nothing in the repo verifies that an Accept
 criterion citing a precedent commit actually matches that commit's diff. §6 of
@@ -1393,6 +1393,26 @@ byte-identical. Until that check exists there is no lesson, only this gap.
 measurement byte-identical" rule over a smoke-fixture re-extraction (or an equivalent gate step is
 documented and wired); `docs/BALANCE-TELEMETRY_SPEC.md` §6's wrong claim is corrected against
 `3468ef5f`'s real diff; gate green.
+
+**Delivered (2026-08-04):** Added `packages/sim/src/__tests__/smoke-reextraction.test.ts`, which
+reads the precedent commit `3468ef5f` and its parent directly out of git and asserts §6/BR-8's
+"only fingerprints + `provenance` move" rule against that commit's real diff, then asserts the
+same rule over a live re-extraction of `docs/balance/smoke/tiers.json` from the baseline its own
+provenance names, plus seeded-bad cases proving the classifier can go red. In the process it found
+the 2026-08-01 reword was *itself* one field short — `productVersion` moves too, alongside
+`rulesFingerprint`, `docsFingerprint`, and `provenance.gitCommit` — so `docs/BALANCE-TELEMETRY_SPEC.md`
+§6 and `docs/BALANCE-RIG-DECISIONS.md` BR-8 are corrected to the four-field set and the historical
+misquotes are left intact as an auditable record rather than silently edited away. CI's `test` job
+now checks out with `fetch-depth: 0` (only that job runs `npm test`) so the precedent commit is
+reachable in a normally-shallow CI clone; `docs/balance/smoke/README.md` points at the new check.
+**Deliberate scope boundary:** the check lives under `__tests__`, not `packages/sim/src/balance/`,
+for the same reason T-165's `baseline-pointers.test.ts` does — a module under `balance/` is a
+hashed instrument source, and adding one there would move `instrumentFingerprint` and stale the
+very fixture this check verifies, to check re-extractions; `__tests__` is in
+`HASHED_ROOT_IGNORED_DIRECTORIES` so nothing here moves a fingerprint. It also does not grade
+fixture freshness — `fixtureFreshness` (`balance-smoke.test.ts`) still owns that — this file owns
+only "when a re-extraction happens, did anything move that isn't allowed to."
+Orchestration: graphify=none — no graphify-out/graph.json in the repo root · attempts=1/4.
 
 ### T-167 · Rig sensitivity check — fail when a policy is bit-for-bit flat across variants that should perturb it — `status: TODO` · `coder: opus` · `after: —`
 

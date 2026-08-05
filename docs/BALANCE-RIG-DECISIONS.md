@@ -58,9 +58,15 @@ never asserted from memory, and the moved set is written down BEFORE the diff ru
 **BR-8 — Any fingerprint beyond `rulesFingerprint` that moves must be NAMED IN THE COMMIT
 BODY with the file that moved it.** (Owner ruling 2026-08-01 on F-140-3, option A.)
 `docs/BALANCE-TELEMETRY_SPEC.md` §6's third bullet is permanently reworded to the property
-T-110 actually established — a re-extraction moves fingerprints and `provenance` only, and
-every recorded measurement stays byte-identical. §6's stricter "`rulesFingerprint`'s move is
-the ONLY expected diff" wording was a transcription defect, not the bar T-110 set.
+T-110 actually established — a re-extraction moves `productVersion`, the fingerprints and
+`provenance` only, and every recorded measurement stays byte-identical. §6's stricter
+"`rulesFingerprint`'s move is the ONLY expected diff" wording was a transcription defect,
+not the bar T-110 set. **(T-166, 2026-08-04: `productVersion` added above. This sentence
+and the 2026-08-01 reword it transcribed both dropped it, while BR-9 twelve lines below
+had it right the whole time — `3468ef5f` moved four fields, not three. The rule is now
+ENFORCED, not remembered: `packages/sim/src/__tests__/smoke-reextraction.test.ts` asserts
+it against `3468ef5f`'s own diff and against a live re-extraction, so the next miscopy
+goes red instead of sitting in a doc.)**
 
 ---
 
