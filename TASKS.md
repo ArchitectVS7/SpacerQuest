@@ -3972,7 +3972,7 @@ the new open-flow beat; no economy constant changed (`git diff` touches only
 values); existing T-187 onboarding coach and its tests unaffected; UI test coverage added for the
 new beat's presence at game start. Gate green.
 
-### T-201 · Design: an animated dawn-hand dice roll for the day transition — `status: TODO` · `coder: opus` · `type: design` · `after: —`
+### T-201 · Design: an animated dawn-hand dice roll for the day transition — `status: DONE` · `coder: opus` · `type: design` · `after: —`
 
 **The ask (owner, 2026-08-05):** day transitions are currently close to invisible — nothing marks
 the moment the dawn hand refills. The owner wants a visible, impactful beat: five dice roll in
@@ -3993,6 +3993,20 @@ by file/line; every changed path ends in `.md` (design gate — no engine/UI cod
 task); the proposal names its own open questions rather than silently deciding them. A follow-up
 `code`-type implementation task is expected once the owner picks a direction — do not file it yet.
 Gate green.
+
+**Delivered (2026-08-05):** `docs/design/T-201-dawn-hand-roll.md` lands the requested proposal —
+it re-derives the day-transition path (`endDay` → `store.ts:2371` → engine `startDay`/`day.ts:116`)
+by file/line against `b8343150`, surfaces that a roll animation (`useDiceRoll`, `App.tsx:5785`)
+already exists but has no stage, and presents three treatments (dock-local, centre-board throw with
+GSAP Flip fly-home, and a hybrid that plays the full ceremony only on day 1/notable hands/day 30
+and the short form otherwise), recommending the hybrid with rationale tied to `tabletop-ui` §8's
+motion-tier rule and the four-times-recorded owner preference for bolder treatments. Nine open
+questions (label copy, sound staging, save-load/import triggering, death-during-dawn collision,
+`.sweep` conflict, and others) are named rather than silently decided, per the Accept. Scope
+boundary, deliberately held: no implementation, no engine/UI code — every changed path is `.md`
+under `docs/design/`; the follow-up `code`-type task is explicitly not filed, per this task's own
+Accept clause reserving that for the owner's pick.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
 ### T-202 · Ship R3: revise `LIARS_DICE_ROUNDS_PER_DAY` to `[1, 2, 3, 4, 5, 6]` and pay its capstone — `status: TODO` · `coder: opus` · `after: —`
 
