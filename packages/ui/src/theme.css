@@ -4222,6 +4222,18 @@ body {
   color: var(--amber-dim);
   max-width: 46ch;
 }
+/* T-203 · a ROAMING dealer's standing with you. A modifier ON `.ld-tabletalk`,
+   never a standalone block: it sets only the face, so spacing and width stay the
+   single copy that `.ld-tabletalk` owns and the two can never disagree about them.
+   The upright face and the wider tracking are what separate a fact about your
+   history from an authored line of talk. Named for the dealer, not for "history" —
+   `.ld-history` further down is the move-by-move public record `<ol>`, and a
+   second block under that name would have won the cascade over `.ld-tabletalk`. */
+.ld-dealer-standing {
+  font-style: normal;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
 .ld-dice {
   display: flex;
   gap: 12px;

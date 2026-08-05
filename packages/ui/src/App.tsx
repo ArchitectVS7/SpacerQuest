@@ -129,6 +129,7 @@ import {
   wireLog,
   npcNameIndex,
   npcDossier,
+  dispositionHint,
   statName,
   checkVerdict,
   signedMargin,
@@ -2411,6 +2412,18 @@ function HangoutPanel({
                     onClick={() => setOpponentId(n.id)}
                   >
                     <span className="hp-npc-name">{n.name}</span>
+                    {/* T-203 · The standing you already have with this captain,
+                        BEFORE you commit to a hand — the same five bands the
+                        combat header prints for a named interceptor, off the
+                        `disposition` `hangoutNpcs` already carries. Rendered
+                        unconditionally on a pool-B row: "No standing with you" is
+                        the honest neutral baseline a grudge has to read
+                        differently from. The house's own seats below get nothing
+                        — pool A has no disposition to state. */}
+                    <span className="hp-npc-tag" data-testid="hangout-npc-standing">
+                      {' '}
+                      · {dispositionHint(n.disposition)}
+                    </span>
                   </button>
                 </li>
               ))}
@@ -2956,6 +2969,18 @@ function LiarsDiceScene({
         <div className="ld-seat" data-testid="dare-dealer-name">
           {dealerName.toUpperCase()}
         </div>
+        {/* T-203 · The ROAMING dealer's standing with you, kept up for the life of
+            the hand — the same disposition bands the combat header prints for a
+            named interceptor, so a captain you insulted last week is recognisable
+            across the table. `null` on a roster hand (pool A has no disposition),
+            so nothing renders there at all — the `roomLine` convention, never a
+            placeholder. Mutually exclusive with `tableTalk` below (that one is
+            non-null only on a roster hand), so no roster DOM ordering moves. */}
+        {view?.dealerHistory && (
+          <p className="ld-tabletalk ld-dealer-standing" data-testid="dare-dealer-history">
+            {view.dealerHistory}
+          </p>
+        )}
         {/* T-145 · The roster opponent's authored TABLE TALK, printed verbatim
             for the life of the hand. Absent on a roaming hand ⇒ nothing renders
             here at all, never a placeholder — the `roomLine` convention. */}

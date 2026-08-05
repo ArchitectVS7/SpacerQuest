@@ -204,3 +204,29 @@ test('a beaten seat is marked, and a rematch is still offered', async ({ page })
     await expect(rosterRow(page, seat.id)).toHaveAttribute('data-beaten', 'false');
   }
 });
+
+// ---------------------------------------------------------------------------
+// T-203 · THE ROSTER SEAT IS UNCHANGED.
+//
+// The roaming-dealer standing cue (`dare-dealer-history`, added for T-203) must
+// not appear on a pool-A seat: a roster opponent has no `NpcState`, so it has no
+// disposition toward the player, and a synthesised "No standing with you" there
+// would be an invention rather than a neutral. This is the mechanical form of the
+// Accept clause "a `ld-` roster opponent's seat is byte-identical to today".
+// ---------------------------------------------------------------------------
+
+test('a roster seat carries its table talk and NO standing cue', async ({ page }) => {
+  await openHangout(page);
+
+  const seat = SEATS[1];
+  await rosterRow(page, seat.id).click();
+  await page.getByTestId('dare-wager').fill(String(DARE_MIN_WAGER));
+  await expect(page.getByTestId('dare-commit')).toBeEnabled();
+  await page.getByTestId('dare-commit').click();
+
+  await expect(page.getByTestId('dare-scene')).toBeVisible();
+  // What the seat DOES say, unchanged.
+  await expect(page.getByTestId('dare-table-talk')).toHaveText(seat.lines.tableTalk);
+  // What it must never say.
+  await expect(page.getByTestId('dare-dealer-history')).toHaveCount(0);
+});

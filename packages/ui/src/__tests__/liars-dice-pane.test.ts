@@ -26,8 +26,10 @@ import {
   dareRevealFrom,
   dareScene,
   dareWagerBounds,
+  dispositionHint,
   hangoutNpcs,
   hangoutRosterOpponents,
+  liarsDiceDealerReadout,
 } from '../format';
 
 // ---------------------------------------------------------------------------
@@ -502,3 +504,137 @@ function startedRead(events: GameEvent[]): string | undefined {
   const started = events.find((e) => e.type === 'DareHandStarted');
   return started && 'opponentRead' in started ? started.opponentRead : undefined;
 }
+
+// ---------------------------------------------------------------------------
+// T-203 · THE RIVAL ACROSS THE TABLE.
+//
+// The same 30 named captains the player Meets / Befriends / Insults at a Hangout
+// are the ones who turn up as a ROAMING dealer, and until now that connection was
+// invisible at the table. These tests pin the cue's presence on a roaming hand,
+// its ABSENCE on a `ld-` roster hand (pool A has no disposition, so a synthesised
+// "No standing with you" there would be a false cue, not a neutral one), and the
+// fact that adding the field did not open a leak.
+//
+// Every expectation is DERIVED from the exported `dispositionHint` or from live
+// state — never a hardcoded band string. A literal here would be the second copy
+// of the wording that exporting `dispositionHint` exists to prevent, and it would
+// pass while the pane printed something else. The real-clicks half is
+// `packages/ui/e2e/hangout.spec.ts` and `packages/ui/e2e/liars-dice-roster.spec.ts`.
+// ---------------------------------------------------------------------------
+
+/** A structural clone whose named dealer's disposition is set outright. Used ONLY
+ *  to sweep the bands of a pure display projection — the disposition MOVES in the
+ *  tests below are driven through the engine's own `VisitHangout`. */
+function withDisposition(game: GameState, npcId: string, disposition: number): GameState {
+  const clone = JSON.parse(JSON.stringify(game)) as GameState;
+  clone.npcs.find((n) => n.id === npcId)!.disposition = disposition;
+  return clone;
+}
+
+describe('T-203 · a roaming dealer wears their standing with you', () => {
+  it('reads the neutral band for a captain the player has no history with', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    const npc = state.npcs.find((n) => n.id === DEALER)!;
+    expect(npc.disposition).toBe(0);
+    const readout = liarsDiceDealerReadout(state, DEALER)!;
+    expect(readout.standing).toBe(dispositionHint(0));
+    expect(dareScene(state)!.dealerHistory).toBe(readout.line);
+    expect(dareScene(state)!.dealerHistory).toContain(dispositionHint(0));
+  });
+
+  it('reads DIFFERENTLY once the player has insulted that captain', () => {
+    const neutral = dareScene(openHand(dayOneAtSun3(1)).state)!.dealerHistory;
+
+    // Driven through the engine, not poked onto the projection. An insult ALWAYS
+    // lands (no check — `actions/hangout.ts`), so this is deterministic on any
+    // seed and needs no sweep.
+    const insulted = applyPlayerAction(dayOneAtSun3(1), {
+      type: 'VisitHangout',
+      venue: 'insult',
+      opponentId: DEALER,
+    }).state;
+    const npc = insulted.npcs.find((n) => n.id === DEALER)!;
+    // Read the live disposition rather than asserting a delta: a port authors its
+    // own `insult.dispositionOnSuccess`, so a literal here would pin content.
+    expect(npc.disposition).toBeLessThan(0);
+
+    const { state } = openHand(insulted);
+    const readout = liarsDiceDealerReadout(state, DEALER)!;
+    expect(readout.standing).toBe(dispositionHint(npc.disposition));
+    expect(dareScene(state)!.dealerHistory).toBe(readout.line);
+    // The whole point of the task: the insulted rival does NOT read like a
+    // stranger at the table.
+    expect(dareScene(state)!.dealerHistory).not.toBe(neutral);
+  });
+
+  it('covers every band, straight off the shared hint', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    for (const disposition of [-5, -1, 0, 1, 3]) {
+      const at = withDisposition(state, DEALER, disposition);
+      const readout = liarsDiceDealerReadout(at, DEALER)!;
+      expect(readout.standing, `disposition ${disposition}`).toBe(dispositionHint(disposition));
+      expect(dareScene(at)!.dealerHistory, `disposition ${disposition}`).toContain(
+        dispositionHint(disposition),
+      );
+    }
+    // The bands really are distinguishable — otherwise the sweep above is vacuous.
+    const bands = new Set([-5, -1, 0, 1, 3].map((d) => dispositionHint(d)));
+    expect(bands.size).toBe(5);
+  });
+
+  it('appends the prior-wire-mention clause only when there is a record', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    const name = state.npcs.find((n) => n.id === DEALER)!.name;
+    const clean = liarsDiceDealerReadout(state, DEALER)!;
+    expect(clean.mentions).toBe(0);
+    expect(clean.line).not.toContain('wire');
+
+    const mentioned: GameState = {
+      ...state,
+      eventLog: [
+        ...state.eventLog,
+        {
+          type: 'WireEntry',
+          day: state.day,
+          message: `${name} was seen at the docks.`,
+          kind: 'npc',
+        },
+      ],
+    };
+    const withRecord = liarsDiceDealerReadout(mentioned, DEALER)!;
+    expect(withRecord.mentions).toBe(1);
+    expect(withRecord.line).toContain('1 prior wire mention');
+    expect(withRecord.line).not.toContain('mentions');
+  });
+
+  it('omits the last-known-system clause — a roaming dealer is standing right here', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    // Deliberate trim of `encounterReadout`'s history, not an oversight: the clause
+    // could only ever print the port the player is already in.
+    expect(liarsDiceDealerReadout(state, DEALER)!.line).not.toContain('Last known at');
+  });
+
+  it('is NULL on a `ld-` roster seat, and leaves the authored table talk alone', () => {
+    const { state } = openRosterHand(dayOneAtSun3(1), 'ld-1-2');
+    // Pool A has no `NpcState`, so it has no standing — and a synthesised neutral
+    // band on a seat that cannot have one is a false cue, not a harmless default.
+    expect(liarsDiceDealerReadout(state, 'ld-1-2')).toBeNull();
+    const view = dareScene(state)!;
+    expect(view.dealerHistory).toBeNull();
+    // Asserted in the SAME test so a regression that swapped one line for the
+    // other fails right here rather than passing both halves separately.
+    expect(view.tableTalk).toBe(LIARS_DICE_OPPONENTS[SUN_3][1].lines.tableTalk);
+  });
+
+  it('is null for an id with no live NpcState at all', () => {
+    expect(liarsDiceDealerReadout(dayOneAtSun3(1), 'npc-does-not-exist')).toBeNull();
+  });
+
+  it('did not open a leak — the new field is blind to the dealer’s dice', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    // The T-136 experiment, re-run for T-203's field specifically.
+    expect(dareScene(withDealerDice(state, [6, 6, 6, 6]))!.dealerHistory).toBe(
+      dareScene(state)!.dealerHistory,
+    );
+  });
+});

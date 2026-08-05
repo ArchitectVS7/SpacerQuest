@@ -4231,7 +4231,24 @@ construction — confirmed by running them, not assumed.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent; `scratch/` is also absent). · attempts=1/4.
 
-### T-203 · Surface a named rival's history at the Liar's Dice table — the insult-to-showdown connection is real but invisible — `status: TODO` · `coder: opus` · `after: —`
+### T-203 · Surface a named rival's history at the Liar's Dice table — the insult-to-showdown connection is real but invisible — `status: DONE` · `coder: opus` · `after: —`
+
+**Delivered (2026-08-05):** exported `dispositionHint` (previously private in `format.ts`)
+as the single source of truth for the five standing bands, and added
+`liarsDiceDealerReadout` — a Hangout-appropriate trim of `encounterReadout` that pairs the
+disposition hint with the prior-wire-mentions count but deliberately drops the "Last known
+at ⟨system⟩" clause, since a roaming dealer is co-located with the player by construction and
+that clause would print nothing but the port they're already standing in. `DareSceneView`
+gained a `dealerHistory` field wired through `dareScene`, null on every `ld-` roster hand (pool
+A has no `NpcState` and therefore no disposition — no synthesized "No standing with you" is
+shown where a real one couldn't exist) and populated only for a roaming dealer, rendered
+beside `dare-dealer-name` before the player commits to opening a hand. The Hangout roster list
+also got an unconditional `hangout-npc-standing` tag on each pool-B row so the same standing is
+visible before a table is even opened. Scope boundary: no engine or content file was touched —
+this is a pure UI surfacing of `npc.disposition`, which the engine already computes and
+exposes on `NpcState`; a `ld-` roster seat's DOM stays byte-identical to before, since a roster
+opponent has no disposition to state.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=2/4.
 
 **The ask (owner, 2026-08-05):** the owner is enthusiastic about an existing but under-surfaced
 piece of game texture: the same 30 named rival captains (`NPC_PROFILES`,

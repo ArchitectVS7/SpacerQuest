@@ -420,3 +420,62 @@ test('the social pool spends out through the UI, and says so before the dead cli
   // which is §4a/§4b's whole shape.
   await expect(page.getByTestId('dare-commit')).toBeEnabled();
 });
+
+// ---------------------------------------------------------------------------
+// T-203 · THE RIVAL YOU INSULTED, RECOGNISED ACROSS THE TABLE.
+//
+// The insult-to-showdown connection was real but invisible: the same captain you
+// insult at the Long Table is the one who deals you a roaming hand of Liar's Dice
+// at whatever port they happen to be docked at. This test drives the whole arc
+// through REAL CLICKS — read the standing, insult the captain, watch the standing
+// change, then sit down against them and see it again at the table.
+//
+// The assertion is "it CHANGED and it is a negative band", never a pinned string:
+// every port authors its own `insult.dispositionOnSuccess`, and the band wording
+// lives in exactly one place (`dispositionHint`). A literal here would pin content
+// this test has no business pinning.
+// ---------------------------------------------------------------------------
+
+test('an insulted captain reads differently at the Liar’s Dice table', async ({ page }) => {
+  await page.goto('/');
+  await newGameSeed(page, SEED);
+
+  await page.getByTestId('hangout-toggle').click();
+  await expect(page.getByTestId('hangout-panel')).toBeVisible();
+
+  // --- 1) BEFORE: a stranger's neutral standing, on the picker row, before the
+  //         player has committed to anything at all.
+  const standing = npcRow(page, DEALER).getByTestId('hangout-npc-standing');
+  await expect(standing).toBeVisible();
+  const neutral = (await standing.textContent()) ?? '';
+  expect(neutral).toContain('No standing with you');
+
+  // --- 2) THE INSULT: always lands, never rolls.
+  await npcRow(page, DEALER).click();
+  await dispatchSocial(page, 'insult');
+
+  // --- 3) AFTER: the SAME row now reads a negative band. The pane never
+  //         re-derives the wording; it prints the shared hint over the live
+  //         disposition the engine just moved.
+  await expect(standing).toHaveText(/Wants you dead|Holds a grudge/);
+  await expect(standing).not.toHaveText(/No standing with you/);
+
+  // --- 4) AT THE TABLE: sit down against the captain you just insulted, and the
+  //         same standing is waiting on their seat. This is the whole task: the
+  //         connection between the two rooms, made visible.
+  await page.getByTestId('dare-wager').fill(String(DARE_MIN_WAGER));
+  await expect(page.getByTestId('dare-commit')).toBeEnabled();
+  await page.getByTestId('dare-commit').click();
+
+  await expect(page.getByTestId('dare-scene')).toBeVisible();
+  const history = page.getByTestId('dare-dealer-history');
+  await expect(history).toBeVisible();
+  await expect(history).toHaveText(/Wants you dead|Holds a grudge/);
+
+  // --- 5) …and NOT on the house's own seats. Pool A has no `NpcState` and
+  //         therefore no standing with anyone; a neutral band printed there would
+  //         be a false cue, not a harmless default.
+  await expect(
+    page.locator('[data-testid="hangout-roster-opponent"] [data-testid="hangout-npc-standing"]'),
+  ).toHaveCount(0);
+});

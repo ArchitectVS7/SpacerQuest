@@ -584,6 +584,56 @@ export function hangoutRosterOpponents(game: GameState): HangoutRosterOpponent[]
   });
 }
 
+/**
+ * T-203 · A ROAMING dealer's standing with the player, at the Liar's Dice table.
+ *
+ * The same 30 named captains the player Meets / Befriends / Insults at a Hangout
+ * are the ones who turn up as a roaming dealer at whatever port they happen to be
+ * docked at, and until now that connection was invisible at the table. This is the
+ * Hangout-appropriate trim of {@link encounterReadout}'s history clause: it reuses
+ * {@link dispositionHint} and `countWireMentions` verbatim rather than restating
+ * either, so the bands and the wire wording exist in exactly one place each.
+ */
+export interface LiarsDiceDealerReadout {
+  /** `dispositionHint(npc.disposition)` — the band, never the number. */
+  standing: string;
+  /** Prior `WireEntry` lines naming this captain; 0 when they have no record. */
+  mentions: number;
+  /** The one-line composition the pane prints.
+   *
+   *  DELIBERATELY WITHOUT `encounterReadout`'s "Last known at <system>" clause: a
+   *  roaming dealer is co-located with the player by construction (`hangoutNpcs`
+   *  filters on `currentSystemId === here`, and a hand can only open where both
+   *  are standing), so the clause could only ever print the port the player is
+   *  already in. It is omitted because it carries no information here, not because
+   *  it was overlooked — do not "restore" it. */
+  line: string;
+}
+
+/**
+ * Null for a `ld-` ROSTER seat and for any id with no live `NpcState`.
+ *
+ * Pool A is outside the NPC economy entirely — a roster opponent has no
+ * `NpcState` and therefore no player disposition (the same §7.6 ruling that makes
+ * `DareRevealView.dispositionDelta` honestly 0 on every roster hand). Synthesising
+ * `dispositionHint(0)` for one would print "No standing with you" on a seat that
+ * CANNOT have standing, which is a false cue rather than a neutral one — hence the
+ * hard null, never a fallback.
+ */
+export function liarsDiceDealerReadout(
+  game: GameState,
+  dealerId: string,
+): LiarsDiceDealerReadout | null {
+  if (dealerId.startsWith('ld-')) return null;
+  const npc = game.npcs.find((n) => n.id === dealerId);
+  if (!npc) return null;
+  const standing = dispositionHint(npc.disposition);
+  const mentions = countWireMentions(game, npc.name);
+  const parts = [standing];
+  if (mentions > 0) parts.push(`${mentions} prior wire ${mentions === 1 ? 'mention' : 'mentions'}`);
+  return { standing, mentions, line: `${parts.join(' · ')}.` };
+}
+
 /** The rumor-table lines — a pure pass-through to the engine's own exported
  *  `hangoutRumors` (synthesized from live NPC state). The UI never re-synthesizes
  *  gossip; it renders exactly what the engine produces. Reader: the pane's rumor
@@ -703,6 +753,19 @@ export interface DareSceneView {
    * way `tableTalk` above is.
    */
   opponentRead: string | null;
+  /**
+   * T-203 · The ROAMING dealer's standing-with-you line
+   * ({@link liarsDiceDealerReadout}'s `line`), or `null` on a roster hand — pool A
+   * has no disposition to read, so nothing renders there at all (the `roomLine`
+   * convention, never a placeholder).
+   *
+   * Composed HERE, in the projection, so `LiarsDiceScene` is still handed a
+   * `DareSceneView` and never the `GameState` — the hidden-dice discipline stated
+   * at the top of the scene component. The value is a function of `npcs` and
+   * `eventLog` only, never of `hand.dealerDice`, so the T-136 deep-equal-across-
+   * three-dealer-hands experiment still holds with this field present.
+   */
+  dealerHistory: string | null;
 }
 
 /** T-146 · This hand's "Read the Table" line, straight off the `DareHandStarted`
@@ -736,6 +799,8 @@ export function dareScene(game: GameState): DareSceneView | null {
     opponentKind: hand.opponentKind,
     tableTalk: roster?.lines.tableTalk ?? null,
     opponentRead: dareOpponentRead(game, hand.id),
+    // T-203 · null on every roster hand, by the readout's own hard null.
+    dealerHistory: liarsDiceDealerReadout(game, hand.dealerId)?.line ?? null,
     playerDice: [...hand.playerDice],
     // `.length`, deliberately. Never a value, never a map over the array.
     dealerDieCount: hand.dealerDice.length,
@@ -1579,8 +1644,13 @@ export interface NpcDossier {
 }
 
 /** Disposition rendered as a standing HINT, never the number. Checked in
- *  most-extreme-first order so the bands don't overlap. */
-function dispositionHint(disposition: number): string {
+ *  most-extreme-first order so the bands don't overlap.
+ *
+ *  T-203 · EXPORTED so the combat readout, the wire dossier and the Liar's Dice
+ *  table all print the SAME five bands from this one place. The wording lives
+ *  here and nowhere else — a second copy of `'Holds a grudge'` anywhere in the
+ *  package is the bug this export exists to prevent. */
+export function dispositionHint(disposition: number): string {
   if (disposition < -2) return 'Wants you dead';
   if (disposition < 0) return 'Holds a grudge';
   if (disposition === 0) return 'No standing with you';
