@@ -75,6 +75,19 @@ survives as §5's ruled internal d20. Both counts are RENDERED beside the contro
 (`social-plays-left`, `dare-rounds-left`) so neither cap can refuse a click the player could
 not see coming.
 
+**RULING — R1, post-M17 pacing (owner, 2026-08-05): acceptable as-is.** No re-tuning task
+filed for the day-30 marker, Tour One debt, guild interest, or loan terms — see §0's
+cumulative arc and T-198 in `TASKS.md`. R2 (`SOCIAL_PLAYS_PER_DAY`) and R3 (the Liar's Dice
+rounds table, still `PROPOSED` below) remain open.
+
+**RULING — R3, the Liar's Dice rounds table (owner, 2026-08-05): `[1, 2, 3, 4, 5, 6]`**
+(tiers 0-5), revised up from the `[1, 2, 2, 3, 3, 4]` suggestion. Deliberately rewards a
+risky gambler archetype able to reach a scoundrel playstyle (fast drives, cloaking, evasion
+over combat) — the simulated ceiling is high (+228% vs field median, always-wins/uncapped)
+but real play still loses ~40% of hands, and the owner judged that an acceptable, intentional
+edge rather than an exploit. See `TASKS.md` T-198's R3 note for the full reasoning and T-202
+for the array + capstone that ships it. R2 remains open.
+
 ## 0 · M17 as measured — the Insult null result and the cumulative arc
 
 *This section is what **T-198**, the owner pacing checkpoint, reads. Its brief —

@@ -3861,7 +3861,222 @@ guessed at, paraphrased or implied by this pass** — the coder does not self-wa
 cells in the brief's §10 are the record that it did not. The task now awaits: Human ruling (R1, R2,
 R3).
 
+**RULING — R1 (owner, 2026-08-05): pacing is acceptable as-is.** No re-tuning task filed for the
+day-30 marker, Tour One debt, guild interest, or loan terms — the cumulative arc showed M17's
+freeing of admin/Hangout actions did not measurably ease the fleet economy (all within noise of
+T-196a), so the levers tuned against the old economy stand unchanged. R2 and R3 remain open;
+T-198 stays `BLOCKED(Human ruling)` until both are answered.
+
+**RULING — R2 (owner, 2026-08-05): `SOCIAL_PLAYS_PER_DAY = 3` confirmed, no change.** Per the
+insult-farming investigation (background test, 2026-08-05): the pool cap correctly blocks a
+4th same-day insult; insult/disposition never touches faction reputation or any player-facing
+score (fully separate systems, verified against source); and the interception-reweighting
+mechanism it gates is real (measured 27%→72% wronged-share lift, matching the ~2.358×
+theoretical figure) but economically narrow — it only reorders WHICH same-tier rival shows up,
+never adds encounters or changes payout, so even the cap's own existence isn't load-bearing for
+balance. No re-tuning task filed. **All three rulings (R1, R2, R3) are now recorded; T-198
+closes per T-202's conditional instructions once T-202 lands.**
+
+**RULING — R3 (owner, 2026-08-05): `LIARS_DICE_ROUNDS_PER_DAY` = `[1, 2, 3, 4, 5, 6]`** (tiers
+0-5, a strict +1/tier climb, revised up from the shipped `[1, 2, 2, 3, 3, 4]` suggestion).
+Owner's reasoning, recorded rather than paraphrased: the simulated ceiling (an always-wins
+gambler playing every free round) is a rare, high-skill-adjacent, high-variance play — real
+play at these odds still loses ~40% of individual hands — and rewarding a risky gambler
+archetype with the credits to buy fast drives/cloaking and run a scoundrel playstyle (trade
+combat for evasion) is an ACCEPTED, intentional outcome, not an exploit to close. Confirmed by
+simulation before this ruling (Measure 1 optimistic ceiling +228% vs field median, Measure 2
+realistic play +84%, both including the already-baked-in +68% shipped-gambler edge — see the
+capstone note above). **Implementation is content-only** (the array + its three `PROPOSED`
+markers) and owed its own capstone per T-198's own closing instructions — filed as **T-202**.
+R2 remains open; T-198 stays `BLOCKED(Human ruling)` until R2 is answered and T-202 lands.
+
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent). · attempts=1/4 · HUMAN-GATE HALT.
+
+---
+
+## M18 — Owner feature requests, filed at the T-198 pacing review (2026-08-05)
+
+Two feel/onboarding requests the owner raised while reviewing T-198's pacing brief. Independent
+of the M17 dawn-hand arc and of R2/R3 — both are eligible now, not gated behind T-198.
+
+### T-200 · Make the opening debt read as ominous, not as a stat line — `status: TODO` · `coder: opus` · `after: —`
+
+**The ask (owner, 2026-08-05):** a new Tour One run starts $25,000 in debt
+(`Tour One debt`, `packages/engine/src/state.ts:128`), but nothing in the current open/onboarding
+flow makes that legible as a *hook*. The owner wants the opening moments to feel like the
+player is under pressure from the start — in debt because of prior obligations — as the
+motivating "why" for going out and trading/fighting, distinct from the existing T-187 onboarding
+coach (which walks through controls, not narrative stakes). Find the current game-open /
+new-run flow (check `packages/ui/src/App.tsx` and whatever intro/onboarding component T-187
+built) and give the debt figure a deliberate narrative beat there: prominent placement, tone
+that reads as ominous/pressuring rather than a neutral ledger entry, and a short line of framing
+text tying the debt to "prior obligations" as the reason the player is out here at all. This is a
+presentation change over an EXISTING number — do not alter `Tour One debt`'s value, the guild
+interest rate, or any economy constant; this task is purely how and when the debt is first shown
+and framed, not what it is. Keep within the game's established tone (check `tabletop-ui` skill's
+house style before choosing copy/visual treatment).
+
+**Accept:** the debt amount is visible within the first screen(s) of a new run (not buried in a
+menu the player has to open), with copy/visual treatment distinct from routine in-play debt
+readouts (e.g. the ship-state panel); a human-checked screenshot or recording is produced showing
+the new open-flow beat; no economy constant changed (`git diff` touches only
+`packages/ui`/onboarding-related content, not `packages/engine`/`packages/content` economy
+values); existing T-187 onboarding coach and its tests unaffected; UI test coverage added for the
+new beat's presence at game start. Gate green.
+
+### T-201 · Design: an animated dawn-hand dice roll for the day transition — `status: TODO` · `coder: opus` · `type: design` · `after: —`
+
+**The ask (owner, 2026-08-05):** day transitions are currently close to invisible — nothing marks
+the moment the dawn hand refills. The owner wants a visible, impactful beat: five dice roll in
+the center of the board, a label reads "DAWN HAND" (exact copy TBD), then the dice settle into
+their existing display area at the bottom of the screen where the player spends them today. **The
+owner has explicitly asked to review a design proposal before any implementation** — this task
+produces that proposal, not the animation itself. Research/propose: where the day-transition
+trigger currently lives (`packages/ui`'s day-advance flow), what the roll/settle animation
+sequence should look like (timing, dice-face reveal order, how it reads on repeat since this
+fires every day), how the "DAWN HAND" label is presented and for how long, and how this
+interacts with anything already on screen when a day turns over (e.g. an open panel, a
+mid-animation player input). Present at least two concrete treatment options with a
+recommendation, referencing this project's established game-feel direction (`tabletop-ui` skill).
+
+**Accept:** a written proposal lands under `docs/` (e.g. `docs/design/T-201-dawn-hand-roll.md`)
+presenting the options and a recommendation, citing the actual current day-transition code path
+by file/line; every changed path ends in `.md` (design gate — no engine/UI code touched by this
+task); the proposal names its own open questions rather than silently deciding them. A follow-up
+`code`-type implementation task is expected once the owner picks a direction — do not file it yet.
+Gate green.
+
+### T-202 · Ship R3: revise `LIARS_DICE_ROUNDS_PER_DAY` to `[1, 2, 3, 4, 5, 6]` and pay its capstone — `status: TODO` · `coder: opus` · `after: —`
+
+**Owner ruling (2026-08-05, T-198 R3):** the Liar's Dice daily-rounds table changes from the
+shipped `[1, 2, 2, 3, 3, 4]` suggestion to `[1, 2, 3, 4, 5, 6]` (tiers 0-5) — a deliberate,
+confirmed content edit (not a comment-only flip), so per the Standing constraints and T-198's
+own closing instructions this owes a capstone diffed against
+`docs/balance/baseline-t197-hangout-caps.json`. **All four sites, one edit:** (1) the array
+itself, `packages/content/src/liarsDice.ts:112`; (2) that file's docblock immediately above it
+(~line 101), which currently reads `PROPOSED — AWAITING OWNER CONFIRMATION OF THE EXACT
+COUNTS` — replace with a dated `CONFIRMED (owner, 2026-08-05)` note, do not just delete the
+history; (3) `docs/DAWN-HAND-REDESIGN.md` §5's `STILL OPEN` bullet on the rounds-per-tier
+numbers — resolve it the same way T-197's other §5 bullets were resolved (mark `RESOLVED`,
+keep the not-chosen shape for the record, do not delete the bullet); (4)
+`docs/LIARS-DICE-DECISIONS.md` LD-23 — update to state the numbers are now confirmed, citing
+this task.
+
+**Capstone:** `npm run format` first, then the standard 8-shard `--seeds 1000 --days 120
+--policies trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy
+--milestone-days 21,29,30,41,60,120` sweep, `--merge` (confirm 8,000 rows), diffed against
+`baseline-t197-hangout-caps.json`. Predict before running, per Standing constraints: only the
+`gambler` policy row moves (it is the only policy that plans Liar's Dice hands at all per
+T-198's own instrument-gap finding), and it moves UP in credits/dare-income — the scratch
+probe at `scratch/liars-dice-ceiling.ts` (T-198 investigation, kept but not committed) already
+measured the realistic-odds/uncapped-rounds shape and is a same-order-of-magnitude sanity
+check for the predicted row, not a substitute for the real committed sweep. `rulesFingerprint`
+moves (a content constant changed); write the new baseline as
+`docs/balance/baseline-t202-liars-dice-ceiling.json` and re-pin at all four sites.
+
+**R2 is now also recorded (owner, 2026-08-05: `SOCIAL_PLAYS_PER_DAY = 3` confirmed, no
+change) — all three rulings are in, so this task ALSO closes T-198.** Flip test 5 of
+`packages/sim/src/__tests__/pacing-brief-figures.test.ts` from asserts-empty to
+asserts-non-empty (per that file's own header comment and the T-158 precedent), and set
+T-198's `status` to `DONE` with a dated closing note citing all three rulings.
+
+**Accept:** `LIARS_DICE_ROUNDS_PER_DAY` reads `[1, 2, 3, 4, 5, 6]`; all three `PROPOSED`
+markers updated to confirmed, none silently deleted; the capstone lands with a re-pinned
+baseline at all four sites and the predicted single-row (`gambler`) move confirmed or a
+finding filed if the diff is broader than predicted; T-198's closure (test 5 + status) handled
+per the conditional above. Gate green.
+
+### T-203 · Surface a named rival's history at the Liar's Dice table — the insult-to-showdown connection is real but invisible — `status: TODO` · `coder: opus` · `after: —`
+
+**The ask (owner, 2026-08-05):** the owner is enthusiastic about an existing but under-surfaced
+piece of game texture: the same 30 named rival captains (`NPC_PROFILES`,
+`packages/content/src/cast.ts`) you can Meet/Befriend/Insult at a Hangout are the SAME
+captains — tracked by live `currentSystemId` — you can end up facing across the table as a
+"roaming" Liar's Dice dealer at whatever port they currently happen to be docked at
+(`dealer = inSystem.find(...)`, `packages/engine/src/actions/hangout.ts:266`), separately from
+the fixed 42-seat roster opponents. Right now this connection is invisible at the table: the
+Liar's Dice scene (`packages/ui/src/App.tsx`, the `ld-seat`/`dare-dealer-name` region around
+line 2853) renders only the dealer's bare name — no disposition, no history, nothing marking
+"this is someone you have a relationship with." Contrast with combat: `encounterReadout`
+(`packages/ui/src/format.ts:1643`) ALREADY does exactly this for a named interceptor —
+disposition hint (`Wants you dead` / `Holds a grudge` / `Warming to you` / etc.), last-known
+system, and a count of prior wire mentions — and it's rendered prominently in the combat
+header (`App.tsx`'s `co-enemy` block, ~line 1695). This task ports that same readout (or a
+Hangout-appropriate trim of it) onto a roaming dealer's seat, so a player who insulted someone
+last week and then draws them at the table recognizes it.
+
+**Files:** `packages/ui/src/format.ts` — either reuse `encounterReadout`'s disposition-hint
+logic directly or extract a shared helper (`dispositionHint` is already a standalone function
+at line 1583; prefer reusing it over duplicating the wording) into a small
+`liarsDiceDealerReadout`-shaped export for a roaming (non-`ld-` prefixed) opponent only — a
+FIXED roster opponent (`ld-` prefix) has no player disposition and keeps its existing
+`tableTalk`/`opponentRead` treatment untouched, do not add a disposition hint to a roster seat
+that has none. `packages/ui/src/App.tsx` — render the new readout beside `dare-dealer-name`
+for a roaming dealer only, visible before the player commits to opening a hand (not buried
+post-open).
+
+**Accept:** at a Liar's Dice table with a ROAMING (non-roster) dealer, the player sees a
+disposition-based cue distinct from a neutral-standing NPC (e.g. an insulted rival reads
+differently than a stranger) before opening a hand; a `ld-` roster opponent's seat is
+byte-identical to today (no disposition hint added where none is meaningful); UI test coverage
+added asserting the cue's presence for a grudge-holding roaming dealer and its absence for a
+roster dealer; no engine/content file touched (this is a UI-only surfacing of data the engine
+already computes — `npc.disposition` is already on `NpcState`). Gate green.
+
+### T-204 · Rename "Hangout" to "Cantina" in every PLAYER-FACING surface — `status: TODO` · `coder: opus` · `after: —`
+
+**The ask (owner, 2026-08-05):** retire "Hangout" (the OG name) in favor of "Cantina" everywhere
+a player sees it. **Scoped deliberately narrow, owner-confirmed (2026-08-05):** this is a
+**player-facing text rename only** — "Hangout" is currently 3,238 case-insensitive hits across
+146 files (verified by grep at filing time), and the large majority of that is internal:
+`packages/engine/src/actions/hangout.ts`, `hangoutRules.ts`, `resolveVisitHangout`,
+`HangoutEvent`, `HangoutTone`/`HangoutProse` types, the `hasHangout`/`PORT_HANGOUTS` content
+fields, test names, code comments, and — load-bearing — the save schema's action-type literal
+`z.literal('VisitHangout')` (`packages/engine/src/schema.ts:1505`), which is stored verbatim
+inside every existing save file. **NONE of that is in scope for this task and none of it may
+change.** Renaming the save literal would be a save-shape change owing its own migration and
+was explicitly deferred, not forgotten — if a future task wants to go further, that is its own
+scoped decision, not a target here.
+
+**IN SCOPE — anything a player actually reads:**
+- `packages/ui/src/App.tsx` / `format.ts` (and `packages/desktop` if it duplicates any copy):
+  every literal string that renders as UI text, a button/nav label, a tooltip, or an
+  `aria-label` naming "Hangout" (e.g. `aria-label="Spacers Hangout"` at `App.tsx:2237`) becomes
+  "Cantina" / "Spacers Cantina," preserving the existing capitalization convention.
+- `packages/content/src/*` — every AUTHORED PROSE VALUE (per-port bar descriptions, tone
+  copy, storylet/onboarding text) that names "the Hangout" or "Spacers Hangout" as a place —
+  the STRING VALUES only. Do not rename the surrounding field/type names that hold that prose
+  (`HangoutTone`, `HangoutProse`, `PORT_HANGOUTS` stay exactly as-is — those are internal, not
+  player-facing).
+
+**OUT OF SCOPE — do not touch, and grep to prove it after:** file names (`hangout.ts` and
+siblings), exported symbol/type/function names, the `hasHangout`/`PORT_HANGOUTS`
+identifiers, code comments, test names and test-body identifiers, the save schema's
+`'VisitHangout'` literal, and any historical document — `TASKS.md` itself (append-only
+record of what already shipped), `docs/HANGOUT_REDESIGN.md`, `docs/DAWN-HAND-REDESIGN.md`, and
+any other dated design doc describing the system's engineering history. Those describe what was
+built and when; rewriting them to say "Cantina" would falsify the record of a decision that was
+actually made under the old name.
+
+**Content-hash note, stated so it is not missed or "fixed" the wrong way:** per the Standing
+constraints, content is hashed WHOLESALE into `rulesFingerprint` — changing prose STRING VALUES
+(even pure text, no mechanical change) will still move it. This is expected and required to be
+paid for properly (a capstone re-extract/re-pin), never by editing the fingerprint or a golden
+to make a stale check pass. **Predict before running, per Standing constraints: every archetype
+row should come back BYTE-IDENTICAL** (this is text-only, zero mechanical/numeric change) — if
+any row moves, that is a finding to report, not a rename gone right. Batch this into ONE
+capstone at the end per the "re-extract once" rule, write the new baseline as
+`docs/balance/baseline-t204-cantina-rename.json`, and re-pin at all four sites.
+
+**Accept:** a case-insensitive grep for "hangout" across `packages/ui/src`, `packages/desktop`,
+and every content file's authored STRING VALUES (prose/tone/copy fields, not field/type names)
+returns zero hits; a case-insensitive grep for "hangout" across file names, exported symbol
+names, `packages/engine/src/schema.ts`'s save literal, and `TASKS.md`/`docs/*REDESIGN*.md`
+shows those are UNCHANGED from before this task (byte-identical count to the pre-task
+baseline, proving nothing out-of-scope was touched); existing UI/e2e tests that assert on
+rendered copy are updated to expect "Cantina" and pass; the capstone lands with every
+archetype row byte-identical against the predecessor baseline and re-pinned at all four sites,
+or a filed finding if a row moved. Gate green.
 
 ---
 
