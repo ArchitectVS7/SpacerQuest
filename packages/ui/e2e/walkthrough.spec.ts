@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { createInitialState, startDay, createSave } from '@spacerquest/engine';
 import { DARE_MIN_WAGER } from '@spacerquest/content';
-import { WALKTHROUGH_KEY } from './support/career';
+import { WALKTHROUGH_KEY, signOpeningMarker, skipOpeningMarker } from './support/career';
 
 // ---------------------------------------------------------------------------
 // T-187 acceptance: THE SCRIPTED FIRST-TURN WALKTHROUGH, PLAYED AS A PLAYER.
@@ -58,6 +58,12 @@ test.beforeEach(async ({ page }) => {
   // the settled DOM exists on the very next render. NOTE: this spec deliberately
   // does NOT stamp the walkthrough away — it is the one suite that boots it armed.
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-200 · Retire the opening marker ONLY. The Guild's cold open covers day 1 of
+  // every new career and stands in front of the rails by design, so this suite —
+  // which is about the rails — signs it off before the app boots. It writes a
+  // DIFFERENT key (`sq.opening.v1`), so the walkthrough record every assertion
+  // below reads is untouched by it, including test A's persistence check.
+  await skipOpeningMarker(page);
 });
 
 // ---------------------------------------------------------------------------
@@ -67,9 +73,11 @@ test.beforeEach(async ({ page }) => {
 test('a first-time player is walked from the dawn hand to a hand of Liar’s Dice', async ({
   page,
 }) => {
-  // A genuinely virgin profile: isolated context, empty localStorage, no init
-  // script at all (an init script would re-run on reload and could clobber the
-  // very record the final persistence assertion reads).
+  // A genuinely virgin profile: isolated context, empty localStorage, and no init
+  // script touching the WALKTHROUGH key (one that did would re-run on reload and
+  // clobber the very record the final persistence assertion reads). The one init
+  // script in play is `beforeEach`'s T-200 marker stamp, which writes
+  // `sq.opening.v1` and nothing else.
   await page.goto('/');
 
   // ---- STEP 1 · the dawn hand -------------------------------------------
@@ -269,6 +277,12 @@ test('an encounter suspends the rails entirely — no soft-lock behind the comba
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill('887');
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · A fresh career always opens under its own Guild marker, and it
+  // stands in FRONT of the rails by design — so the dispatch is signed the way a
+  // player signs it, and only then is the walkthrough card asserted on. Without
+  // this the assertions below would read the card through the marker's render-time
+  // suppression and pass for the wrong reason. RNG-free: no engine action.
+  await signOpeningMarker(page);
   await expectStep(page, 'w1-dawn-hand');
   await page.getByTestId('walkthrough-skip').click();
 
@@ -345,6 +359,12 @@ test('Settings can re-arm the walkthrough for the next New Game', async ({ page 
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill('4242');
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · A fresh career always opens under its own Guild marker, and it
+  // stands in FRONT of the rails by design — so the dispatch is signed the way a
+  // player signs it, and only then is the walkthrough card asserted on. Without
+  // this the assertions below would read the card through the marker's render-time
+  // suppression and pass for the wrong reason. RNG-free: no engine action.
+  await signOpeningMarker(page);
   await expect(card(page)).toHaveCount(0);
 
   // …until Settings arms it again, which lands on the NEXT fresh career.
@@ -354,6 +374,12 @@ test('Settings can re-arm the walkthrough for the next New Game', async ({ page 
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill('4242');
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · A fresh career always opens under its own Guild marker, and it
+  // stands in FRONT of the rails by design — so the dispatch is signed the way a
+  // player signs it, and only then is the walkthrough card asserted on. Without
+  // this the assertions below would read the card through the marker's render-time
+  // suppression and pass for the wrong reason. RNG-free: no engine action.
+  await signOpeningMarker(page);
   await expectStep(page, 'w1-dawn-hand');
   expect((await persisted(page))?.status).toBe('active');
 });

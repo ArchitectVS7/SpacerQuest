@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { skipFirstTurnWalkthrough } from './support/career';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 
 // ---------------------------------------------------------------------------
 // T-190 · THE MANIFEST IS AN OBJECT, NOT A PANE.
@@ -191,6 +191,10 @@ test('the scripted walkthrough force-opens the board — the stow can never soft
   // its own lesson.
   await page.addInitScript(() => window.localStorage.clear());
   await page.goto('/');
+  // T-200 · A virgin profile also opens on the Guild marker, which stands in
+  // FRONT of the rails by design. Sign it the way the player does; the rails are
+  // untouched underneath and the card is on step 1 the moment it clears.
+  await signOpeningMarker(page);
   await expect(page.getByTestId('walkthrough')).toBeVisible();
 
   const board = page.getByTestId('manifest-board');

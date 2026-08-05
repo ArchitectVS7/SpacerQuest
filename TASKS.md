@@ -3899,7 +3899,26 @@ Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (
 Two feel/onboarding requests the owner raised while reviewing T-198's pacing brief. Independent
 of the M17 dawn-hand arc and of R2/R3 — both are eligible now, not gated behind T-198.
 
-### T-200 · Make the opening debt read as ominous, not as a stat line — `status: TODO` · `coder: opus` · `after: —`
+### T-200 · Make the opening debt read as ominous, not as a stat line — `status: DONE` · `coder: opus` · `after: —`
+
+**Delivered (2026-08-05):** added a new, third client-presentation system — `packages/ui/src/opening.ts`
+plus an `OpeningMarker` overlay in `App.tsx` — that lands a one-shot, in-fiction Guild dispatch over
+the day-1 cockpit at the birth of every career: the debt figure rendered as the largest thing on
+screen with framing prose naming "prior obligations" as the reason the player is out here, distinct
+in tone and treatment from the routine ledger readout in the Trade pane. Every figure (`debt`,
+`debtDueDay`) is read live off `GameState` with no numeric literal duplicated in the copy, so the
+economy constants in `packages/engine`/`packages/content` are untouched (confirmed via `git diff
+--stat` scoped to those packages returning empty). The record is client meta-state persisted under
+`sq.opening.v1`, armed once per career (not once per profile, unlike T-187's walkthrough) and retired
+on slot-load/import; render-time suppression keeps it from colliding with the existing T-187
+walkthrough card. Scope boundary: this is presentation over an existing number only — no change to
+`Tour One debt`, the due day, or the guild interest rate; the sibling T-201 (dawn-hand roll design
+proposal) and T-202 (Liar's Dice rounds-per-tier ship) are separate, unstarted tasks and out of scope
+here. Added `packages/ui/src/__tests__/opening-marker.test.ts` and
+`packages/ui/e2e/opening-marker.spec.ts` for the new beat, and touched the existing e2e specs/support
+helpers (`career.ts`, `longhaul.ts`, and the per-spec files) to dismiss the new marker so it doesn't
+block flows those tests already covered.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root; oriented directly from `TASKS.md`, `docs/PRD-REIMAGINED.md`, and… · attempts=1/4.
 
 **The ask (owner, 2026-08-05):** a new Tour One run starts $25,000 in debt
 (`Tour One debt`, `packages/engine/src/state.ts:128`), but nothing in the current open/onboarding

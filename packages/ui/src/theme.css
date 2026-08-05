@@ -4912,3 +4912,265 @@ body {
 .comp-effect-next {
   color: var(--accent, #4fd1c5);
 }
+
+/* =========================================================================
+   T-200 · THE OPENING MARKER — the debt as a cold open.
+
+   THE PROBLEM THIS SOLVES, VISUALLY. The 25,000cr Guild marker has until now
+   appeared in exactly two registers, and both are LEDGER voice: the bezel chip
+   (`DEBT 25,000 · DUE D30`, 11px, one of six chips in a row) and the Trade
+   pane's `GUILD DEBT` block. A number that reads like a stat line cannot also
+   read like a threat. Everything below exists to put the same figure in a
+   different register for the ten seconds a career opens on.
+
+   ONE PHOSPHOR COLOUR — the design commitment at the top of this file is
+   BINDING and T-186 (palette variety) is a blocked owner ruling, so a red
+   dispatch would pre-empt a decision the owner has reserved. The ominous
+   register is therefore carried entirely by things amber can do: REVERSE VIDEO
+   on the letterhead (the theme's own emphasis language), SCALE on the figure
+   (~48px against the chip's 11px), GLOW, and a slow bloom. No second hue.
+
+   MOTION: a frame bloom plus a staggered fade on the dispatch's body, both
+   inside `@media not (prefers-reduced-motion: reduce)` — the house rule this
+   file keeps throughout, so the reduced-motion path is INSTANT rather than
+   "animated then skipped", which is what keeps the e2e honest and satisfies the
+   tabletop-ui skill's "every animation must also run in a synchronous instant
+   mode".
+   ========================================================================= */
+
+.opening-marker {
+  position: fixed;
+  inset: 0;
+  /* Above the walkthrough card (86), the succession beat (84), the combat
+     overlay (80) and the contextual coach (82) — nothing may occlude the beat a
+     career opens on. Deliberately BELOW the `.fx` scanline/vignette layer (90),
+     unlike `.ending-screen`: the ending REPLACES the tube, whereas this dispatch
+     arrives ON it and should wear the same phosphor grain as everything else. */
+  z-index: 88;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  /* Darker than `.ending-screen`'s backdrop and NOT opaque: the cockpit stays
+     legible underneath, because the point is that the ship is already yours and
+     already mortgaged — not that the game has not started yet. */
+  background: radial-gradient(120% 120% at 50% 38%, rgba(6, 4, 2, 0.9), rgba(2, 1, 1, 0.985));
+}
+
+.om-frame {
+  position: relative;
+  width: min(640px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  /* Heavier than `.es-frame`'s 1px amber: a called marker is not a receipt. */
+  border: 2px solid var(--ember);
+  background: linear-gradient(180deg, #1c1207, #070505);
+  box-shadow: var(--glow-hi);
+  padding: 0 0 26px;
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  text-align: center;
+}
+/* Registration marks — the crop ticks a printed Guild form is struck with, at
+   the FOOT only: the head of this document is the reverse-video letterhead, and
+   an ember tick on an ember strip is a mark nobody can see. Cheap, and the
+   single strongest signal that this is a DOCUMENT and not a dialog. Purely
+   decorative, never hit-tested. */
+.om-frame::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  pointer-events: none;
+  opacity: 0.6;
+  background:
+    linear-gradient(var(--ember), var(--ember)) left bottom / 16px 1px no-repeat,
+    linear-gradient(var(--ember), var(--ember)) left bottom / 1px 16px no-repeat,
+    linear-gradient(var(--ember), var(--ember)) right bottom / 16px 1px no-repeat,
+    linear-gradient(var(--ember), var(--ember)) right bottom / 1px 16px no-repeat;
+}
+/* Platen grain — the dispatch is a printed thing sitting on a tube, not a modal
+   card. Purely decorative, never hit-tested. */
+.om-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(255, 176, 0, 0.045) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+/* The letterhead. REVERSE VIDEO — the emphasis language this theme already
+   owns, and the loudest thing available inside one phosphor. */
+.om-kicker {
+  width: 100%;
+  padding: 9px 14px;
+  background: var(--ember);
+  color: var(--tube);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.om-title {
+  margin: 0;
+  padding: 0 24px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.1em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+
+/* The figure. The whole task in one element: this number is ~4x the bezel
+   chip's, tabular, and the brightest thing on the screen. */
+.om-figure {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  padding: 0 24px;
+}
+.om-owed {
+  font-family: var(--font-data);
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+/* The countdown, in the ledger's own due-soon idiom (reverse video) so the two
+   readouts are recognisably the same fact — just said at different volumes. */
+.om-due {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  background: var(--ember);
+  color: var(--tube);
+  padding: 3px 9px;
+}
+
+.om-prose {
+  display: grid;
+  gap: 12px;
+  padding: 0 30px;
+  max-width: 56ch;
+}
+.om-prose p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.72;
+  color: var(--amber);
+  text-align: left;
+}
+.om-signoff {
+  margin: 0;
+  padding: 0 30px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: var(--ember-hi);
+  opacity: 0.92;
+}
+/* The foot of the document: a torn/dashed rule, the clearing-house stamp, then
+   the one control. Reading order is deliberate — the player signs UNDER the
+   authorisation, which is what makes the button a signature rather than an OK. */
+.om-foot {
+  width: 100%;
+  margin-top: 4px;
+  padding: 16px 24px 0;
+  border-top: 1px dashed var(--amber-dim);
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+.om-stamp {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  letter-spacing: 0.24em;
+  color: var(--amber-dim);
+  text-transform: uppercase;
+}
+.om-sign {
+  justify-self: center;
+  padding: 9px 24px;
+  border-color: var(--ember);
+}
+
+@media (max-width: 720px) {
+  .om-owed {
+    font-size: 34px;
+  }
+  .om-title {
+    font-size: 17px;
+  }
+  .om-prose,
+  .om-signoff {
+    padding: 0 18px;
+  }
+}
+
+@media not (prefers-reduced-motion: reduce) {
+  /* The frame arrives the way a phosphor does: struck bright, then settling. */
+  .om-frame {
+    animation: om-strike 620ms ease-out 1 both;
+  }
+  .om-owed {
+    animation: om-bloom 900ms ease-out 1 both;
+  }
+  /* The body reads in, line by line, so the FIGURE lands before the reasons for
+     it do. Staggered by position, no JS, no timer, no component state. */
+  .om-prose p:nth-child(1) {
+    animation: om-read-in 520ms ease-out 380ms both;
+  }
+  .om-prose p:nth-child(2) {
+    animation: om-read-in 520ms ease-out 620ms both;
+  }
+  .om-signoff {
+    animation: om-read-in 520ms ease-out 860ms both;
+  }
+  @keyframes om-strike {
+    0% {
+      opacity: 0;
+      transform: scale(0.985);
+      box-shadow: 0 0 0 rgba(255, 176, 0, 0);
+    }
+    45% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+      box-shadow: var(--glow-hi);
+    }
+  }
+  @keyframes om-bloom {
+    0% {
+      opacity: 0;
+      text-shadow: 0 0 0 rgba(255, 225, 166, 0);
+    }
+    35% {
+      opacity: 1;
+      text-shadow:
+        0 0 8px rgba(255, 225, 166, 1),
+        0 0 34px rgba(255, 176, 0, 0.85);
+    }
+    100% {
+      opacity: 1;
+      text-shadow: var(--glow-hi);
+    }
+  }
+  @keyframes om-read-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}

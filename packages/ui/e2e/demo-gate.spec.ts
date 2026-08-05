@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { skipFirstTurnWalkthrough } from './support/career';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 import { DEMO_FINAL_DAY } from '@spacerquest/content';
 import { createInitialState, createSave, startDay, type GameState } from '@spacerquest/engine';
 // T-147 · The two denominators below are DERIVED from the manifest, not typed.
@@ -186,6 +186,10 @@ test('a demo career plays Tour One plus three days and then ends the cockpit', a
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(SEED));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
   await expect(page.getByTestId('day')).toHaveText('1');
   await expect(page.getByTestId('demo-banner')).toBeVisible();
 
@@ -330,6 +334,10 @@ test('the demo build refuses to open a full-game career', async ({ page }) => {
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(SEED + 3));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
   await expect(page.getByTestId('day')).toHaveText('1');
 
   await openSettings(page);

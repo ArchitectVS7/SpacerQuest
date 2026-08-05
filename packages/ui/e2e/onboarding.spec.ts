@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { skipFirstTurnWalkthrough } from './support/career';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 import { createInitialState, startDay, createSave, type GameState } from '@spacerquest/engine';
 
 // T-311 acceptance: Tour One's teaching layer, driven end to end through the real
@@ -94,6 +94,10 @@ async function newGameSeed(page: Page, seed: number): Promise<void> {
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(seed));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
 }
 
 test('fresh seed: first delivery guided by visible affordances; each prompt fires once; state persists', async ({

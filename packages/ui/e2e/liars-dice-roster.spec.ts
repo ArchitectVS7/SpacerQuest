@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { skipFirstTurnWalkthrough } from './support/career';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 import { DARE_MIN_WAGER, LIARS_DICE_OPPONENTS } from '@spacerquest/content';
 
 // ---------------------------------------------------------------------------
@@ -44,6 +44,10 @@ async function newGameSeed(page: Page, seed: number): Promise<void> {
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(seed));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
 }
 
 function rosterRow(page: Page, id: string) {

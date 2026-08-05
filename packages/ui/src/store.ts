@@ -78,6 +78,17 @@ import {
   walkthroughActive,
   type WalkthroughRecord,
 } from './walkthrough';
+// T-200 · The opening marker (the debt as a cold open). Same shape of dependency
+// as the walkthrough above: a CLIENT meta-state record persisted beside the save
+// and never inside it, so no save migration is owed. The store is the only writer.
+import {
+  armedOpeningMarker,
+  openingMarkerPending,
+  parseOpeningMarker,
+  seenOpeningMarker,
+  serializeOpeningMarker,
+  type OpeningMarkerRecord,
+} from './opening';
 
 /**
  * React to an action's emitted event stream — the store's ONE presentation-side
@@ -155,6 +166,10 @@ const ONBOARDING_KEY = 'sq.onboarding.v1';
 // (`storage.ts`), so this key rides along with the save and the settings for
 // free rather than needing its own migration clause.
 const WALKTHROUGH_KEY = 'sq.walkthrough.v1';
+// T-200 · The opening marker record. The `sq.` prefix is load-bearing for the
+// same reason the walkthrough's is — the desktop shell migrates web-profile keys
+// BY PREFIX, so this rides along with the save for free.
+const OPENING_KEY = 'sq.opening.v1';
 const DEFAULT_SEED = 424242;
 
 // ---- T-312 settings & save-slot keys ------------------------------------
@@ -372,6 +387,25 @@ export interface CockpitState {
    */
   walkthrough: WalkthroughRecord;
   /**
+   * T-200 · The opening marker — the Guild dispatch a career opens on, carrying
+   * the debt figure as the largest thing on screen (see `opening.ts` for the
+   * whole decision record, including why it is a THIRD system beside T-187's
+   * rails and T-311's coach rather than a step or a prompt inside either).
+   *
+   * Like `onboardingSeen` / `walkthrough` / `fx`, this is CLIENT presentation
+   * meta-state, NOT GameState — so a JSON round-trip of game state is unaffected,
+   * `CURRENT_SAVE_VERSION` does not move and NO save migration is owed. Persisted
+   * under `sq.opening.v1`.
+   *
+   * ARMED ONCE PER CAREER, which is deliberately NOT the walkthrough's rule
+   * above: `init()` arms it only on a virgin boot (no save at all), `newGame`
+   * arms it UNCONDITIONALLY (every career opens under its own marker), and a slot
+   * load / import RETIRES it (a mid-career save off disk is not a new run).
+   *
+   * READER: `App.tsx`'s `OpeningMarker`.
+   */
+  openingMarker: OpeningMarkerRecord;
+  /**
    * T-312/T-1002. The current career's seed — the reader for the bezel display
    * AND the reproducibility metadata. Now persisted in the versioned save
    * envelope (engine `createSave`), recovered on load via `loadSave().seed`, with
@@ -552,6 +586,22 @@ function init(): CockpitState {
   const walkthrough =
     storedWalkthrough.status === 'off' && loaded == null ? armedWalkthrough() : storedWalkthrough;
   if (walkthrough !== storedWalkthrough) writeWalkthrough(walkthrough);
+  // T-200 · ARM THE OPENING MARKER on the same virgin boot, and ONLY there: NO
+  // stored record at all AND `readSaveResult` found no save, which is exactly the
+  // boot that lands on the fresh DEFAULT_SEED career above. A player booting back
+  // into their autosave is mid-career and gets `seen` regardless of what is on
+  // disk. A stored record on a save-less profile is CARRIED, not re-armed, so a
+  // reload part-way through day 1 resumes rather than dropping the dispatch twice.
+  //
+  // `readOpeningMarker` returns null ONLY for a genuinely absent key — a CORRUPT
+  // value parses to `seen` (see `parseOpeningMarker`'s default-closed contract),
+  // so a damaged record can never manufacture a virgin profile.
+  const storedOpening = readOpeningMarker();
+  const openingMarker =
+    loaded == null ? (storedOpening ?? armedOpeningMarker()) : seenOpeningMarker();
+  if (storedOpening === null || storedOpening.status !== openingMarker.status) {
+    writeOpeningMarker(openingMarker);
+  }
   return {
     game,
     selectedDie: null,
@@ -572,6 +622,7 @@ function init(): CockpitState {
     patrolScan: null,
     onboardingSeen: readOnboarding(),
     walkthrough,
+    openingMarker,
     seed,
     reducedMotion: readReducedMotion(),
     textSize: readTextSize(),
@@ -1088,6 +1139,41 @@ function retireWalkthrough(): WalkthroughRecord {
   return next;
 }
 
+// ---- T-200 opening-marker persistence -----------------------------------
+// Guarded exactly like the walkthrough pair above: storage may be blocked, and a
+// missing dispatch record is never worth a lost turn. `parseOpeningMarker` is
+// TOTAL over any input, so a corrupt value degrades to `seen` rather than
+// throwing out of `init()`, which runs at module scope.
+
+/** The stored record, or NULL when the key is genuinely absent. The null case is
+ *  load-bearing — it is the only signal that distinguishes a virgin profile from
+ *  a career that has already read its marker (a CORRUPT value parses to `seen`,
+ *  never to null). */
+function readOpeningMarker(): OpeningMarkerRecord | null {
+  try {
+    const raw = storage.getItem(OPENING_KEY);
+    return raw == null ? null : parseOpeningMarker(raw);
+  } catch {
+    return null;
+  }
+}
+function writeOpeningMarker(record: OpeningMarkerRecord): void {
+  try {
+    storage.setItem(OPENING_KEY, serializeOpeningMarker(record));
+  } catch {
+    /* storage unavailable — non-fatal for play */
+  }
+}
+/** Retire a pending marker (a slot load / import replaced the career it was
+ *  addressed to). A career coming back off disk is mid-flight, not a new run, so
+ *  its stakes have long since been established. A no-op when nothing is pending. */
+function retireOpeningMarker(): OpeningMarkerRecord {
+  if (!openingMarkerPending(state.openingMarker)) return state.openingMarker;
+  const next = seenOpeningMarker();
+  writeOpeningMarker(next);
+  return next;
+}
+
 function readOnboarding(): Record<string, true> {
   try {
     const raw = storage.getItem(ONBOARDING_KEY);
@@ -1183,6 +1269,15 @@ export function newGame(seed: number): void {
   // deliberate way back.
   const walkthrough = readWalkthrough().status === 'off' ? armedWalkthrough() : readWalkthrough();
   writeWalkthrough(walkthrough);
+  // T-200 · A fresh career ALWAYS re-arms the opening marker, and that
+  // unconditional is the one place this differs from the walkthrough directly
+  // above — deliberately. The walkthrough teaches the CONTROLS, which a captain
+  // on their fourth seed already knows. The marker establishes THIS CAREER's
+  // stakes, and every career is out there under a marker of its own: a new Tour
+  // One that opened without one would be a stat line again, which is the exact
+  // thing this task exists to remove.
+  const openingMarker = armedOpeningMarker();
+  writeOpeningMarker(openingMarker);
   set({
     game,
     seed,
@@ -1201,6 +1296,7 @@ export function newGame(seed: number): void {
     patrolScan: null,
     onboardingSeen: {},
     walkthrough,
+    openingMarker,
     // T-1605a: the boot's corrupt-save notice is stale the moment the player
     // deliberately starts a career of their own — the fallback career it was
     // explaining no longer exists. The quarantined blob is untouched.
@@ -2422,6 +2518,9 @@ export function loadSlot(n: number): void {
     // different day. Skipped, not reset: the player has demonstrably played
     // before, so it must not re-arm on their next New Game either.
     walkthrough: retireWalkthrough(),
+    // T-200 · Same reasoning: the loaded career is mid-flight, and its stakes
+    // were established the day it was born. A slot load is not a new run.
+    openingMarker: retireOpeningMarker(),
   });
   // T-1702a · A slot can hold a career earned long before this build (or on the
   // web build), so its Registry is reconciled the same way the autosave's is.
@@ -2548,6 +2647,9 @@ export async function importCareer(file: File): Promise<void> {
     // T-187 · Same reasoning as `loadSlot`: the imported career is not the one
     // the walkthrough was scripting, and its owner is not a first-time player.
     walkthrough: retireWalkthrough(),
+    // T-200 · Same reasoning as `loadSlot`: an imported career is mid-flight, so
+    // its marker was called long before this install ever saw it.
+    openingMarker: retireOpeningMarker(),
   });
   // The imported Registry may have been earned on another install entirely.
   mirrorEarned(game);
@@ -2765,6 +2867,20 @@ export function restartWalkthrough(): void {
   const next: WalkthroughRecord = { v: 1, status: 'off', acked: {}, flags: {} };
   writeWalkthrough(next);
   set({ walkthrough: next });
+}
+
+// ---- T-200 opening-marker action -----------------------------------------
+
+/**
+ * "SIGN AND UNDOCK" — the dispatch's one control. Marks the marker read for this
+ * career and releases the cockpit underneath (which was alive the whole time,
+ * just covered). A no-op once seen, so a double-click cannot write twice.
+ */
+export function dismissOpeningMarker(): void {
+  if (!openingMarkerPending(state.openingMarker)) return;
+  const next = seenOpeningMarker();
+  writeOpeningMarker(next);
+  set({ openingMarker: next });
 }
 
 export function dayIsOver(): boolean {

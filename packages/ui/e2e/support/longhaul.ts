@@ -32,7 +32,7 @@
 import { expect, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { skipFirstTurnWalkthrough } from './career';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './career';
 import {
   evaluateInvariants,
   INVARIANTS_PER_STEP,
@@ -122,6 +122,8 @@ const CONTROLS = [
   'recovery-dismiss',
   'onboarding-dismiss',
   'walkthrough-skip',
+  // T-200 · the opening marker's one control.
+  'opening-marker-dismiss',
 ] as const;
 
 const WATCHED = [
@@ -147,6 +149,7 @@ const WATCHED = [
   'save-write-failed-notice',
   'onboarding',
   'walkthrough',
+  'opening-marker',
   'hand',
   'day-end',
   'active-contract',
@@ -648,6 +651,11 @@ const FORCE_DUSK: Move = {
 function modalMove(snap: CockpitSnapshot): Move | null {
   const has = (testid: string): boolean => presentCount(snap, testid) > 0;
 
+  // T-200 · The Guild's opening marker stands in FRONT of the walkthrough on the
+  // birth of every career (including the one `ending-return` starts), so it is
+  // resolved FIRST — otherwise the driver would spend its budget clicking through
+  // a full-bleed overlay that intercepts every pointer event.
+  if (has('opening-marker')) return simpleMove('opening-marker-dismiss', 'opening-marker-dismiss');
   if (has('walkthrough')) return simpleMove('walkthrough-skip', 'walkthrough-skip');
   if (has('onboarding')) return simpleMove('onboarding-dismiss', 'onboarding-dismiss');
   if (has('recovery-notice')) return simpleMove('recovery-dismiss', 'recovery-dismiss');
@@ -811,6 +819,10 @@ export async function runLongHaul(page: Page, opts: LonghaulOptions): Promise<Lo
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(opts.gameSeed));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
   await expect(page.getByTestId('hand')).toBeVisible();
   await expect(page.getByTestId('day')).toHaveText('1');
 

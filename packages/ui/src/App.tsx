@@ -75,6 +75,8 @@ import {
   ackWalkthroughStep,
   skipWalkthrough,
   restartWalkthrough,
+  // T-200 · the opening marker's one control.
+  dismissOpeningMarker,
   dismissRecovery,
   standDown,
   toggleFx,
@@ -207,6 +209,10 @@ import {
   WALKTHROUGH_STEP_COUNT,
   type RailsRegion,
 } from './walkthrough';
+// T-200 · The opening marker. `openingMarkerView` is the ONLY source of the
+// figures and copy `OpeningMarker` renders — every number in it is read live off
+// `GameState`, so this file carries no debt literal of its own.
+import { openingMarkerPending, openingMarkerView } from './opening';
 // T-1701a · Which store the cockpit is actually running against, and where its
 // saves live. `storageBackend` selects the right noun in the two storage-failure
 // sentences ("this browser" vs "the game"); `saveLocation` is the path the
@@ -1109,6 +1115,14 @@ export function App() {
             genuinely first-time career, and while it is up the coach above
             stands down (see `OnboardingCallout`'s first line). */}
         <WalkthroughCard state={s} />
+        {/* T-200 · The opening marker. Mounted AFTER the walkthrough card on
+            purpose: both want the birth of a career, and this one goes first —
+            you learn WHY you are out here before anyone teaches you the controls.
+            The collision is resolved in one direction only (the card stands down
+            while this is up, see `WalkthroughCard`'s first line) and it is a
+            RENDER-TIME suppression, not a state change: dismiss the dispatch and
+            the walkthrough is still sitting on step 1. */}
+        <OpeningMarker state={s} />
         <CombatOverlay state={s} />
         {ceremony && <ResolutionCeremony state={s} view={ceremony} />}
         {/* T-1602b · The death beat. Mounted OUTSIDE the combat overlay on
@@ -1213,6 +1227,13 @@ function railsProps(
  * aftermath, a death, a patrol scan), or when all seven steps are done.
  */
 function WalkthroughCard({ state }: { state: CockpitState }) {
+  // T-200 · The ONE line of interaction with the opening marker, and the exact
+  // idiom `OnboardingCallout` already uses for `walkthroughActive` below: while
+  // the Guild dispatch covers the cockpit, this card stands down, because two
+  // full-screen first-time overlays at once is the failure mode. Nothing else
+  // changes — the record is untouched, so the card returns on step 1 the moment
+  // the dispatch is signed.
+  if (openingMarkerPending(state.openingMarker)) return null;
   if (!walkthroughActive(state.walkthrough) || railsSuspended(state)) return null;
   const step = currentWalkthroughStep(state.walkthrough);
   if (!step) return null;
@@ -1245,6 +1266,88 @@ function WalkthroughCard({ state }: { state: CockpitState }) {
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * T-200 · THE OPENING MARKER — the debt as a cold open.
+ *
+ * A one-shot Guild dispatch that lands over the day-1 cockpit at the birth of a
+ * career, discharging `docs/PRD-REIMAGINED.md`'s standing promise that the object
+ * is "stated on the first screen". The figure is the largest thing on the tube;
+ * the prose names the PRIOR OBLIGATIONS that put the player out here.
+ *
+ * AN OVERLAY, NOT AN EARLY RETURN. `EndingScreen` and the demo end card REPLACE
+ * the cockpit because the engine refuses every verb from there. Here the cockpit
+ * is fully alive underneath — this is a beat over it, not a substitute for it,
+ * which is also why every other spec's DOM is unchanged behind it.
+ *
+ * Every number comes from `openingMarkerView(state.game)` — `player.debt` and
+ * `player.debtDueDay`, read live. The raw figures ride out as attributes as well
+ * as prose (the `RecoveryNotice` / `data-recovery-code` precedent): a sentence is
+ * prose that may be re-voiced, an attribute is what a spec asserts on.
+ */
+function OpeningMarker({ state }: { state: CockpitState }) {
+  if (!openingMarkerPending(state.openingMarker)) return null;
+  const view = openingMarkerView(state.game);
+  return (
+    <div
+      className="opening-marker"
+      data-testid="opening-marker"
+      data-opening-debt={view.debt}
+      data-opening-due={view.dueDay}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Guild marker"
+    >
+      <div className="om-frame">
+        <span className="om-kicker" data-testid="opening-marker-kicker">
+          {view.kicker}
+        </span>
+        <h2 className="om-title">{view.title}</h2>
+
+        {/* The figure. Not a chip, not a ledger row — the one thing on the tube
+            with any size to it, which is the whole difference between a hook and
+            the bezel readout that has carried this number until now. */}
+        <div className="om-figure">
+          <b className="om-owed" data-testid="opening-marker-debt">
+            {view.debtLabel}
+          </b>
+          <span className="om-due" data-testid="opening-marker-due">
+            CALLED ON DAY {view.dueDay} · {view.dueLabel.toUpperCase()}
+          </span>
+        </div>
+
+        <div className="om-prose">
+          {view.prose.map((paragraph, index) => (
+            <p key={index} data-testid="opening-marker-prose">
+              {paragraph}
+            </p>
+          ))}
+        </div>
+
+        <p className="om-signoff" data-testid="opening-marker-signoff">
+          {view.signOff}
+        </p>
+
+        {/* The foot of the document. The dashed rule + clearing-house stamp is
+            what keeps the bottom of this frame reading as a dispatch rather than
+            a dialog's action bar — the tabletop-ui "diegetic, never web-app
+            chrome" rule, applied to the one element most likely to break it. */}
+        <div className="om-foot">
+          <span className="om-stamp" data-testid="opening-marker-stamp">
+            {view.stamp}
+          </span>
+          <button
+            className="btn om-sign"
+            data-testid="opening-marker-dismiss"
+            onClick={dismissOpeningMarker}
+          >
+            {view.actionLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

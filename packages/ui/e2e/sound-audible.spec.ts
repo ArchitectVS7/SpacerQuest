@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { skipFirstTurnWalkthrough } from './support/career';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 import { DARE_MIN_WAGER } from '@spacerquest/content';
 
 // ---------------------------------------------------------------------------
@@ -407,6 +407,10 @@ test('T-185 · the score changes mood when the scene does', async ({ page }) => 
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill('1');
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
   await page.waitForTimeout(1000);
 
   const drifting = lanesOpened(await trace(page));

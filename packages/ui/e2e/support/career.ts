@@ -31,7 +31,8 @@
 //     selecting or deselecting a die · clicking a starmap node to preview a
 //     route · opening and closing Records, the Wire log, Settings, the Hangout
 //     panel or a storylet panel (opening only, never choosing) · dismissing an
-//     onboarding coach · dismissing a combat aftermath · typing into an input.
+//     onboarding coach · signing off T-200's opening marker · dismissing a combat
+//     aftermath · typing into an input.
 //
 // That asymmetry is what makes the sightseeing pass free: it visits a dozen
 // screens without costing the pin a thing.
@@ -50,36 +51,83 @@ import { dirname, join } from 'node:path';
  *  day 1 and again on day 30 — nothing in a clean career pays it down early. */
 export const GUILD_MARKER = 25000;
 
-// ---- T-187 · the first-turn walkthrough stamp -----------------------------
+// ---- the first-time-overlay stamp (T-187 rails + T-200 opening marker) ----
 //
-// WHY EVERY SPEC IN THIS SUITE NEEDS THIS. T-187 arms a scripted, on-rails
-// seven-step walkthrough for a genuinely first-time player — no save in storage,
-// or a New Game on a profile that has never run it. That is EXACTLY the boot
-// almost every spec in `e2e/` uses, and while the rails are up the non-scripted
-// panes are `inert`, so a spec that goes straight for the manifest or the
-// shipyard would be clicking a dead subtree.
+// WHY EVERY SPEC IN THIS SUITE NEEDS THIS. Two separate systems claim the birth
+// of a career, and both of them cover the cockpit:
 //
-// The honest repair is to declare, per spec, that it is NOT testing the
-// first-time flow — one shared stamp rather than twenty copies of the same
-// literal. `e2e/walkthrough.spec.ts` deliberately does not use this: it is the
-// one suite that boots the walkthrough armed and drives it.
+//   * T-187 arms a scripted, on-rails seven-step walkthrough for a genuinely
+//     first-time player — no save in storage, or a New Game on a profile that
+//     has never run it. While the rails are up the non-scripted panes are
+//     `inert`, so a spec that goes straight for the manifest or the shipyard
+//     would be clicking a dead subtree.
+//   * T-200 drops the Guild's opening marker (the debt cold open) over day 1 of
+//     EVERY new career — a full-bleed dispatch that must be signed before the
+//     cockpit is reachable at all.
+//
+// That is EXACTLY the boot almost every spec in `e2e/` uses. The honest repair is
+// to declare, per spec, that it is NOT testing EITHER first-time overlay — ONE
+// shared stamp rather than twenty copies of two literals, which is also why the
+// marker was folded into this existing helper instead of getting a second one:
+// every calling spec is declaring the same thing in the same place.
+//
+// THE STAMP COVERS THE BOOT, NOT A MID-RUN "New game" — see `signOpeningMarker`
+// below for why, and for the one extra click every spec that rolls a fresh seed
+// through the masthead now makes.
+//
+// The two suites that DO test these flows opt out: `e2e/walkthrough.spec.ts`
+// boots the rails armed (and stamps away only the marker, via
+// `skipOpeningMarker`), and `e2e/opening-marker.spec.ts` boots both armed.
 //
 // Applied as an `addInitScript`, so it re-lands on `page.reload()` too; it writes
-// ONLY the walkthrough key, so a spec's own persisted save / onboarding record
+// ONLY those two keys, so a spec's own persisted save / onboarding record
 // survives the reboot untouched (the combat-spec gotcha).
 
 /** The key `store.ts` persists the walkthrough record under. */
 export const WALKTHROUGH_KEY = 'sq.walkthrough.v1';
 
-/** Declare this page a returning player's: the first-turn walkthrough is
- *  retired before the app's module scope ever reads storage. Call it in
- *  `beforeEach`, AFTER any `localStorage.clear()` init script (init scripts run
- *  in the order they were added). */
+/** The key `store.ts` persists the T-200 opening-marker record under. */
+export const OPENING_KEY = 'sq.opening.v1';
+
+/** Declare this page a returning player's: the first-turn walkthrough AND the
+ *  opening marker are both retired before the app's module scope ever reads
+ *  storage. Call it in `beforeEach`, AFTER any `localStorage.clear()` init script
+ *  (init scripts run in the order they were added). */
 export async function skipFirstTurnWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(([key, value]) => window.localStorage.setItem(key, value), [
     WALKTHROUGH_KEY,
     JSON.stringify({ v: 1, status: 'skipped', acked: {}, flags: {} }),
   ] as const);
+  await skipOpeningMarker(page);
+}
+
+/** Retire ONLY the T-200 opening marker, leaving the first-turn walkthrough armed
+ *  — what `walkthrough.spec.ts` needs, since it is driving the rails and would
+ *  otherwise open behind the dispatch. */
+export async function skipOpeningMarker(page: Page): Promise<void> {
+  await page.addInitScript(([key, value]) => window.localStorage.setItem(key, value), [
+    OPENING_KEY,
+    JSON.stringify({ v: 1, status: 'seen' }),
+  ] as const);
+}
+
+/**
+ * Sign off the opening marker that a UI "New game" just raised.
+ *
+ * WHY THE STAMPS ABOVE DO NOT COVER THIS, stated plainly because it is the one
+ * non-obvious thing about T-200: both stamps are `addInitScript`s, so they act on
+ * STORAGE AT BOOT. `newGame()` arms the marker in memory and UNCONDITIONALLY —
+ * every career is out there under a marker of its own, which is the whole point
+ * of the beat — so a spec that rolls a fresh seed mid-run gets the dispatch no
+ * matter what it stamped at boot, exactly as a player would. The honest repair is
+ * to do what the player does: sign it.
+ *
+ * RNG-FREE (see the determinism model at the top of this file): `dismissOpeningMarker`
+ * is a client meta-state write that calls no engine action, so this click cannot
+ * move the pinned stream. It is safe to add to a pinned career driver.
+ */
+export async function signOpeningMarker(page: Page): Promise<void> {
+  await page.getByTestId('opening-marker-dismiss').click();
 }
 
 // ---- the run report -------------------------------------------------------
@@ -323,6 +371,10 @@ export async function startCareer(page: Page, seed: number, report: RunReport): 
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(seed));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
 
   await expect(page.getByTestId('day')).toHaveText('1');
   await expect(page.getByTestId('debt-chip')).toContainText('25,000');

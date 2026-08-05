@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { skipFirstTurnWalkthrough } from './support/career';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 
 // T-1604a · `ActionBlocked` UI/protocol parity — the `active-encounter` mirror.
 //
@@ -65,6 +65,10 @@ async function newGameSeed(page: Page, seed: number): Promise<void> {
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(seed));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
 }
 
 test('an active encounter leaves no cockpit affordance that the engine would refuse', async ({
