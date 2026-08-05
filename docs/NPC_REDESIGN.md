@@ -131,6 +131,32 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > one shared path moved. The `.scratch/t125-hangout.ts` lineage is retired
 > (`docs/HANGOUT_REDESIGN.md` §10.7 carries the counter → field map).
 >
+> **BASELINE OF RECORD RE-PINNED AT T-202 (2026-08-05)** to
+> `docs/balance/baseline-t202-liars-dice-ceiling.json` — a **CONTENT-ONLY** capstone shipping
+> the owner's R3 ruling from the T-198 pacing checkpoint:
+> `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]` (tiers 0-5, a strict +1/tier climb, revised
+> up from the `[1, 2, 2, 3, 3, 4]` suggestion T-197 shipped marked `PROPOSED`). One fingerprint
+> moves and one does not, by construction: `rulesFingerprint` `10e19c88e9a07856` →
+> `f33b6af1ee21dffa` (a content constant changed), `instrumentFingerprint` **UNMOVED** at
+> `5c230e99648cddee` (nothing under `packages/sim/src` outside `__tests__` was touched).
+> `CURRENT_SAVE_VERSION` does NOT move (16, re-read at `packages/engine/src/save.ts:562`): no
+> persisted shape changed, so no migration and no round-trip test is owed.
+> **EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL** — `balance:diff` reported
+> *"NOTHING MOVED. Every compared field is equal on both sides."* Fleet `tourOneClearRate`
+> 0.6329, median final credits 49,839, ships lost 492, encounters/run 22.2482, all unmoved.
+> Gate PASS, 0 invariant violations, 8,000 rows over 8 one-indexed shards, spreads harvested.
+> **THAT NULL RESULT WAS PREDICTED IN WRITING BEFORE THE RUN, AND IT IS AN INSTRUMENT GAP
+> RATHER THAN A VERDICT (F-202-1)** — this block's own task predicted "only the `gambler` row
+> moves, and it moves UP", and that prediction was corrected before the sweep rather than
+> after: the sim's gambler is the only policy that plans a Dare at all
+> (`packages/sim/src/index.ts:4225`) and its loop is bounded by
+> `Math.min(GAMBLER_MAX_DARES_PER_DAY = 2, liarsDiceRoundsRemaining(state))` (`:4058,:4584`),
+> so it plays `1,2,2,2,2,2` hands by tier under BOTH the old and the new table. The instrument
+> cannot exhibit tiers ≥ 2 of the ruled ceiling — structurally the same shape as T-197's Insult
+> null result below. Measuring the ceiling needs a gambler arm bounded by the engine's own
+> accessor, which is a new instrument BEHAVIOUR and its own task, filed as F-202-1 in
+> `TASKS.md`'s T-202 block rather than smuggled into this content capstone.
+>
 > **BASELINE OF RECORD RE-PINNED AT T-197 (2026-08-05)** to
 > `docs/balance/baseline-t197-hangout-caps.json` — the **M17 MILESTONE CLOSER**
 > (`docs/DAWN-HAND-REDESIGN.md` §3/§4a/§4b). All seven Hangout venues became Free Actions
@@ -2499,7 +2525,20 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t197-hangout-caps.json`** (1,000 seeds
+   > **Baseline of record is `docs/balance/baseline-t202-liars-dice-ceiling.json`** (1,000
+   > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-202 2026-08-05 — a
+   > CONTENT-ONLY capstone shipping R3's ruled `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]`
+   > (`docs/DAWN-HAND-REDESIGN.md` §4b). `rulesFingerprint` moves `10e19c88e9a07856` →
+   > `f33b6af1ee21dffa`; `instrumentFingerprint` does NOT (unmoved at `5c230e99648cddee`).
+   > **EVERY POLICY ROW IS BYTE-IDENTICAL** — `balance:diff` reported "NOTHING MOVED. Every
+   > compared field is equal on both sides" — which was PREDICTED IN WRITING BEFORE THE RUN
+   > (`TASKS.md` T-202) and is an INSTRUMENT-GAP NULL RESULT, not a verdict that the new
+   > ceiling is balanced: the sim's gambler is the only policy that plans a Dare and it is
+   > bounded by `GAMBLER_MAX_DARES_PER_DAY = 2`, below the ruled ceiling, so it plays
+   > `1,2,2,2,2,2` hands by tier under BOTH tables. See F-202-1. Gate PASS, 0 invariant
+   > violations. Fleet `tourOneClearRate` 0.6329, median final credits 49,839, ships lost 492,
+   > encounters/run 22.2482 — all unmoved.
+   > Before that: **`docs/balance/baseline-t197-hangout-caps.json`** (1,000 seeds
    > × 120 days × 8 policies = 8,000 runs, re-pinned at T-197 2026-08-05 — the M17
    > MILESTONE CLOSER: all seven Hangout venues went free and two daily caps replaced the
    > die (`docs/DAWN-HAND-REDESIGN.md` §3/§4a/§4b). **Both fingerprints move**, so unlike

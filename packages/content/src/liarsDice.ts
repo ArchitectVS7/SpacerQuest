@@ -98,19 +98,39 @@ export const LIARS_DICE_RAISED_CEILING_MULT = 3;
  * liars dice (rewarding good play)"). Index = the tier `liarsDiceTier` returns
  * (0-5); the value is how many hands that captain may OPEN in one day.
  *
- * **PROPOSED — AWAITING OWNER CONFIRMATION OF THE EXACT COUNTS.** The SHAPE (more
- * rounds at a higher tier, monotone non-decreasing) is the ruled part; §4b's own
- * table calls these numbers "a starting suggestion, not a ruling". They ship as
- * authored here so the mechanism is real and measurable, and they are cheap to
- * change: this array is the only place they exist. See `docs/LIARS-DICE-DECISIONS.md`
- * LD-23 for the standing question.
+ * **CONFIRMED (owner, 2026-08-05) — T-198's R3 ruling, shipped by T-202.** The counts
+ * are `[1, 2, 3, 4, 5, 6]`, a strict +1/tier climb, REVISED UP from the
+ * `[1, 2, 2, 3, 3, 4]` suggestion T-197 shipped here marked
+ * `PROPOSED — AWAITING OWNER CONFIRMATION OF THE EXACT COUNTS` (that history is kept,
+ * not deleted: T-197 shipped §4b's own suggested table verbatim because no answer had
+ * arrived at ship time). The owner's reasoning, in one sentence: a risky gambler
+ * archetype buying its way into a scoundrel playstyle off a high-variance table is an
+ * INTENTIONAL, ACCEPTED edge rather than an exploit to close — see `TASKS.md` T-198's
+ * R3 ruling note for the full text and T-202 for the array edit plus its capstone,
+ * `docs/balance/baseline-t202-liars-dice-ceiling.json`.
+ *
+ * The SHAPE (more rounds at a higher tier, monotone non-decreasing) was always the
+ * ruled part; the exact counts are now ruled too. They stay cheap to change: this
+ * array is the only place they exist, and it is CONTENT — a revision is a content edit
+ * that owes a capstone, never an argument from a fingerprint. See
+ * `docs/LIARS-DICE-DECISIONS.md` LD-23 for the standing ruling.
+ *
+ * **THE COMMITTED SWEEP CANNOT EXHIBIT TIERS ≥ 2 OF THIS TABLE (F-202-1).** The sim's
+ * gambler plays `Math.min(GAMBLER_MAX_DARES_PER_DAY, liarsDiceRoundsRemaining(state))`
+ * (`packages/sim/src/index.ts:4584`) with `GAMBLER_MAX_DARES_PER_DAY = 2` (`:4058`), and
+ * it is the only policy that plans a Dare at all — so under both the old and the new
+ * table the instrument plays `1,2,2,2,2,2` hands by tier, and T-202's capstone came back
+ * byte-identical on all eight policy rows. That is an instrument-gap NULL RESULT, not a
+ * verdict that this ceiling is safe; measuring it needs a gambler arm bounded by the
+ * engine's own `liarsDiceRoundsRemaining`, which is a new instrument BEHAVIOUR and its
+ * own task (filed as F-202-1 in `TASKS.md`'s T-202 block).
  *
  * A SIX-TUPLE, not a bare `number[]`, for the same reason `LIARS_DICE_UNLOCK_GAMES`
  * is a five-tuple: `liarsDiceTier` returns `0|1|2|3|4|5`, so a row per tier is a
  * compile-time obligation and a short table cannot silently read `undefined`.
  */
 export const LIARS_DICE_ROUNDS_PER_DAY: readonly [number, number, number, number, number, number] =
-  [1, 2, 2, 3, 3, 4] as const;
+  [1, 2, 3, 4, 5, 6] as const;
 
 /** The four tone mixes (§2.5). The port's authored `prose.tone` picks the row —
  *  the TONE, not the id, so a port re-toned in a later content pass moves with it

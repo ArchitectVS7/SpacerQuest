@@ -198,6 +198,10 @@ explicitly forbids that, and T-197 obeyed it. The instrument gap is what this br
 
 ## 7 · R3's evidence — the rounds table is PROPOSED, not ruled
 
+**POST-SESSION (2026-08-05): R3 is ruled — the table is now `[1, 2, 3, 4, 5, 6]`, shipped at T-202
+with its capstone `docs/balance/baseline-t202-liars-dice-ceiling.json`. The evidence below is the
+PRE-RULING record of what was put in front of the owner, and is deliberately not rewritten.**
+
 `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]`, indexed by `liarsDiceTier` 0-5, is how many hands a
 captain may OPEN in a day. It shipped in T-197 marked `PROPOSED — awaiting owner confirmation` in
 **three** places, and all three are still marked at HEAD:
@@ -265,11 +269,15 @@ session produces is T-141's export.
 
 ## 10 · THE THREE RULINGS — you fill these in
 
+**POST-SESSION (2026-08-05): all three rulings are recorded below, transcribed from the owner's
+own words in `TASKS.md`'s T-198 block.** R3 revised the table to `[1, 2, 3, 4, 5, 6]` and shipped
+at T-202 with its capstone. The ask cells are unchanged — they are the record of what was asked.
+
 | # | The ruling asked for | Owner's ruling (verbatim) | Date |
 | --- | --- | --- | --- |
-| **R1** | **Is the post-M17 pacing acceptable?** If not, which lever gets a re-tuning task: the day-30 marker (`day.ts:1284`), the Tour One debt/interest (`state.ts:128`, `guild.ts:80`), the loan terms (`lending.ts:63,69`), or T-195's magnitudes `NAV_DIE_FUEL_DISCOUNT_MAX = 0.15` / `NAV_DIE_EVASION_MAX = 0.2` (`travel.ts:128-129`). Note: "contract deadlines" as the task block names them **is not a lever that exists** (§5). Fix now / defer / accept-as-is. | | |
-| **R2** | **Does `SOCIAL_PLAYS_PER_DAY = 3` need tightening?** The measurement is a **null result** (§6), so the three live options are: (a) accept X = 3 on the analytic bound; (b) tighten X — a content edit owing a capstone diffed against `baseline-t197-hangout-caps.json`; (c) file an insult-playing sim policy as its own instrument task and measure before ruling. Fix / defer / accept-as-is. | | |
-| **R3** | **Confirm or revise `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]`** (§7). "Confirm as-is" is a ruling and flips three `PROPOSED` markers for free; revising the array is a content edit that owes a capstone. Fix / defer / accept-as-is. | | |
+| **R1** | **Is the post-M17 pacing acceptable?** If not, which lever gets a re-tuning task: the day-30 marker (`day.ts:1284`), the Tour One debt/interest (`state.ts:128`, `guild.ts:80`), the loan terms (`lending.ts:63,69`), or T-195's magnitudes `NAV_DIE_FUEL_DISCOUNT_MAX = 0.15` / `NAV_DIE_EVASION_MAX = 0.2` (`travel.ts:128-129`). Note: "contract deadlines" as the task block names them **is not a lever that exists** (§5). Fix now / defer / accept-as-is. | **Accept-as-is.** *"pacing is acceptable as-is."* No re-tuning task filed for the day-30 marker, Tour One debt, guild interest, or loan terms — the cumulative arc showed M17's freeing of admin/Hangout actions did not measurably ease the fleet economy (all within noise of T-196a), so the levers tuned against the old economy stand unchanged. | 2026-08-05 |
+| **R2** | **Does `SOCIAL_PLAYS_PER_DAY = 3` need tightening?** The measurement is a **null result** (§6), so the three live options are: (a) accept X = 3 on the analytic bound; (b) tighten X — a content edit owing a capstone diffed against `baseline-t197-hangout-caps.json`; (c) file an insult-playing sim policy as its own instrument task and measure before ruling. Fix / defer / accept-as-is. | **Accept-as-is, option (a).** *"`SOCIAL_PLAYS_PER_DAY = 3` confirmed, no change."* Per the insult-farming investigation: the pool cap correctly blocks a 4th same-day insult; insult/disposition never touches faction reputation or any player-facing score (fully separate systems, verified against source); and the interception-reweighting mechanism it gates is real (measured 27%→72% wronged-share lift, matching the ~2.358× theoretical figure) but economically narrow — it only reorders WHICH same-tier rival shows up, never adds encounters or changes payout, so even the cap's own existence isn't load-bearing for balance. No re-tuning task filed. | 2026-08-05 |
+| **R3** | **Confirm or revise `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]`** (§7). "Confirm as-is" is a ruling and flips three `PROPOSED` markers for free; revising the array is a content edit that owes a capstone. Fix / defer / accept-as-is. | **REVISE.** *"`LIARS_DICE_ROUNDS_PER_DAY` = `[1, 2, 3, 4, 5, 6]`"* (tiers 0-5, a strict +1/tier climb, revised up from the shipped `[1, 2, 2, 3, 3, 4]` suggestion). Owner's reasoning, recorded rather than paraphrased: the simulated ceiling (an always-wins gambler playing every free round) is a rare, high-skill-adjacent, high-variance play — real play at these odds still loses ~40% of individual hands — and rewarding a risky gambler archetype with the credits to buy fast drives/cloaking and run a scoundrel playstyle (trade combat for evasion) is an ACCEPTED, intentional outcome, not an exploit to close. Implementation is content-only and owed its own capstone — filed and shipped as **T-202**. | 2026-08-05 |
 
 **"Fix", "defer" and "accept-as-is" all count as a ruling. What does not count is silence.**
 Nothing in this repository can fill a cell in — the coder does not self-waive, and

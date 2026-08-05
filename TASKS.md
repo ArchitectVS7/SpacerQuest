@@ -3691,7 +3691,7 @@ t199 is named explicitly so the smuggler/`planPacifistCombat` fix isn't silently
 "dawn-hand easing" it isn't part of. That cumulative table plus the Insult measurement are
 T-198's brief. Gate green.
 
-### T-198 · CHECKPOINT — owner pacing read on the post-M17 economy `[BLOCKED BY = Human ruling]` — `status: BLOCKED(Human ruling)` · `coder: opus` · `after: T-197`
+### T-198 · CHECKPOINT — owner pacing read on the post-M17 economy — `status: DONE` · `coder: opus` · `after: T-197`
 
 The dawn-hand arc is the game's second intentional easing in a week: T-195 alone moved
 `fleet.tourOneClearRate` 0.5605 → 0.6310 and `finalCredits.median` +40.5%, and M17 roughly
@@ -3890,7 +3890,33 @@ capstone note above). **Implementation is content-only** (the array + its three 
 markers) and owed its own capstone per T-198's own closing instructions — filed as **T-202**.
 R2 remains open; T-198 stays `BLOCKED(Human ruling)` until R2 is answered and T-202 lands.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent). · attempts=1/4 · HUMAN-GATE HALT.
+**CLOSED (2026-08-05, by T-202). All three rulings are in and every item of this block's own
+"TO CLOSE THIS TASK" checklist is discharged.**
+
+- **R1 — pacing accept-as-is.** Transcribed per checklist 1: (a) this block, dated, above;
+  (b) `docs/DAWN-HAND-REDESIGN.md`'s dated ruling line beside the SHIPPED PART blocks (§0's
+  preamble); (c) N/A — the ruling was not "re-tune", so **no constant was edited and no
+  re-tuning task filed**, which is the checklist's own conditional.
+- **R2 — `SOCIAL_PLAYS_PER_DAY = 3` confirmed, no change.** Transcribed per checklist 2:
+  (a) this block; (b) a new dated **RULING — R2** paragraph in `docs/DAWN-HAND-REDESIGN.md`,
+  and §0's now-false "R2 … remain open" / "R2 remains open" sentences corrected in place
+  rather than deleted; (c) N/A — neither "tighten" nor "measure first" was ruled, so **no
+  content task, no capstone and no insult-playing instrument arm is owed.** Nothing under
+  `packages/engine` or `packages/content` moved for R2; `SOCIAL_PLAYS_PER_DAY` is untouched.
+- **R3 — `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]`.** Shipped by **T-202** per
+  checklist 3, all sites in ONE edit, with the capstone the checklist says a REVISION (as
+  opposed to a free marker flip) owes: `docs/balance/baseline-t202-liars-dice-ceiling.json`,
+  diffed against `baseline-t197-hangout-caps.json` and re-pinned at all five pointer sites.
+- **Checklist 4 — test 5 of `packages/sim/src/__tests__/pacing-brief-figures.test.ts` is
+  FLIPPED, not deleted**, from asserts-empty to asserts-non-empty, per that file's own header
+  and the T-158 precedent; test 4 was inverted the same way (PROPOSED → CONFIRMED markers,
+  `[1, 2, 2, 3, 3, 4]` → `[1, 2, 3, 4, 5, 6]`), and the brief's §10 now carries the owner's
+  ruling text and date in all six cells, transcribed from this block rather than paraphrased.
+- **Checklist 5 — the gates are now un-gated.** T-194 and every backlog task whose `after:`
+  field names T-198 are eligible from this point; no `after:` field was rewritten, the block
+  they name is simply `DONE`.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent). · attempts=1/4 · HUMAN-GATE HALT, released 2026-08-05.
 
 ---
 
@@ -4008,7 +4034,7 @@ under `docs/design/`; the follow-up `code`-type task is explicitly not filed, pe
 Accept clause reserving that for the owner's pick.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
-### T-202 · Ship R3: revise `LIARS_DICE_ROUNDS_PER_DAY` to `[1, 2, 3, 4, 5, 6]` and pay its capstone — `status: TODO` · `coder: opus` · `after: —`
+### T-202 · Ship R3: revise `LIARS_DICE_ROUNDS_PER_DAY` to `[1, 2, 3, 4, 5, 6]` and pay its capstone — `status: DONE` · `coder: opus` · `after: —`
 
 **Owner ruling (2026-08-05, T-198 R3):** the Liar's Dice daily-rounds table changes from the
 shipped `[1, 2, 2, 3, 3, 4]` suggestion to `[1, 2, 3, 4, 5, 6]` (tiers 0-5) — a deliberate,
@@ -4047,6 +4073,163 @@ markers updated to confirmed, none silently deleted; the capstone lands with a r
 baseline at all four sites and the predicted single-row (`gambler`) move confirmed or a
 finding filed if the diff is broader than predicted; T-198's closure (test 5 + status) handled
 per the conditional above. Gate green.
+
+**PREDICTION, WRITTEN BEFORE THE SWEEP RAN (2026-08-05, per the Standing constraints) — and it
+CORRECTS this block's own prediction rather than restating it.** This block predicts "only the
+`gambler` row moves, and it moves UP in credits/dare-income". Read against source, it cannot:
+the sim's gambler loop bound is `Math.min(GAMBLER_MAX_DARES_PER_DAY, liarsDiceRoundsRemaining(state))`
+(`packages/sim/src/index.ts:4584`) with `const GAMBLER_MAX_DARES_PER_DAY = 2` (`:4058`), and
+`planDare` also returns `null` at `liarsDiceRoundsRemaining(state) <= 0` (`:4158`). Per tier the
+instrument therefore plays `min(2, allowance)`: **before** `[1, 2, 2, 3, 3, 4]` → `1,2,2,2,2,2`;
+**after** `[1, 2, 3, 4, 5, 6]` → `1,2,2,2,2,2`. **Identical at every one of the six tiers.** The
+gambler is the only policy that plans `venue: 'dare'` at all (`:4225`, re-verified by grep — the
+same instrument-gap finding T-198 filed as F-198-4), NPCs never open a hand, and a refused open
+draws no rng, so no career can diverge. **PREDICTED: all eight policy rows byte-identical, the
+fleet aggregate byte-identical, `rulesFingerprint` MOVES (a content constant changed) and
+`instrumentFingerprint` does NOT.** That byte-identical diff is a SECOND INSTRUMENT-GAP NULL
+RESULT — structurally the same shape as T-198's Insult null result — not a verdict that the
+ruling is safe: the instrument's own bound sits below the ruled ceiling, so the sweep cannot
+exhibit R3 at all. If the diff comes back BROADER than byte-identical, that falsifies this
+prediction and a finding (F-202-2) gets filed with the mechanism before anything is re-pinned.
+
+**Delivered (2026-08-05). The prediction above HELD, exactly and in full: `NOTHING MOVED. Every
+compared field is equal on both sides.`** `rulesFingerprint` `10e19c88e9a07856` →
+`f33b6af1ee21dffa`, `instrumentFingerprint` **UNMOVED** at `5c230e99648cddee`. Gate **PASS, 0
+invariant violations**, 8,000 rows. No F-202-2 was owed — the diff was not broader than predicted.
+
+**THREE CORRECTIONS TO THIS BLOCK'S OWN FRAMING, recorded rather than silently substituted**
+(the idiom T-197's and T-198's Delivered notes use).
+
+**C-1 · This block's predicted capstone move was wrong, and the corrected prediction — written
+into this block BEFORE the sweep ran, above — was byte-identical.** The block predicted "only the
+`gambler` row moves … and it moves UP in credits/dare-income". It could not: `min(2, allowance)`
+is `1,2,2,2,2,2` by tier under BOTH tables (see the prediction paragraph for the three source
+pins). Machine-confirmed twice over: `balance:diff` reported NOTHING MOVED, and
+`packages/sim/src/__tests__/campaign-degraded.test.ts`'s `PINNED_FINGERPRINTS` came back green on
+all seven rows without a re-pin — which is the independent falsification test C-1 named, and it
+did not falsify. No hash was re-pinned and no band, threshold or golden was touched anywhere in
+this task.
+
+**C-2 · There were FIVE content/doc sites, not the four this block names.**
+`docs/DAWN-HAND-REDESIGN.md` **§4b's own "Suggested table"** — the `| Tier | Games played |
+Rounds/day |` table carrying `1,2,2,3,3,4` and the parenthetical "owner to confirm exact numbers
+before implementation" — is a fifth site the block does not list, and leaving it would have left
+the spec's own table contradicting the shipped constant. It is now headed **CONFIRMED TABLE
+(owner, 2026-08-05 — R3)** with the ruled numbers, and the original suggestion is kept beneath it
+for the record. All five sites moved in one edit; none was silently deleted.
+
+**C-3 · There were FIVE baseline-of-record pointer sites, not the four this block names.**
+BR-14's fifth pointer (`docs/BALANCE-RIG-DECISIONS.md`'s own sentence, added at T-182) is
+enforced by `packages/sim/src/__tests__/baseline-pointers.test.ts`, which is green on all five:
+(1) `packages/sim/src/__tests__/balance-targets.test.ts`'s `BASELINE_OF_RECORD_PATH`
+(authoritative; bands UNTOUCHED, and there was nothing to re-derive — the sample did not move),
+(2) `docs/NPC_REDESIGN.md` standing amendment 1, (3) `docs/NPC_REDESIGN.md`'s status banner (new
+block inserted at the **TOP**, which test 3 of that suite requires), (4)
+`docs/balance/smoke/README.md`, (5) `docs/BALANCE-RIG-DECISIONS.md` BR-14. The old
+`rulesFingerprint` quoted at sites 4 and 5 was updated to the new hash, read off the written
+aggregate rather than invented. A sixth-pointer red also surfaced and was fixed properly: a
+sentence added to `docs/DAWN-HAND-REDESIGN.md` §0 tripped that suite's totality check, and it was
+**reworded to stop being a pointer** rather than added to `ACKNOWLEDGED_NON_POINTERS` — growing
+the allowlist to accommodate new prose is how the fifth pointer appeared unnoticed.
+
+**F-202-1 · THE COMMITTED SIM INSTRUMENT CANNOT EXHIBIT `LIARS_DICE_ROUNDS_PER_DAY` ABOVE 2, so
+this capstone is a SECOND instrument-gap null result and not a verdict on R3's ceiling.** The
+gambler is the only policy that plans `venue: 'dare'` (`packages/sim/src/index.ts:4225`), and its
+day loop is bounded by `Math.min(GAMBLER_MAX_DARES_PER_DAY, liarsDiceRoundsRemaining(state))`
+(`:4584`) with `GAMBLER_MAX_DARES_PER_DAY = 2` (`:4058`) — a DICE-BUDGET guard authored for a
+reason ("so a Hangout dawn still has dice left for the sign/travel pair"), not an oversight. So
+tiers 2-5 of the ruled table are simply not exercised: the sweep says the ruling is INERT TO THIS
+INSTRUMENT, not that it is balanced. Measuring the ruled ceiling needs a gambler-policy arm whose
+dare bound is the engine's own `liarsDiceRoundsRemaining` — that is a new instrument BEHAVIOUR,
+moves `instrumentFingerprint`, and owes its own capstone, so it is **its own task** and was
+deliberately not done here. **Risk-of-deferral analysis, per the Bug Discovery Policy, written
+down rather than asserted:** (a) OUT OF SCOPE — this task ships a content constant plus the
+capstone its Standing-constraints obligation names; raising a sim instrument constant inside a
+content capstone would conflate two arms in one diff, which is the exact failure T-196a/T-196b
+were split to avoid, and this repo's own T-198 R2 checklist already classifies "measure first" as
+a separate instrument task. (b) NO DEBT ROLLS UP — nothing builds on or routes around the sim's
+dare bound (it is read at one site and is not a rule; the ENGINE's cap is what players meet, and
+it is fully exercised by `packages/engine/src/__tests__/hangout.test.ts` and
+`packages/ui/src/__tests__/hangout-pane.test.ts`, both of which derive the cap from
+`liarsDiceRoundsPerDay` and stayed green by construction). The unmeasured-ceiling question is now
+recorded at the constant's own docblock, in LD-23, in §5's resolved bullet, at all five pointer
+sites and here — five places a later reader cannot miss.
+
+**The named scratch probe does not exist and was not chased.** This block cites
+`scratch/liars-dice-ceiling.ts` as a same-order-of-magnitude sanity check; there is no `scratch/`
+directory in the repo at all (verified). Stated rather than left as a dangling reference: the
+committed 8,000-row sweep is the whole measurement, and per F-202-1 what it measures is the
+instrument's inertness, not the ceiling.
+
+**The capstone, in the order it was run.** `npm run format` FIRST (never after —
+`rulesFingerprint` is not formatting-invariant), then `npm run format:check` clean, then eight
+**1-indexed** shards `--shard i/8` for i = 1..8, every one exit 0:
+`npm run balance:sweep -- --label t202-liars-dice-ceiling --seeds 1000 --days 120 --policies
+trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy --milestone-days
+21,29,30,41,60,120 --shard i/8`. Then the merge, `--label t202-liars-dice-ceiling --merge
+--milestone-days 21,29,30,41,60,120`, which printed **`merged · 8000 rows · PASS`** and
+`invariants: 0 violations` and stamped `rules f33b6af1ee21dffa / instrument 5c230e99648cddee /
+commit 0abe9028d0888d0b5dac0cc8d266a6d031d16931`. Then
+`npm run balance:diff -- docs/balance/baseline-t197-hangout-caps.json
+docs/balance/baseline-t202-liars-dice-ceiling.json` → **`NOTHING MOVED`**. Then the smoke
+re-extract **with `--aggregate`** (`npm run balance:extract -- --aggregate
+docs/balance/baseline-t202-liars-dice-ceiling.json`) — the flag is load-bearing per F-146-0;
+omitting it silently falls back to `baseline-n1.json` and flips `spreadSource` to `estimated`.
+The re-extracted `docs/balance/smoke/tiers.json` carries `spreadSource "harvested"`,
+`sweepLabel "t202-liars-dice-ceiling"` and the new rules hash. Fleet row, unmoved on every
+column: `tourOneClearRate` 0.6329, median final credits 49,839, ships lost 492, encounters/run
+22.2482.
+
+**`CURRENT_SAVE_VERSION` re-read LIVE at `packages/engine/src/save.ts:562` — it is 16, and it
+does NOT move.** No persisted shape changed (the constant is a lookup table read through
+`liarsDiceRoundsPerDay`; `player.dareRoundsToday` already exists and is unchanged in type and
+meaning), so **no migration and no round-trip test is owed**. The number is read off the file at
+this task's HEAD, not copied from T-198's block or any other frozen anchor.
+
+**Tests: two inversions, zero deletions, zero loosenings.**
+`packages/sim/src/__tests__/pacing-brief-figures.test.ts` — **test 5** flipped from asserts-empty
+to asserts-non-empty on all six of the brief's §10 ruling/date cells (the T-158
+`uat-brief-figures.test.ts` shape, mirrored: same anchors, same `rulingRows` length 3, same
+silence sentence, only the two cell predicates inverted and their messages rewritten to say T-202
+is only DONE once every slot carries the owner's actual text). **Test 4** inverted the same way,
+from "keeps R3's three PROPOSED markers" to "keeps R3's confirmed markers and the ruled rounds
+array moving together": it now requires `CONFIRMED (owner, 2026-08-05)` in the constant's
+docblock, `RESOLVED (owner, 2026-08-05)` **and the absence of `STILL OPEN`** in §5, `CONFIRMED
+(owner, 2026-08-05` in LD-23, and `[1, 2, 3, 4, 5, 6] as const;` in the array — the identical
+four-sites-move-together property, re-anchored, with the failure message re-pointed at the new
+baseline. **Test 1**: the three R3-era pins (`PROPOSED — awaiting owner confirmation`,
+`LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]`, `PROPOSED, NOT RULED`) stayed GREEN — verified,
+not assumed — because §2's edits retained every one of those phrases as dated history; each
+pin's `why` now says it guards THE RETAINED HISTORY, so a later cleanup pass cannot delete the
+record silently. Two NEW pins were added for the live state (`[1, 2, 3, 4, 5, 6]` in
+DAWN-HAND-REDESIGN §0 and in LD-23), both resolving in the brief through R3's now-filled ruling
+cell; test 1 asserts `pinned === PACING_BRIEF_FIGURES.length`, so no count constant needed
+editing. **Test 2's `ARC_BASELINES` deliberately stays at SIX** — adding the seventh capstone
+would force a retro-edit of the brief, a frozen pre-session artifact; a comment in the file now
+says so. The file header's "THIS FILE'S LAST TEST INVERTS WHEN THE OWNER RULES" block was
+rewritten into the record of the inversion, naming the date and pointing at git history for both
+prior shapes.
+
+**Gate transcript, run BEFORE any edit and again AFTER, so a pre-existing red could not be
+mis-attributed.** BEFORE: `npx tsc -b`, `npm run lint`, `npm run format:check` all exit 0;
+`npm test` → **128 files / 2,487 tests passing, 0 failing** (content 2/25 · desktop 7/110 ·
+devpanel 5/61 · engine 50/1346 · sim 38/529 · ui 26/416). AFTER: `npx tsc -b`, `npm run lint`,
+`npm run format:check` all exit 0; `npm test` → **128 files / 2,487 tests passing, 0 failing** —
+same counts, since this task added no test and deleted none, only inverted two. One red was hit
+mid-flight and fixed at its root, not around it: `baseline-pointers.test.ts`'s totality check
+(see C-3).
+
+**No new outcome kind, no engine change, no save-shape change, no instrument change.** Every
+edit is one content constant plus its docblock (`packages/content/src/liarsDice.ts`), five
+documents, and two files under `packages/sim/src/__tests__` (in
+`HASHED_ROOT_IGNORED_DIRECTORIES`, so they cannot move a fingerprint). `packages/engine`,
+`packages/ui` and `packages/desktop` are untouched — `git status` confirms. The engine accessors
+`liarsDiceRoundsPerDay` / `liarsDiceRoundsRemaining`
+(`packages/engine/src/liarsDiceRules.ts:233,254`) read the table and needed no edit; the engine
+and UI suites derive the cap from the accessor rather than restating it, and stayed green by
+construction — confirmed by running them, not assumed.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent; `scratch/` is also absent). · attempts=1/4.
 
 ### T-203 · Surface a named rival's history at the Liar's Dice table — the insult-to-showdown connection is real but invisible — `status: TODO` · `coder: opus` · `after: —`
 

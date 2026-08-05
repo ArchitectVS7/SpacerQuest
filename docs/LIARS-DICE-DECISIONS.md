@@ -216,6 +216,24 @@ Four things about the cap are rulings rather than implementation details:
 4. **The counter lives on the SAVE** (`player.dareRoundsToday`, `CURRENT_SAVE_VERSION`
    15 → 16), because a mid-day reload that cleared it would make the cap advisory.
 
+**THE EXACT NUMBERS ARE CONFIRMED (owner, 2026-08-05, ruled at T-198 R3, shipped at T-202).**
+`LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]` (`packages/content/src/liarsDice.ts`, indexed
+by tier 0-5) — a strict +1/tier climb, revised UP from the `[1, 2, 2, 3, 3, 4]` suggestion T-197
+shipped. The owner's reasoning: the simulated ceiling for an always-wins gambler playing every
+free round is high, but real play at these odds still loses ~40% of individual hands, and
+rewarding a risky gambler archetype with the credits to buy fast drives/cloaking and run a
+scoundrel playstyle is an ACCEPTED, INTENTIONAL outcome rather than an exploit to close. The
+revision was a CONTENT edit and paid its capstone,
+`docs/balance/baseline-t202-liars-dice-ceiling.json`, diffed against
+`baseline-t197-hangout-caps.json`. **That capstone came back byte-identical on all eight policy
+rows, and that is an INSTRUMENT-GAP NULL RESULT, not a verdict**: the sim's gambler plays
+`min(GAMBLER_MAX_DARES_PER_DAY = 2, liarsDiceRoundsRemaining(state))` and is the only policy
+that plans a Dare at all, so it plays `1,2,2,2,2,2` hands by tier under BOTH tables and cannot
+exhibit tiers ≥ 2 of the ruled ceiling. Measuring it needs a gambler arm bounded by the
+engine's own accessor — a new instrument BEHAVIOUR and its own task (F-202-1, `TASKS.md` T-202).
+
+**Superseded — the `PROPOSED` framing as it shipped at T-197, kept for the record:**
+
 **THE EXACT NUMBERS ARE PROPOSED, NOT RULED — awaiting owner confirmation.**
 `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]` (`packages/content/src/liarsDice.ts`,
 indexed by tier 0-5) ships as §4b's own suggested table, which that section explicitly calls

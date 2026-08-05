@@ -107,9 +107,20 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t197-hangout-caps.json`, re-pinned at T-197
-2026-08-05 — the M17 MILESTONE CLOSER, which freed all seven Hangout venues and replaced the
-die with two daily caps (`docs/DAWN-HAND-REDESIGN.md` §3/§4a/§4b). It is the first capstone
+exactly like drift. The current baseline (`baseline-t202-liars-dice-ceiling.json`, re-pinned at
+T-202 2026-08-05 — a CONTENT-ONLY capstone shipping the owner's R3 ruling,
+`LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]` (`docs/DAWN-HAND-REDESIGN.md` §4b). It moves
+`rulesFingerprint` (10e19c88e9a07856 -> f33b6af1ee21dffa) and NOT `instrumentFingerprint`
+(unmoved at 5c230e99648cddee), so it is a clean single-arm attribution again after T-197's
+both-hashes capstone. EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL — "NOTHING
+MOVED. Every compared field is equal on both sides." That was predicted in writing before the
+run and is an INSTRUMENT-GAP NULL RESULT rather than a verdict that the new ceiling is
+balanced: the sim's gambler is the only policy that plays a Dare and is bounded at
+`GAMBLER_MAX_DARES_PER_DAY = 2`, below the ruled ceiling, so it plays the same 1,2,2,2,2,2
+hands by tier under both tables (F-202-1, `TASKS.md` T-202);
+before that `baseline-t197-hangout-caps.json` at T-197 — the M17 MILESTONE CLOSER, which freed
+all seven Hangout venues and replaced the die with two daily caps
+(`docs/DAWN-HAND-REDESIGN.md` §3/§4a/§4b). It is the first capstone
 of the arc to move BOTH `rulesFingerprint` (10e19c88e9a07856) and `instrumentFingerprint`
 (5c230e99648cddee), so unlike the arm-1/arm-2 pair before it its diff cannot be split into
 rule effect and exploitation effect. THREE of the eight policy rows moved — `gambler`,

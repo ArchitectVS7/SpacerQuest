@@ -27,15 +27,19 @@ import { REPO_ROOT } from '../balance/rules-fingerprint.js';
 // as widening a band to clear a gate, and it is forbidden for the same reason.
 //
 // -------------------------------------------------------------------------
-// THIS FILE'S LAST TEST INVERTS WHEN THE OWNER RULES.
+// THE INVERSION HAPPENED AT T-202 (2026-08-05). THIS BLOCK IS THE RECORD OF IT.
 //
-// T-198 is a human-gate checkpoint: it halts with three EMPTY ruling cells in the
-// brief's §10, and test 5 asserts they are empty, because a filled cell no owner
-// wrote is a coder self-waiver. When the owner records R1/R2/R3, that test is
-// FLIPPED to assert the cells are NON-EMPTY — it is not deleted. This is exactly
-// what T-158 did: see `uat-brief-figures.test.ts`'s third test, which today
-// asserts its two cells are non-empty and carries a comment pointing at its own
-// git history for the pre-ruling (asserted-empty) shape. Do the same here.
+// T-198 was a human-gate checkpoint: it halted with three EMPTY ruling cells in the
+// brief's §10, and test 5 asserted they were empty, because a filled cell no owner
+// wrote is a coder self-waiver. The owner recorded R1 (pacing accept-as-is), R2
+// (`SOCIAL_PLAYS_PER_DAY = 3` confirmed, no change) and R3
+// (`LIARS_DICE_ROUNDS_PER_DAY` revised to `[1, 2, 3, 4, 5, 6]`) on 2026-08-05, so
+// T-202 FLIPPED test 5 to assert the cells are NON-EMPTY and FLIPPED test 4 from
+// asserting three `PROPOSED` markers to asserting three CONFIRMED ones — neither was
+// deleted. This is exactly what T-158 did: see `uat-brief-figures.test.ts`'s third
+// test, which asserts its two cells non-empty and points at its own git history for
+// the pre-ruling shape. The asserted-empty / asserts-PROPOSED shapes live in this
+// file's git history at the T-198 and T-197 commits; do not resurrect them.
 // -------------------------------------------------------------------------
 //
 // The figure table lives IN THIS TEST FILE on purpose. A new module under
@@ -169,30 +173,54 @@ const PACING_BRIEF_FIGURES: readonly BriefFigure[] = [
     why: 'brief §4 — encounters/run rising with ships lost, so deaths track exposure',
   },
 
-  // --- brief §7 · the rounds table is PROPOSED, not ruled -------------------
+  // --- brief §7 · R3's pre-ruling record, RETAINED as history ---------------
+  //
+  // T-202 · These four pins were written when the table was PROPOSED. R3 is now
+  // ruled and the documents carry the confirmation, but every one of these phrases
+  // was kept beside the new text as dated history rather than deleted ("do not just
+  // delete the history", T-202's own instruction). So the pins stay, and what they
+  // now guard is THE RETAINED HISTORY: a later cleanup pass that quietly drops the
+  // pre-ruling record turns this suite red instead of passing unnoticed.
   {
     doc: 'DAWN-HAND-REDESIGN.md',
     section: DAWN_SECTION_0,
     value: 'PROPOSED — awaiting owner confirmation',
-    why: "brief §7 — R3's marker, as the spec's own §0 states it",
+    why: "brief §7 — R3's pre-ruling marker, RETAINED in §0's dated resolution paragraph",
   },
   {
     doc: 'LIARS-DICE-DECISIONS.md',
     section: '## 6. The action economy (M17)',
     value: 'LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]',
-    why: 'brief §7 — the proposed table itself, at LD-23',
+    why: "brief §7 — the superseded table, RETAINED verbatim beneath LD-23's confirmation",
   },
   {
     doc: 'LIARS-DICE-DECISIONS.md',
     section: '## 6. The action economy (M17)',
     value: 'PROPOSED, NOT RULED',
-    why: 'brief §7 — LD-23 saying so in its own words',
+    why: 'brief §7 — LD-23 saying so in its own words, RETAINED as the superseded framing',
   },
   {
     doc: 'LIARS-DICE-DECISIONS.md',
     section: '## 6. The action economy (M17)',
     value: '**What IS ruled is the SHAPE**',
-    why: 'brief §7 — the shape/numbers split R3 turns on',
+    why: 'brief §7 — the shape/numbers split R3 turned on, RETAINED',
+  },
+
+  // --- brief §10 · R3 AS RULED (T-202) --------------------------------------
+  //
+  // The live state, pinned in the same both-directions shape as everything above:
+  // each resolves in the brief through R3's now-filled ruling cell in §10.
+  {
+    doc: 'DAWN-HAND-REDESIGN.md',
+    section: DAWN_SECTION_0,
+    value: '[1, 2, 3, 4, 5, 6]',
+    why: "brief §10 — R3's ruled table, as §0 now states it",
+  },
+  {
+    doc: 'LIARS-DICE-DECISIONS.md',
+    section: '## 6. The action economy (M17)',
+    value: '[1, 2, 3, 4, 5, 6]',
+    why: 'brief §10 — LD-23 carrying the confirmed numbers',
   },
 ];
 
@@ -202,6 +230,13 @@ const PACING_BRIEF_FIGURES: readonly BriefFigure[] = [
 // `docs/DAWN-HAND-REDESIGN.md` §0 and the brief. A re-pinned baseline therefore
 // cannot leave a stale arc row standing anywhere.
 // ---------------------------------------------------------------------------
+//
+// T-202 · SIX, NOT SEVEN — `baseline-t202-liars-dice-ceiling.json` is deliberately
+// NOT in this list. Every row here must appear in BOTH the spec §0 and the brief,
+// and the brief is a frozen 2026-08-05 PRE-SESSION artifact: adding the seventh
+// capstone would force a retro-edit of the document the owner actually read. The
+// spec's §0 table carries the t202 row; this derivation covers the six that the
+// brief reproduces.
 const ARC_BASELINES: readonly string[] = [
   'baseline-t182-reroll-fix.json',
   'baseline-t195-dawn-dice.json',
@@ -335,7 +370,13 @@ describe('T-198 · the pacing brief quotes live figures, in both directions', ()
     }
   });
 
-  it("keeps R3's three PROPOSED markers and the rounds array moving together", () => {
+  it("keeps R3's confirmed markers and the ruled rounds array moving together", () => {
+    // T-202 · THE INVERSION. Until 2026-08-05 this test asserted the word PROPOSED at
+    // all three sites AND that the array still read `[1, 2, 2, 3, 3, 4]`, so that a
+    // marker flip could not ship without the array and vice versa. The owner ruled R3,
+    // so it now asserts the CONFIRMED markers and the RULED array — the identical
+    // four-sites-move-together property, re-anchored. The pre-ruling shape is in this
+    // file's git history at the T-198 commit; do not resurrect it.
     const content = readRepo(join('packages', 'content', 'src', 'liarsDice.ts'));
 
     const declaration = content.indexOf('export const LIARS_DICE_ROUNDS_PER_DAY');
@@ -347,17 +388,16 @@ describe('T-198 · the pacing brief quotes live figures, in both directions', ()
     const docblockStart = content.lastIndexOf('/**', declaration);
     expect(
       docblockStart,
-      'LIARS_DICE_ROUNDS_PER_DAY has lost its docblock — the PROPOSED marker lived there.',
+      'LIARS_DICE_ROUNDS_PER_DAY has lost its docblock — the CONFIRMED marker lives there.',
     ).toBeGreaterThan(-1);
     const docblock = content.slice(docblockStart, declaration);
 
     expect(
-      docblock.includes('PROPOSED'),
-      "packages/content/src/liarsDice.ts's LIARS_DICE_ROUNDS_PER_DAY docblock no longer says " +
-        'PROPOSED. If the owner ruled R3, all FOUR sites move in ONE edit: this docblock, ' +
+      docblock.includes('CONFIRMED (owner, 2026-08-05)'),
+      "packages/content/src/liarsDice.ts's LIARS_DICE_ROUNDS_PER_DAY docblock no longer carries " +
+        "R3's dated confirmation. All FOUR sites move in ONE edit: this docblock, " +
         "docs/DAWN-HAND-REDESIGN.md §5's last bullet, docs/LIARS-DICE-DECISIONS.md LD-23, and " +
-        'the array itself if it was revised. If only one moved, that is the defect this test exists ' +
-        'to catch.',
+        'the array itself. If only one moved, that is the defect this test exists to catch.',
     ).toBe(true);
 
     const spec = sectionOf(
@@ -366,35 +406,43 @@ describe('T-198 · the pacing brief quotes live figures, in both directions', ()
     );
     expect(spec !== null).toBe(true);
     expect(
-      spec !== null && spec.includes('PROPOSED'),
-      'docs/DAWN-HAND-REDESIGN.md §5 no longer marks the rounds table PROPOSED — see the four-site ' +
-        'note above.',
+      spec !== null && spec.includes('RESOLVED (owner, 2026-08-05)'),
+      "docs/DAWN-HAND-REDESIGN.md §5's rounds bullet no longer carries R3's dated resolution — " +
+        'see the four-site note above.',
+    ).toBe(true);
+    expect(
+      spec !== null && !spec.includes('STILL OPEN'),
+      'docs/DAWN-HAND-REDESIGN.md §5 still heads a bullet STILL OPEN. R3 was ruled on 2026-08-05 ' +
+        'and the bullet was re-headed RESOLVED; a STILL OPEN heading here means the resolution was ' +
+        'reverted or a new open question was filed without its own slot.',
     ).toBe(true);
 
     const ld = sectionOf(readDoc('LIARS-DICE-DECISIONS.md'), '## 6. The action economy (M17)');
     expect(ld !== null).toBe(true);
     expect(
-      ld !== null && ld.includes('PROPOSED'),
-      'docs/LIARS-DICE-DECISIONS.md LD-23 no longer marks the rounds table PROPOSED — see the ' +
-        'four-site note above.',
+      ld !== null && ld.includes('CONFIRMED (owner, 2026-08-05'),
+      'docs/LIARS-DICE-DECISIONS.md LD-23 no longer carries the dated confirmation of the rounds ' +
+        'table — see the four-site note above.',
     ).toBe(true);
 
     expect(
-      content.includes('[1, 2, 2, 3, 3, 4] as const;'),
-      'LIARS_DICE_ROUNDS_PER_DAY is no longer [1, 2, 2, 3, 3, 4]. Revising the ARRAY is a CONTENT ' +
-        'edit and owes a capstone diffed against docs/balance/baseline-t197-hangout-caps.json — ' +
-        'it is not a marker-comment flip. Re-quote the brief §7 and re-anchor this check.',
+      content.includes('[1, 2, 3, 4, 5, 6] as const;'),
+      'LIARS_DICE_ROUNDS_PER_DAY is no longer [1, 2, 3, 4, 5, 6] — R3 as the owner ruled it on ' +
+        '2026-08-05. Revising the ARRAY is a CONTENT edit and owes a capstone diffed against ' +
+        'docs/balance/baseline-t202-liars-dice-ceiling.json — it is not a marker-comment flip. ' +
+        'Re-quote the brief §10 and re-anchor this check.',
     ).toBe(true);
   });
 
-  it('carries three EMPTY ruling slots — the coder does not self-waive', () => {
-    // T-198 halts on THREE owner rulings (R1 pacing, R2 SOCIAL_PLAYS_PER_DAY, R3 the
-    // §4b rounds table). Until the owner rules, all six ruling/date cells are EMPTY.
-    //
-    // WHEN THE OWNER RULES, INVERT THIS TEST — do not delete it. T-158's
-    // `uat-brief-figures.test.ts` third test is the worked precedent: it asserted its
-    // two cells empty until 2026-08-03 and now asserts them non-empty, with a comment
-    // pointing at its own git history for the prior shape.
+  it('carries the three ruling slots the task halted on, all now recorded by the owner', () => {
+    // T-202 · THE INVERSION (2026-08-05). T-198 halted on THREE owner rulings (R1
+    // pacing, R2 SOCIAL_PLAYS_PER_DAY, R3 the §4b rounds table) and this test asserted
+    // all six ruling/date cells EMPTY, because a filled cell no owner wrote is a coder
+    // self-waiver. The owner ruled all three on 2026-08-05 — R1 accept-as-is, R2
+    // `SOCIAL_PLAYS_PER_DAY = 3` confirmed with no change, R3 revised to
+    // `[1, 2, 3, 4, 5, 6]` and shipped by T-202 — so the test is FLIPPED, not deleted,
+    // exactly as T-158's `uat-brief-figures.test.ts` third test was. The asserted-empty
+    // shape is in this file's git history at the T-198 commit.
     expect(BRIEF).toContain('| **R1** | **Is the post-M17 pacing acceptable?**');
     expect(BRIEF).toContain('| **R2** | **Does `SOCIAL_PLAYS_PER_DAY = 3` need tightening?**');
     expect(BRIEF).toContain('| **R3** | **Confirm or revise `LIARS_DICE_ROUNDS_PER_DAY');
@@ -415,14 +463,16 @@ describe('T-198 · the pacing brief quotes live figures, in both directions', ()
       // ['', '#', 'the ask', "owner's ruling", 'date', '']
       expect(cells).toHaveLength(6);
       expect(
-        cells[3].length === 0,
-        `A ruling cell in the T-198 brief is non-empty. The coder does not self-waive — only the ` +
-          `owner fills these (row: "${row}"). If the owner HAS ruled, invert this test per the ` +
-          'comment above rather than loosening it.',
+        cells[3].length > 0,
+        `A ruling cell in the T-198 brief is EMPTY (row: "${row}"). The owner recorded all three ` +
+          "rulings on 2026-08-05 and T-202 is only DONE once every slot carries the owner's " +
+          'actual ruling text, transcribed from TASKS.md T-198 rather than paraphrased. An empty ' +
+          'cell here means a ruling was dropped — restore it from TASKS.md; never loosen this back ' +
+          'to asserts-empty.',
       ).toBe(true);
       expect(
-        cells[4].length === 0,
-        `A ruling DATE cell in the T-198 brief is non-empty (row: "${row}"). Same rule.`,
+        cells[4].length > 0,
+        `A ruling DATE cell in the T-198 brief is EMPTY (row: "${row}"). Same rule.`,
       ).toBe(true);
     }
   });

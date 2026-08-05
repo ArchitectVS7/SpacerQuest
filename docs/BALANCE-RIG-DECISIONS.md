@@ -121,12 +121,20 @@ read at runtime, and therefore the authoritative one), amendment 1's own pointer
 `docs/NPC_REDESIGN.md`'s status banner, `docs/balance/smoke/README.md`'s "current
 baseline" line, and — added at T-182 — **this rule's own "current baseline of record"
 sentence below** — with the smoke fixture re-extracted FROM the new capstone file. The current
-baseline of record is `docs/balance/baseline-t197-hangout-caps.json` (8,000 rows, 8
-one-indexed shards, spreads harvested, `sweepLabel t197-hangout-caps`; re-pinned at T-197
-2026-08-05 — the M17 MILESTONE CLOSER, which freed all seven Hangout venues and replaced the
-die with the §4a social pool and the §4b rounds cap. It is the first capstone of the M17 arc
-to move BOTH hashes at once (rules 10e19c88e9a07856, instrument 5c230e99648cddee), so it is
-explicitly NOT a single-arm attribution the way the two before it were. Before that:
+baseline of record is `docs/balance/baseline-t202-liars-dice-ceiling.json` (8,000 rows, 8
+one-indexed shards, spreads harvested, `sweepLabel t202-liars-dice-ceiling`; re-pinned at T-202
+2026-08-05 — a CONTENT-ONLY capstone shipping the owner's R3 ruling from the T-198 pacing
+checkpoint, `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]`. It moves `rulesFingerprint`
+(10e19c88e9a07856 -> f33b6af1ee21dffa) and NOT `instrumentFingerprint` (unmoved at
+5c230e99648cddee), so it is a clean single-arm attribution again after T-197's both-hashes
+capstone. EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL, which was predicted in
+writing before the run and is an INSTRUMENT-GAP NULL RESULT rather than a verdict that the new
+ceiling is balanced: the sim's gambler is the only policy that plays a Dare and is bounded at
+`GAMBLER_MAX_DARES_PER_DAY = 2`, below the ruled ceiling, so it plays the same 1,2,2,2,2,2
+hands by tier under both the old and the new table — F-202-1 in `TASKS.md`'s T-202 block files
+the gambler-arm instrument task that would be needed to measure it. Before that:
+`baseline-t197-hangout-caps.json` at T-197 — the M17 MILESTONE CLOSER, the first capstone of
+the M17 arc to move BOTH hashes at once (rules 10e19c88e9a07856, instrument 5c230e99648cddee),
 `baseline-t196b-instruments.json` at T-196b, `baseline-t196a-free-actions.json` at
 T-196a, `baseline-t199-pacifist.json` at T-199, `baseline-t195-dawn-dice.json` at T-195, `baseline-t188-orbital-3d.json`
 at T-188, `baseline-t160-dealer-fix.json` at T-160, `baseline-t182-reroll-fix.json` at T-182,

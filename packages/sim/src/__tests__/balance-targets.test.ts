@@ -151,8 +151,18 @@ const TRADER_CLEAR_DAY_MAX = 30;
 // planners lost their `DieLedger`, two gained the rounds mirror) — so it is not a clean
 // single-arm attribution and the block comment above should not be read as claiming one.
 // The bands below are UNTOUCHED; nothing here was re-derived to accommodate the new sample.
+// T-202 re-pin (t197-hangout-caps -> t202-liars-dice-ceiling). Same shape, same 8,000 rows,
+// same eight policies, same milestone days. A CONTENT-ONLY capstone: it ships R3's ruled
+// `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]`, so `rulesFingerprint` moves and
+// `instrumentFingerprint` does NOT. EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK
+// BYTE-IDENTICAL, and that is an INSTRUMENT-GAP NULL RESULT rather than a verdict that the
+// new ceiling is balanced: the sim's gambler is the only policy that plans a Dare and it is
+// bounded by `GAMBLER_MAX_DARES_PER_DAY = 2` (`packages/sim/src/index.ts:4058,4584`), below
+// the ruled ceiling, so it plays `1,2,2,2,2,2` hands by tier under BOTH tables. See F-202-1
+// in `TASKS.md`'s T-202 block. The bands below are UNTOUCHED — nothing here was re-derived
+// to accommodate the new sample (there was nothing to re-derive: the sample did not move).
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
-  new URL('../../../../docs/balance/baseline-t197-hangout-caps.json', import.meta.url),
+  new URL('../../../../docs/balance/baseline-t202-liars-dice-ceiling.json', import.meta.url),
 );
 const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
   label: string;

@@ -78,7 +78,15 @@ not see coming.
 **RULING — R1, post-M17 pacing (owner, 2026-08-05): acceptable as-is.** No re-tuning task
 filed for the day-30 marker, Tour One debt, guild interest, or loan terms — see §0's
 cumulative arc and T-198 in `TASKS.md`. R2 (`SOCIAL_PLAYS_PER_DAY`) and R3 (the Liar's Dice
-rounds table, still `PROPOSED` below) remain open.
+rounds table) were still open when this line was written; both are now ruled below.
+
+**RULING — R2, the social pool (owner, 2026-08-05): `SOCIAL_PLAYS_PER_DAY = 3` confirmed, no
+change.** §4a's pool stands as shipped. Per the insult-farming investigation: the cap correctly
+blocks a 4th same-day insult; insult/disposition never touches faction reputation or any
+player-facing score; and the interception-reweighting it gates is real (measured 27% → 72%
+wronged-share lift, matching §0's ~2.358× analytic figure) but economically narrow — it only
+reorders WHICH same-tier rival shows up, never adds encounters or changes payout. No re-tuning
+task filed, and no capstone owed (nothing changed). See `TASKS.md` T-198's R2 note.
 
 **RULING — R3, the Liar's Dice rounds table (owner, 2026-08-05): `[1, 2, 3, 4, 5, 6]`**
 (tiers 0-5), revised up from the `[1, 2, 2, 3, 3, 4]` suggestion. Deliberately rewards a
@@ -86,7 +94,8 @@ risky gambler archetype able to reach a scoundrel playstyle (fast drives, cloaki
 over combat) — the simulated ceiling is high (+228% vs field median, always-wins/uncapped)
 but real play still loses ~40% of hands, and the owner judged that an acceptable, intentional
 edge rather than an exploit. See `TASKS.md` T-198's R3 note for the full reasoning and T-202
-for the array + capstone that ships it. R2 remains open.
+for the array + capstone that ships it. §4b's table and §5's last bullet now carry the ruled
+numbers. **All three rulings are recorded; T-198 is closed.**
 
 ## 0 · M17 as measured — the Insult null result and the cumulative arc
 
@@ -110,11 +119,16 @@ T-198's brief.** An insult-playing policy is a new instrument BEHAVIOUR and its 
 it was deliberately not added here — and X was NOT retuned on the strength of an
 unmeasurable, which §4a explicitly forbids.
 
-**The one thing still open is §5's last bullet: the exact rounds-per-tier NUMBERS.** They
-ship as this document's own suggested table, marked `PROPOSED — awaiting owner confirmation`
-in three places (the content constant, §5 below, and `docs/LIARS-DICE-DECISIONS.md` LD-23).
-The SHAPE — more rounds at a higher tier — was already ruled and is what the mechanism
-implements.
+**§5's last bullet — the exact rounds-per-tier NUMBERS — is now RESOLVED (owner, 2026-08-05).**
+They shipped at T-197 as this document's own suggested table, marked
+`PROPOSED — awaiting owner confirmation` in three places (the content constant, §5 below, and
+`docs/LIARS-DICE-DECISIONS.md` LD-23); the SHAPE — more rounds at a higher tier — was already
+ruled and is what the mechanism implements. **CONFIRMED (owner, 2026-08-05) as
+`[1, 2, 3, 4, 5, 6]`**, revised up from `[1, 2, 2, 3, 3, 4]` and shipped by **T-202** with its
+capstone. That capstone came back **byte-identical on all eight policy rows** — a SECOND
+instrument-gap null result of exactly the shape above: the sim's gambler is bounded at two
+dares a day (`GAMBLER_MAX_DARES_PER_DAY = 2`), below the ruled ceiling, so the sweep cannot
+exhibit tiers ≥ 2 of the new table any more than it can exhibit the Insult loop.
 
 **THE CUMULATIVE ARC — the whole dawn-hand milestone in one table**, measured at 1,000 seeds
 × 120 days × 8 policies = 8,000 runs at every step, and read straight off the six committed
@@ -128,6 +142,17 @@ aggregates in `docs/balance/`:
 | `t196a-free-actions` | 0.6305 | 49,517 | 465 | 21.7913 |
 | `t196b-instruments` | 0.6342 | 49,839 | 487 | 22.2404 |
 | `t197-hangout-caps` | 0.6329 | 49,839 | 492 | 22.2482 |
+| `t202-liars-dice-ceiling` | 0.6329 | 49,839 | 492 | 22.2482 |
+
+**The `t202-liars-dice-ceiling` row is byte-identical to `t197-hangout-caps` on all four
+columns, and on all eight policy rows** (`balance:diff` reported "NOTHING MOVED. Every compared
+field is equal on both sides", across a `rulesFingerprint` move `10e19c88e9a07856` →
+`f33b6af1ee21dffa`). It is in this table because T-202 re-pinned the five pointer sites to it —
+this document is deliberately NOT a sixth pointer, which is what
+`packages/sim/src/__tests__/baseline-pointers.test.ts`'s totality check enforces. It is NOT
+in the brief's copy of this table, which is a frozen 2026-08-05 pre-session artifact and is
+deliberately not retro-edited — `pacing-brief-figures.test.ts`'s `ARC_BASELINES` therefore
+derives six rows, not seven, and says so in its own comment.
 
 **T-199 IS NAMED EXPLICITLY IN THAT TABLE, AND IT IS NOT PART OF THIS ARC.** It is the
 `smugglerPolicy` / `planPacifistCombat` fix (F-150-2, `assertNoIncomeStall` 7 violations →
@@ -259,17 +284,22 @@ hands) — already read exactly once per hand-open, at `hangout.ts:351`, to free
 band/dice-per-side/max-quantity for that hand. The round cap reuses the SAME tier read, at the
 SAME call site, rather than inventing a second progression variable.
 
-**Suggested table** (owner to confirm exact numbers before implementation; the shape — more
-rounds at higher tier — is the ruled part, the exact counts are not):
+**CONFIRMED TABLE (owner, 2026-08-05 — R3)**, shipped by T-202 with its capstone. The shape —
+more rounds at higher tier — was always the ruled part; the exact counts are now ruled too:
 
 | Tier | Games played | Rounds/day |
 |---|---|---|
 | 0 | 0 | 1 |
 | 1 | `LIARS_DICE_UNLOCK_GAMES[0]` | 2 |
-| 2 | `LIARS_DICE_UNLOCK_GAMES[1]` | 2 |
-| 3 | `LIARS_DICE_UNLOCK_GAMES[2]` | 3 |
-| 4 | `LIARS_DICE_UNLOCK_GAMES[3]` | 3 |
-| 5 | `LIARS_DICE_UNLOCK_GAMES[4]` | 4 |
+| 2 | `LIARS_DICE_UNLOCK_GAMES[1]` | 3 |
+| 3 | `LIARS_DICE_UNLOCK_GAMES[2]` | 4 |
+| 4 | `LIARS_DICE_UNLOCK_GAMES[3]` | 5 |
+| 5 | `LIARS_DICE_UNLOCK_GAMES[4]` | 6 |
+
+The original suggestion, kept for the record: 1 · 2 · 2 · 3 · 3 · 4 — revised up at R3 to a
+strict +1/tier climb. It shipped at T-197 with "owner to confirm exact numbers before
+implementation" written here, and that confirmation is the ruling above; §5's last bullet
+carries the not-chosen shape and the reasoning.
 
 A "round" is one settled hand (open → bidding → challenge/settlement), not one bid. Refused
 opens past the day's cap return a typed fail, same convention as 4a.
@@ -300,17 +330,27 @@ round and the escrow — the cap cannot be laundered through folds.
   grain question is moot — the §4a social pool has no per-NPC bookkeeping; "a flat daily total
   across all NPCs," the coarser grain this bullet once listed as an alternative, is exactly
   what was ruled. Kept for the record of why the finer grains were considered.
-- **STILL OPEN (T-197 shipped the mechanism against the suggested numbers) — the exact
-  rounds-per-tier numbers in §4b are a starting suggestion, not a ruling.** The question was
-  surfaced to the owner before implementation and no answer had arrived at ship time, so
-  T-197 shipped §4b's table verbatim as `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]` and
-  marked it `PROPOSED — awaiting owner confirmation` in three places rather than resolving it
-  quietly: on the constant itself (`packages/content/src/liarsDice.ts`), in this bullet, and
-  as `docs/LIARS-DICE-DECISIONS.md` LD-23. They stay cheap to change — that array is the only
-  place they exist, and it is CONTENT — but the *shape* (more rounds at higher tier) is what
-  is actually load-bearing for "rewarding good play," and the shape is ruled. **A revision is
-  a content edit that owes a capstone**, diffed against `baseline-t197-hangout-caps.json`,
-  not an argument from a fingerprint.
+- **RESOLVED (owner, 2026-08-05) — the exact rounds-per-tier numbers in §4b.** **Ruled:
+  `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]`** (tiers 0-5, a strict +1/tier climb),
+  revised UP from the shipped suggestion and shipped by **T-202** with its capstone
+  `docs/balance/baseline-t202-liars-dice-ceiling.json`. The owner's reasoning: the simulated
+  ceiling is high but real play still loses ~40% of hands, and rewarding a risky gambler
+  archetype with the credits to buy a scoundrel playstyle is an accepted, intentional edge
+  rather than an exploit. Logged not-chosen shape, for the record: **confirm the shipped
+  `[1, 2, 2, 3, 3, 4]` as-is**, which would have been a free marker-comment flip owing no
+  capstone at all. The history this bullet used to record, kept: the question was surfaced to
+  the owner before implementation and no answer had arrived at ship time, so T-197 shipped
+  §4b's table verbatim as `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]` and marked it
+  `PROPOSED — awaiting owner confirmation` in three places rather than resolving it quietly:
+  on the constant itself (`packages/content/src/liarsDice.ts`), in this bullet, and as
+  `docs/LIARS-DICE-DECISIONS.md` LD-23. The numbers stayed cheap to change — that array is the
+  only place they exist, and it is CONTENT — but the *shape* (more rounds at higher tier) is
+  what is actually load-bearing for "rewarding good play," and the shape was ruled from the
+  start. **The revision was a content edit and it paid a capstone**, diffed against
+  `baseline-t197-hangout-caps.json`, not an argument from a fingerprint — and that capstone
+  came back byte-identical on all eight policy rows, which is an INSTRUMENT-GAP NULL RESULT
+  (the sim's gambler is bounded at 2 dares/day, below the ruled ceiling), not a verdict that
+  the new table is balanced. See F-202-1 in `TASKS.md`'s T-202 block.
 
 ## 6 · What does NOT change
 

@@ -1,11 +1,11 @@
 {
   "productVersion": "0.5.3",
   "saveSchemaVersion": 16,
-  "rulesFingerprint": "10e19c88e9a07856",
+  "rulesFingerprint": "f33b6af1ee21dffa",
   "instrumentFingerprint": "5c230e99648cddee",
-  "docsFingerprint": "d8ed872b7a3f30e3",
+  "docsFingerprint": "69499dab48c289b5",
   "provenance": {
-    "sweepLabel": "t197-hangout-caps",
+    "sweepLabel": "t202-liars-dice-ceiling",
     "seeds": 1000,
     "days": 120,
     "runs": 8000,
@@ -20,7 +20,7 @@
       "veteran"
     ],
     "extractedOn": "2026-08-05",
-    "gitCommit": "ee0db4fc99ecea6aae90d1e04d8cb4c88c30ff1b",
+    "gitCommit": "0abe9028d0888d0b5dac0cc8d266a6d031d16931",
     "spreadSource": "harvested",
     "note": "Tier spreads are milestone samples harvested from the named sweep. They are still SYNTHESIZED starting states and are never balance verdicts — see docs/balance/smoke/README.md."
   },
