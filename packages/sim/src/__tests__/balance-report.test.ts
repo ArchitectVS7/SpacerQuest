@@ -517,7 +517,10 @@ describe('T-142 · the ruleset banner', () => {
   it('never lets UNKNOWN render as SAME — which is what real aggregates produce', () => {
     const before = provenanceFor('baseline-tour-one.json');
     const after = provenanceFor('baseline-t150-postfix.json');
-    // F-142-1, asserted rather than assumed: a committed aggregate carries no stamp.
+    // F-142-1, asserted rather than assumed: a PRE-T-183 committed aggregate carries
+    // no stamp. Both files here were merged before T-183 and are deliberately never
+    // rewritten (a stamp nobody can re-derive is a forgery), so this stays true —
+    // and the `unknown` leg keeps its real-world case.
     expect(before.provenance.rulesFingerprint).toBeUndefined();
     expect(after.provenance.rulesFingerprint).toBeUndefined();
     expect(compareRulesets(before.provenance, after.provenance)).toMatchObject({

@@ -578,8 +578,8 @@ function provenanceRow(role: string, provenance: InputProvenance): string {
 }
 
 /** Spec §3, in all three directions. `unknown` gets a banner as loud as
- *  `different` — because it is not `same`, and today it is what a pair of
- *  committed aggregates actually produces (F-142-1). */
+ *  `different` — because it is not `same`, and it is what any pair of aggregates
+ *  merged before T-183 still produces (F-142-1). */
 function rulesetBanner(comparison: RulesetComparison): string {
   const parts: string[] = [];
   if (comparison.rules === 'different') {
@@ -592,9 +592,10 @@ function rulesetBanner(comparison: RulesetComparison): string {
   } else if (comparison.rules === 'unknown') {
     parts.push(
       '<div class="callout callout-loud"><h3>RULESET UNKNOWN FOR ONE OR BOTH INPUTS</h3><p>' +
-        'A sweep aggregate carries no <code>rulesFingerprint</code> today (finding F-142-1: <code>BaselineAggregate</code> has ' +
-        'seven top-level keys and none of them is a stamp). This comparison therefore CANNOT be assumed same-ruleset. ' +
-        'Supply <code>--provenance</code> / <code>--compare-provenance</code> pointing at an artefact that does carry the stamps ' +
+        'At least one input predates T-183, when <code>sweep.ts --merge</code> began stamping every merged aggregate with its ' +
+        'own <code>rulesFingerprint</code> (finding F-142-1: before that, <code>BaselineAggregate</code> had seven top-level keys ' +
+        'and none of them was a stamp). This comparison therefore CANNOT be assumed same-ruleset. Re-merge the unstamped arm, or ' +
+        'supply <code>--provenance</code> / <code>--compare-provenance</code> pointing at an artefact that does carry the stamps ' +
         '(<code>docs/balance/smoke/tiers.json</code> is one) to answer the question.</p></div>',
     );
   } else {
@@ -611,7 +612,7 @@ function rulesetBanner(comparison: RulesetComparison): string {
     );
   } else if (comparison.instrument === 'unknown') {
     parts.push(
-      '<p class="callout callout-warn">Instrument version unknown for one or both inputs — same cause as above (F-142-1).</p>',
+      '<p class="callout callout-warn">Instrument version unknown for one or both inputs — same cause as above: an input merged before T-183 (F-142-1).</p>',
     );
   } else {
     parts.push(

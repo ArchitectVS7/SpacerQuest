@@ -252,10 +252,13 @@ item, put it in the section where comparable work already lives.
   emit-side remainder is adding seed/policy to the §3 shape if a per-policy view is ever wanted.
   [harvested: T-140/F-140-1]
 
-- **`docs/TELEMETRY-REPORT_SPEC.md` §3 (line 70) still asserts "aggregates already carry this via
-  the smoke/capstone convention"** — factually wrong per F-142-1 and never corrected. The doc
-  needs a correction note (or deletion of the parenthetical) so the next reader does not build on
-  it. [harvested: T-142/telemetry-spec-3-parenthetical]
+- **`docs/TELEMETRY-REPORT_SPEC.md` §3's "aggregates already carry this via the smoke/capstone
+  convention" — CLOSED at T-183 (2026-08-04).** The parenthetical now carries a dated correction
+  (`docs/TELEMETRY-REPORT_SPEC.md:68-77`) saying it was false when written (F-142-1) and is true
+  since T-183, where `packages/sim/src/balance/sweep.ts`'s `mergeShards` stamps
+  `rulesFingerprint`/`instrumentFingerprint`/`gitCommit` onto the merged aggregate at write time.
+  Pre-T-183 aggregates carry no stamp, are deliberately never rewritten, and correctly render
+  `unknown`. [harvested: T-142/telemetry-spec-3-parenthetical]
 
 - **F-143-1 residual: `docs/DEV-CONTROL-PANEL_SPEC.md` §1's command-inventory table is still
   stale against the real parsers** — it omits `sweep.ts`'s `--trace-npc-decisions` (T-140) and

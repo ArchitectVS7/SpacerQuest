@@ -201,6 +201,11 @@ export const SIM_NON_INSTRUMENT_SOURCES: Readonly<Record<string, string>> = {
     'T-142 · The argv/filesystem half of the report generator. Reads inputs, writes one HTML file ' +
     'into a gitignored directory. Same split, same reason as `balance/sweep.ts` and ' +
     '`balance/diff-cli.ts`.',
+  'balance/provenance.ts':
+    'T-183 · Stamps a finished artefact with the two fingerprints and HEAD. It reads the tree and ' +
+    'describes it; it plays no career, folds no row and scores nothing, so it cannot produce a ' +
+    'measurement — the same class as `balance/smoke-extract.ts`, whose git helper it now owns. ' +
+    'Self-inclusion would also be circular: it CALLS `computeInstrumentFingerprint`.',
   'balance/resolve-artifact.ts':
     'One path rule shared by the two CLIs above. Filesystem plumbing; it resolves where an ' +
     'artefact lives, never what is in it.',

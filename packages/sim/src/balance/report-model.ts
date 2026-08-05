@@ -19,17 +19,26 @@
  * reads finished artefacts and reports on them, exactly as `./diff.ts` does. It
  * cannot produce a number. See `SIM_NON_INSTRUMENT_SOURCES` for the entry.
  *
- * F-142-1, FILED HERE BECAUSE THIS IS WHERE IT BITES. Spec §3 says an aggregate
+ * F-142-1, FILED HERE BECAUSE THIS IS WHERE IT BIT. Spec §3 said an aggregate
  * "already carries" its `rulesFingerprint`/`gitCommit` "via the smoke/capstone
- * convention". It does not: `BaselineAggregate` has seven top-level keys
+ * convention". It did not: `BaselineAggregate` had seven top-level keys
  * (`label, policies, seeds, days, runs, fleet, byPolicy`) and every committed
- * `docs/balance/baseline-*.json` carries only those. The fingerprints live on the
+ * `docs/balance/baseline-*.json` carried only those. The fingerprints lived on the
  * smoke FIXTURE (`docs/balance/smoke/tiers.json`), a different artefact. Per spec
- * §6 that is REPORTED, not quietly fixed by adding a field to `aggregate.ts` —
+ * §6 that was REPORTED, not quietly fixed by adding a field to `aggregate.ts` —
  * so {@link resolveInputProvenance} reads the stamps off a superset shape (it
- * will pick them up for free the day a sweep writes them), accepts an explicit
+ * would pick them up for free the day a sweep wrote them), accepts an explicit
  * sidecar, and otherwise answers `unknown`. {@link compareRulesets} then refuses
  * to let `unknown` render as `same`.
+ *
+ * CLOSED AT T-183 (2026-08-04), and closed exactly where this file predicted:
+ * `./sweep.ts`'s `mergeShards` now calls `computeAggregateStamp()` (`./provenance.ts`)
+ * and passes the result into `aggregate()`, so a freshly merged aggregate carries
+ * `rulesFingerprint`/`instrumentFingerprint`/`gitCommit` of its own and the superset
+ * read below resolves with no logic change. NOT ONE LINE OF THIS FILE MOVED for it.
+ * The sidecar path stays: aggregates committed BEFORE T-183 carry no stamp — they
+ * are deliberately not rewritten, because a stamp nobody can re-derive is a forgery —
+ * and `--provenance` remains how you attribute stamps to one of them.
  *
  * READERS (constraint 7): `./report-html.ts`, `./report-cli.ts`, and
  * `../__tests__/balance-report.test.ts`.
@@ -46,7 +55,7 @@ import { diffAggregates, HEADLINE_METRICS, type ShapeChange } from './diff.js';
 
 /** A three-state verdict. `unknown` is a state of its own and MUST NEVER render
  *  as `same` — an unstamped pair is not a matching pair, it is an unanswered
- *  question, and today (F-142-1) every committed aggregate is unstamped. */
+ *  question, and every aggregate committed before T-183 is unstamped (F-142-1). */
 export type RulesetVerdict = 'same' | 'different' | 'unknown';
 
 /**
@@ -77,8 +86,10 @@ export interface InputProvenance {
   declaredBy?: string;
 }
 
-/** The superset shape a stamped aggregate WOULD have. Nothing writes it today;
- *  reading it costs nothing and makes F-142-1 a finding instead of a blocker. */
+/** The superset shape a stamped aggregate has. `./sweep.ts --merge` has written
+ *  the three stamps since T-183; a file without them is a pre-T-183 artefact, and
+ *  reading the shape optionally is what made F-142-1 a finding instead of a
+ *  blocker — and what let T-183 close it without touching this file. */
 interface StampedMaybe {
   label?: unknown;
   seeds?: unknown;

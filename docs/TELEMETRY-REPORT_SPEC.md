@@ -67,7 +67,15 @@ someone might open offline during a con-floor Alpha session with no network).
 **Every report stamps its own provenance in the page header**, mirroring the fixture
 convention already established (`docs/balance/smoke/README.md`'s provenance table):
 which input file(s) it read, each input's own `rulesFingerprint`/`gitCommit` if present
-(aggregates already carry this via the smoke/capstone convention), and the generation
+(**correction, T-183, 2026-08-04:** this parenthetical originally read "aggregates already
+carry this via the smoke/capstone convention" and was **false when written** — finding
+F-142-1: a `BaselineAggregate` had seven top-level keys, none of them a stamp, and the
+fingerprints lived on the smoke *fixture* `docs/balance/smoke/tiers.json`, a different
+artefact. It is **true since T-183**, where `packages/sim/src/balance/sweep.ts --merge`
+stamps `rulesFingerprint`/`instrumentFingerprint`/`gitCommit` onto the merged aggregate at
+write time. Aggregates committed *before* T-183 carry no stamp — they are deliberately never
+rewritten, because a stamp nobody can re-derive is a forgery — and correctly render
+`unknown`; `--provenance` remains how you attribute stamps to one of them), and the generation
 timestamp. A report describing two aggregates with **different** `rulesFingerprint`s must
 say so visibly on the page — comparing across a rules change is a legitimate before/after
 use case (that's the whole point of a redesign-track diff), but the viewer must not be able

@@ -439,3 +439,41 @@ all eight columns, found by a human reading a table.
 - **It is the standing exit check for T-174**, which owns the `fighter` defect itself. That task
   is done when this predicate returns zero violations over its fixed rig's arms — not when a
   median in a memo looks different.
+
+**BR-58 — A merged aggregate stamps itself at write time, and a stamp is PROVENANCE, not a
+measurement.** (T-183, 2026-08-04, closing F-142-1.) `packages/sim/src/balance/sweep.ts`'s
+`--merge` calls `computeAggregateStamp()` (`packages/sim/src/balance/provenance.ts`) and writes
+`rulesFingerprint` / `instrumentFingerprint` / `gitCommit` onto the `BaselineAggregate` before
+the file hits disk. Before T-183 an aggregate had seven top-level keys and none of them was a
+stamp, so `balance:report` over two committed aggregates rendered the loud "RULESET UNKNOWN FOR
+ONE OR BOTH INPUTS" banner and could say nothing at all about whether the two arms had measured
+the same game.
+
+- **Stamped at WRITE time, unconditionally** — including a `--aggregate-out` into a scratch
+  directory. A run whose provenance depends on where it was written is not provenance.
+- **Computed in the IO half, carried by the pure half.** `aggregate()` takes the stamp as an
+  optional third argument and writes it straight through; it never computes one. The fold is
+  pure (no `fs`, no `process`, no clock) and a fingerprint is a walk of the working tree. The
+  SHAPE lives in the hashed instrument file; the COMPUTATION does not.
+- **The stamps join `IGNORED_PATHS` in `balance/diff.ts`**, for `label`'s reason one step on:
+  they describe the measurement, never the game, and leaving them in would report three shape
+  changes and `identical: false` for two runs that measured the identical thing — breaking the
+  "NOTHING MOVED" verdict every inertness proof in this repo depends on. Ignoring them is not
+  silent: `formatAggregateDiff` prints a provenance banner (`SAME RULESET` / `DIFFERENT
+  RULESETS` / `RULESET UNKNOWN on one or both sides`) above the row summary, so the fact
+  excluded from the table is not a fact lost.
+- **`unknown` is still a state of its own.** The 40-odd `docs/balance/baseline-*.json` committed
+  before T-183 are **not** rewritten: they were produced by trees that did not stamp, and writing
+  a stamp into them now would forge provenance for a run nobody can re-derive — the class
+  `docs/VERSIONING.md` forbids. They stay `unknown`, which is the honest verdict, and
+  `--provenance` remains how a reader attributes stamps to one of them.
+- **A devpanel-PROMOTED baseline inherits the stamps for free, with no devpanel change.**
+  `assertPromotionTarget`/promotion in `packages/devpanel/src/runs.ts` copies a merged file
+  verbatim, and the panel invokes the CLI rather than reimplementing it
+  (`docs/DEV-CONTROL-PANEL_SPEC.md` §1). That is the constraint paying off rather than a
+  coincidence.
+- **Not stamped, deliberately:** `productVersion` and `saveSchemaVersion`. Only the two fields
+  T-183's Accept names plus `instrumentFingerprint` (without which the report resolves a ruleset
+  banner and still prints "Instrument version unknown", which half-answers the question). The
+  report's `productVersion` column continues to read `unknown` for an aggregate; that is a
+  follow-up, not this decision.

@@ -65,6 +65,13 @@
  * aggregate to `docs/balance/baseline-<label>.json`, which is what T-1603b/T-1603c
  * diff against.
  *
+ * T-183 · THE MERGE STAMPS WHAT IT WROTE. `--merge` records the tree's
+ * `rulesFingerprint`, `instrumentFingerprint` and `gitCommit` onto the aggregate at
+ * write time (`./provenance.ts`), so a committed baseline can say which ruleset it
+ * measured instead of leaving `balance:report` to render "RULESET UNKNOWN"
+ * (F-142-1). Aggregates committed BEFORE T-183 carry no stamp and correctly stay
+ * unknown; they are not rewritten, because a stamp nobody can re-derive is a forgery.
+ *
  * Progress goes to stderr; stdout stays clean so `--merge` output can be piped.
  *
  * ------------------------------------------------------------------------
@@ -143,6 +150,7 @@ import {
   formatGateReport,
   type SweepViolation,
 } from './gate.js';
+import { computeAggregateStamp } from './provenance.js';
 
 /** The default fleet: the six competent policies (the balance instruments) plus
  *  `greedy` as a naive control, so the memo can say what "playing badly" costs.
@@ -231,6 +239,8 @@ function usage(): string {
     '                        diagnosis only, never a capstone. Cannot be combined with --merge.',
     '  --merge               Do not sweep: read every shard row file for --label,',
     '                        aggregate, and write docs/balance/baseline-<label>.json.',
+    '                        T-183: the merged aggregate is STAMPED at write time with',
+    '                        rulesFingerprint / instrumentFingerprint / gitCommit.',
     '  --help',
     '',
     'See the header of packages/sim/src/balance/sweep.ts for the runtime budget.',
@@ -617,11 +627,27 @@ function mergeShards(options: SweepOptions): void {
   // the same shards always produces a byte-identical aggregate.
   rows.sort((a, b) => a.seed - b.seed || a.policy.localeCompare(b.policy));
 
-  const summary = aggregate(options.label, rows);
+  // T-183 · F-142-1 · THE AGGREGATE STAMPS ITSELF, at write time, unconditionally —
+  // including a `--aggregate-out` into a scratch directory, because a run whose
+  // provenance depends on where it was written is not provenance.
+  //
+  // It is computed HERE and not in `./aggregate.ts` for the reason that file's header
+  // gives: the fold is pure and a fingerprint is a walk of the filesystem.
+  //
+  // DETERMINISM, restated honestly: re-merging the same shards on the same tree at the
+  // same commit still produces a byte-identical aggregate (the sentence above the row
+  // sort). Re-merging them at a DIFFERENT commit now changes three lines, and it
+  // should — the rows describe a ruleset, and until T-183 the artefact could not say
+  // which one (`docs/TELEMETRY-REPORT_SPEC.md` §3).
+  const stamp = computeAggregateStamp();
+  const summary = aggregate(options.label, rows, stamp);
   mkdirSync(options.aggregateDir, { recursive: true });
   const target = join(options.aggregateDir, `baseline-${options.label}.json`);
   writeFileSync(target, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
   process.stderr.write(`[balance] wrote aggregate for ${rows.length} rows to ${target}\n`);
+  process.stderr.write(
+    `[balance] stamped rules ${stamp.rulesFingerprint} / instrument ${stamp.instrumentFingerprint} / commit ${stamp.gitCommit}\n`,
+  );
 
   // T-152 · The rate table runs AGAIN over the merged rows, and this is the
   // sample that actually matters: `minSample` is a denominator floor, and a

@@ -55,6 +55,13 @@ this one dates that change, because "same game, rewritten explanation" is worth 
 when a comment disagrees with a number. Report it, never gate on it. Fixtures extracted
 before N7-FP simply lack the field, which is not a mismatch.
 
+**T-183 (2026-08-04) gave the AGGREGATE a stamp of its own.** Since then
+`npm run balance:sweep -- --merge` writes `rulesFingerprint`, `instrumentFingerprint` and
+`gitCommit` onto `docs/balance/baseline-<label>.json` at write time (closing F-142-1), so a
+freshly merged aggregate answers "which ruleset?" without borrowing this fixture's answer.
+`npm run balance:report -- --provenance docs/balance/smoke/tiers.json` is therefore now needed
+only for **pre-T-183** aggregates, which carry no stamp and are deliberately never rewritten.
+
 The fixture in this folder is `tiers.json`. Regenerate it with
 `npm run balance:extract` (never by hand); check it with `npm run balance:smoke`.
 

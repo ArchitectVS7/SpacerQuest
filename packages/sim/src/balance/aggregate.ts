@@ -684,8 +684,35 @@ function rankHistogram(ranks: readonly string[]): Record<string, number> {
   return histogram;
 }
 
+/**
+ * T-183 · WHAT A MERGED AGGREGATE SAYS ABOUT ITSELF: the ruleset it measured, the
+ * instrument that measured it, and where in history that tree was.
+ *
+ * Computed by `./provenance.ts` and passed IN, never computed here — this module is
+ * the PURE half (no `fs`, no `process`, no clock, no rng; see the file header) and a
+ * fingerprint is a walk of the working tree. The IO half (`./sweep.ts --merge`) owns
+ * the reading; this module owns only the SHAPE, which is why the shape lives in the
+ * hashed instrument file and the computation does not.
+ */
+export interface AggregateStamp {
+  rulesFingerprint: string;
+  instrumentFingerprint: string;
+  gitCommit: string;
+}
+
 export interface BaselineAggregate {
   label: string;
+  /**
+   * T-183 · F-142-1, closed. OPTIONAL, and the optionality is load-bearing twice
+   * over: every `docs/balance/baseline-*.json` committed BEFORE T-183 carries only
+   * the original seven keys and must still type as a `BaselineAggregate`, and
+   * `aggregate()` is pure so it cannot mint one unaided. A reader that finds these
+   * absent is looking at a pre-T-183 artefact — that is `unknown`, never `same`
+   * (`./report-model.ts` `compareRulesets`).
+   */
+  rulesFingerprint?: string;
+  instrumentFingerprint?: string;
+  gitCommit?: string;
   policies: string[];
   seeds: number;
   days: number;
@@ -932,10 +959,21 @@ export function aggregateRows(policy: string, rows: readonly SeedRow[]): PolicyA
   };
 }
 
-/** The whole memo's numbers: the fleet union plus one block per policy. Policy
- *  order is the order they first appear in `rows`, so a sweep's `--policies` order
- *  is the memo's column order. */
-export function aggregate(label: string, rows: readonly SeedRow[]): BaselineAggregate {
+/**
+ * The whole memo's numbers: the fleet union plus one block per policy. Policy
+ * order is the order they first appear in `rows`, so a sweep's `--policies` order
+ * is the memo's column order.
+ *
+ * T-183 · `stamp` is OPTIONAL and is written straight through — see
+ * {@link AggregateStamp} for why it is computed by the caller. Omitting it produces
+ * a byte-identical object to every pre-T-183 call, which is the machine-checked
+ * inertness `../__tests__/aggregate-stamp.test.ts` asserts.
+ */
+export function aggregate(
+  label: string,
+  rows: readonly SeedRow[],
+  stamp?: AggregateStamp,
+): BaselineAggregate {
   const policies: string[] = [];
   for (const row of rows) {
     if (!policies.includes(row.policy)) policies.push(row.policy);
@@ -943,6 +981,10 @@ export function aggregate(label: string, rows: readonly SeedRow[]): BaselineAggr
   const seeds = new Set(rows.map((row) => row.seed)).size;
   return {
     label,
+    // Spread, not three `?? undefined` assignments: an ABSENT stamp must leave the
+    // keys absent, not present-and-undefined. `JSON.stringify` erases the difference
+    // but `Object.keys`, `./diff.ts`'s flatten and every shape test do not.
+    ...(stamp ?? {}),
     policies,
     seeds,
     days: rows[0]?.days ?? 0,

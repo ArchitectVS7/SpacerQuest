@@ -1753,7 +1753,7 @@ in `docs/PLAYER-TRINKETS_SPEC.md` §5.3 and the instrument row in §13 are updat
 fixed instrument; fingerprint discipline stated (instrument moves, rules does not) and the expected
 pinned rows named; gate green.
 
-### T-183 · F-142-1: a merged aggregate carries no `rulesFingerprint`/`gitCommit` — stamp it at write time — `status: TODO` · `coder: opus` · `after: —`
+### T-183 · F-142-1: a merged aggregate carries no `rulesFingerprint`/`gitCommit` — stamp it at write time — `status: DONE` · `coder: opus` · `after: —`
 
 **RENUMBERED (2026-08-03):** this block was filed as `T-175`, colliding with the earlier `T-175`
 (F-160-1, line 886) — two unrelated task blocks sharing one ID, discovered incidentally while
@@ -1778,6 +1778,94 @@ at write time and `BaselineAggregate`'s type/schema carries them; a `balance:rep
 freshly merged aggregates renders WITHOUT the "RULESET UNKNOWN" banner; `instrumentFingerprint`'s
 move is paid for with the re-extract and baseline re-pin in the same commit; `rulesFingerprint`
 does NOT move; `docs/TELEMETRY-REPORT_SPEC.md` §3's now-corrected claim matches reality; gate green.
+
+**Delivered (2026-08-04):** `packages/sim/src/balance/sweep.ts`'s `mergeShards` now computes
+`computeAggregateStamp()` and passes it into `aggregate()`, so every merged
+`docs/balance/baseline-<label>.json` carries `rulesFingerprint`, `instrumentFingerprint` and
+`gitCommit` — written at the TOP of the file, before the 400KB `byPolicy` array, and
+unconditionally (including a `--aggregate-out` into a scratch directory: a run whose provenance
+depends on where it was written is not provenance). A greppable
+`[balance] stamped rules … / instrument … / commit …` line goes to stderr beside the existing
+`wrote aggregate` line.
+
+**TWO CORRECTIONS TO THE BLOCK'S FRAMING, recorded rather than silently substituted (T-173's
+precedent).**
+
+1. **`sweep.ts` does NOT move `instrumentFingerprint`.** It is named in
+   `SIM_NON_INSTRUMENT_SOURCES` (`packages/sim/src/balance/rules-fingerprint.ts:169`, "The I/O
+   half of the sweep"), so `collect()` skips it. What moved the instrument hash here is the
+   `BaselineAggregate` type change in `aggregate.ts` — which the Accept requires anyway, so the
+   cost was owed regardless. `report-model.ts`, `report-html.ts`, `diff.ts`, `smoke-extract.ts`
+   and `rules-fingerprint.ts` are all non-instrument; editing them was free.
+2. **No baseline re-pin was owed.** This is an instrument move, not a capstone: the baseline of
+   record (`docs/balance/baseline-t199-pacifist.json`, per `BASELINE_OF_RECORD_PATH` at
+   `packages/sim/src/__tests__/balance-targets.test.ts:124`) does not move. Settled in the same
+   words at T-173. The obligation actually discharged is that all five pointers still agree —
+   `packages/sim/src/__tests__/baseline-pointers.test.ts` green.
+
+**NO CAPSTONE, and the inertness is machine-checked rather than argued.** `rulesFingerprint`
+could not move (zero lines touched under `packages/engine/src`, `packages/content/src`,
+`packages/ui/src`, `packages/devpanel/src`) and the instrument change is additive-only:
+`aggregate()` gained an optional third parameter whose absence produces a byte-identical object.
+`packages/sim/src/__tests__/aggregate-stamp.test.ts` §C proves it three ways — deep-equal and
+`JSON.stringify`-equal with the stamps deleted, the keys ABSENT rather than present-and-undefined
+when the stamp is omitted (a spread, not three `?? undefined` assignments), and
+`diffAggregates(unstamped, stamped)` reporting `identical: true` with `shapeChanges: []`.
+Contrast T-199, which re-took a capstone for an instrument move because `sim/src/index.ts`'s
+POLICIES changed and the numbers really moved; here nothing a career does changes.
+
+**PREDICTED, THEN OBSERVED (BR-7).** `docs/balance/smoke/tiers.json` re-extracted with
+`--aggregate` passed explicitly (BR-11 / F-146-0: the default silently falls back to
+`baseline-n1.json`); stderr reported `spreads harvested`:
+
+| field | predicted | observed |
+| --- | --- | --- |
+| `rulesFingerprint` | UNMOVED `febc55edd3a94b3f` | UNMOVED `febc55edd3a94b3f` ✔ |
+| `instrumentFingerprint` | moves from `b28fad2af6107f8a` | `1a07106b75bec467` ✔ |
+| `docsFingerprint` | moves from `e7b35fa4850f418d` | `b7117ace0d61eb1c` ✔ |
+| `productVersion` / `saveSchemaVersion` | `0.5.3` / `15`, unchanged | unchanged ✔ (no `GameState` field ⇒ no migration, no round-trip test owed) |
+| `provenance.gitCommit` | moves | moves ✔ |
+| every `checkpoints` value | byte-identical | byte-identical — a **3-line** `tiers.json` diff ✔ (`extractedOn` already read `2026-08-05`) |
+
+**OTHER PIECES.** New non-instrument module `packages/sim/src/balance/provenance.ts` owns
+`headCommit()` (moved out of `smoke-extract.ts`, so BR-38's one-definition rule holds across the
+two CLIs that need it) and `computeAggregateStamp()`; it is classified in
+`SIM_NON_INSTRUMENT_SOURCES` with its reason, which `balance-rig.test.ts`'s sim totality guard
+requires. `balance/diff.ts` adds the three stamps to `IGNORED_PATHS` — mandatory, not cosmetic:
+`diffAggregates` flattens the whole object, so without it a stamped-vs-committed diff would report
+three `SHAPE CHANGES` and `identical: false` and break the "NOTHING MOVED" verdict every inertness
+proof depends on — and, because ignoring silently would be a real loss, `formatAggregateDiff` now
+prints a provenance banner (`SAME RULESET` / `DIFFERENT RULESETS` / `RULESET UNKNOWN on one or
+both sides`) built from a new `AggregateDiff.provenance` block. `report-model.ts` and
+`report-html.ts` needed PROSE ONLY — they already read the three fields off the parsed aggregate,
+so the Accept's banner criterion resolves with zero logic change; the two literal strings
+`RULESET UNKNOWN FOR ONE OR BOTH INPUTS` and `F-142-1` are kept because
+`balance-report.test.ts:528-529` assert them. Docs: `docs/TELEMETRY-REPORT_SPEC.md` §3's
+parenthetical carries a dated correction (false when written, true since T-183),
+`docs/BALANCE-RIG-DECISIONS.md` gains **BR-58**, `docs/balance/smoke/README.md` and
+`docs/DEV-CONTROL-PANEL_SPEC.md` §1 each gain a line. `TODO.md`'s harvested spec-parenthetical
+item is marked CLOSED at T-183.
+
+**DELIBERATE SCOPE BOUNDARIES.** The ~40 committed `docs/balance/baseline-*.json` are NOT
+rewritten — they were produced by trees that did not stamp, and writing one in now would forge
+provenance for a run nobody can re-derive (`docs/VERSIONING.md`). They stay `unknown`, which is
+the honest verdict, and `balance-report.test.ts`'s "never lets UNKNOWN render as SAME" test keeps
+its real-world case for free. `productVersion`/`saveSchemaVersion` are NOT stamped onto the
+aggregate; the report's `productVersion` column still reads `unknown` for one, which is a
+follow-up. A devpanel-PROMOTED baseline inherits the stamps with **no devpanel change** —
+`promote` in `packages/devpanel/src/runs.ts:179` is a `copyFileSync`.
+
+**FINDING (new, not folded in): `packages/sim/src/balance/checkpoints.ts` does not cross-check an
+aggregate's stamp against the tree at extract time.** Extracting a fixture from a capstone taken
+under a DIFFERENT ruleset is still silent. That check only became possible at T-183 (before this,
+an aggregate had nothing to check against) and it is a separate task.
+
+**Gate:** `npx tsc -b`, `npm run lint`, `npm run format:check` and `npm test` all exit 0 — 2,386
+tests, zero failures, across all six packages. `npm run format` was run BEFORE the re-extract,
+never after. Everything lands in ONE commit: code, the new suite (11 tests), the re-extracted
+`tiers.json`, docs, `TASKS.md`.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only `.scratch/`, `docs/`, `packages/`, etc.) · attempts=1/4.
 
 ### T-184 · Smuggler contract options are `chosen` more often than they were `offered` — the all-weights-zero corner — `status: TODO` · `coder: opus` · `after: T-198`
 

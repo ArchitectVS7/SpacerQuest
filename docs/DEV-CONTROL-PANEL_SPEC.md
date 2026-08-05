@@ -18,6 +18,10 @@ difference from the deferred Tier 2 idea: this panel invokes `sweep.ts`/`aggrega
 `smoke-extract.ts`/`diff-cli.ts` exactly as a human would from a terminal, so every
 provenance guarantee those scripts already produce (`rulesFingerprint`, `gitCommit`,
 `productVersion` — `docs/balance/smoke/README.md`'s table) comes along for free, unchanged.
+(**T-183, 2026-08-04:** this became literally true for AGGREGATES too. `sweep.ts --merge` now
+stamps `rulesFingerprint`/`instrumentFingerprint`/`gitCommit` onto the merged aggregate at write
+time, so a panel-PROMOTED baseline — which copies a merged file verbatim — inherits them with
+**no devpanel change at all**. The constraint paying off, not a coincidence. See BR-58.)
 **The panel must never reimplement sweep/aggregate/extract/diff logic** — only invoke the
 existing scripts as child processes and surface their stdout/exit code. Two implementations
 of the same balance math drifting apart is a bug class this constraint exists to prevent
