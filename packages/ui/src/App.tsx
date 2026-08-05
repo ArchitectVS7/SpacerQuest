@@ -3972,19 +3972,16 @@ function ShipPane({ state }: { state: CockpitState }) {
     type: 'Shipyard',
     action: 'repair',
     repairMode: 'all',
-    spendDie: 0,
   }).before;
   const podQuote = shipyardQuote(game, {
     type: 'Shipyard',
     action: 'buy-cargo-pods',
     quantity: Math.max(1, podQty),
-    spendDie: 0,
   });
   const repairAllQuote = shipyardQuote(game, {
     type: 'Shipyard',
     action: 'repair',
     repairMode: 'all',
-    spendDie: 0,
   });
   const anyDamaged = components.some((c) => c.damaged);
   // T-112 · The Class-B readout. Class A needs no widget of its own: a component
@@ -4344,7 +4341,6 @@ function ComponentRow({
           action: 'buy-component-tier',
           component: row.id,
           tier: row.nextTier,
-          spendDie: 0,
         })
       : null;
   const repairQuote = row.damaged
@@ -4353,7 +4349,6 @@ function ComponentRow({
         action: 'repair',
         component: row.id,
         repairMode: 'single',
-        spendDie: 0,
       })
     : null;
 

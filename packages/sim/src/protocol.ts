@@ -605,6 +605,12 @@ export function legalActions(state: GameState): LegalActions {
   }
 
   // --- Trade -------------------------------------------------------------
+  // T-196b: buy-fuel / sign-contract / abandon-contract are FREE ACTIONS as of
+  // T-196a, but this enumerator still gates them on `hasDie` and still advertises
+  // `spendDie: dieParam`. The engine IGNORES the field (zod strips it), so the
+  // advertising is inert-but-stale — it is the INSTRUMENT, and instruments move in
+  // T-196b so the two capstone arms stay attributable. Same for the Shipyard, Crew
+  // and Port blocks below. `haggle` keeps its die for real.
   const fuelPrice = state.market.localFuelPrice || 5;
   const fuelCapacity = ship.maxFuel - ship.fuel;
   const affordableFuel = Math.floor(player.credits / fuelPrice);
@@ -764,10 +770,13 @@ export function legalActions(state: GameState): LegalActions {
     // a promoted-then-demoted career can carry crew in, and letting someone go is
     // not progression.
     // T-1604a F5 · …and filter the roles by the HIRE PRICE, for the same reason.
-    // `resolveCrew` spends the die before it checks credits, so an unaffordable
-    // hire costs a die and returns `CrewEvent{failed}` — the campaign sent 247 of
-    // them and berthed nobody. `roleId` is the only discriminating parameter here,
-    // so filtering it is exact: every role still advertised can actually be signed.
+    // `resolveCrew` used to spend the die before it checked credits, so an
+    // unaffordable hire cost a die and returned `CrewEvent{failed}` — the campaign
+    // sent 247 of them and berthed nobody. T-196a made the hire FREE, so the wasted
+    // die is gone; the filter STAYS, because the T-1101 law is "never advertise a
+    // guaranteed refusal", not "never waste a die". `roleId` is the only
+    // discriminating parameter here, so filtering it is exact: every role still
+    // advertised can actually be signed.
     const affordableRoleIds = hireableRoleIds.filter((id) => {
       const role = CREW_ROLES.find((candidate) => candidate.id === id);
       return role !== undefined && player.credits >= role.hirePrice;
@@ -813,9 +822,11 @@ export function legalActions(state: GameState): LegalActions {
   // advertising it would be advertising a guaranteed refusal.
   // T-1604a F5 · The stake is now gated on the engine's own `quotePort().ok` — the
   // exact predicate the ledger pane disables its button on. `resolvePortPurchase`
-  // spends the die before it checks credits, so advertising an unaffordable stake
-  // costs a die and returns `PortEvent{failed}`. `systemId` is fixed here, so there
-  // is no domain to narrow and the whole verb is withheld instead.
+  // used to spend the die before it checked credits, so advertising an unaffordable
+  // stake cost a die and returned `PortEvent{failed}`; T-196a made the buy FREE, so
+  // the wasted die is gone and the gate stays for the T-1101 reason alone (never
+  // advertise a guaranteed refusal). `systemId` is fixed here, so there is no domain
+  // to narrow and the whole verb is withheld instead.
   if (
     hasDie &&
     !demoLocked(state, 'port-ownership') &&
@@ -933,11 +944,14 @@ export function legalActions(state: GameState): LegalActions {
   //
   // Every gate below calls the engine's own `shipyardFailure` rather than
   // recomputing a price here: content owns the numbers, and a second copy of them
-  // in the enumerator is exactly the drift this file exists to avoid. `spendDie` is
-  // passed as a placeholder because the type requires it — the predicate is pure and
-  // does not read it.
+  // in the enumerator is exactly the drift this file exists to avoid.
+  //
+  // T-196a · the probe actions no longer carry a placeholder `spendDie` — the
+  // Shipyard shape dropped the field when M17 made the yard a Free Action
+  // (docs/DAWN-HAND-REDESIGN.md §3). The `hasDie` gate and the `spendDie: dieParam`
+  // entries in the ADVERTISED param specs below are deliberately left in place:
+  // they are the instrument, and the instrument moves in T-196b, not here.
   if (hasDie) {
-    const probeDie = diceRemaining[0];
     const canAfford = (action: Extract<PlayerAction, { type: 'Shipyard' }>): boolean =>
       shipyardFailure(state.player, action) === null;
 
@@ -953,7 +967,6 @@ export function legalActions(state: GameState): LegalActions {
             action: 'buy-component-tier',
             component,
             tier,
-            spendDie: probeDie,
           })
         ) {
           break;
@@ -979,7 +992,7 @@ export function legalActions(state: GameState): LegalActions {
     // NO `component` key at all: the resolver branches on the mere presence of one
     // (shipyard.ts:206-207,428), so filling it would silently downgrade a repair-all
     // to a single-part repair — the F-R2-2 defect, made unrepresentable here.
-    if (canAfford({ type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: probeDie })) {
+    if (canAfford({ type: 'Shipyard', action: 'repair', repairMode: 'all' })) {
       actions.push({
         type: 'Shipyard',
         action: 'repair',
@@ -997,7 +1010,6 @@ export function legalActions(state: GameState): LegalActions {
           action: 'repair',
           repairMode: 'single',
           component,
-          spendDie: probeDie,
         })
       ) {
         actions.push({
@@ -1017,9 +1029,7 @@ export function legalActions(state: GameState): LegalActions {
     // failure predicate is monotone in it (capacity and cost both rise), so the
     // largest legal quantity is found by bisection over the engine's own check
     // rather than by re-deriving the pod price and the hull capacity rule here.
-    if (
-      canAfford({ type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1, spendDie: probeDie })
-    ) {
+    if (canAfford({ type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1 })) {
       let low = 1;
       let high = MAX_ADVERTISED_CARGO_PODS;
       while (low < high) {
@@ -1029,7 +1039,6 @@ export function legalActions(state: GameState): LegalActions {
             type: 'Shipyard',
             action: 'buy-cargo-pods',
             quantity: mid,
-            spendDie: probeDie,
           })
         ) {
           low = mid;
@@ -1056,7 +1065,6 @@ export function legalActions(state: GameState): LegalActions {
         type: 'Shipyard',
         action: 'buy-special-equipment',
         equipment,
-        spendDie: probeDie,
       }),
     );
     if (purchasableEquipment.length > 0) {

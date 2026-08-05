@@ -99,9 +99,14 @@ test('with a hired crew the dock shows 6 dice and the re-roll works through the 
   // A fresh (crewless) dawn hand is the base 5 dice.
   await expect(page.getByTestId('die')).toHaveCount(5);
 
-  // Hire all three roles through the ShipPane — each spends a die.
+  // Hire all three roles through the ShipPane. T-196a: a hire is a FREE ACTION
+  // (docs/DAWN-HAND-REDESIGN.md §3), so no die is consumed — but the cockpit still
+  // gates the button on an armed die until T-196c retires that. The selection
+  // therefore SURVIVES each hire, and re-clicking the already-armed die would
+  // DISARM it (`store.ts` `selectDie`), so arm only when nothing is armed.
   const hire = async (dieIdx: number, roleId: string) => {
-    await page.locator('[data-testid="die"][data-spent="0"]').nth(0).click();
+    const die = page.locator('[data-testid="die"][data-spent="0"]').nth(0);
+    if ((await die.getAttribute('aria-pressed')) !== 'true') await die.click();
     await page.locator(`[data-testid="hire-crew"][data-role-id="${roleId}"]`).click();
     await expect(
       page.locator(`[data-testid="crew-member"][data-role-id="${roleId}"]`),

@@ -111,7 +111,7 @@ describe('Day loop', () => {
   it('can serialize and resume mid-day with the same final state as batch advance', () => {
     const state = createInitialState(789);
     const actions: PlayerAction[] = [
-      { type: 'Trade', action: 'buy-fuel', fuelAmount: 12, spendDie: 0 },
+      { type: 'Trade', action: 'buy-fuel', fuelAmount: 12 },
       { type: 'Travel', destinationId: 2, spendDie: 1 },
       { type: 'Trade', action: 'pay-debt', amount: 25 },
     ];
@@ -366,5 +366,197 @@ describe('T-140 · endDay decision tracing', () => {
       expect(JSON.stringify(empty.state)).toBe(JSON.stringify(quiet.state));
       expect(JSON.stringify(empty.events)).toBe(JSON.stringify(quiet.events));
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-196a · THE FREE ACTIONS AND THE DAY LOOP'S BOOKKEEPING
+// ---------------------------------------------------------------------------
+
+/**
+ * M17 (`docs/DAWN-HAND-REDESIGN.md` §3) freed nine administrative action types
+ * from the dawn hand. The rule change lives in the four resolvers; THIS block owns
+ * the acceptance criterion that is about `day.ts` rather than about any one of
+ * them — that `applyPlayerAction`'s per-day bookkeeping stays correct for a day
+ * that takes ZERO of them, and for a day that takes MANY (more than the hand
+ * holds), and that a player whose hand is completely spent on Main Actions can
+ * still run the whole administrative desk.
+ *
+ * Everything here goes through `applyPlayerAction` — the seam a player presses —
+ * never through a resolver directly and never by poking `dawnHand`.
+ */
+describe('T-196a · Free Actions through the day loop', () => {
+  const SUN3 = 1;
+
+  /** A DAY-phase state at the start port with money, berths and a damaged part —
+   *  everything the five freed desks need in order to actually resolve. */
+  function equippedDay(seed = 7): GameState {
+    const state = createInitialState(seed);
+    state.player.credits = 500_000;
+    state.player.ship.cabin.strength = 30; // berths for a hire
+    state.player.ship.weapons = { strength: 5, condition: 4 }; // something to repair
+    const day = startDay(state).state;
+    expect(day.player.currentSystemId).toBe(SUN3);
+    expect(day.market.manifestBoard.length).toBeGreaterThan(0);
+    return day;
+  }
+
+  /** Spend EVERY die in the hand on real Main Actions. `VisitHangout{'rumor'}` is
+   *  the read-only die burner: it emits rumors and mutates nothing else. */
+  function spendWholeHand(state: GameState): GameState {
+    let live = state;
+    for (let i = 0; i < live.player.dawnHand!.dice.length; i += 1) {
+      live = applyPlayerAction(live, { type: 'VisitHangout', venue: 'rumor', spendDie: i }).state;
+    }
+    expect(live.player.dawnHand!.spent.every(Boolean)).toBe(true);
+    return live;
+  }
+
+  it('an EMPTY dawn hand still signs, fuels, repairs, hires and buys a port', () => {
+    // The headline acceptance criterion, asserted rather than claimed: five dice
+    // spent on Main Actions, then the whole administrative desk, in one day.
+    let live = spendWholeHand(equippedDay());
+    const handAfterBurn = [...live.player.dawnHand!.spent];
+
+    const steps: { action: PlayerAction; expect: (events: unknown[]) => void }[] = [
+      {
+        action: { type: 'Trade', action: 'sign-contract', contractIndex: 0 },
+        expect: (events) =>
+          expect(
+            events.some(
+              (e) =>
+                (e as { type: string; action?: string; success?: boolean }).type === 'TradeEvent' &&
+                (e as { action?: string }).action === 'sign-contract' &&
+                (e as { success?: boolean }).success === true,
+            ),
+          ).toBe(true),
+      },
+      {
+        action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
+        expect: (events) =>
+          expect(
+            events.some(
+              (e) =>
+                (e as { type: string }).type === 'TradeEvent' &&
+                (e as { action?: string }).action === 'buy-fuel' &&
+                (e as { success?: boolean }).success === true,
+            ),
+          ).toBe(true),
+      },
+      {
+        action: { type: 'Shipyard', action: 'repair', repairMode: 'all' },
+        expect: (events) =>
+          expect(events.some((e) => (e as { type: string }).type === 'ShipyardEvent')).toBe(true),
+      },
+      {
+        action: { type: 'Crew', action: 'hire', roleId: 'crew-second' },
+        expect: (events) =>
+          expect(
+            events.some(
+              (e) =>
+                (e as { type: string }).type === 'CrewEvent' &&
+                (e as { kind?: string }).kind === 'hired',
+            ),
+          ).toBe(true),
+      },
+      {
+        action: { type: 'Port', action: 'buy', systemId: SUN3 },
+        expect: (events) =>
+          expect(
+            events.some(
+              (e) =>
+                (e as { type: string }).type === 'PortEvent' &&
+                (e as { kind?: string }).kind === 'purchased',
+            ),
+          ).toBe(true),
+      },
+    ];
+
+    for (const step of steps) {
+      const result = applyPlayerAction(live, step.action);
+      step.expect(result.events);
+      // Nothing consumed AND nothing un-consumed: the exhausted hand is returned
+      // byte-identical by every one of the five.
+      expect(result.state.player.dawnHand!.spent, `${step.action.type} touched the hand`).toEqual(
+        handAfterBurn,
+      );
+      live = result.state;
+    }
+
+    // …and the day's real effects all landed.
+    expect(live.player.activeContract).not.toBeNull();
+    expect(live.player.crew).toHaveLength(1);
+    expect(live.player.ports).toHaveLength(1);
+    expect(live.player.ship.weapons.condition).toBeGreaterThan(4);
+  });
+
+  it('a day that takes NONE of them leaves the hand and the counters exactly as before', () => {
+    const day = equippedDay();
+    const before = {
+      spent: [...day.player.dawnHand!.spent],
+      dayEventCount: day.dayEventCount,
+      day: day.day,
+    };
+    // A day of pure Main Actions, then dusk.
+    const burned = spendWholeHand(day);
+    const dusk = endDay(burned);
+
+    expect(before.spent.every((s) => !s)).toBe(true); // premise: started clean
+    expect(burned.dayEventCount).toBe(before.dayEventCount + 5); // one event per rumor
+    expect(dusk.state.day).toBe(before.day + 1);
+    expect(dusk.state.dayPhase).toBe(DayPhase.DAWN);
+    expect(dusk.state.dayEventCount).toBe(0);
+  });
+
+  it('MANY in sequence — more free actions than the hand holds — all resolve', () => {
+    let live = equippedDay();
+    const handBefore = [...live.player.dawnHand!.spent];
+    const before = live.dayEventCount;
+
+    // Eight free actions, against a five-die hand.
+    const script: PlayerAction[] = [
+      { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
+      { type: 'Trade', action: 'sign-contract', contractIndex: 0 },
+      { type: 'Trade', action: 'abandon-contract' },
+      { type: 'Trade', action: 'sign-contract', contractIndex: 0 },
+      { type: 'Shipyard', action: 'repair', repairMode: 'all' },
+      { type: 'Shipyard', action: 'buy-component-tier', component: 'weapons', tier: 6 },
+      { type: 'Crew', action: 'hire', roleId: 'crew-second' },
+      { type: 'Port', action: 'buy', systemId: SUN3 },
+    ];
+
+    let emitted = 0;
+    for (const action of script) {
+      const result = applyPlayerAction(live, action);
+      expect(result.events.length, `${action.type} emitted nothing`).toBeGreaterThan(0);
+      emitted += result.events.length;
+      live = result.state;
+    }
+
+    // The hand never moved across eight actions…
+    expect(live.player.dawnHand!.spent).toEqual(handBefore);
+    // …and `dayEventCount` advanced once per emitted event, which is the number
+    // `day.ts` forks the action rng on.
+    expect(live.dayEventCount).toBe(before + emitted);
+    expect(live.player.activeContract).not.toBeNull();
+    expect(live.player.crew).toHaveLength(1);
+    expect(live.player.ports).toHaveLength(1);
+
+    // Same-seed determinism: replay the identical script and compare the SAVE.
+    let replay = equippedDay();
+    for (const action of script) replay = applyPlayerAction(replay, action).state;
+    expect(serializeState(replay)).toBe(serializeState(live));
+  });
+
+  it('Trade · haggle STILL costs its die — the control that proves the cut was surgical', () => {
+    const day = equippedDay();
+    const result = applyPlayerAction(day, {
+      type: 'Trade',
+      action: 'haggle',
+      contractIndex: 0,
+      spendDie: 0,
+    });
+    expect(result.state.player.dawnHand!.spent[0]).toBe(true);
+    expect(result.events.some((e) => e.type === 'StatCheck')).toBe(true);
   });
 });

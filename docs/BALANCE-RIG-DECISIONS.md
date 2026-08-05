@@ -121,9 +121,10 @@ read at runtime, and therefore the authoritative one), amendment 1's own pointer
 `docs/NPC_REDESIGN.md`'s status banner, `docs/balance/smoke/README.md`'s "current
 baseline" line, and — added at T-182 — **this rule's own "current baseline of record"
 sentence below** — with the smoke fixture re-extracted FROM the new capstone file. The current
-baseline of record is `docs/balance/baseline-t199-pacifist.json` (8,000 rows, 8 one-indexed
-shards, spreads harvested, `sweepLabel t199-pacifist`; re-pinned at T-199 2026-08-04 — the
-F-150-2 capstone. Before that: `baseline-t195-dawn-dice.json` at T-195, `baseline-t188-orbital-3d.json`
+baseline of record is `docs/balance/baseline-t196a-free-actions.json` (8,000 rows, 8
+one-indexed shards, spreads harvested, `sweepLabel t196a-free-actions`; re-pinned at T-196a
+2026-08-04 — the M17 arm-1 capstone, which freed nine administrative action types from the
+dawn die. Before that: `baseline-t199-pacifist.json` at T-199, `baseline-t195-dawn-dice.json` at T-195, `baseline-t188-orbital-3d.json`
 at T-188, `baseline-t160-dealer-fix.json` at T-160, `baseline-t182-reroll-fix.json` at T-182,
 `baseline-n13-shipped.json` at T-156.)
 

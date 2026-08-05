@@ -1107,6 +1107,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
     amount: z.number().optional(),
     berths: z.number().optional(),
     crewCount: z.number().optional(),
+    // T-196a · the first three are LEGACY-ONLY: unreachable now that Crew is a
+    // Free Action, kept so pre-M17 saves still load under `.strict()`.
     failReason: z
       .enum([
         'no-die',
@@ -1130,6 +1132,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
     cost: z.number().optional(),
     income: z.number().optional(),
     portCount: z.number().optional(),
+    // T-196a · the first three are LEGACY-ONLY: unreachable now that the port buy
+    // is a Free Action, kept so pre-M17 saves still load under `.strict()`.
     failReason: z
       .enum([
         'no-die',
@@ -1426,15 +1430,29 @@ const GameEventSchema = z.discriminatedUnion('type', [
 // validator for callers that persist/replay command logs.
 // ---------------------------------------------------------------------------
 
+// T-196a · The Trade member is split (types.ts PlayerAction): the four FREE
+// actions reject `spendDie`, `haggle` keeps it. These CANNOT be two options of
+// the outer `z.discriminatedUnion('type', …)` — zod rejects duplicate
+// discriminator values ("Duplicate discriminator value \"Trade\""). The working
+// shape is a NESTED discriminated union on `action`, used as the outer union's
+// single Trade option. Do not "simplify" this back into one object.
+const TradeFreeActionSchema = z.object({
+  type: z.literal('Trade'),
+  action: z.enum(['buy-fuel', 'sign-contract', 'pay-debt', 'abandon-contract']),
+  contractIndex: z.number().optional(),
+  fuelAmount: z.number().optional(),
+  amount: z.number().optional(),
+});
+
+const TradeHaggleActionSchema = z.object({
+  type: z.literal('Trade'),
+  action: z.literal('haggle'),
+  contractIndex: z.number().optional(),
+  spendDie: z.number().optional(),
+});
+
 export const PlayerActionSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('Trade'),
-    action: z.enum(['buy-fuel', 'sign-contract', 'haggle', 'pay-debt', 'abandon-contract']),
-    contractIndex: z.number().optional(),
-    fuelAmount: z.number().optional(),
-    amount: z.number().optional(),
-    spendDie: z.number().optional(),
-  }),
+  z.discriminatedUnion('action', [TradeFreeActionSchema, TradeHaggleActionSchema]),
   z.object({
     type: z.literal('Travel'),
     destinationId: z.number(),
@@ -1447,9 +1465,10 @@ export const PlayerActionSchema = z.discriminatedUnion('type', [
     spendDie: z.number().optional(),
   }),
   z.object({
+    // T-196a · FREE ACTION, all four kinds (docs/DAWN-HAND-REDESIGN.md §3): no
+    // `spendDie`. A stale caller's field is STRIPPED by zod, not accepted.
     type: z.literal('Shipyard'),
     action: ShipyardActionKindSchema,
-    spendDie: z.number(),
     component: ShipComponentIdSchema.optional(),
     tier: z.number().optional(),
     repairMode: z.enum(['all', 'single']).optional(),
@@ -1496,17 +1515,17 @@ export const PlayerActionSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     // T-1306 · hire/dismiss a crew role (see types.ts PlayerAction).
+    // T-196a · FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3): no `spendDie`.
     type: z.literal('Crew'),
     action: z.enum(['hire', 'dismiss']),
     roleId: z.string(),
-    spendDie: z.number(),
   }),
   z.object({
     // T-1307 · buy a stake in the local port authority (see types.ts PlayerAction).
+    // T-196a · FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3): no `spendDie`.
     type: z.literal('Port'),
     action: z.literal('buy'),
     systemId: z.number(),
-    spendDie: z.number(),
   }),
   z.object({ type: z.literal('Wait') }),
 ]);

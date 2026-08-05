@@ -131,7 +131,41 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > one shared path moved. The `.scratch/t125-hangout.ts` lineage is retired
 > (`docs/HANGOUT_REDESIGN.md` §10.7 carries the counter → field map).
 >
-> **BASELINE OF RECORD RE-PINNED AT T-199 (2026-08-04)** to
+> **BASELINE OF RECORD RE-PINNED AT T-196a (2026-08-04)** to
+> `docs/balance/baseline-t196a-free-actions.json` — the **M17 arm-1** capstone
+> (`docs/DAWN-HAND-REDESIGN.md` §3). Nine administrative action types stopped costing a
+> dawn die — `sign-contract`, `buy-fuel`, `abandon-contract`, all four `Shipyard` kinds,
+> `Crew` hire/dismiss and the `Port` buy — with the `spendDie` field deleted from their
+> action shapes and from the zod schema. This is the CONTROL arm of a control-arm pair:
+> the rules are eased and the INSTRUMENTS ARE DELIBERATELY UNCHANGED (the sim policies
+> still budget a die for these verbs; the protocol enumerator still advertises one), so
+> T-196b's arm measures the exploitation separately.
+> **PREDICTED BEFORE THE RUN and held.** NPC-side rows near-still: `npc.ts` imports only
+> `applyShipyardMutation`/`quoteShipyard`/travel helpers and never these four resolvers,
+> and `fleet.npcSpecialEquipmentPurchasesPerRun` moved 44.1695 -> 44.2002 (+0.1%),
+> inside shard noise. Player-policy rows move — but MUCH more narrowly than predicted,
+> and the shape of that narrowness is the finding: **exactly two of the eight policy rows
+> moved, `explorer` and `smuggler`, and they are exactly the two that queue `Explore`.**
+> `trader`, `trader-degraded`, `fighter`, `veteran`, `gambler` and `greedy` came back
+> byte-identical on every headline metric — clear rate, credits, encounters, contracts,
+> ports, ships lost. Fleet deltas are small: `tourOneClearRate` 0.6320 -> 0.6305,
+> median final credits 49,729 -> 49,517 (−0.4%), ships lost 436 -> 465 (+6.7%), with
+> `explorer` 49 -> 66 and `smuggler` 46 -> 58 carrying all of it. `explorer`'s clear rate
+> 0.8710 -> 0.8660 and median credits 70,310 -> 68,333 (−2.8%); `smuggler`'s 0.8190 ->
+> 0.8120 and 45,601 -> 45,216 (−0.8%). CROSS-CHECKED against a second, independent
+> instrument: `campaign-degraded.test.ts`'s `PINNED_FINGERPRINTS` (5 seeds × 40 days,
+> a different sample entirely) moved the SAME two policies and held the same five.
+> `rulesFingerprint` `febc55edd3a94b3f` -> `55414694d7187afc`; `instrumentFingerprint`
+> `836f9e8804ea2637` -> `6106da3575355153` (the sim's policy builders lost their
+> `spendDie` arguments — a shape edit, not a budget change); `docsFingerprint` moved too,
+> because it hashes RAW bytes of the same sources and this task rewrote a great many
+> now-false comments (it is informational only and fails nothing).
+> `CURRENT_SAVE_VERSION` does NOT move (15): no persisted shape changed, and
+> the three now-unreachable `no-die`/`invalid-die-index`/`die-already-spent` members of
+> `CrewEventFailReason`/`PortEventFailReason` were deliberately KEPT so pre-M17 saves
+> still load under the `.strict()` event-log schema.
+>
+> > **BASELINE OF RECORD RE-PINNED AT T-199 (2026-08-04)** to
 > `docs/balance/baseline-t199-pacifist.json` — the **F-150-2** capstone. The shared
 > `planPacifistCombat` no longer plays one stance against an unaffordable tribute, `smugglerPolicy`
 > gains the Explore recovery guard T-150 had to back out, and the rim-strand class (`trader`,
@@ -715,10 +749,14 @@ MOVED"*, so the player did not move across the refactor. The step also found **R
   have killed, and N11's richer refit ladder, N12's per-NPC port pricing and N13's dawn hand
   are all measured inside the envelope it bought.
 
-- **WATCH ITEM OI-9 — the NPC refit pays no die.** `considerRefit` applies
+- **WATCH ITEM OI-9 — the NPC refit pays no die. CLOSED BY T-196a (2026-08-04), from the
+  other side:** M17 (`docs/DAWN-HAND-REDESIGN.md` §3) freed the whole shipyard for the
+  PLAYER, so neither side pays a die and the asymmetry this item watched no longer exists.
+  The `spendDie: 0` placeholder is gone with the field itself. The original text, for the
+  record: `considerRefit` applies
   `applyShipyardMutation` directly; `resolveShipyard` is never called, and the `spendDie: 0`
-  sitting beside it is a placeholder, not a cost. A player buying at the yard burns 1 of
-  their 5 dice **even when the purchase is refused.** Everything else is at parity — same
+  sitting beside it was a placeholder, not a cost. A player buying at the yard burned 1 of
+  their 5 dice **even when the purchase was refused.** Everything else is at parity — same
   prices, same gates, the engine's own functions on both sides, no location rule on either —
   and the asymmetry is argued at its definition site (`npc.ts:648-673`: one coarse action
   stands in for a whole NPC day, so charging a die would double-charge the abstraction). It
@@ -2417,7 +2455,16 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t199-pacifist.json`** (1,000 seeds ×
+   > **Baseline of record is `docs/balance/baseline-t196a-free-actions.json`** (1,000 seeds
+   > × 120 days × 8 policies = 8,000 runs, re-pinned at T-196a 2026-08-04 — the M17 arm-1
+   > capstone: nine administrative action types stopped costing a dawn die
+   > (`docs/DAWN-HAND-REDESIGN.md` §3), with the instruments deliberately left budgeting for
+   > them so T-196b's arm measures the exploitation separately. PREDICTED BEFORE THE RUN and
+   > held: NPC-side rows near-still (`npcSpecialEquipmentPurchasesPerRun` +0.1%), and exactly
+   > two policy rows move — `explorer` and `smuggler`, the only two that queue `Explore`.
+   > Fleet `tourOneClearRate` 0.6320 → 0.6305, median final credits 49,729 → 49,517 (−0.4%),
+   > ships lost 436 → 465 (+6.7%), all of the last carried by those two rows.)
+   > Before that, `docs/balance/baseline-t199-pacifist.json` (1,000 seeds ×
    > 120 days × 8 policies = 8,000 runs, re-pinned at T-199 2026-08-04 — the F-150-2 capstone:
    > the shared `planPacifistCombat` no longer plays one stance against an unaffordable tribute,
    > `smugglerPolicy` gains the Explore recovery guard T-150 had to back out, and the rim-strand

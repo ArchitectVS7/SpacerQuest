@@ -943,9 +943,14 @@ function refuelIfNeeded(npc: NpcState, needed: number, eraEvent: EraEventState |
  * {@link NPC_YARD_RESERVE}, for the reason argued at its own definition site (the E8
  * precedent — the game already had a number for "this captain has spare money").
  *
- * OUT OF SCOPE AND STILL OPEN: OI-9, the NPC refit spends no die. `spendDie: 0` on
- * the equipment action is the component rung's existing convention, not a claim that
- * the die question is settled.
+ * OI-9 (the NPC refit spends no die) IS CLOSED BY T-196a, and closed from the other
+ * side: M17 (`docs/DAWN-HAND-REDESIGN.md` §3) made the whole shipyard a FREE ACTION
+ * for the player too, so the asymmetry OI-9 watched no longer exists — nobody pays a
+ * die at the yard. The `spendDie: 0` placeholder that used to sit on the equipment
+ * action here is gone with the field; these action literals were never fed to
+ * `resolveShipyard` anyway (this function calls `applyShipyardMutation`/
+ * `quoteShipyard` directly), which is why NPC-side rows are predicted near-still
+ * across T-196a's capstone.
  *
  * CARGO PODS RIDE THE HULL RUNG, AND NOTHING ELSE, and that placement is the one
  * judgement in this function — recorded because the first version got it wrong and
@@ -1033,7 +1038,6 @@ function considerRefit(npc: NpcState, profile: NpcProfile, day: number, events: 
       // reads the fit back through `hasSpecialEquipment`, so such a row reddens there
       // instead of reaching a captain's ship.
       equipment: entry.id as SpecialEquipmentId,
-      spendDie: 0,
     };
     // "for the Arch Angel", definite article on purpose: content names start with
     // both vowels and consonants, and "a Arch Angel" on a player-facing wire line is
@@ -1049,7 +1053,6 @@ function considerRefit(npc: NpcState, profile: NpcProfile, day: number, events: 
       action: 'buy-component-tier',
       component,
       tier,
-      spendDie: 0,
     };
     if (!buy(action, `a tier-${tier} ${componentDisplayName(component)} refit`)) continue;
     // The hull rung carries the hold with it — see the header. Priced through the
@@ -1407,7 +1410,6 @@ function fillHold(npc: NpcState, profile: NpcProfile, day: number, events: GameE
     type: 'Shipyard',
     action: 'buy-cargo-pods',
     quantity,
-    spendDie: 0,
   };
   const quote = quoteShipyard(npc, action);
   if (!quote.ok || quote.cost > spendable) return;

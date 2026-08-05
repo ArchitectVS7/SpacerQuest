@@ -16,13 +16,9 @@ export function resolveTrade(
     if (!action.fuelAmount) {
       throw new Error('Must specify fuelAmount to buy');
     }
-    // Every meaningful action consumes a die (PRD §7) — fueling included.
-    if (action.spendDie === undefined) {
-      throw new Error('Must spend a die to buy fuel');
-    }
-    const { hand } = spendDie(nextState.player.dawnHand!, action.spendDie);
-    nextState.player.dawnHand = hand;
-
+    // T-196a · FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3). Fueling never read the
+    // die's face and is already bounded by credits + tank capacity, so it costs no
+    // die and touches the dawn hand not at all.
     const cost = action.fuelAmount * nextState.market.localFuelPrice;
 
     if (nextState.player.credits >= cost) {
@@ -55,9 +51,9 @@ export function resolveTrade(
     if (action.contractIndex === undefined) {
       throw new Error('Must specify contractIndex to sign');
     }
-    if (action.spendDie === undefined) {
-      throw new Error('Must spend a die to sign a contract');
-    }
+    // T-196a · FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3): signing never read the
+    // die's face and is already bounded by the one-active-contract refusal below
+    // plus board scarcity.
 
     const contract = nextState.market.manifestBoard[action.contractIndex];
     if (!contract) {
@@ -73,9 +69,6 @@ export function resolveTrade(
         actionDetails: 'Cannot sign: already carrying an active contract.',
       });
     } else {
-      const { hand } = spendDie(nextState.player.dawnHand!, action.spendDie);
-      nextState.player.dawnHand = hand;
-
       nextState.player.activeContract = contract;
       // Signing takes the contract off the board — it's yours now.
       nextState.market.manifestBoard.splice(action.contractIndex, 1);
@@ -98,19 +91,17 @@ export function resolveTrade(
     // `player.activeContract` is set and nothing but delivery, a storylet, a
     // patrol seizure or succession ever cleared it. This is the missing verb.
     //
-    // COST MODEL: one die plus the forfeited payment — and deliberately NO credit
-    // fee. Charging to dump cargo would re-strand exactly the destitute captain
-    // this verb exists to free, re-opening F2 from the other side. The contract
-    // does NOT return to `market.manifestBoard`: the crates are vented at the
-    // gantry, not un-signed, so the board stays the day's honest offer set.
-    if (action.spendDie === undefined) {
-      throw new Error('Must spend a die to abandon a contract');
-    }
-
+    // COST MODEL (T-196a, docs/DAWN-HAND-REDESIGN.md §3): the forfeited payment and
+    // NOTHING else — no die, no credit fee. The die was always blind here, and §3's
+    // ruling is "no reason to tax quitting"; charging to dump cargo would re-strand
+    // exactly the destitute captain this verb exists to free, re-opening F2 from the
+    // other side. The contract does NOT return to `market.manifestBoard`: the crates
+    // are vented at the gantry, not un-signed, so the board stays the day's honest
+    // offer set.
     if (!nextState.player.activeContract) {
-      // Typed refusal, no die spent — the same shape as the `sign-contract`
-      // refusal above, and surfaced to the player by the UI store's
-      // `failNoticeFrom` scan rather than being a silent no-op.
+      // Typed refusal — the same shape as the `sign-contract` refusal above, and
+      // surfaced to the player by the UI store's `failNoticeFrom` scan rather than
+      // being a silent no-op.
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
@@ -119,9 +110,6 @@ export function resolveTrade(
         actionDetails: 'Nothing in the hold to abandon.',
       });
     } else {
-      const { hand } = spendDie(nextState.player.dawnHand!, action.spendDie);
-      nextState.player.dawnHand = hand;
-
       const dumped = nextState.player.activeContract;
       nextState.player.activeContract = null;
       events.push({

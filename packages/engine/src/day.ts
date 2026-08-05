@@ -478,13 +478,16 @@ export function applyPlayerAction(
     result = resolveReroll(nextState, action, dayRng.fork(`action-reroll-${actionEventIndex}`));
   } else if (action.type === 'Crew') {
     // resolveCrew is pure (no rng), but fork+discard to keep the action rng stream
-    // aligned with the other die-costed actions (mirrors the Shipyard branch).
+    // aligned with every OTHER action (mirrors the Shipyard branch). T-196a: the
+    // hire/dismiss verbs are FREE now (docs/DAWN-HAND-REDESIGN.md §3), and the fork
+    // stays exactly as it was — dropping it would re-phase every seeded campaign
+    // and every golden for a second, unrelated reason.
     dayRng.fork(`action-crew-${actionEventIndex}`);
     result = resolveCrew(nextState, action);
   } else if (action.type === 'Port') {
     // resolvePortPurchase is pure (no rng), but fork+discard to keep the action rng
-    // stream aligned with the other die-costed actions (mirrors the Crew/Shipyard
-    // branches).
+    // stream aligned with every OTHER action (mirrors the Crew/Shipyard branches).
+    // T-196a: the buy is FREE now, and the fork stays — see the Crew branch.
     dayRng.fork(`action-port-${actionEventIndex}`);
     result = resolvePortPurchase(nextState, action);
   } else {

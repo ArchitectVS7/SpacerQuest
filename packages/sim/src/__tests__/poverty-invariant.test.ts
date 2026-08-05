@@ -197,7 +197,7 @@ function planEscapeStep(state: GameState): PlayerAction | null {
     //    jump to your own system is never advertised, so such a contract can
     //    never be discharged. See the board filter below for how one is acquired.
     if (needed > ship.maxFuel || contract.destination === here) {
-      return { type: 'Trade', action: 'abandon-contract', spendDie };
+      return { type: 'Trade', action: 'abandon-contract' };
     }
     if (ship.fuel >= needed) {
       return { type: 'Travel', destinationId: contract.destination, spendDie };
@@ -207,7 +207,7 @@ function planEscapeStep(state: GameState): PlayerAction | null {
   const fuelPrice = state.market.localFuelPrice || 5;
   const fuelAmount = Math.min(ship.maxFuel - ship.fuel, Math.floor(player.credits / fuelPrice));
   if (fuelAmount >= 1) {
-    return { type: 'Trade', action: 'buy-fuel', fuelAmount, spendDie };
+    return { type: 'Trade', action: 'buy-fuel', fuelAmount };
   }
 
   if (!contract && state.market.manifestBoard.length > 0) {
@@ -231,7 +231,7 @@ function planEscapeStep(state: GameState): PlayerAction | null {
       }
     });
     if (cheapestIndex !== null) {
-      return { type: 'Trade', action: 'sign-contract', contractIndex: cheapestIndex, spendDie };
+      return { type: 'Trade', action: 'sign-contract', contractIndex: cheapestIndex };
     }
   }
 
@@ -281,6 +281,18 @@ function verbLabel(action: PlayerAction): string {
   return subAction === undefined ? action.type : `${action.type}/${subAction}`;
 }
 
+/** T-196a · The nine action types M17 freed from the dawn hand
+ *  (docs/DAWN-HAND-REDESIGN.md §3). Their engine shapes carry no `spendDie` at all. */
+function isFreeAction(action: PlayerAction): boolean {
+  if (action.type === 'Shipyard' || action.type === 'Crew' || action.type === 'Port') return true;
+  return (
+    action.type === 'Trade' &&
+    (action.action === 'buy-fuel' ||
+      action.action === 'sign-contract' ||
+      action.action === 'abandon-contract')
+  );
+}
+
 /** Why `action` is not advertised by `legal`, or `null` when it is. Returned as a
  *  string so a failure names the exact action and the exact reason. */
 function advertisementViolation(legal: LegalActions, action: PlayerAction): string | null {
@@ -292,6 +304,15 @@ function advertisementViolation(legal: LegalActions, action: PlayerAction): stri
     return `${verbLabel(action)} is not advertised`;
   }
   for (const [key, param] of Object.entries(spec.params)) {
+    // T-196a · `legalActions` still ADVERTISES `spendDie` on the nine M17 Free
+    // Actions (docs/DAWN-HAND-REDESIGN.md §3) even though the engine's action shapes
+    // dropped the field and zod strips it. That staleness is deliberate and belongs
+    // to T-196b — the instruments move in the second arm of the control-arm pair, so
+    // the two capstones stay attributable. Until then an OMITTED die on a verb the
+    // engine will not accept one for is conformant, not a violation. The check still
+    // bites everywhere else, including `Trade/haggle`, whose die is real.
+    const dieIsVestigial = key === 'spendDie' && fields[key] === undefined && isFreeAction(action);
+    if (dieIsVestigial) continue;
     if (!paramSatisfied(param, fields[key])) {
       return `${verbLabel(action)} param ${key}=${JSON.stringify(fields[key])} is outside the advertised ${param.kind} domain`;
     }

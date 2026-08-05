@@ -89,7 +89,6 @@ describe('economy', () => {
       action: 'repair',
       component: 'hull',
       repairMode: 'all',
-      spendDie: 0,
     });
 
     const repairedBoard = generateManifestBoard(1, new SeededRng(2468), repaired.state.player.ship);
@@ -184,7 +183,6 @@ describe('economy', () => {
         action: 'buy-component-tier',
         component: 'hull',
         tier: 2,
-        spendDie: 0,
       });
 
       expect(after.player.ship.hull.strength).toBe(20); // the action mutated the hull

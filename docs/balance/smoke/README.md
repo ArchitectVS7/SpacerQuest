@@ -107,9 +107,13 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t199-pacifist.json`, re-pinned at T-199
-2026-08-04 — the F-150-2 capstone, which took `assertNoIncomeStall` from 7 violations to 0 and
-moves all eight policy rows except `greedy`;
+exactly like drift. The current baseline (`baseline-t196a-free-actions.json`, re-pinned at T-196a
+2026-08-04 — the M17 arm-1 capstone, which freed nine administrative action types from the
+dawn die (`docs/DAWN-HAND-REDESIGN.md` §3) while deliberately leaving the instruments
+budgeting for them, and moves exactly two policy rows, `explorer` and `smuggler` — the only
+two that queue `Explore`;
+before that `baseline-t199-pacifist.json` at T-199 — the F-150-2 capstone, which took
+`assertNoIncomeStall` from 7 violations to 0 and moved all eight policy rows except `greedy`;
 before that `baseline-t195-dawn-dice.json` at T-195 — the travel-die bake-off, a real and
 intended broad easing in which all eight policies moved; before that
 `baseline-t188-orbital-3d.json` at T-188 — proven inert for its own changes, its movement being

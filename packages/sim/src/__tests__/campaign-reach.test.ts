@@ -199,7 +199,7 @@ const crewHiringVeteranPolicy: SimPolicy = (ctx) => {
   if (!hand) return actions;
   for (let i = 0; i < hand.dice.length; i += 1) {
     if (!hand.spent[i] && !used.has(i)) {
-      return [...actions, { type: 'Crew', action: 'hire', roleId: role.id, spendDie: i }];
+      return [...actions, { type: 'Crew', action: 'hire', roleId: role.id }];
     }
   }
   return actions;
@@ -234,7 +234,7 @@ const portBuyingVeteranPolicy: SimPolicy = (ctx) => {
   if (!hand) return actions;
   for (let i = 0; i < hand.dice.length; i += 1) {
     if (!hand.spent[i] && !used.has(i)) {
-      return [...actions, { type: 'Port', action: 'buy', systemId: here, spendDie: i }];
+      return [...actions, { type: 'Port', action: 'buy', systemId: here }];
     }
   }
   return actions;
@@ -1021,10 +1021,10 @@ describe('T-1604b · abandon-contract closes its route leg', () => {
     // some later signing implicitly swept it up.
     const signThenDump: SimPolicy = ({ state, dayIndex }) => {
       if (dayIndex === 0) {
-        return [{ type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 0 }];
+        return [{ type: 'Trade', action: 'sign-contract', contractIndex: 0 }];
       }
       if (state.player.activeContract) {
-        return [{ type: 'Trade', action: 'abandon-contract', spendDie: 0 }];
+        return [{ type: 'Trade', action: 'abandon-contract' }];
       }
       return [{ type: 'Wait' }];
     };

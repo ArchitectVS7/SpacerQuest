@@ -99,15 +99,17 @@ function repinBlockIndices(text: string): number[] {
 }
 
 /** The T-numbers of the status banner's re-pin blocks, in file order. */
-export function repinBlockTaskNumbers(text: string): number[] {
-  const numbers: number[] = [];
-  const pattern = /\*\*BASELINE OF RECORD RE-PINNED AT T-(\d+)/g;
+export function repinBlockTaskIds(text: string): string[] {
+  const ids: string[] = [];
+  // `[a-z]?` because task ids are not always bare numbers: the M17 arc split T-196
+  // into T-196a/b/c. The suffix is part of the id and is captured, not discarded.
+  const pattern = /\*\*BASELINE OF RECORD RE-PINNED AT T-(\d+[a-z]?)/g;
   let match = pattern.exec(text);
   while (match !== null) {
-    numbers.push(Number(match[1]));
+    ids.push(match[1]);
     match = pattern.exec(text);
   }
-  return numbers;
+  return ids;
 }
 
 const SITES: readonly PointerSite[] = [
@@ -241,18 +243,36 @@ describe('T-165 · the five baseline-of-record pointer sites', () => {
   });
 
   it('the status banner keeps its newest re-pin block at the TOP', () => {
+    // T-196a · THE PROXY CHANGED; THE PROPERTY DID NOT — and the proxy was wrong, not
+    // merely inconvenient. This test used to assert `taskNumbers[0] === max(taskNumbers)`,
+    // i.e. that task ids increase monotonically with time. They do not in this repo:
+    // T-196a is the re-pin AFTER T-199 (see `TASKS.md` — "sequence T-199 first, gate the
+    // rest of the backlog behind T-198", and the M17 arc's own T-196a/b/c split), so the
+    // numeric check would demand the banner be ordered OLDEST-first, which is the exact
+    // opposite of what `npc-status-banner`'s extractor needs.
+    //
+    // What the extractor actually needs is asserted directly instead: the FIRST block in
+    // file order must name the baseline every other pointer agrees on. That is strictly
+    // stronger than the ordering proxy — a re-pin appended at the BOTTOM still fails,
+    // because the first block would then name the previous capstone.
     const text = readFileSync(join(DOCS, 'NPC_REDESIGN.md'), 'utf8');
-    const taskNumbers = repinBlockTaskNumbers(text);
-    expect(taskNumbers.length).toBeGreaterThan(1);
-    // The `npc-status-banner` extractor reads the FIRST block in file order and calls
-    // it the current one. That is only true while the banner is newest-first, so the
-    // ordering is asserted rather than assumed.
+    const taskIds = repinBlockTaskIds(text);
+    expect(taskIds.length).toBeGreaterThan(1);
+
+    const firstBlock = firstAfter(
+      text,
+      Math.min(...repinBlockIndices(text)),
+      new RegExp(BASELINE_NAME),
+    );
+    const authoritative = SITES.find((site) => site.id === 'balance-targets')!;
+    const agreed = authoritative.extract(readFileSync(join(REPO_ROOT, authoritative.path), 'utf8'));
+    expect(agreed).not.toBeNull();
     expect(
-      taskNumbers[0],
-      `the status banner's first re-pin block is T-${String(taskNumbers[0])}, but the highest ` +
-        `block is T-${String(Math.max(...taskNumbers))} — a new re-pin was appended at the BOTTOM. ` +
-        `Insert it at the top, where every reader and this check look for it.`,
-    ).toBe(Math.max(...taskNumbers));
+      firstBlock,
+      `the status banner's FIRST re-pin block (T-${taskIds[0]}) names ${String(firstBlock)}, but ` +
+        `the authoritative pointer names ${String(agreed)} — a new re-pin was appended at the ` +
+        `BOTTOM. Insert it at the top, where every reader and this check look for it.`,
+    ).toBe(agreed);
   });
 
   // -------------------------------------------------------------------------

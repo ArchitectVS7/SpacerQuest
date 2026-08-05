@@ -332,7 +332,6 @@ describe('T-1205 · robotics reader', () => {
         action: 'repair',
         repairMode: 'single',
         component: 'drives',
-        spendDie: 0,
       });
       return result.state.player.ship.drives.condition - before;
     };
@@ -361,7 +360,6 @@ describe('T-1205 · cabin reader', () => {
       action: 'buy-component-tier',
       component: 'cabin',
       tier: 5,
-      spendDie: 0,
     };
     const quote = quoteShipyard(state.player, action);
     expect(quote.before.crewCapacity).toBe(crewCapacity(state.player.ship));

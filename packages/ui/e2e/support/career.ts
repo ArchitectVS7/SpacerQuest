@@ -285,10 +285,17 @@ async function readContracts(page: Page): Promise<ContractRow[]> {
 }
 
 /** Arm a die from the dawn hand. Selection is RNG-free (a store-local
- *  highlight), so it costs the pin nothing. */
+ *  highlight), so it costs the pin nothing.
+ *
+ *  T-196a · IDEMPOTENT ON PURPOSE. Clicking the ALREADY-ARMED die DISARMS it
+ *  (`store.ts` `selectDie`). That never mattered while every cockpit verb consumed
+ *  its die, because the selection always cleared after an action; M17
+ *  (docs/DAWN-HAND-REDESIGN.md §3) freed nine of them, so an armed die now survives
+ *  a sign / fuel / repair / hire / port buy and a second `armDie` on that index
+ *  would silently un-arm it. Click only when it is not already armed. */
 async function armDie(page: Page, index: number): Promise<void> {
   const die = page.getByTestId('die').nth(index);
-  await die.click();
+  if ((await die.getAttribute('aria-pressed')) !== 'true') await die.click();
   await expect(die).toHaveAttribute('aria-pressed', 'true');
 }
 

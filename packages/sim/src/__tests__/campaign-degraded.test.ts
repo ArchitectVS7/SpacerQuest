@@ -1207,7 +1207,33 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // line inside `explorerPolicy` moved.
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).
-  explorer: '33c508ce7e9ab818',
+  //
+  // ENTRY 31 (T-196a): re-derived — M17 freed nine administrative action types from
+  // the dawn hand (`docs/DAWN-HAND-REDESIGN.md` §3), and `explorerPolicy` is ONE OF
+  // ONLY TWO rows in this table that move (the other is `smuggler`). NOT ONE LINE OF
+  // `explorerPolicy` CHANGED — its `ledger.takeWorst()`/`takeBest()` day budget is
+  // deliberately untouched at this arm. What changed is downstream, in the engine: a
+  // refuel / signature / yard order no longer consumes from the hand, so the dice
+  // still standing when the day's `Explore` resolves are different, and `Explore` is
+  // the one verb that reads the REST of the hand at resolve time (`exploreOutcomes.ts`
+  // `payExtraDiceClaim` charges a band-3/4 find's `apCost` out of the remaining dice,
+  // and forfeits the find when the hand is too thin — T-131's ruling D1).
+  //
+  // THAT IS ALSO THE CROSS-CHECK, and it is the reason this table earns its keep here:
+  // exactly the two policies that queue an `Explore` moved, and the five that never do
+  // (`trader`, `trader-degraded` via its arm, `fighter`, `veteran`, `gambler`,
+  // `greedy`) came back BYTE-IDENTICAL. The 8,000-row capstone
+  // (`docs/balance/baseline-t196a-free-actions.json`) independently reports the same
+  // split on a completely different sample.
+  //
+  // MEASURED over these exact five seeds × 40 days, before -> after:
+  //     final credits, summed   123,556 -> 146,960
+  //     deeds, summed               111 ->     114
+  //     seeds clearing the marker     5 ->       4
+  //     fuel-starvation days          0 ->       0
+  // Credits up and one seed's marker slipping past day 40 is RE-PHASING, not a
+  // regression, and NOTHING WAS TUNED IN RESPONSE.
+  explorer: '87c16b5068222a12',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   //
   // Entry 29 (T-161): re-derived, and the ONLY row that moves — which is the
@@ -1252,7 +1278,16 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // guard, and the anti-idle rim move.
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).
-  smuggler: 'edbb11a2cfd6a885',
+  //
+  // ENTRY 31 (T-196a): re-derived — the second and last row M17's arm 1 moves, for the
+  // reason spelled out at `explorer` above (this policy also queues an `Explore`, and
+  // `Explore` is the verb that reads the rest of the hand at resolve time). No line of
+  // `smugglerPolicy` changed. MEASURED over these five seeds × 40 days, before ->
+  // after: final credits, summed 57,498 -> 51,950; deeds, summed 126 -> 120;
+  // fuel-starvation days 0 -> 0. Credits fall here where `explorer`'s rise — the two
+  // directions are re-phasing on a five-seed sample, not a trend; the 8,000-row
+  // capstone puts both rows within a percent or two of their previous medians.
+  smuggler: '68ca024d823c0fa8',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sol-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts

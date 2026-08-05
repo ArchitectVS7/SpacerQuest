@@ -306,7 +306,6 @@ describe('T-112 · Class A — declared ship-element deltas', () => {
       action: 'buy-component-tier',
       component: 'weapons',
       tier: 2,
-      spendDie: 0,
     });
     expect(after.player.ship.bonusMaxFuel).toBe(40);
     expect(after.player.ship.maxFuel).toBe(340); // (9+1)·1·30 + 40

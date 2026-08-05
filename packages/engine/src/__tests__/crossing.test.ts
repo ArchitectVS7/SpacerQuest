@@ -418,9 +418,9 @@ function crossed(seed = 77): GameState {
 
 /** The six blockable verbs — exactly the members of `ActionBlocked.actionType`. */
 const BLOCKABLE: PlayerAction[] = [
-  { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+  { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
   { type: 'Travel', destinationId: 1, spendDie: 0 },
-  { type: 'Shipyard', action: 'repair', component: 'hull', spendDie: 0 },
+  { type: 'Shipyard', action: 'repair', component: 'hull' },
   { type: 'Storylet', storyletId: 'sage.mizar.decode-first', choiceId: 'decode' },
   { type: 'Explore', spendDie: 0 },
   { type: 'VisitHangout', venue: 'rumor', spendDie: 0 },

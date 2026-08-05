@@ -1260,10 +1260,11 @@ export function signContract(contractIndex: number): void {
       type: 'Trade',
       action: 'sign-contract',
       contractIndex,
-      spendDie: die,
     });
     autosave(next, state.seed);
-    // Signing is a die-cost, not a check: it emits no StatCheck, so lastCheck
+    // T-196a made signing a FREE ACTION, so `committed` below is now always false
+    // and the selection simply persists — the armed-die gate above is UI-only and
+    // T-196c retires it. Signing emits no StatCheck either way, so lastCheck
     // resolves to null here — the readout stays cleared, which is honest.
     const lastCheck = lastCheckFrom(events);
     // Surface an engine refusal (already carrying a contract) instead of a
@@ -1308,7 +1309,6 @@ export function abandonContract(): void {
     const { state: next, events } = applyAction({
       type: 'Trade',
       action: 'abandon-contract',
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = failNoticeFrom(events);
@@ -1345,7 +1345,6 @@ export function buyFuel(amount: number): void {
       type: 'Trade',
       action: 'buy-fuel',
       fuelAmount: amount,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = failNoticeFrom(events);
@@ -1983,7 +1982,6 @@ export function hireCrew(roleId: string): void {
       type: 'Crew',
       action: 'hire',
       roleId,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = crewFailNoticeFrom(events);
@@ -2003,8 +2001,11 @@ export function hireCrew(roleId: string): void {
 
 /**
  * T-1405 · Dismiss a crew role (PRD §7). A pure CLIENT of the T-1306 `Crew` action's
- * dismiss path — costs a die (like a hire), frees a cabin berth, no refund. A typed
- * `CrewEvent{failed:'not-hired'}` spends NO die and surfaces a visible notice.
+ * dismiss path — frees a cabin berth, no refund. A typed
+ * `CrewEvent{failed:'not-hired'}` surfaces a visible notice.
+ *
+ * T-196a made this a FREE ACTION (no die at all). The armed-die precondition below
+ * is UI gating that T-196c retires; the engine no longer asks for a die.
  */
 export function dismissCrew(roleId: string): void {
   const die = state.selectedDie;
@@ -2017,7 +2018,6 @@ export function dismissCrew(roleId: string): void {
       type: 'Crew',
       action: 'dismiss',
       roleId,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = crewFailNoticeFrom(events);
@@ -2084,7 +2084,6 @@ export function buyPort(): void {
       type: 'Port',
       action: 'buy',
       systemId: state.game.player.currentSystemId,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = portFailNoticeFrom(events);
@@ -2235,23 +2234,26 @@ export function shipyard(request: ShipyardRequest): void {
       repairMode: request.repairMode,
       quantity: request.quantity,
       equipment: request.equipment,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const fail = shipyardFailFrom(events);
     const notice = fail ? shipyardFailureExplanation(fail) : null;
     set({
       game: next,
-      // The die is spent either way (engine convention). Bloom it and clear the
-      // selection; on a refusal the notice explains what happened.
+      // T-196c OWES THIS ONE. The yard used to spend the die either way (engine
+      // convention), so blooming it and clearing the selection was honest. T-196a
+      // made the yard a FREE ACTION — no die is spent now — so this bloom is a
+      // visual lie. It is left EXACTLY as it was on purpose: T-196a is the engine
+      // arm and changes no UI behaviour; T-196c retires the armed-die gating.
       selectedDie: null,
       bloomDie: die,
       notice,
       lastCheck: null,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    // The shipyard spends the die before its business checks (engine convention),
-    // so this is always committed; a refusal emits ShipyardFail → the fail cue.
+    // (Pre-T-196a: the shipyard spent the die before its business checks, so this
+    // was always committed. It costs no die at all now; a refusal still emits
+    // ShipyardFail → the fail cue, which is what this `true` actually drives.)
     reactToEvents(events, true);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That yard order could not be resolved.' });

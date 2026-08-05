@@ -192,10 +192,11 @@ describe('T-1503 · port-deal rep (port.ts — the ports.ts alliance deferral)',
       type: 'Port',
       action: 'buy',
       systemId: 1,
-      spendDie: die,
     });
 
     expect(bought.player.reputation.league).toBe(PORT_PURCHASE_ALLIANCE_DELTA);
+    // T-196a: the buy is FREE — the rep delta costs no die.
+    expect(bought.player.dawnHand!.spent[die]).toBe(false);
     expect(
       events.some(
         (e) => e.type === 'ReputationChanged' && e.faction === 'league' && e.reason === 'port-deal',
@@ -217,9 +218,10 @@ describe('T-1503 · port-deal rep (port.ts — the ports.ts alliance deferral)',
       type: 'Port',
       action: 'buy',
       systemId: 3,
-      spendDie: die,
     });
     expect(bought.player.reputation.confederation).toBe(PORT_PURCHASE_ALLIANCE_DELTA);
+    // T-196a: the buy is FREE — the rep delta costs no die.
+    expect(bought.player.dawnHand!.spent[die]).toBe(false);
   });
 });
 

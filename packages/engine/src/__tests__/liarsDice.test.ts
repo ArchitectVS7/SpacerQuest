@@ -1091,7 +1091,7 @@ describe('T-135 · the gates', () => {
     const state = openHand(hangoutState(222)).state;
     for (const action of [
       { type: 'Travel', destinationId: 2, spendDie: 1 },
-      { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 1 },
+      { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
       { type: 'Explore', spendDie: 1 },
       { type: 'VisitHangout', venue: 'rumor', spendDie: 1 },
     ] as const) {
@@ -1114,8 +1114,8 @@ describe('T-135 · the gates', () => {
     for (const action of [
       { type: 'Dare', move: 'fold' },
       { type: 'Reroll', dieIndex: 1 },
-      { type: 'Crew', action: 'hire', roleId: 'crew-second', spendDie: 1 },
-      { type: 'Port', action: 'buy', systemId: SUN_3, spendDie: 1 },
+      { type: 'Crew', action: 'hire', roleId: 'crew-second' },
+      { type: 'Port', action: 'buy', systemId: SUN_3 },
     ] as const) {
       const step = applyPlayerAction(state, action);
       expect(step.events.some((e) => e.type === 'ActionBlocked')).toBe(false);

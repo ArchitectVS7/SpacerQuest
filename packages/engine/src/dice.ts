@@ -214,21 +214,28 @@ export function check(die: number, statValue: number, dc: number): CheckResult {
  * EITHER (T-182). Both are correct precisely because the returned hand is complete
  * and the input is untouched:
  *
- *  - ASSIGN the returned hand back onto the save — `actions/trade.ts:23,76,122,163`,
- *    `actions/travel.ts:586`, `actions/shipyard.ts:629`, `actions/exploration.ts:115`,
- *    `actions/combat.ts:267`, `storylets.ts:238`, and `exploreOutcomes.ts:509` (the
- *    multi-die recovery payment, which folds the returned hand through a loop).
- *    These are the sites F-156-1 broke.
+ *  - ASSIGN the returned hand back onto the save — `actions/trade.ts` (the `haggle`
+ *    arm only), `actions/travel.ts`, `actions/exploration.ts`, `actions/combat.ts`,
+ *    `storylets.ts`, and `exploreOutcomes.ts` (the multi-die recovery payment, which
+ *    folds the returned hand through a loop). These are the sites F-156-1 broke.
  *  - CALL FOR THE FACE AND THE GUARDS ONLY, then mark `spent[index]` in place on the
- *    live state hand — `actions/crew.ts:138,161`, `actions/port.ts:66`,
- *    `actions/hangout.ts:319`, `actions/dare.ts:380`. They hold `hand` as a live
- *    reference and interleave other mutations around it. Because `spent` is copied
- *    before it is written, the input hand is never touched, so discarding the
+ *    live state hand — `actions/hangout.ts`, `actions/dare.ts`. They hold `hand` as a
+ *    live reference and interleave other mutations around it. Because `spent` is
+ *    copied before it is written, the input hand is never touched, so discarding the
  *    return value is equivalent to assigning it. Proven, not asserted:
  *    `__tests__/dice.test.ts` asserts the two forms produce equal hands.
  *
  *  - `npcHand.ts:181` (`allocateVirtualDie`) is a third, inert caller: the virtual
  *    hand is transient (never serialized) and always carries `rerollsRemaining: 0`.
+ *
+ * T-196a · EIGHT call sites left this ledger when M17 freed the administrative
+ * actions (docs/DAWN-HAND-REDESIGN.md §3): `trade.ts`'s buy-fuel / sign-contract /
+ * abandon-contract arms, `shipyard.ts`'s single shared spend (all four kinds),
+ * `crew.ts`'s hire and dismiss, and `port.ts`'s purchase. They cost no die at all
+ * now, so they call nothing here. `trade.ts`'s `haggle` arm stays — its die IS the
+ * Trade check. Line numbers were removed from the two lists above deliberately:
+ * they went stale the moment the resolvers moved, and the guard below is the
+ * durable check.
  *
  * `__tests__/spend-die-rerolls.test.ts` drives every assign-family site through
  * `applyPlayerAction` and guards the list above against drift.

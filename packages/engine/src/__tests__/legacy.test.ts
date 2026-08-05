@@ -283,7 +283,7 @@ describe('T-108 · Post-death playability (anti-poverty-trap)', () => {
   it('a greedy-style contract sign works on the successor next dawn', () => {
     const afterDeath = endDay(primedForDuskDeath(99)).state;
     const result = advanceDay(afterDeath, [
-      { type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 0 },
+      { type: 'Trade', action: 'sign-contract', contractIndex: 0 },
     ]);
     // No throw, and the day advanced.
     expect(result.state.day).toBe(afterDeath.day + 1);

@@ -2,16 +2,20 @@ import { CREW_BY_ID } from '@spacerquest/content';
 import { GameEvent, GameState, PlayerAction } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { crewCapacity } from '../components.js';
-import { dawnDiceModifiers, equipmentDiceBenefits, spendDie } from '../dice.js';
+import { dawnDiceModifiers, equipmentDiceBenefits } from '../dice.js';
 import { cloneState } from '../clone.js';
 
 /**
  * T-1306 · The crew + re-roll resolvers (PRD §7 dice progression). Both are PURE
  * (clone → mutate the clone → typed events) and NEVER throw: every player-possible
- * input — malformed die selection, an out-of-range reroll, a crew rule refusal —
- * resolves to a typed event that spends nothing, mirroring resolveExploration /
- * resolveVisitHangout. The Hangout/port gate and encounter handling live in day.ts
- * (the only runtime caller).
+ * input — an out-of-range reroll, a crew rule refusal — resolves to a typed event
+ * that spends nothing, mirroring resolveExploration / resolveVisitHangout. The
+ * Hangout/port gate and encounter handling live in day.ts (the only runtime caller).
+ *
+ * T-196a · `resolveCrew` is now a FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3) — it
+ * takes no die, so "malformed die selection" is no longer one of its inputs.
+ * `resolveReroll` is UNCHANGED: it never was a die spend (it burns a separate
+ * `rerollsRemaining` charge), so its own die-index validation stands.
  */
 
 /**
@@ -76,11 +80,14 @@ export function resolveReroll(
 }
 
 /**
- * Hire or dismiss a crew role (PRD §7 dice progression). PURE, no rng. Die
- * validation is the same three-way split as resolveExploration/hangout (no die /
- * out-of-range / already-spent → typed fail, NO die spent). A hire needs the role
- * to exist, not already be aboard, a free cabin berth (`crewCapacity`, the T-1205
- * socket), and the hire price; a dismiss needs the role to be aboard (no refund).
+ * Hire or dismiss a crew role (PRD §7 dice progression). PURE, no rng.
+ *
+ * T-196a · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3) — no die at all, so there
+ * is no die validation left and the dawn hand is never touched. It works from an
+ * EMPTY hand. The rules that bound it were always the real ones: a hire needs the
+ * role to exist, not already be aboard, a free cabin berth (`crewCapacity`, the
+ * T-1205 socket) and the hire price; a dismiss needs the role to be aboard (no
+ * refund). Every refusal is still a typed `CrewEvent{kind:'failed'}`, never a throw.
  */
 export function resolveCrew(
   state: GameState,
@@ -89,22 +96,6 @@ export function resolveCrew(
   const events: GameEvent[] = [];
   const nextState = cloneState(state);
   const day = nextState.day;
-
-  // --- Die validation (malformed input → typed fail, NO die spent) ----------
-  const hand = nextState.player.dawnHand;
-  const index = action.spendDie;
-  if (index === undefined) {
-    events.push({ type: 'CrewEvent', day, kind: 'failed', failReason: 'no-die' });
-    return { state: nextState, events };
-  }
-  if (!hand || index < 0 || index >= hand.dice.length) {
-    events.push({ type: 'CrewEvent', day, kind: 'failed', failReason: 'invalid-die-index' });
-    return { state: nextState, events };
-  }
-  if (hand.spent[index]) {
-    events.push({ type: 'CrewEvent', day, kind: 'failed', failReason: 'die-already-spent' });
-    return { state: nextState, events };
-  }
 
   const crew = nextState.player.crew;
   const roleId = action.roleId;
@@ -134,10 +125,7 @@ export function resolveCrew(
       });
       return { state: nextState, events };
     }
-    // Commit: spend the die, pay the hire price, berth the crew.
-    const { die } = spendDie(hand, index);
-    void die;
-    hand.spent[index] = true;
+    // Commit: pay the hire price, berth the crew. T-196a: no die is spent.
     nextState.player.credits -= role.hirePrice;
     crew.push({ roleId, hiredDay: day });
     events.push({
@@ -158,9 +146,7 @@ export function resolveCrew(
     events.push({ type: 'CrewEvent', day, kind: 'failed', roleId, failReason: 'not-hired' });
     return { state: nextState, events };
   }
-  const { die } = spendDie(hand, index);
-  void die;
-  hand.spent[index] = true;
+  // T-196a: no die is spent.
   crew.splice(memberIndex, 1);
   events.push({ type: 'CrewEvent', day, kind: 'dismissed', roleId, crewCount: crew.length });
   return { state: nextState, events };

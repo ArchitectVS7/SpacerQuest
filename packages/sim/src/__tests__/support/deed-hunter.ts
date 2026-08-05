@@ -482,11 +482,15 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
         const affordable = Math.floor((state.player.credits - HUNTER_RESERVE / 2) / price);
         const units = Math.max(0, Math.min(room, affordable));
         if (state.player.ship.fuel < 250 && units > 0 && spare.length > 1) {
+          // T-196a: the fill costs no die (docs/DAWN-HAND-REDESIGN.md §3), but the
+          // spare-die LEDGER is left exactly as it was — this support policy's day
+          // budget is not this task's to change, and dropping the shift would move
+          // which die carries the pilot check below.
+          spare.shift();
           errand.push({
             type: 'Trade',
             action: 'buy-fuel',
             fuelAmount: units,
-            spendDie: spare.shift()!,
           });
         }
         // Best remaining die carries the pilot check for the hop.
@@ -664,7 +668,6 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
               type: 'Trade',
               action: 'buy-fuel',
               fuelAmount: units,
-              spendDie: fuelDie,
             });
             spare.splice(spare.indexOf(fuelDie), 1);
           }
@@ -693,7 +696,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
   ) {
     const die = take();
     if (die !== undefined) {
-      actions.push({ type: 'Port', action: 'buy', systemId: here, spendDie: die });
+      actions.push({ type: 'Port', action: 'buy', systemId: here });
     }
   }
 
@@ -706,7 +709,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
     if (role) {
       const die = take();
       if (die !== undefined) {
-        actions.push({ type: 'Crew', action: 'hire', roleId: role.id, spendDie: die });
+        actions.push({ type: 'Crew', action: 'hire', roleId: role.id });
       }
     }
   }

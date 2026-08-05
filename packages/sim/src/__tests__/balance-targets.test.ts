@@ -115,14 +115,23 @@ const TRADER_CLEAR_DAY_MAX = 30;
  * when any disagrees — it was RED ON ARRIVAL against three genuinely stale sites
  * left by T-188, T-195 and T-199.
  */
-// T-199 re-pin (t195-dawn-dice -> t199-pacifist). Same shape, same 8,000 rows, same
+// T-196a re-pin (t199-pacifist -> t196a-free-actions). Same shape, same 8,000 rows,
+// same eight policies, same milestone days (21,29,30,41,60,120). The capstone was
+// re-taken because M17 (`docs/DAWN-HAND-REDESIGN.md` §3) freed nine administrative
+// action types from the dawn hand, which moves the RULES fingerprint
+// (febc55edd3a94b3f -> 55414694d7187afc) and stales every fixture measured against
+// it. The bands below are UNTOUCHED — nothing here was re-derived to accommodate the
+// new sample. EXACTLY TWO policy rows moved, `explorer` and `smuggler` (the only two
+// that queue `Explore`); the other six are byte-identical on every headline metric.
+//
+// (Prior) T-199 re-pin (t195-dawn-dice -> t199-pacifist). Same shape, same 8,000 rows, same
 // eight policies, same milestone days: the capstone was re-taken because
 // `packages/sim/src/index.ts` moved (the shared pacifist-combat planner and the
 // anti-idle rim-strand rules), which moves the INSTRUMENT fingerprint and stales
 // every fixture measured against it. The bands below are UNTOUCHED — nothing here
 // was re-derived to accommodate the new sample.
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
-  new URL('../../../../docs/balance/baseline-t199-pacifist.json', import.meta.url),
+  new URL('../../../../docs/balance/baseline-t196a-free-actions.json', import.meta.url),
 );
 const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
   label: string;

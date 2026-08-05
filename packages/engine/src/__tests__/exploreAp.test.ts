@@ -187,19 +187,29 @@ describe('T-131 · a band-4 find costs the sweep die plus 3 more, same day', () 
 });
 
 describe('T-131 · a hand too thin to pay FORFEITS the find', () => {
-  // THE BURN PREFIX IS PART OF THE FIXTURE. Four dice go through the real Trade
-  // verb — the standard die burner (`day.test.ts`, `crossing.test.ts` both use
-  // it) — leaving exactly one unspent die for the sweep and none for the payment.
-  // Because the burn moves `dayEventCount`, and `day.ts` forks the action rng on
-  // it, THIS PREFIX IS WHAT MAKES SEED 25 DRAW A BAND-3/4 ROW. A different prefix
-  // is a different board.
+  // THE BURN PREFIX IS PART OF THE FIXTURE. Four dice go through a real, die-costed
+  // player verb, leaving exactly one unspent die for the sweep and none for the
+  // payment. Because the burn moves `dayEventCount`, and `day.ts` forks the action
+  // rng on it, THIS PREFIX IS WHAT MAKES SEED 25 DRAW A BAND-3/4 ROW. A different
+  // prefix is a different board.
+  //
+  // T-196a · THE BURNER CHANGED, DELIBERATELY, AND THE SEED SURVIVED IT. `buy-fuel`
+  // was the old burner; M17 (docs/DAWN-HAND-REDESIGN.md §3) made it a FREE ACTION,
+  // so it burns nothing and could no longer thin the hand. The replacement is
+  // `VisitHangout{venue:'rumor'}` — still a die-costed Main Action, read-only (it
+  // emits rumors and mutates nothing), available at the seed's start system, and
+  // it emits EXACTLY ONE event per call just as `buy-fuel` did. That last property
+  // is why `SEED_FORFEIT` did not have to be re-scanned: `dayEventCount` advances
+  // identically, so the Explore that follows draws off the same rng fork it always
+  // did. Re-verified, not assumed — the band-3/4 forfeit assertions below still
+  // hold on seed 25. If the burner ever changes again, RE-SCAN the seed; do not
+  // adjust an assertion to fit.
   function burnedDownTo(seed: number): GameState {
     let live = startDay(createInitialState(seed)).state;
     for (const index of [1, 2, 3, 4]) {
       const res = applyPlayerAction(live, {
-        type: 'Trade',
-        action: 'buy-fuel',
-        fuelAmount: 1,
+        type: 'VisitHangout',
+        venue: 'rumor',
         spendDie: index,
       });
       expect(res.state.player.dawnHand!.spent[index], `die ${index} did not burn`).toBe(true);

@@ -1056,8 +1056,8 @@ export type GameEvent =
        * T-1306 · A crew hire/dismiss/wage beat (PRD §7 dice progression). One event
        * covers the whole crew lifecycle via the `kind` sub-discriminator:
        *   - 'hired'     — a role was hired. `roleId`, `cost` (hire price), `berths`
-       *     (crewCapacity at hire), `crewCount` (after). Credits went DOWN by cost,
-       *     a die was spent.
+       *     (crewCapacity at hire), `crewCount` (after). Credits went DOWN by cost.
+       *     T-196a: NO die is spent — a hire is a Free Action (M17 §3).
        *   - 'dismissed' — a role left (player dismiss, or the dusk crew-walk on an
        *     unpaid wage). `roleId`.
        *   - 'wage'      — a dusk's wage was paid. `amount` (total wage), `crewCount`.
@@ -1077,6 +1077,14 @@ export type GameEvent =
       amount?: number;
       berths?: number;
       crewCount?: number;
+      /**
+       * T-196a · `no-die` / `invalid-die-index` / `die-already-spent` are
+       * LEGACY-ONLY since M17 freed the crew verbs: no code can emit them any more.
+       * They are deliberately NOT deleted — the eventLog is persisted inside
+       * GameState and validated by a `.strict()` schema on load, so removing an
+       * enum member would be a save-shape break owing a migration this task does
+       * not own. They survive so pre-M17 saves still load.
+       */
       failReason?:
         | 'no-die'
         | 'invalid-die-index'
@@ -1092,7 +1100,8 @@ export type GameEvent =
        * T-1307 · A port-stake beat (PRD §9 "ports as purchasable property"). One
        * event covers the whole lifecycle via the `kind` sub-discriminator:
        *   - 'purchased' — a stake was bought. `systemId`, `cost` (purchase price),
-       *     `portCount` (owned after). Credits went DOWN by cost, a die was spent.
+       *     `portCount` (owned after). Credits went DOWN by cost. T-196a: NO die is
+       *     spent — a port buy is a Free Action (M17 §3).
        *     Paired with a WireEntry (the purchase's wire reader).
        *   - 'income'    — a dusk's launch-fee income accrued across all owned
        *     stakes. `income` (total, era-modulated), `portCount`. Credits went UP by
@@ -1452,22 +1461,47 @@ export interface ShipyardFail {
 // Player actions
 export type PlayerAction =
   | {
+      /**
+       * T-196a · M17 FREE ACTIONS (docs/DAWN-HAND-REDESIGN.md §3). These four cost
+       * NO die: the face was never read at any of them, and each is already bounded
+       * by something else — credits + tank capacity (buy-fuel), the one-active-
+       * contract slot (sign-contract), the hold's contents (abandon-contract).
+       * `pay-debt` was never die-costed at all ("remote payments need no roll").
+       *
+       * T-1604b's 'abandon-contract' is the player-initiated hold release that
+       * frees a captain carrying an undeliverable run (UGT finding F2). It now
+       * costs only the forfeited payment; no die, no credit fee (actions/trade.ts).
+       *
+       * The Trade member is SPLIT in two so `haggle` — the one Main Action on the
+       * trade desk — can keep `spendDie` while these four reject it outright.
+       */
       type: 'Trade';
-      /** T-1604b adds 'abandon-contract' — the player-initiated hold release that
-       *  frees a captain carrying an undeliverable run (UGT finding F2). Costs one
-       *  die and the forfeited payment; no credit fee (see actions/trade.ts). */
-      action: 'buy-fuel' | 'sign-contract' | 'haggle' | 'pay-debt' | 'abandon-contract';
+      action: 'buy-fuel' | 'sign-contract' | 'pay-debt' | 'abandon-contract';
       contractIndex?: number;
       fuelAmount?: number;
       amount?: number;
+    }
+  | {
+      /**
+       * The one MAIN ACTION on the trade desk (docs/DAWN-HAND-REDESIGN.md §3): the
+       * spent die IS the Trade check (`check(die, TRADE, 12)`), so this arm keeps
+       * `spendDie`. Deliberately left untouched by T-196a.
+       */
+      type: 'Trade';
+      action: 'haggle';
+      contractIndex?: number;
       spendDie?: number;
     }
   | { type: 'Travel'; destinationId: number; spendDie?: number }
   | { type: 'Combat'; stance: 'run' | 'talk' | 'fight'; targetId: string; spendDie?: number }
   | {
+      /**
+       * T-196a · M17 FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3), all four kinds —
+       * repair, buy-cargo-pods, buy-component-tier, buy-special-equipment share one
+       * resolver and one ruling. Bounded by credits + physical slots/tiers.
+       */
       type: 'Shipyard';
       action: ShipyardActionKind;
-      spendDie: number;
       component?: ShipComponentId;
       tier?: number;
       repairMode?: 'all' | 'single';
@@ -1540,29 +1574,34 @@ export type PlayerAction =
   | {
       /**
        * T-1306 · Hire or dismiss a crew role at the Hangout/port (PRD §7 dice
-       * progression). `roleId` names a content CREW_ROLES entry; `spendDie` is the
-       * die the action costs (like every other die-costed player scene). Hiring
-       * needs a free cabin berth (`crewCapacity`) and the hire price; dismissing
-       * frees a berth (no refund). RESOLVER: actions/crew.ts resolveCrew.
+       * progression). `roleId` names a content CREW_ROLES entry. Hiring needs a
+       * free cabin berth (`crewCapacity`) and the hire price; dismissing frees a
+       * berth (no refund). RESOLVER: actions/crew.ts resolveCrew.
+       *
+       * T-196a · M17 FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3) — no die: the face
+       * was never read, and the hire is already bounded by credits + berth capacity
+       * (dismiss has no cost besides the die it no longer takes).
        */
       type: 'Crew';
       action: 'hire' | 'dismiss';
       roleId: string;
-      spendDie: number;
     }
   | {
       /**
        * T-1307 · Buy a controlling stake in the local port authority (PRD §9
        * "ports as purchasable property"). `systemId` names the port and MUST equal
        * `currentSystemId` (you buy the port you are standing in); it must be a
-       * purchasable core port (content `isPurchasablePort`). `spendDie` is the die
-       * the action costs (die-costed like Shipyard). Needs the purchase price and
-       * a stake not already owned. RESOLVER: actions/port.ts `resolvePortPurchase`.
+       * purchasable core port (content `isPurchasablePort`). Needs the purchase
+       * price and a stake not already owned. RESOLVER: actions/port.ts
+       * `resolvePortPurchase`.
+       *
+       * T-196a · M17 FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3) — no die: the face
+       * was never read, and the buy is already bounded by credits + one purchase
+       * per port.
        */
       type: 'Port';
       action: 'buy';
       systemId: number;
-      spendDie: number;
     }
   | { type: 'Wait' };
 
@@ -1921,7 +1960,14 @@ export interface PortStake {
 
 /** T-1307 · The typed refusal reasons a `Port` buy can resolve to (the
  *  `PortEvent{failed}.failReason` set; also the `quotePort` failure set). Kept as
- *  a named alias so the resolver/preview reference one source of truth. */
+ *  a named alias so the resolver/preview reference one source of truth.
+ *
+ *  T-196a · `no-die` / `invalid-die-index` / `die-already-spent` are LEGACY-ONLY
+ *  since M17 freed the port buy: no code can emit them any more. They are
+ *  deliberately NOT deleted — the eventLog is persisted inside GameState and
+ *  validated by a `.strict()` schema on load, so removing an enum member would be
+ *  a save-shape break owing a migration this task does not own. They survive so
+ *  pre-M17 saves still load. */
 export type PortEventFailReason =
   | 'no-die'
   | 'invalid-die-index'

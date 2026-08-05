@@ -48,7 +48,6 @@ describe('Player Actions', () => {
         type: 'Trade',
         action: 'buy-fuel',
         fuelAmount: 100,
-        spendDie: 0,
       },
       new SeededRng(123),
     );
@@ -156,18 +155,23 @@ describe('Player Actions', () => {
       return state;
     }
 
-    it('clears the hold, spends a die, and emits the typed event', () => {
+    it('clears the hold FREE (no die, no fee) and emits the typed event', () => {
       const state = heldState();
       const boardBefore = state.market.manifestBoard.length;
 
       const { state: next, events } = resolveTrade(
         state,
-        { type: 'Trade', action: 'abandon-contract', spendDie: 0 },
+        { type: 'Trade', action: 'abandon-contract' },
         new SeededRng(123),
       );
 
       expect(next.player.activeContract).toBeNull();
-      expect(next.player.dawnHand!.spent[0]).toBe(true);
+      // T-196a · INVERTED, not dropped. This was `toBe(true)`: abandoning cost one
+      // die. M17 (docs/DAWN-HAND-REDESIGN.md §3, "no reason to tax quitting") made
+      // the verb free, so the only cost left is the forfeited payment — asserted
+      // below by the unchanged credits + board assertions.
+      expect(next.player.dawnHand!.spent[0]).toBe(false);
+      expect(next.player.dawnHand!.spent).toEqual(state.player.dawnHand!.spent);
       expect(events).toContainEqual(
         expect.objectContaining({
           type: 'TradeEvent',
@@ -188,13 +192,13 @@ describe('Player Actions', () => {
       expect(next.market.manifestBoard.some((c) => c.destination === 7)).toBe(false);
     });
 
-    it('with an EMPTY hold is a typed refusal that spends no die', () => {
+    it('with an EMPTY hold is a typed refusal that changes nothing', () => {
       const state = heldState();
       state.player.activeContract = null;
 
       const { state: next, events } = resolveTrade(
         state,
-        { type: 'Trade', action: 'abandon-contract', spendDie: 0 },
+        { type: 'Trade', action: 'abandon-contract' },
         new SeededRng(123),
       );
 
@@ -215,12 +219,12 @@ describe('Player Actions', () => {
       const state = heldState();
       const { state: dumped } = resolveTrade(
         state,
-        { type: 'Trade', action: 'abandon-contract', spendDie: 0 },
+        { type: 'Trade', action: 'abandon-contract' },
         new SeededRng(123),
       );
       const { state: signed, events } = resolveTrade(
         dumped,
-        { type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 1 },
+        { type: 'Trade', action: 'sign-contract', contractIndex: 0 },
         new SeededRng(123),
       );
 

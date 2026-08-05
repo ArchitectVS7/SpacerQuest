@@ -131,7 +131,6 @@ function ensureFuelFor(state: GameState, dest: number): GameState {
     type: 'Trade',
     action: 'buy-fuel',
     fuelAmount: units,
-    spendDie: die,
   }).state;
 }
 
@@ -184,7 +183,6 @@ function signCoreContract(state: GameState): GameState {
     type: 'Trade',
     action: 'sign-contract',
     contractIndex: bestIdx,
-    spendDie: die,
   }).state;
 }
 
@@ -216,7 +214,6 @@ function upgradeDrives(state: GameState): GameState {
     action: 'buy-component-tier',
     component: 'drives',
     tier: 3,
-    spendDie: die,
   }).state;
 }
 

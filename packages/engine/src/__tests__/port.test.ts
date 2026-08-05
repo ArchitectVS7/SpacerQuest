@@ -61,13 +61,15 @@ describe('T-1307 · buy a port stake', () => {
       type: 'Port',
       action: 'buy',
       systemId: SUN3,
-      spendDie: die,
     });
 
-    // Owned, die spent, credits down by price, PortEvent{purchased} + WireEntry.
+    // Owned, NO die spent (T-196a — M17 freed the buy, docs/DAWN-HAND-REDESIGN.md
+    // §3; this assertion was `toBe(true)` and is INVERTED rather than dropped),
+    // credits down by price, PortEvent{purchased} + WireEntry.
     expect(bought.player.ports).toEqual([{ systemId: SUN3, purchaseDay: 1 }]);
     expect(bought.player.credits).toBe(before - PRICE);
-    expect(bought.player.dawnHand!.spent[die]).toBe(true);
+    expect(bought.player.dawnHand!.spent[die]).toBe(false);
+    expect(bought.player.dawnHand!.spent).toEqual(state.player.dawnHand!.spent);
     const pe = portEvents(events);
     expect(pe).toHaveLength(1);
     expect(pe[0]).toMatchObject({ kind: 'purchased', systemId: SUN3, cost: PRICE, portCount: 1 });
@@ -139,8 +141,10 @@ describe('T-1307 · port ownership survives persistence', () => {
       type: 'Port',
       action: 'buy',
       systemId: SUN3,
-      spendDie: die,
     }).state;
+
+    // T-196a: the buy is FREE — the hand it went in with comes back untouched.
+    expect(bought.player.dawnHand!.spent[die]).toBe(false);
 
     const loaded = loadSave(createSave(bought, 3));
     expect(loaded.state.player.ports).toEqual(bought.player.ports);
@@ -224,7 +228,6 @@ describe('T-1307 · typed fails spend nothing', () => {
       type: 'Port',
       action: 'buy',
       systemId: c.systemId,
-      spendDie: die,
     });
 
     const pe = portEvents(events);
@@ -235,26 +238,55 @@ describe('T-1307 · typed fails spend nothing', () => {
     expect(next.player.ports).toEqual(beforePorts); // no ownership change
   });
 
-  it('malformed die (already spent) → die-already-spent, no state change', () => {
+  // T-196a · THE REPLACEMENT FOR THE OLD 'die-already-spent' CASE. That test asserted
+  // a refusal that is now unreachable — the buy is a FREE ACTION and never reads the
+  // hand (docs/DAWN-HAND-REDESIGN.md §3). Its intent — a malformed/exhausted hand
+  // never corrupts the ledger — survives as these two.
+  it('an ALREADY SPENT-OUT hand does not block a port buy (M17 free action)', () => {
     const state = dayState(5, (s) => {
       s.player.credits = PRICE + 5000;
     });
-    // Spend the die first via a real buy on a different (owned) path would change
-    // state, so instead mark it spent directly to isolate the die-validation branch.
-    const die = firstUnspent(state);
-    state.player.dawnHand!.spent[die] = true;
-    const { state: next, events } = applyPlayerAction(state, {
+    const spentOut = {
+      ...state,
+      player: {
+        ...state.player,
+        dawnHand: {
+          ...state.player.dawnHand!,
+          spent: state.player.dawnHand!.spent.map(() => true),
+        },
+      },
+    };
+    const { state: next, events } = applyPlayerAction(spentOut, {
       type: 'Port',
       action: 'buy',
       systemId: SUN3,
-      spendDie: die,
     });
-    expect(portEvents(events)[0]).toMatchObject({
+    expect(portEvents(events)[0]).toMatchObject({ kind: 'purchased', systemId: SUN3 });
+    expect(next.player.ports).toEqual([{ systemId: SUN3, purchaseDay: 1 }]);
+    expect(next.player.credits).toBe(5000);
+    // The exhausted hand comes back exactly exhausted.
+    expect(next.player.dawnHand!.spent).toEqual(spentOut.player.dawnHand.spent);
+  });
+
+  it('a port buy with NO dawn hand at all still resolves on the port rules', () => {
+    const state = dayState(5, (s) => {
+      s.player.credits = PRICE + 5000;
+    });
+    const handless = { ...state, player: { ...state.player, dawnHand: undefined } };
+    const { state: next, events } = applyPlayerAction(handless, {
+      type: 'Port',
+      action: 'buy',
+      systemId: SUN3,
+    });
+    expect(portEvents(events)[0]).toMatchObject({ kind: 'purchased', systemId: SUN3 });
+    expect(next.player.dawnHand).toBeUndefined();
+
+    // …and the rules still bite with no hand: the same stake twice is refused.
+    const again = applyPlayerAction(next, { type: 'Port', action: 'buy', systemId: SUN3 });
+    expect(portEvents(again.events)[0]).toMatchObject({
       kind: 'failed',
-      failReason: 'die-already-spent',
+      failReason: 'already-owned',
     });
-    expect(next.player.ports).toEqual([]);
-    expect(next.player.credits).toBe(PRICE + 5000);
   });
 });
 
@@ -282,9 +314,10 @@ describe('T-1307 · quotePort preview', () => {
       type: 'Port',
       action: 'buy',
       systemId: SUN3,
-      spendDie: die,
     }).state;
     expect(bought.player.credits).toBe(PRICE + 5000 - quote.cost);
+    // T-196a: the buy is FREE — the quote's price is the only cost.
+    expect(bought.player.dawnHand!.spent[die]).toBe(false);
 
     // After owning it, the quote reports alreadyOwned and !ok.
     const owned = quotePort(bought, SUN3);

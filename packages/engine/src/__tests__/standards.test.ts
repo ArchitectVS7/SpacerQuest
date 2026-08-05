@@ -154,7 +154,7 @@ describe('Contracts', () => {
     return state;
   }
 
-  it('signing costs a die and takes the contract off the board', () => {
+  it('signing is FREE (T-196a) and takes the contract off the board', () => {
     const state = marketState();
     const { state: next } = resolveTrade(
       state,
@@ -162,14 +162,17 @@ describe('Contracts', () => {
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: 0,
-        spendDie: 2,
       },
       new SeededRng(3),
     );
 
     expect(next.player.activeContract?.destination).toBe(5);
     expect(next.market.manifestBoard).toHaveLength(1);
-    expect(next.player.dawnHand?.spent[2]).toBe(true);
+    // T-196a · INVERTED, not dropped. This was `toBe(true)`; M17
+    // (docs/DAWN-HAND-REDESIGN.md §3) freed the signature — the one-active-contract
+    // rule asserted in the next test is the only thing bounding it now.
+    expect(next.player.dawnHand?.spent[2]).toBe(false);
+    expect(next.player.dawnHand?.spent).toEqual(state.player.dawnHand?.spent);
   });
 
   it('refuses a second contract while one is active', () => {
@@ -182,14 +185,13 @@ describe('Contracts', () => {
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: 1,
-        spendDie: 0,
       },
       new SeededRng(3),
     );
 
     expect(next.player.activeContract?.destination).toBe(5); // unchanged
     expect(next.market.manifestBoard).toHaveLength(2); // nothing taken
-    expect(next.player.dawnHand?.spent[0]).toBe(false); // die not wasted
+    expect(next.player.dawnHand?.spent[0]).toBe(false); // free either way
     expect(
       events.some((e) => e.type === 'TradeEvent' && e.actionDetails.includes('Cannot sign')),
     ).toBe(true);

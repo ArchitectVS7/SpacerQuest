@@ -46,7 +46,7 @@ function drive50Days(seed: number): GameState {
         spendDie: 0,
       });
     } else {
-      actions.push({ type: 'Trade', action: 'buy-fuel', fuelAmount: 50, spendDie: 0 });
+      actions.push({ type: 'Trade', action: 'buy-fuel', fuelAmount: 50 });
       const destination = (state.player.currentSystemId % 20) + 1;
       actions.push({ type: 'Travel', destinationId: destination, spendDie: 1 });
     }
@@ -184,7 +184,11 @@ describe('save envelope — malformed-Explore reasons survive save/load (T-1003)
     {
       reason: 'die-already-spent',
       actions: [
-        { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
+        // T-196a: `buy-fuel` used to be the die burner here; M17 made it a FREE
+        // ACTION, so it can no longer spend die 0. `haggle` is the trade desk's
+        // one surviving Main Action and spends the die it is handed, which is
+        // exactly what this case needs to reach 'die-already-spent'.
+        { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
         { type: 'Explore', spendDie: 0 },
       ],
     },

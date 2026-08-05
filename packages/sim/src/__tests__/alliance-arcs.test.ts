@@ -147,7 +147,6 @@ function ensureFuel(state: GameState, minFuel = 90): GameState {
     type: 'Trade',
     action: 'buy-fuel',
     fuelAmount: units,
-    spendDie: die,
   }).state;
 }
 

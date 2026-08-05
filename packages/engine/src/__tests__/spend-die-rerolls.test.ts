@@ -83,56 +83,13 @@ function fixtureEncounter(): EncounterState {
 }
 
 describe('T-182 · a spent die never destroys the day’s re-roll charge', () => {
-  /** `actions/trade.ts:23` */
-  it('Trade · buy-fuel', () => {
-    const before = chargedDay(7, (s) => {
-      s.player.credits = 5000;
-    });
-    const { state: after } = applyPlayerAction(before, {
-      type: 'Trade',
-      action: 'buy-fuel',
-      fuelAmount: 1,
-      spendDie: firstUnspent(before),
-    });
-    expectChargeSurvivedSpend(before, after);
-  });
+  // T-196a · `Trade · buy-fuel`, `Trade · sign-contract` and `Trade · abandon-contract`
+  // USED TO LIVE HERE. They are not deleted coverage — they MOVED, to the
+  // "M17 Free Actions" describe at the bottom of this file, which now asserts the
+  // opposite property (no die is consumed at all). The same is true of
+  // `Shipyard · buy-component-tier`, `Crew` and `Port`.
 
-  /** `actions/trade.ts:76` */
-  it('Trade · sign-contract', () => {
-    const before = chargedDay(7);
-    expect(before.market.manifestBoard.length).toBeGreaterThan(0);
-    const { state: after } = applyPlayerAction(before, {
-      type: 'Trade',
-      action: 'sign-contract',
-      contractIndex: 0,
-      spendDie: firstUnspent(before),
-    });
-    expect(after.player.activeContract).not.toBeNull();
-    expectChargeSurvivedSpend(before, after);
-  });
-
-  /** `actions/trade.ts:122` — needs a hold to dump, so a contract is SIGNED
-   *  first through the same verb rather than assigned onto the state. */
-  it('Trade · abandon-contract', () => {
-    const dawn = chargedDay(7);
-    const before = applyPlayerAction(dawn, {
-      type: 'Trade',
-      action: 'sign-contract',
-      contractIndex: 0,
-      spendDie: firstUnspent(dawn),
-    }).state;
-    expect(before.player.activeContract).not.toBeNull();
-
-    const { state: after } = applyPlayerAction(before, {
-      type: 'Trade',
-      action: 'abandon-contract',
-      spendDie: firstUnspent(before),
-    });
-    expect(after.player.activeContract).toBeNull();
-    expectChargeSurvivedSpend(before, after);
-  });
-
-  /** `actions/trade.ts:163` */
+  /** `actions/trade.ts` — the `haggle` arm, the trade desk's ONE surviving die spend. */
   it('Trade · haggle', () => {
     const before = chargedDay(7);
     const { state: after } = applyPlayerAction(before, {
@@ -145,7 +102,7 @@ describe('T-182 · a spent die never destroys the day’s re-roll charge', () =>
     expectChargeSurvivedSpend(before, after);
   });
 
-  /** `actions/travel.ts:586` */
+  /** `actions/travel.ts` */
   it('Travel', () => {
     const before = chargedDay(7, (s) => {
       s.player.currentSystemId = 1;
@@ -159,24 +116,7 @@ describe('T-182 · a spent die never destroys the day’s re-roll charge', () =>
     expectChargeSurvivedSpend(before, after);
   });
 
-  /** `actions/shipyard.ts:629` — the die is spent BEFORE the business checks
-   *  (the ShipyardFail convention), so this holds on a refusal too. */
-  it('Shipyard · buy-component-tier', () => {
-    const before = chargedDay(7, (s) => {
-      s.player.credits = 200_000;
-    });
-    const action: Extract<PlayerAction, { type: 'Shipyard' }> = {
-      type: 'Shipyard',
-      action: 'buy-component-tier',
-      component: 'weapons',
-      tier: 1,
-      spendDie: firstUnspent(before),
-    };
-    const { state: after } = applyPlayerAction(before, action);
-    expectChargeSurvivedSpend(before, after);
-  });
-
-  /** `actions/exploration.ts:115` */
+  /** `actions/exploration.ts` */
   it('Explore', () => {
     const before = chargedDay(7);
     expect(before.player.recovery).toBeNull();
@@ -190,7 +130,7 @@ describe('T-182 · a spent die never destroys the day’s re-roll charge', () =>
     expectChargeSurvivedSpend(before, after);
   });
 
-  /** `storylets.ts:238` — the Sol-3 guild auditor's `argue` choice carries a
+  /** `storylets.ts` — the Sol-3 guild auditor's `argue` choice carries a
    *  GUILE stat check, which is what makes the choice die-costed. */
   it('Storylet · a die-costed choice', () => {
     const dawn = chargedDay(110, (s) => {
@@ -210,7 +150,7 @@ describe('T-182 · a spent die never destroys the day’s re-roll charge', () =>
     expectChargeSurvivedSpend(before, after);
   });
 
-  /** `actions/combat.ts:267` */
+  /** `actions/combat.ts` */
   it('Combat · run', () => {
     const before = chargedDay(7, (s) => {
       s.encounter = fixtureEncounter();
@@ -226,7 +166,7 @@ describe('T-182 · a spent die never destroys the day’s re-roll charge', () =>
   });
 
   /**
-   * `exploreOutcomes.ts:509` — THE SITE THE TASK BLOCK MISSED, and the only one
+   * `exploreOutcomes.ts` — THE SITE THE TASK BLOCK MISSED, and the only one
    * that folds the returned hand through a LOOP. Seed 9's day-1 board draws a
    * BAND-3 row (`apCost` 2), so ONE `Explore` spends three dice: the sweep's own
    * plus two more paid inside `payExtraDiceClaim`. A single-spend case would not
@@ -258,6 +198,132 @@ describe('T-182 · a spent die never destroys the day’s re-roll charge', () =>
 });
 
 /**
+ * T-196a · THE OTHER HALF OF THE LEDGER — the nine M17 FREE ACTIONS consume NO die.
+ *
+ * `docs/DAWN-HAND-REDESIGN.md` §3 freed nine action types whose die face was never
+ * read: `Trade` buy-fuel / sign-contract / abandon-contract, all four `Shipyard`
+ * kinds (one shared resolver), `Crew` hire and dismiss, and the `Port` buy. The
+ * manifest guard below proves they call `spendDie` nowhere in the SOURCE; this
+ * block proves the same thing about BEHAVIOUR, through the real `applyPlayerAction`
+ * seam — a resolver could always mark `spent[i]` by hand without going through
+ * `spendDie`, and the manifest would never notice.
+ *
+ * Each case asserts the hand is byte-identical across the action AND that the action
+ * actually did something (a success event), so no case can pass by no-opping.
+ */
+describe('T-196a · the M17 Free Actions consume no die', () => {
+  function expectHandUntouched(before: GameState, after: GameState): void {
+    expect(after.player.dawnHand!.spent).toEqual(before.player.dawnHand!.spent);
+    expect(after.player.dawnHand!.dice).toEqual(before.player.dawnHand!.dice);
+    expect(after.player.dawnHand!.rerollsRemaining).toBe(before.player.dawnHand!.rerollsRemaining);
+  }
+
+  it('Trade · buy-fuel', () => {
+    const before = chargedDay(7, (s) => {
+      s.player.credits = 5000;
+      s.player.ship.fuel = 1;
+    });
+    const { state: after, events } = applyPlayerAction(before, {
+      type: 'Trade',
+      action: 'buy-fuel',
+      fuelAmount: 1,
+    });
+    expect(events.some((e) => e.type === 'TradeEvent' && e.success)).toBe(true);
+    expect(after.player.ship.fuel).toBe(before.player.ship.fuel + 1);
+    expectHandUntouched(before, after);
+  });
+
+  it('Trade · sign-contract', () => {
+    const before = chargedDay(7);
+    expect(before.market.manifestBoard.length).toBeGreaterThan(0);
+    const { state: after, events } = applyPlayerAction(before, {
+      type: 'Trade',
+      action: 'sign-contract',
+      contractIndex: 0,
+    });
+    expect(events.some((e) => e.type === 'TradeEvent' && e.success)).toBe(true);
+    expect(after.player.activeContract).not.toBeNull();
+    expectHandUntouched(before, after);
+  });
+
+  it('Trade · abandon-contract', () => {
+    const before = applyPlayerAction(chargedDay(7), {
+      type: 'Trade',
+      action: 'sign-contract',
+      contractIndex: 0,
+    }).state;
+    expect(before.player.activeContract).not.toBeNull();
+
+    const { state: after, events } = applyPlayerAction(before, {
+      type: 'Trade',
+      action: 'abandon-contract',
+    });
+    expect(events.some((e) => e.type === 'TradeEvent' && e.success)).toBe(true);
+    expect(after.player.activeContract).toBeNull();
+    expectHandUntouched(before, after);
+  });
+
+  // All four Shipyard kinds share ONE resolver and ONE ruling, so all four are
+  // driven — a per-kind regression could not hide behind the shared path.
+  const YARD_ORDERS: Extract<PlayerAction, { type: 'Shipyard' }>[] = [
+    { type: 'Shipyard', action: 'repair', repairMode: 'all' },
+    { type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1 },
+    { type: 'Shipyard', action: 'buy-component-tier', component: 'weapons', tier: 1 },
+    { type: 'Shipyard', action: 'buy-special-equipment', equipment: 'CLOAKER' },
+  ];
+  for (const order of YARD_ORDERS) {
+    it(`Shipyard · ${order.action}`, () => {
+      const before = chargedDay(7, (s) => {
+        s.player.credits = 200_000;
+        s.player.ship.weapons = { strength: 3, condition: 2 };
+        // Room under the hull's pod ceiling so `buy-cargo-pods` really lands.
+        s.player.ship.hull = { strength: 1, condition: 9 };
+        s.player.ship.cargoPods = 5;
+      });
+      const { state: after, events } = applyPlayerAction(before, order);
+      expect(events.some((e) => e.type === 'ShipyardEvent')).toBe(true);
+      expectHandUntouched(before, after);
+    });
+  }
+
+  it('Crew · hire and dismiss', () => {
+    const before = chargedDay(7, (s) => {
+      s.player.credits = 20_000;
+      s.player.ship.cabin.strength = 30;
+    });
+    const { state: hired, events: hireEvents } = applyPlayerAction(before, {
+      type: 'Crew',
+      action: 'hire',
+      roleId: 'crew-second',
+    });
+    expect(hireEvents.some((e) => e.type === 'CrewEvent' && e.kind === 'hired')).toBe(true);
+    expectHandUntouched(before, hired);
+
+    const { state: after, events } = applyPlayerAction(hired, {
+      type: 'Crew',
+      action: 'dismiss',
+      roleId: 'crew-second',
+    });
+    expect(events.some((e) => e.type === 'CrewEvent' && e.kind === 'dismissed')).toBe(true);
+    expectHandUntouched(hired, after);
+  });
+
+  it('Port · buy', () => {
+    const before = chargedDay(7, (s) => {
+      s.player.credits = 500_000;
+    });
+    const { state: after, events } = applyPlayerAction(before, {
+      type: 'Port',
+      action: 'buy',
+      systemId: before.player.currentSystemId,
+    });
+    expect(events.some((e) => e.type === 'PortEvent' && e.kind === 'purchased')).toBe(true);
+    expect(after.player.ports).toHaveLength(1);
+    expectHandUntouched(before, after);
+  });
+});
+
+/**
  * T-182 · DRIFT GUARD. The list of `spendDie` callers is load-bearing: an
  * assign-family site that lands without a case above re-opens F-156-1 silently.
  * This scans the engine's rule sources and fails on any caller not on the
@@ -268,17 +334,20 @@ describe('T-182 · the spendDie caller manifest', () => {
    *  it belongs to. Kept in sync with the CONTRACT block above `spendDie`. */
   const MANIFEST: Readonly<Record<string, { assign: number; mutate: number }>> = {
     // ASSIGN family — assigns the returned hand back. F-156-1 broke these.
-    'actions/trade.ts': { assign: 4, mutate: 0 },
+    // T-196a · `actions/trade.ts` dropped from 4 to 1 (only `haggle` survives), and
+    // `actions/shipyard.ts`, `actions/crew.ts` and `actions/port.ts` LEFT THE TABLE
+    // ENTIRELY: M17 (docs/DAWN-HAND-REDESIGN.md §3) freed those nine action types, so
+    // they call `spendDie` nowhere. This guard now runs in BOTH directions — a
+    // reappearing caller fails here, and the "M17 Free Actions" describe above fails
+    // if one of them starts eating a die again.
+    'actions/trade.ts': { assign: 1, mutate: 0 },
     'actions/travel.ts': { assign: 1, mutate: 0 },
-    'actions/shipyard.ts': { assign: 1, mutate: 0 },
     'actions/exploration.ts': { assign: 1, mutate: 0 },
     'actions/combat.ts': { assign: 1, mutate: 0 },
     'storylets.ts': { assign: 1, mutate: 0 },
     'exploreOutcomes.ts': { assign: 1, mutate: 0 },
     // MUTATE-IN-PLACE family — calls for the face and the guards, then writes
     // `spent[index]` on the live hand. Safe by the copy contract, not by luck.
-    'actions/crew.ts': { assign: 0, mutate: 2 },
-    'actions/port.ts': { assign: 0, mutate: 1 },
     'actions/hangout.ts': { assign: 0, mutate: 1 },
     'actions/dare.ts': { assign: 0, mutate: 1 },
     // INERT — the virtual hand is transient and never serialized.

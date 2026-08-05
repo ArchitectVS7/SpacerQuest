@@ -3067,7 +3067,7 @@ median credits +40.5%, M17 roughly doubles a trading day's useful actions, and t
 marker/contract deadlines/loan terms were all tuned against the old economy; nobody should
 write tutorial copy against numbers the owner may still re-tune.
 
-### T-196a · Free the administrative actions — engine rules, action shapes, and the compile-error sweep — `status: TODO` · `coder: opus` · `after: T-195`
+### T-196a · Free the administrative actions — engine rules, action shapes, and the compile-error sweep — `status: DONE` · `coder: opus` · `after: T-195`
 
 Per `docs/DAWN-HAND-REDESIGN.md` §3's ruled table. These nine action types currently spend a die
 whose face value is never read (verified: `void die;` or no extraction at all, at each resolver)
@@ -3114,6 +3114,154 @@ run, per T-160's discipline. Full 8,000-row sweep, re-pin at all four sites, fol
 pattern (isolated bisect first if the diff looks broader than expected). This arm measures
 "rules eased, instruments not yet exploiting"; T-196b's arm measures the exploitation — keep
 them attributable, exactly N13's control-arm pattern. Gate green.
+
+**PREDICTION, WRITTEN BEFORE THE SWEEP RAN (T-160's discipline).**
+
+- **NPC-side rows near-still.** `npc.ts` imports only `applyShipyardMutation`, `quoteShipyard`
+  and the travel helpers — never `resolveShipyard`/`resolveCrew`/`resolvePortPurchase`/
+  `resolveTrade` — so no NPC decision passes through a changed resolver. Its only edit in this
+  task is deleting three inert `spendDie: 0` literals from action objects that were never fed to
+  a resolver. Expect NPC wealth / ships-lost / deed rows inside shard noise.
+- **Player-policy rows move, modestly.** Every policy plans a day against a die budget
+  (`appendDieAction`'s `dieActionCount < 5`; `planCaptainOverhead`'s one-purchase-a-day,
+  dullest-die rule) and that budgeting is DELIBERATELY UNCHANGED here. What changes is the
+  engine: refuel, contract signing, repair, crew hire and port buy no longer consume from the
+  hand, so a plan that previously collided with an already-spent die now resolves instead of
+  typed-failing. Expect fuel-starvation days down, contracts-signed up, repair frequency up,
+  credits up — all by a SMALLER margin than T-196b's arm, because the instruments are not yet
+  exploiting the easing. That gap is the measurement this control arm exists to produce.
+- **Two null results predicted and confirmed before the sweep:** the engine day-loop goldens
+  (`day-loop-golden.ts`) come back byte-identical, because `endDay` marks the hand fully spent
+  either way and every freed verb still emits exactly one event, so `dayEventCount` and the
+  action-rng forks do not move; and all three protocol replay `rngState`s hold, for the same
+  reason. Both were verified, and the reasoning is recorded in each fixture's ledger.
+
+**Delivered (2026-08-04):** Nine action types stopped costing a dawn die, per
+`docs/DAWN-HAND-REDESIGN.md` §3, and the `spendDie` field was DELETED from their shapes rather
+than left optional-and-ignored. `packages/engine/src/types.ts` — the `Trade` member is SPLIT in
+two so `haggle` (whose die IS the `check(die, TRADE, 12)`) keeps `spendDie` while `buy-fuel` /
+`sign-contract` / `pay-debt` / `abandon-contract` reject it; `Shipyard`, `Crew` and `Port` lost
+the field outright. `packages/engine/src/schema.ts` — the same split as a NESTED
+`z.discriminatedUnion('action', …)` inside the outer `('type', …)` union, because zod rejects
+two options sharing a discriminator value; a stale caller's field is STRIPPED, not accepted,
+proved by the new `T-196a · the freed actions neither require nor accept spendDie` block in
+`schema.test.ts` (11 cases, plus `haggle` KEEPING its die and the outer discriminator still
+rejecting `{type:'Teleport'}`). Resolvers: `actions/trade.ts` (three arms, including the three
+`throw new Error('Must spend a die …')` that went with them), `actions/shipyard.ts` (one shared
+spend covering all four kinds), `actions/crew.ts` (both branches plus the whole three-way die
+validation), `actions/port.ts` (same). `resolveReroll` and `pay-debt` untouched, as ruled.
+`dice.ts`'s `spendDie` call-site ledger updated — eight sites left it, and the stale line
+numbers came out with them; `__tests__/spend-die-rerolls.test.ts` now guards the list in BOTH
+directions (the four freed families are off the manifest, and a new
+`T-196a · the M17 Free Actions consume no die` block drives all ten verbs through
+`applyPlayerAction` and asserts the hand is byte-identical across each).
+
+**The compile-error sweep, as designed (the T-146 required-param precedent inverted):**
+dropping the field produced **184 `TS2353` errors** across `packages/engine`, `packages/sim` and
+`packages/ui` — every stale call site, found by the compiler rather than by grep. All fixed
+MINIMALLY (field/argument deleted, nothing else). Four shorthand-property sites did NOT error
+(TS skips the excess-property check on a shorthand key inside a contextually-typed union
+return) and were found by a follow-up grep — recorded because the next person will hit it.
+The sim policies KEEP their die budgets (`appendDieAction`'s `dieActionCount < 5`,
+`planCaptainOverhead`'s one-purchase-a-day / dullest-die rule, every `ledger.takeWorst()`) and
+the protocol enumerator KEEPS advertising `spendDie` on the freed verbs; the UI keeps its
+armed-die gating. All three are marked in place with the task that owns them (T-196b, T-196c).
+
+**Acceptance evidence.** `day.test.ts` gained a `T-196a · Free Actions through the day loop`
+block: an EMPTY dawn hand (all five dice burned on `VisitHangout{rumor}` Main Actions) still
+signs, fuels, repairs, hires and buys a port, with `dawnHand.spent` asserted byte-identical
+before and after each; a day taking ZERO of them; a day taking EIGHT (more than the hand holds)
+with `dayEventCount` advancing once per emitted event and same-seed determinism proved by
+replaying the script and comparing `serializeState`; and `Trade/haggle` still costing its die as
+the control. Deliberate rewrites rather than deleted assertions at every named call site —
+`crew.test.ts` and `port.test.ts`'s `die-already-spent` cases (states now unreachable) are
+REPLACED by "a spent-out hand does not block it" and "it resolves with no dawn hand at all";
+`shipyard.test.ts`'s `expectSpentDie` helper is INVERTED to `expectDieUntouched` across all ~20
+call sites; `standards.test.ts`, `actions.test.ts`, `protocol.test.ts` and the UI e2e counts are
+inverted with the rule, never dropped. Three tests needed a NEW die burner because `buy-fuel`
+was the old one: `exploreAp.test.ts` uses `VisitHangout{rumor}` (read-only, one event per call,
+so `SEED_FORFEIT`'s rng fork is unmoved and the seed survived — verified, not assumed), and
+`save.test.ts`/`schema.test.ts` use `haggle`.
+
+**E2E was run, not skipped** (F-162-3's class): the full `npm run test:e2e -w @spacerquest/ui`
+suite found **10 red specs** that the unit gate did not. All fixed at the spec, none by
+re-pinning a number: `smoke`, `manifest-trade`, `shipyard`, `progression`, `dawn-hand`,
+`dead-affordance` and both `tour-one-career` runs. Two of those fixes are worth naming. (1) The
+die-arming helpers in `career.ts` / `manifest-trade` / `shipyard` / `dead-affordance` are now
+IDEMPOTENT: clicking the already-armed die DISARMS it (`store.ts` `selectDie`), which never
+mattered while every verb consumed its die and now does. (2) `dead-affordance`'s F-162-1 spec is
+rewritten around the DURABLE property rather than the retired trigger — the cockpit's armed
+state is read off the engine's own `spent` flag, so it agreed when the die was burnt and agrees
+now that it is not. 162/162 e2e green.
+
+**Goldens.** `day-loop-golden.ts`: **all four hashes came back BYTE-IDENTICAL**, and the null
+result is argued in the fixture's ledger rather than shrugged at — `endDay` marks the hand fully
+spent without nulling it, so the serialized final hand is all-true either way, and every freed
+verb still emits exactly ONE event so `dayEventCount` (which `day.ts` forks the action rng on)
+advances identically. `replay-golden.ts`: four of six constants moved, and WHICH four is the
+verification — all three `rngState`s hold (364866002 / 268015010 / -1231248819), the two SESSION
+constants for COMBAT and ABANDON do not move at all, and `REPLAY_GOLDEN_SESSION` differs by
+exactly three eventLog entries. Those three are the rows whose comments this task had to rewrite:
+the Crew hire and Port buy used to resolve `die-already-spent` and now ATTEMPT FOR REAL, landing
+`insufficient-credits`; the Reroll's reason moved `die-already-spent` -> `no-charge` because the
+`buy-fuel` that used to burn die 0 no longer does. Both fixture ledgers carry a `T-196a:` entry.
+
+**Capstone (arm 1 of the control-arm pair).** `npm run format` first, then 8 one-indexed shards
+(`--seeds 1000 --days 120 --policies trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy
+--milestone-days 21,29,30,41,60,120 --shard i/8`, every shard exit 0), then `--merge`, which
+printed `wrote aggregate for 8000 rows` and `PASS · 0 invariant violations` into
+`docs/balance/baseline-t196a-free-actions.json`. **The prediction was written into this file
+before the run** (see the block above) and held on the NPC side exactly:
+`fleet.npcSpecialEquipmentPurchasesPerRun` 44.1695 -> 44.2002 (+0.1%), inside shard noise, as
+argued from `npc.ts` importing only `applyShipyardMutation`/`quoteShipyard`/travel helpers and
+never these four resolvers. On the player side the prediction was RIGHT IN DIRECTION AND WRONG
+IN BREADTH, and the correction is the finding: **exactly two of the eight policy rows moved —
+`explorer` and `smuggler`, the only two that queue `Explore`.** `trader`, `trader-degraded`,
+`fighter`, `veteran`, `gambler` and `greedy` came back byte-identical on every headline metric.
+The mechanism that fits: `Explore` is the one verb that reads the REST of the hand at resolve
+time (`exploreOutcomes.ts` `payExtraDiceClaim` charges a band-3/4 find's `apCost` out of the
+remaining dice and forfeits the find when the hand is too thin), so freeing the day's refuel and
+signature changes what is left standing when it lands. Fleet: `tourOneClearRate` 0.6320 ->
+0.6305, median final credits 49,729 -> 49,517 (−0.4%), ships lost 436 -> 465 (+6.7%) with
+`explorer` 49 -> 66 and `smuggler` 46 -> 58 carrying all of it, `encountersPerRun` +0.0%,
+`fuelStarvationDays` 0 both sides. CROSS-CHECKED on an independent sample:
+`campaign-degraded.test.ts`'s `PINNED_FINGERPRINTS` (5 seeds × 40 days) moved the SAME two rows
+and held the same five — measured before/after through a `git stash` + rebuild, with the numbers
+written into each entry. `rulesFingerprint` `febc55edd3a94b3f` -> `55414694d7187afc`,
+`instrumentFingerprint` `836f9e8804ea2637` -> `6106da3575355153`, `docs` `31969df72ea3c1bd`;
+baseline of record re-pinned at **all five** BR-14 sites and `docs/balance/smoke/tiers.json`
+re-extracted from the new capstone.
+
+**One check was rewritten, and it is called out here because "never edit a check to make a test
+pass" is the standing rule.** `baseline-pointers.test.ts`'s banner-ordering test asserted
+`taskNumbers[0] === max(taskNumbers)` — i.e. that task ids increase with time. They do not in
+this repo (T-196a is the re-pin AFTER T-199; `TASKS.md` sequences T-199 first), so the numeric
+proxy would have demanded the banner be ordered OLDEST-first, the opposite of what the
+`npc-status-banner` extractor needs. It now asserts the property directly — the FIRST block in
+file order must name the baseline the authoritative pointer names — which is strictly stronger
+(a re-pin appended at the bottom still fails) and does not assume monotonic numbering. The other
+seven assertions in that file are untouched.
+
+**Save shape: unchanged (`CURRENT_SAVE_VERSION` stays 15), and one decision recorded rather than
+assumed.** `CrewEventFailReason` and `PortEventFailReason` each keep `no-die` /
+`invalid-die-index` / `die-already-spent` even though no code can emit them for a free action
+any more. Deleting an enum member is a save-shape break — the eventLog is persisted inside
+`GameState` and validated by a `.strict()` schema on load — and would owe a migration this task
+does not own, so all three survive as LEGACY-ONLY with that reasoning written at both the type
+and the zod site. `HangoutEvent`'s and `LendingEvent`'s copies are out of scope (T-196b/T-197).
+**OI-9 is CLOSED as a side effect and recorded as such** in `npc.ts` and `docs/NPC_REDESIGN.md`:
+it watched "the NPC refit pays no die while the player does", and M17 closed it from the other
+side — nobody pays a die at the yard now.
+
+**Deliberate scope boundaries.** The sim's day budgets, the protocol enumerator's `spendDie`
+advertising, and the cockpit's armed-die gating are ALL left exactly as they were, each marked
+in place with the task that owns it. That is not an oversight: this arm measures "rules eased,
+instruments not yet exploiting", and T-196b's arm measures the exploitation. `poverty-invariant.test.ts`'s
+advertisement-conformance checker was taught that an OMITTED die on a verb the engine will not
+accept one for is conformant (it still bites everywhere else, `Trade/haggle` included) rather
+than un-advertising the field here.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
 
 ### T-196b · Teach the instruments the free actions — sim policy day-budgets + the protocol enumerator — `status: TODO` · `coder: opus` · `after: T-196a`
 

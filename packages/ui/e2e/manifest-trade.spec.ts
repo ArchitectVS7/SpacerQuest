@@ -36,9 +36,16 @@ async function spentCount(page: Page): Promise<number> {
   return flags.filter((s) => s === '1').length;
 }
 
-/** Select the first unspent die in the hand. */
+/** Select the first unspent die in the hand.
+ *
+ *  T-196a · IDEMPOTENT ON PURPOSE — clicking the ALREADY-ARMED die DISARMS it
+ *  (`store.ts` `selectDie`). Free actions (M17, docs/DAWN-HAND-REDESIGN.md §3) do
+ *  not consume the armed die, so the same index can still be armed when this is
+ *  called again; clicking blindly would un-arm it. */
 async function selectUnspentDie(page: Page): Promise<void> {
-  await page.locator('[data-testid="die"][data-spent="0"]').first().click();
+  const die = page.locator('[data-testid="die"][data-spent="0"]').first();
+  if ((await die.getAttribute('aria-pressed')) !== 'true') await die.click();
+  await expect(die).toHaveAttribute('aria-pressed', 'true');
 }
 
 /** The tank half of the depot's `N/M` hold readout. */
@@ -97,33 +104,37 @@ test('full loop through the UI: sign, haggle, buy fuel, pay debt', async ({ page
   await selectUnspentDie(page);
   await page.getByTestId('contract').first().click();
 
-  // The signed job is now tracked, the board shrank by one, a second die is spent.
+  // The signed job is now tracked and the board shrank by one — but T-196a
+  // (docs/DAWN-HAND-REDESIGN.md §3) made signing a FREE ACTION, so the spent count
+  // is UNCHANGED at the one die the jump above burned. That inversion is the point
+  // of keeping the count here rather than deleting it.
   await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
   const signedText = await page.getByTestId('active-contract').innerText();
   expect(signedText).not.toContain('Hold is empty');
   await expect(page.getByTestId('contract')).toHaveCount(3);
-  expect(await spentCount(page)).toBe(2);
+  expect(await spentCount(page)).toBe(1);
 
-  // --- Haggle (honest d20 check) ---------------------------------------
+  // --- Haggle (honest d20 check — the trade desk's ONE surviving die cost) ----
   await selectUnspentDie(page);
   await page.getByTestId('haggle').first().click();
   await expect(page.getByTestId('check-breakdown')).toBeVisible();
   await expect(page.getByTestId('check-stat')).toHaveText('TRADE');
   await expect(page.getByTestId('check-dc')).toHaveText('12');
-  expect(await spentCount(page)).toBe(3);
+  expect(await spentCount(page)).toBe(2);
 
-  // --- Buy fuel (consumes a die) ---------------------------------------
+  // --- Buy fuel (FREE as of T-196a — costs credits, not a die) ---------------
   await expect(page.getByTestId('fuel-price')).toHaveText('8');
   const fuelBefore = await page.getByTestId('fuel-hold').innerText();
   await selectUnspentDie(page);
   await page.getByTestId('fuel-amount').fill('10');
   await page.getByTestId('buy-fuel').click();
-  // Fuel rose by exactly the ten paid for, and one more die was spent. Derived
+  // Fuel rose by exactly the ten paid for, and NO die was spent. Derived
   // from the tank as it stood, not a literal: the jump above no longer lands on a
   // fixed number (T-195's nav-die fuel discount).
   await expect(page.getByTestId('fuel-hold')).not.toHaveText(fuelBefore);
   await expect(page.getByTestId('fuel-hold')).toHaveText(`${fuelInTank(fuelBefore) + 10}/300`);
-  expect(await spentCount(page)).toBe(4);
+  // Still 2: the fuel bought is paid in credits, not dice (T-196a).
+  expect(await spentCount(page)).toBe(2);
   // (The die-free debt payment that opens this test — moved ahead of the fuel
   // burn for T-1103 — already exercised the ledger-transfer path.)
 });
@@ -136,7 +147,8 @@ test('signing a second contract is refused, and the refusal is visible', async (
   await page.getByTestId('contract').first().click();
   await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
   const active = await page.getByTestId('active-contract').innerText();
-  expect(await spentCount(page)).toBe(1);
+  // T-196a: signing is FREE, so nothing was consumed by the successful sign either.
+  expect(await spentCount(page)).toBe(0);
 
   // Try to sign a second offer while already carrying one.
   await selectUnspentDie(page);
@@ -145,8 +157,8 @@ test('signing a second contract is refused, and the refusal is visible', async (
   // The engine refusal surfaces as an on-screen notice — never silence.
   await expect(page.getByTestId('notice')).toBeVisible();
   await expect(page.getByTestId('notice')).toContainText('already carrying an active contract');
-  // No second die was silently consumed, and the tracker still shows job one.
-  expect(await spentCount(page)).toBe(1);
+  // Nothing was silently consumed, and the tracker still shows job one.
+  expect(await spentCount(page)).toBe(0);
   expect(await page.getByTestId('active-contract').innerText()).toBe(active);
 });
 
@@ -204,21 +216,30 @@ test('dumping the run clears the hold and re-opens the board', async ({ page }) 
   await page.getByTestId('contract').first().click();
   await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
   await expect(page.getByTestId('contract')).toHaveCount(3);
-  expect(await spentCount(page)).toBe(1);
+  // T-196a: signing is FREE — the hand is untouched throughout this test, which is
+  // exactly what the counts below now assert.
+  expect(await spentCount(page)).toBe(0);
 
-  // Never a dead click: with no die armed the control is visibly refused (the
-  // fuel-depot affordance), so the player is told what is missing rather than
-  // clicking into silence — and nothing is spent.
+  // Never a dead click: the release control still refuses while no die is armed
+  // (UI gating that T-196c retires; the ENGINE no longer wants a die), so the
+  // player is told what is missing rather than clicking into silence.
+  //
+  // T-196a · The disarm below is NEW SCAFFOLDING, not a weakened assertion. Signing
+  // no longer consumes the armed die, so the die armed for the signature is STILL
+  // armed here and the control would legitimately be enabled. Clicking the armed
+  // die disarms it (`store.ts` `selectDie`), which restores the no-die-armed state
+  // this guard is about.
+  await page.locator('[data-testid="die"][aria-pressed="true"]').click();
   await expect(page.getByTestId('abandon-contract')).toBeDisabled();
   await expect(page.getByTestId('abandon-contract')).toHaveAttribute('title', /Pick a die first/);
-  expect(await spentCount(page)).toBe(1);
+  expect(await spentCount(page)).toBe(0);
   await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
 
-  // Arm a die and dump: the hold empties and exactly one more die is spent.
+  // Arm a die and dump: the hold empties, and NO die is consumed doing it.
   await selectUnspentDie(page);
   await page.getByTestId('abandon-contract').click();
   await expect(page.getByTestId('active-contract-empty')).toBeVisible();
-  expect(await spentCount(page)).toBe(2);
+  expect(await spentCount(page)).toBe(0);
   // The dumped run does NOT return to the board — the crates were vented.
   await expect(page.getByTestId('contract')).toHaveCount(3);
 
@@ -226,7 +247,7 @@ test('dumping the run clears the hold and re-opens the board', async ({ page }) 
   await selectUnspentDie(page);
   await page.getByTestId('contract').first().click();
   await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
-  expect(await spentCount(page)).toBe(3);
+  expect(await spentCount(page)).toBe(0);
 });
 
 test('the manifest flags a storylet cargo (display-only, derived from content)', async ({

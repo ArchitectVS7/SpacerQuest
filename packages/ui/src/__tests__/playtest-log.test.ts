@@ -316,7 +316,7 @@ describe('T-141 · CSV is a flattening of the same JSONL', () => {
       sessionId: 's-1',
       day: 3,
       kind: 'action',
-      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 2, spendDie: 1 },
+      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 2 },
       events: [],
     },
     { sessionId: 's-1', day: 3, kind: 'annotation', note: 'ate my die, "again"' },

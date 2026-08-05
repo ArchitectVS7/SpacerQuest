@@ -141,7 +141,6 @@ function ensureFuel(state: GameState, minFuel = 90): GameState {
     type: 'Trade',
     action: 'buy-fuel',
     fuelAmount: units,
-    spendDie: die,
   }).state;
 }
 
@@ -273,7 +272,6 @@ describe('T-1505a Nemesis fragments — every acquisition mode yields a fragment
             action: 'buy-component-tier',
             component: 'drives',
             tier: 3,
-            spendDie: die,
           }).state;
         }
       }

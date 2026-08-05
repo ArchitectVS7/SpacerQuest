@@ -221,17 +221,21 @@ describe('protocol echo — full day', () => {
     expect(legal.lifecycle).toContain('end-day');
     expect(wireRoundTrip(r3.response)).toEqual(r3.response);
 
-    // apply-action #1: buy fuel, spending die 0
+    // apply-action #1: buy fuel — a FREE ACTION as of T-196a
+    // (docs/DAWN-HAND-REDESIGN.md §3), so the hand is UNTOUCHED. These two
+    // assertions were `not.toContain(0)` / `toHaveLength(4)`; they are inverted
+    // rather than dropped, because "the wire echoes the hand the engine actually
+    // kept" is the property this echo test exists to hold.
     const buyReq: ProtocolRequest = {
       type: 'apply-action',
-      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
     };
     expect(wireRoundTrip(buyReq)).toEqual(buyReq);
     const r4 = handleMessage(session2, buyReq);
     const session4 = r4.session;
     const result4 = expectActionResult(r4.response);
-    expect(result4.summary.diceRemaining).not.toContain(0);
-    expect(result4.summary.diceRemaining).toHaveLength(4);
+    expect(result4.summary.diceRemaining).toContain(0);
+    expect(result4.summary.diceRemaining).toHaveLength(5);
     expect(wireRoundTrip(r4.response)).toEqual(r4.response);
 
     // apply-action #2: travel, spending die 1 (may or may not hit an encounter)
@@ -388,7 +392,7 @@ describe('protocol deterministic replay', () => {
     const logLenBefore = encSession.state.eventLog.length;
     const blocked = handleMessage(encSession, {
       type: 'apply-action',
-      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
     });
     const blockedResult = expectActionResult(blocked.response);
     const blockEvent = blockedResult.events.find((e) => e.type === 'ActionBlocked');
@@ -407,10 +411,14 @@ describe('protocol deterministic replay', () => {
     expect(blockedResult.summary.diceRemaining).toEqual([0, 1, 2, 3, 4]);
 
     // A malformed action (missing required die) is a typed error, not a crash.
+    // T-196a: `buy-fuel` used to be the example — it threw without a `spendDie`.
+    // M17 freed it (docs/DAWN-HAND-REDESIGN.md §3) and deleted that throw, so the
+    // example is now `haggle`, the trade desk's ONE surviving die-costed verb and
+    // the only one that still throws on a missing die. Same contract, live example.
     const startDayed = handleMessage(opened.session, { type: 'start-day' });
     const malformed = handleMessage(startDayed.session, {
       type: 'apply-action',
-      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
+      action: { type: 'Trade', action: 'haggle', contractIndex: 0 },
     });
     expect(malformed.response.type).toBe('error');
     if (malformed.response.type === 'error') {
@@ -565,11 +573,13 @@ describe('explore malformed inputs through the adapter', () => {
   });
 
   it('already-spent die: emits ExplorationFailed(die-already-spent) with no crash', () => {
-    // Spend die 0 first (a successful buy-fuel), then Explore on the same index.
+    // Spend die 0 first, then Explore on the same index. T-196a: `buy-fuel` is a
+    // FREE ACTION now and spends nothing, so the burner is `haggle` — the trade
+    // desk's one surviving Main Action, which spends the die it is handed.
     const session = dayStartedSession();
     const spent = handleMessage(session, {
       type: 'apply-action',
-      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+      action: { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
     });
     expectActionResult(spent.response);
     let out: ReturnType<typeof handleMessage> | undefined;
@@ -596,7 +606,7 @@ describe('session serialization resume', () => {
       { type: 'start-day' },
       {
         type: 'apply-action',
-        action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+        action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
       },
     ]).session;
     expect(original).not.toBeNull();
@@ -1509,7 +1519,7 @@ describe('T-1604b · F2 poverty/immobility trap', () => {
     const session: ProtocolSession = { seed: 20260728, state: trap };
     const dumped = handleMessage(session, {
       type: 'apply-action',
-      action: { type: 'Trade', action: 'abandon-contract', spendDie: 0 },
+      action: { type: 'Trade', action: 'abandon-contract' },
     });
     const result = expectActionResult(dumped.response);
     expect(
@@ -1692,7 +1702,7 @@ describe('T-1703 · demo gate — legal-actions and the summary', () => {
     const state = richDayState('demo', 1710);
     const { response } = handleMessage(
       { seed: 1710, state },
-      { type: 'apply-action', action: { type: 'Port', action: 'buy', systemId: 1, spendDie: 0 } },
+      { type: 'apply-action', action: { type: 'Port', action: 'buy', systemId: 1 } },
     );
     const result = expectActionResult(response);
     expect(result.events).toContainEqual({

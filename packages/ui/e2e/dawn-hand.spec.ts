@@ -36,8 +36,12 @@ test('assigning a specific die spends exactly that index, value preserved', asyn
   await die.click();
   await expect(die).toHaveClass(/\bsel\b/);
 
-  // Assign it to the first contract by signing.
-  await page.getByTestId('contract').first().click();
+  // Assign it to the first contract by HAGGLING it. T-196a: signing used to be the
+  // assignment verb here, but M17 (docs/DAWN-HAND-REDESIGN.md §3) made signing a
+  // FREE ACTION — it spends no die, so it can no longer prove "the engine consumed
+  // THAT index". Haggle is the trade desk's one surviving Main Action and its die IS
+  // the TRADE check, which is exactly the property this test is about.
+  await page.getByTestId('haggle').first().click();
 
   const spent = await page
     .getByTestId('die')
@@ -82,13 +86,17 @@ test('day-end: an exhausted hand is clearly communicated', async ({ page }) => {
   await expect(page.getByTestId('die')).toHaveCount(5);
 
   // Spend every die through real actions: haggle each of the four contracts
-  // (dice 0-3, haggle leaves the board populated), then sign one (die 4).
+  // (dice 0-3, haggle leaves the board populated), then fly an off-lane sweep
+  // with die 4. T-196a: the fifth spend used to be a contract signature; M17
+  // (docs/DAWN-HAND-REDESIGN.md §3) made signing FREE, so it no longer exhausts
+  // the hand. `Explore` is the other Main Action reachable from the cockpit
+  // without leaving the system, so it takes the last die.
   for (let i = 0; i < 4; i++) {
     await page.getByTestId('die').nth(i).click();
     await page.getByTestId('haggle').nth(i).click();
   }
   await page.getByTestId('die').nth(4).click();
-  await page.getByTestId('contract').first().click();
+  await page.getByTestId('explore-sweep').click();
 
   // Every die spent.
   const spent = await page

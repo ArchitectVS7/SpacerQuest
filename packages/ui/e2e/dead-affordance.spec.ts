@@ -10,11 +10,22 @@ import { skipFirstTurnWalkthrough } from './support/career';
 // keeps them fixed: a randomized walk may or may not revisit the state, so each
 // gets a deterministic, named spec that reproduces it through the real UI.
 //
-// F-162-1 — `resolveTrade` spends the die BEFORE the affordability gate
-// (`packages/engine/src/actions/trade.ts:23`), so an unaffordable fill burns it.
-// `buyFuel` used to INFER the spend from the refusal and keep the selection, and
-// `armed` is `selectedDie !== null` everywhere — so one unaffordable fill left
-// the whole cockpit rendering armed while every click threw `Die already spent`.
+// F-162-1 — `resolveTrade` used to spend the die BEFORE the affordability gate, so
+// an unaffordable fill burnt it. `buyFuel` used to INFER the spend from the refusal
+// and keep the selection, and `armed` is `selectedDie !== null` everywhere — so one
+// unaffordable fill left the whole cockpit rendering armed while every click threw
+// `Die already spent`.
+//
+// T-196a · THE HALF OF F-162-1 THAT IS NOW STRUCTURALLY IMPOSSIBLE, and the half
+// that still needs guarding. M17 (docs/DAWN-HAND-REDESIGN.md §3) made `buy-fuel` a
+// FREE ACTION, so a refused fill can no longer burn anything — that specific
+// mis-armed state cannot be produced from this pane again. The DURABLE property is
+// the FIX, not the trigger: `store.ts` reads whether the die was committed off the
+// returned hand (`next.player.dawnHand?.spent[die]`) instead of inferring it, so
+// the cockpit's armed state always matches the engine's. The test below now asserts
+// that agreement — the hand is untouched AND the cockpit still reads armed, which
+// is the honest rendering — rather than the old burn. If a future rule re-prices
+// this verb, the same assertion flips back with the rule.
 //
 // F-162-2 — a second refusal whose words matched the first produced a
 // byte-identical DOM, so the cockpit looked inert rather than refusing again.
@@ -43,9 +54,12 @@ async function newGameSeed(page: Page, seed: number): Promise<void> {
   await expect(page.getByTestId('hand')).toBeVisible();
 }
 
-/** Arm the first unspent die, exactly as a player does. */
+/** Arm the first unspent die, exactly as a player does. IDEMPOTENT: clicking the
+ *  already-armed die DISARMS it (`store.ts` `selectDie`), and since T-196a a free
+ *  action leaves the selection standing, so a second call must not un-arm it. */
 async function armFirstDie(page: Page): Promise<void> {
-  await page.locator('[data-testid="die"][data-spent="0"]').first().click();
+  const die = page.locator('[data-testid="die"][data-spent="0"]').first();
+  if ((await die.getAttribute('aria-pressed')) !== 'true') await die.click();
   await expect(page.locator('[data-testid="die"][aria-pressed="true"]')).toHaveCount(1);
 }
 
@@ -58,7 +72,7 @@ async function askForUnaffordableFuel(page: Page): Promise<void> {
   await page.getByTestId('buy-fuel').click();
 }
 
-test('F-162-1 · an unaffordable fill releases the die it burned, so the cockpit stops claiming to be armed', async ({
+test("F-162-1 · the cockpit's armed state always agrees with the engine's hand after a refusal", async ({
   page,
 }) => {
   await newGameSeed(page, SEED);
@@ -70,20 +84,28 @@ test('F-162-1 · an unaffordable fill releases the die it burned, so the cockpit
   // The engine refused, and said so.
   await expect(page.getByTestId('notice')).toContainText('Not enough credits');
 
-  // The engine ALSO burned the die — that is the rule, and this spec does not
-  // argue with it. What must not happen is the cockpit keeping the selection.
-  await expect(page.locator('[data-testid="die"][data-spent="1"]')).toHaveCount(spentBefore + 1);
+  // T-196a · The refusal now burns NOTHING — `buy-fuel` is a Free Action, so the
+  // hand is byte-identical across a refused fill (this assertion was
+  // `spentBefore + 1`, inverted with the rule, not deleted).
+  await expect(page.locator('[data-testid="die"][data-spent="1"]')).toHaveCount(spentBefore);
+
+  // …and BECAUSE nothing was consumed, the cockpit legitimately stays armed. That
+  // is the invariant F-162-1 is really about: the rendered armed state is derived
+  // from the engine's own `spent` flag, never inferred from the refusal. It agreed
+  // when the die was burnt, and it agrees now that it is not.
   await expect(
     page.locator('[data-testid="die"][aria-pressed="true"]'),
-    'the burned die must be released — while it stayed armed, every die-gated control in the ' +
-      'cockpit rendered enabled and every click threw `Die already spent`',
-  ).toHaveCount(0);
+    'the selection must survive an action that consumed no die — inferring a spend ' +
+      'from a refusal is exactly the F-162-1 defect, in the opposite direction',
+  ).toHaveCount(1);
 
-  // The disarmed state is what the rest of the cockpit reads. Spot-check the two
-  // furthest-apart die-gated surfaces: the yard bench and the depot itself.
-  await expect(page.getByTestId('buy-pods')).toBeDisabled();
-  await expect(page.getByTestId('buy-pods')).toHaveAttribute('title', /Pick a die first/);
-  await expect(page.getByTestId('buy-fuel')).toBeDisabled();
+  // The armed state is what the rest of the cockpit reads. Spot-check the two
+  // furthest-apart die-gated surfaces: the yard bench and the depot itself. Neither
+  // may be refusing for want of a die, because the player really does still hold
+  // one. (`buy-pods` can still be disabled on its OWN terms — capacity or price —
+  // which is why the assertion is on the reason, not on the enabled flag.)
+  await expect(page.getByTestId('buy-pods')).not.toHaveAttribute('title', /Pick a die first/);
+  await expect(page.getByTestId('buy-fuel')).toBeEnabled();
 
   // And the failure mode itself is gone: nothing on screen is showing the raw
   // engine exception the false-armed state used to produce.

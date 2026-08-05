@@ -38,14 +38,14 @@ export const SEED = 1;
  *  single home shared by the test and the regenerator). */
 export const TEN_DAY_SCRIPT: PlayerAction[][] = [
   [
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 20, spendDie: 0 },
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 20 },
     { type: 'Travel', destinationId: 2, spendDie: 1 },
     { type: 'Trade', action: 'pay-debt', amount: 50 },
   ],
-  [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 5, spendDie: 1 }],
+  [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 5 }],
   [
     { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
-    { type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 1 },
+    { type: 'Trade', action: 'sign-contract', contractIndex: 0 },
     { type: 'Travel', destinationId: 3, spendDie: 2 },
   ],
   [
@@ -65,18 +65,18 @@ export const TEN_DAY_SCRIPT: PlayerAction[][] = [
     { type: 'Travel', destinationId: 4, spendDie: 0 },
   ],
   [{ type: 'Wait' }],
-  [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 }, { type: 'Wait' }],
+  [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 10 }, { type: 'Wait' }],
   [
     { type: 'Travel', destinationId: 5, spendDie: 0 },
     { type: 'Trade', action: 'pay-debt', amount: 100 },
   ],
   [
     { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 1 },
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
   ],
   [{ type: 'Travel', destinationId: 6, spendDie: 1 }],
   [
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 10 },
     { type: 'Wait' },
     { type: 'Trade', action: 'pay-debt', amount: 10 },
   ],
@@ -624,6 +624,24 @@ export function runDayLoopGolden(
 // moved EVENT hash on a change of this shape would have meant the restored charge
 // had leaked into a resolution path; that is the regression to chase, and the
 // reason both event hashes are asserted unchanged rather than merely regenerated.
+//
+// T-196a (M17 · the administrative actions went FREE), 2026-08-04. ALL FOUR HASHES
+// CAME BACK BYTE-IDENTICAL FROM THE REGENERATOR — and, as with T-182 above, that
+// null result is the verification, not a footnote. `TEN_DAY_SCRIPT` fires five
+// `buy-fuel`s and a `sign-contract`, every one of which used to burn a die and now
+// burns none, so the "no move" needs an argument:
+//   1. STATE. The only thing that changed mid-day is `dawnHand.spent`, and `endDay`
+//      marks the hand FULLY SPENT without nulling it (`day.ts`), so the hand that
+//      reaches `serializeState(finalState)` is all-true either way. Nothing else in
+//      these scripts reads a hand.
+//   2. EVENTS. No `TradeEvent` payload ever carried the die, and every freed action
+//      still emits exactly ONE event, so `dayEventCount` — which `day.ts` forks the
+//      action rng on — advances identically. Same forks, same draws, same stream.
+// A MOVED HASH HERE would have meant the freeing had leaked into an outcome path
+// (an extra/missing event, or a hand surviving to the save differently), which is
+// precisely the regression to chase. The `rulesFingerprint` capstone is where this
+// change's real effect is measured: the sim's policies, unlike this script, plan
+// against a die BUDGET, and freeing five verbs frees that budget.
 //
 // Regenerated via gen-day-loop-golden.ts. Never hand-edited.
 export const DAY_LOOP_GOLDEN_STATE_HASH =

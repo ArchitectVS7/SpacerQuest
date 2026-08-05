@@ -14,6 +14,18 @@ ruling: Befriend's Guile check rolls an **internal d20** (§5's blocker, resolve
 encounter-farming loop, now as *verification* that X = 3 holds it rather than as an open
 question.
 
+**SHIPPED, PART 1 — T-196a (2026-08-04): the nine administrative actions are FREE in the
+ENGINE.** `sign-contract`, `buy-fuel`, `abandon-contract`, all four `Shipyard` kinds, `Crew`
+hire/dismiss and the `Port` buy no longer take a die: the `spendDie` field is gone from those
+action shapes in `packages/engine/src/types.ts` AND from the zod schema in `schema.ts` (a stale
+caller's field is stripped, never accepted), and the four resolvers no longer touch the dawn
+hand at all. `haggle` is untouched — its die IS the TRADE check. No new cap was added to any of
+the nine, per §3's exploit analysis. What T-196a deliberately did NOT do, so the two capstone
+arms stay attributable: the sim policies still budget a die for them (`packages/sim/src/index.ts`)
+and the protocol enumerator still advertises `spendDie` on them (`protocol.ts`) — that is
+T-196b; the cockpit still gates the buttons on an armed die — that is T-196c. §4's caps and the
+Hangout rows are T-197.
+
 ## 1 · The complaint, and the two separate problems it turned out to be
 
 Owner, live playtest: *"it was not at all apparent why I was adding a d20 to any of my tasks...

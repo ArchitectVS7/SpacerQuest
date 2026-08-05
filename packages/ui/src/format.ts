@@ -2260,7 +2260,6 @@ export function shipDiagram(game: GameState): ShipDiagramModel {
     type: 'Shipyard',
     action: 'repair',
     repairMode: 'all',
-    spendDie: 0,
   }).before;
   const components = shipComponents(game);
   const roster = crewRoster(game);
@@ -2413,7 +2412,6 @@ export function specialEquipmentRows(game: GameState): SpecialEquipmentRow[] {
         type: 'Shipyard',
         action: 'buy-special-equipment',
         equipment: id,
-        spendDie: 0,
       }),
     };
   });

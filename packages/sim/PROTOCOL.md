@@ -209,8 +209,13 @@ or large, so the enumerator exposes the action *shape* and each parameter's
   roll (unbounded outcome), noted, not enumerated.
 - **abandon-contract** (T-1604b) — advertised only while a die is in hand **and**
   `player.activeContract` is set, so it is never a guaranteed refusal. `spendDie`
-  is its only parameter. Costs one die and the forfeited payment; there is **no
-  credit fee**, so a destitute captain can always free the hold. The dumped
+  is its only parameter. **T-196a (M17, `docs/DAWN-HAND-REDESIGN.md` §3): it costs
+  NO die — only the forfeited payment.** The enumerator still gates it on a die in
+  hand and still advertises `spendDie`; the engine ignores the field (zod strips
+  it). That staleness is deliberate and belongs to T-196b, which moves the
+  instruments. The same applies to `buy-fuel`, `sign-contract`, every `Shipyard`
+  kind, `Crew` hire/dismiss and the `Port` buy. There is **no credit fee** on the
+  dump, so a destitute captain can always free the hold. The dumped
   contract does **not** return to `market.manifestBoard`. This is the escape
   hatch for a hold carrying an undeliverable run — sign-contract stays
   unadvertised while the hold is full.
@@ -295,8 +300,9 @@ Applies a single `PlayerAction` through the engine's **public** API
   No die is spent and no fuel is burned on these three; each also logs a
   `WireEntry`. The same event reports Explore's *mechanical* failures —
   `nav-check` and `insufficient-fuel` — which do spend the die.
-- **Malformed** (a resolver rejects the action's shape, e.g. a Trade, Shipyard,
-  or Combat action missing its **required** `spendDie`) → `error` `apply-failed`;
+- **Malformed** (a resolver rejects the action's shape, e.g. a `Trade{haggle}` or
+  Combat action missing its **required** `spendDie`, or a `buy-fuel` with no
+  `fuelAmount`) → `error` `apply-failed`;
   the session is not mutated. Note this does not apply to `Explore`, whose
   missing/invalid die resolves as a typed `ExplorationFailed` event (above).
 - **Wrong phase** (not DAY) → `error` `wrong-phase`.

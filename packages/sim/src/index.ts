@@ -1706,11 +1706,14 @@ export function availablePlannedActions(state: GameState): PlayerAction[] {
 
   const fuelToBuy = affordableFuelAmount(state);
   if (state.player.ship.fuel < state.player.ship.maxFuel && fuelToBuy >= 1) {
-    appendDieAction(actions, (spendDie) => ({
+    // T-196a: buy-fuel is a FREE ACTION now, so the builder takes no die. It still
+    // goes through `appendDieAction` — the day-plan budget is deliberately UNCHANGED
+    // in this task (the control arm); T-196b is where the instruments stop budgeting
+    // for it.
+    appendDieAction(actions, () => ({
       type: 'Trade',
       action: 'buy-fuel',
       fuelAmount: fuelToBuy,
-      spendDie,
     }));
   }
 
@@ -1852,7 +1855,6 @@ export const greedyTraderPolicy: SimPolicy = ({ state }) => {
       type: 'Trade',
       action: 'sign-contract',
       contractIndex: 0,
-      spendDie: 0,
     },
   ];
 
@@ -2106,7 +2108,7 @@ function planRefuel(
   const die = ledger.takeWorst();
   if (die === undefined) return null;
   return {
-    action: { type: 'Trade', action: 'buy-fuel', fuelAmount: units, spendDie: die },
+    action: { type: 'Trade', action: 'buy-fuel', fuelAmount: units },
     cost: units * price,
   };
 }
@@ -2148,7 +2150,7 @@ function planCrippledRepair(
   if (state.player.credits + extraCredits - need.cost < reserve) return null;
   const die = ledger.takeWorst();
   if (die === undefined) return null;
-  return { type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: die };
+  return { type: 'Shipyard', action: 'repair', repairMode: 'all' };
 }
 
 /**
@@ -2191,7 +2193,6 @@ function crippledRepairNeed(state: GameState): {
     type: 'Shipyard',
     action: 'repair',
     repairMode: 'all',
-    spendDie: 0,
   });
   const repairable = quote.ok || quote.failure?.reason === 'INSUFFICIENT_CREDITS';
   return { needed: true, repairable, cost: quote.cost };
@@ -2794,12 +2795,14 @@ function planBerthUpgrade(state: GameState, spendable: number): OverheadPick | n
   if (!Number.isFinite(cost) || cost > spendable) return null;
   return {
     cost,
-    make: (spendDie) => ({
+    // T-196a: the shipyard is FREE now, so the builder takes no die. The
+    // "one die-costed purchase a day, with the dullest die" budget in
+    // `planCaptainOverhead` is deliberately UNCHANGED here (the control arm).
+    make: () => ({
       type: 'Shipyard',
       action: 'buy-component-tier',
       component: 'cabin',
       tier,
-      spendDie,
     }),
   };
 }
@@ -2829,7 +2832,8 @@ function planCrewHire(state: GameState, spendable: number): OverheadPick | null 
     if (role.hirePrice + role.dailyWage * CREW_WAGE_RUNWAY_DAYS > spendable) continue;
     return {
       cost: role.hirePrice,
-      make: (spendDie) => ({ type: 'Crew', action: 'hire', roleId: role.id, spendDie }),
+      // T-196a: a hire is FREE now — no die in the built action.
+      make: () => ({ type: 'Crew', action: 'hire', roleId: role.id }),
     };
   }
   return null;
@@ -2864,7 +2868,8 @@ function planPortStake(state: GameState, spendable: number): OverheadPick | null
   if (quote.cost * PORT_SURPLUS_COVER > spendable) return null;
   return {
     cost: quote.cost,
-    make: (spendDie) => ({ type: 'Port', action: 'buy', systemId, spendDie }),
+    // T-196a: a port buy is FREE now — no die in the built action.
+    make: () => ({ type: 'Port', action: 'buy', systemId }),
   };
 }
 
@@ -3214,7 +3219,6 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: best.index,
-        spendDie: signDie,
       });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
 
@@ -3248,7 +3252,6 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
             type: 'Trade',
             action: 'sign-contract',
             contractIndex: liveIndex,
-            spendDie: secondSignDie,
           });
           actions.push({
             type: 'Travel',
@@ -3531,7 +3534,6 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
         action: 'buy-component-tier',
         component: 'drives',
         tier: 3,
-        spendDie: die,
       });
     }
   } else if (ship.navigation.strength < 30 && state.player.credits >= SMUGGLER_RESERVE / 2) {
@@ -3548,7 +3550,6 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
         action: 'buy-component-tier',
         component: 'navigation',
         tier: 3,
-        spendDie: die,
       });
     }
   }
@@ -3716,7 +3717,6 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
       type: 'Shipyard',
       action: 'repair',
       repairMode: 'all',
-      spendDie: 0,
     });
     if (
       quote.ok &&
@@ -3724,7 +3724,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     ) {
       const die = ledger.takeWorst();
       if (die !== undefined) {
-        actions.push({ type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: die });
+        actions.push({ type: 'Shipyard', action: 'repair', repairMode: 'all' });
       }
     }
   }
@@ -3752,7 +3752,6 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: best.index,
-        spendDie: signDie,
       });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
       projectedFuel -= primaryFuelNeed;
@@ -3818,7 +3817,6 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
       action: 'buy-component-tier',
       component: 'drives',
       tier: 3,
-      spendDie: 0,
     });
     if (refitQuote.ok && refitQuote.cost <= state.player.credits + borrowed - repaid - refuelCost) {
       const die = ledger.takeWorst();
@@ -3828,7 +3826,6 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
           action: 'buy-component-tier',
           component: 'drives',
           tier: 3,
-          spendDie: die,
         });
       }
     }
@@ -4385,7 +4382,6 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: best.index,
-        spendDie: signDie,
       });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
     }
@@ -4500,7 +4496,6 @@ function componentTierNetCost(
     action: 'buy-component-tier',
     component,
     tier,
-    spendDie: 0,
   }).cost;
 }
 
@@ -4585,7 +4580,6 @@ function planFighterUpgrade(state: GameState, ledger: DieLedger): PlayerAction |
         action: 'buy-component-tier',
         component: pick.component,
         tier: pick.tier,
-        spendDie: die,
       };
     }
   }
@@ -4727,7 +4721,6 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: best.index,
-        spendDie: signDie,
       });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
     }
@@ -5003,7 +4996,6 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
         action: 'buy-component-tier',
         component: 'drives',
         tier: 3,
-        spendDie: die,
       });
       drivesCost = componentTierNetCost(state, 'drives', 3);
     }
@@ -5134,7 +5126,6 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: best.index,
-        spendDie: signDie,
       });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
     }
@@ -5310,7 +5301,7 @@ function planSpecialEquipment(
     if (state.player.credits < reserve + cost) continue;
     const die = ledger.takeWorst();
     if (die === undefined) return null;
-    return { type: 'Shipyard', action: 'buy-special-equipment', equipment, spendDie: die };
+    return { type: 'Shipyard', action: 'buy-special-equipment', equipment };
   }
   return null;
 }
@@ -5571,7 +5562,6 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: idx,
-        spendDie: signDie,
       });
       actions.push({
         type: 'Travel',
@@ -5591,7 +5581,7 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   ) {
     const die = ledger.takeWorst();
     if (die !== undefined) {
-      actions.push({ type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1, spendDie: die });
+      actions.push({ type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1 });
     }
   }
   const upgrade = planFighterUpgrade(state, ledger);

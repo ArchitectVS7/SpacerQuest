@@ -139,7 +139,6 @@ describe('shipDiagram · invents no numbers', () => {
       type: 'Shipyard',
       action: 'repair',
       repairMode: 'all',
-      spendDie: 0,
     }).before;
 
     for (const row of rows) {
