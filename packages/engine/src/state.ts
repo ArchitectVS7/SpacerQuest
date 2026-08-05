@@ -9,7 +9,7 @@ import {
 } from './types.js';
 import { NPC_PROFILES, QUEST_PROFILES, Stat } from '@spacerquest/content';
 import { computeMatchCounts, emptyDeedRegistry, rankForDeedCount } from './deeds.js';
-import { npcShipForProfile, seedNpcShip } from './npc.js';
+import { npcShipForProfile, questHomePortForProfile, seedNpcShip } from './npc.js';
 import { JOB_POOL_MAX_CLAIMS, calculateFuelCapacity, syncMaxFuel } from './economy.js';
 import { computePlayerTier, syncPlayerTier } from './tier.js';
 import { seedLiarsDicePurses } from './liarsDiceRules.js';
@@ -82,7 +82,22 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
     id: p.id,
     name: p.name,
     profileId: p.id,
-    currentSystemId: (index % 20) + 1, // Spread them out
+    // T-208 · A QUEST captain is born at the CORE PORT their content declares
+    // (`NpcProfile.homePortSystemId`, required on all 11 `QUEST_PROFILES` and
+    // forbidden on the 30 `NPC_PROFILES`) and NEVER LEAVES IT. That is a fact about
+    // the engine, not a hope: the only two writers of `NpcState.currentSystemId` in
+    // the repo are `npc.ts`'s `executeTrade` and `executeTravel`, both reachable
+    // only through `resolveNpcDay`, whose one production caller (`day.ts` endDay) is
+    // gated by `if (!isSimulatedCaptain(npc.profileId)) continue`. A quest captain
+    // never enters the dusk loop, so this seed is their position for the whole
+    // career — which is why it can be authored, and why it being ARBITRARY mattered:
+    // before T-208 the `% 20` below parked six of the eleven at rim systems with no
+    // Cantina at all.
+    // The 30 SIMULATED captains keep the arbitrary spread unchanged — they occupy
+    // indices 0-29 (quest records are appended after them), so every one of them
+    // lands on exactly the system they landed on before, and their position is
+    // earned state the dusk loop rewrites from here on.
+    currentSystemId: p.homePortSystemId ?? (index % 20) + 1, // Spread the roamers out
     credits: 5000,
     // N1 · Every captain is born owning a real ship, seeded by the engine's
     // single mapping (npc.ts `npcShipForProfile`, which the v9→v10 save migration
@@ -369,6 +384,22 @@ export function deserializeState(json: string): GameState {
     // no rank is synthesised from `npc.profileId`'s tier — a migrated tier-5 captain
     // loads as LIEUTENANT with zero deeds, because they earned nothing yet.
     npc.registry ??= emptyDeedRegistry();
+    // T-208 save-compat: a carried save was written by an engine that seeded quest
+    // captains at an arbitrary `(index % 20) + 1`, which parked six of the eleven at
+    // rim systems with no Cantina. The SAME re-seed `MIGRATIONS[16]` applies for the
+    // envelope path, through the SAME rule (`questHomePortForProfile`), because the
+    // loader path runs `migrate` and never comes through this function — both halves
+    // exist or one path is broken.
+    // UNCONDITIONAL AND IDEMPOTENT, not a `??=`, and that is the point: a quest
+    // captain's `currentSystemId` is never written by anything after birth (the only
+    // two writers, `executeTrade`/`executeTravel`, sit behind `day.ts`'s
+    // `isSimulatedCaptain` gate), so it is a constant of CONTENT rather than state
+    // the captain earned. Re-asserting it is therefore always true, and cannot
+    // confiscate progress the way N2 warned re-seeding a SIMULATED captain would.
+    // `undefined` for the 30 and for an unrecognised id, both of which are left
+    // exactly where they are.
+    const homePort = questHomePortForProfile(npc.profileId);
+    if (homePort !== undefined) npc.currentSystemId = homePort;
   });
   // N10 save-compat: pre-N10 states carry a single `market.npcClaims` scalar —
   // claims against the player's system only. Move it onto that system's pool and

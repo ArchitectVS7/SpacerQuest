@@ -1261,6 +1261,64 @@ const UNCHANGED_POLICIES = [
 // for the freeing to change. `hangoutPlay.visits` is 0 on that row, which is the
 // same fact measured a second way.
 //
+// ENTRY 34 (T-208 — THE ELEVEN QUEST CAPTAINS GET A HOME PORT).
+// TWO OF THE SEVEN ROWS MOVE — `gambler` and `greedy` — and this time the mover
+// list is the finding, because ONE OF THE TWO IS THE CONTROL ROW.
+//
+// THE CAUSE, STATED BEFORE THE NUMBERS. `createInitialState` used to seed all 41
+// roster records at `(index % 20) + 1`. `QUEST_PROFILES` occupy indices 30-40, so
+// six of the eleven landed on RIM systems (15-20) — and a quest captain NEVER
+// MOVES (the only two writers of `currentSystemId` sit behind `day.ts`'s
+// `isSimulatedCaptain` gate, which they never pass), so those six sat there for
+// the whole career, at ports with no Cantina. T-208 replaced that seed with the
+// core port each captain's own content declares (`NpcProfile.homePortSystemId`).
+// NO POLICY, PLANNER OR RULE CHANGED — only where eleven records stand on day 1.
+//
+// WHY THAT REACHES A CAREER AT ALL, in exactly two places, both of which read a
+// roster record's POSITION without asking whether it is simulated:
+//   (a) `resolveVisitHangout` (`engine/actions/hangout.ts`) picks its Dare dealer
+//       and social target from `npcs.filter(n => !n.dead && n.currentSystemId ===
+//       player.currentSystemId)` — no `isSimulatedCaptain` filter. Quest captains
+//       ARE seatable dealers wherever they sit, and they carry a fixed 5,000cr
+//       purse. Moving five of them onto core ports puts more dealers where the
+//       gambler actually plays: `hangoutPlay.visits` 281 -> 301 over these seeds.
+//   (b) the BOND HOOK (`day.ts`) requires `npc.currentSystemId ===
+//       player.currentSystemId`. Doc Salvage is the game's only `fuel-gift` hook
+//       and is a quest captain; he moved from Antares-5 (15) to Sol-3 (1), so the
+//       fuel-gift now has to land at the home port instead of at that rim system.
+//       That is the whole of the `greedy` delta — see below.
+//
+// MEASURED over these exact five seeds x 40 days, before -> after (summed):
+//     policy     credits              deeds
+//     trader     131,747 -> 131,747    75 ->  75   (unmoved)
+//     fighter     49,399 ->  49,399    64 ->  64   (unmoved)
+//     explorer    69,158 ->  69,158   107 -> 107   (unmoved)
+//     veteran     39,414 ->  39,414    68 ->  68   (unmoved)
+//     smuggler    67,190 ->  67,190   115 -> 115   (unmoved)
+//     gambler    127,628 -> 147,288    93 ->  93   (MOVED)
+//     greedy       7,280 ->   7,640    36 ->  37   (MOVED — the control row)
+//     `hangoutPlay.failedVisits`: 0 on EVERY row, before and after. Nothing plans
+//     a Hangout beat the resolver then refuses; the extra gambler visits are real
+//     opens against real dealers, not queued refusals.
+//
+// THE CONTROL ROW MOVED, AND THAT IS NOT A LEAK — it is (b), isolated. `greedy`
+// has `hangoutPlay.visits` 0 before and after, so channel (a) cannot be its cause.
+// Diffing its five reports, ONLY SEED 1 differs at all; the other four are
+// byte-identical. On seed 1 the divergence begins on DAY 7 with the player's fuel
+// reading 136 before and 86 after — a 50-unit gap, and 50 is exactly Doc Salvage's
+// `bondHook.fuelAmount`. The greedy trader was standing at Antares-5 (15) that
+// day, which is where the old arbitrary seed had parked Doc; he is at Sol-3 now,
+// so the mayday goes unanswered and the career diverges from there. One captain,
+// one port, one seed — the narrowest possible confirmation that the ONLY thing
+// this task changed is where eleven records stand.
+//
+// AND THE SAME MECHANISM, MEASURED A SECOND WAY: `campaign-reach.test.ts`'s
+// T-1204 bond-reachability test re-pinned its seed after a fresh 1..30 sweep, and
+// found NINE qualifying seeds against the previous sweep's eight. Doc Salvage at
+// the home port is slightly EASIER to reach than Doc Salvage at a rim system —
+// which is the answer to the obvious worry that this row's delta means the hook
+// got harder to fire. It did not. NOTHING WAS TUNED IN RESPONSE to either number.
+//
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
   // so the trader borrows and repays on the day it needs to rather than on the day
@@ -1555,14 +1613,25 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // TUNED IN RESPONSE: `LIARS_DICE_ROUNDS_PER_DAY` is content, it ships at §4b's
   // suggested shape, and the capstone (not this fingerprint) is where its effect is
   // judged.
-  gambler: 'b4ebcc423e673ca2',
+  // ENTRY 34 (T-208): re-derived — the LOUDER of the two rows, and the only one
+  // whose cause is channel (a). Five quest captains moved onto core ports the
+  // gambler plays at, and `resolveVisitHangout` seats a co-located NPC as the Dare
+  // dealer without asking whether they are simulated — so there are simply more
+  // tables. `hangoutPlay.visits` 281 -> 301, credits 127,628 -> 147,288, deeds
+  // UNCHANGED at 93 (the extra hands pay, they do not unlock anything new).
+  gambler: 'a608c24db00513cd',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).
   // ENTRY 32 (T-196b): UNCHANGED, and deliberately the control — see the header's
   // entry 32. `greedyTraderPolicy`'s only edit deletes a dead `spendDie: 0` that
   // zod already stripped, so its careers are bit-for-bit what they were.
-  greedy: 'd17a5e39f79918c6',
+  // ENTRY 34 (T-208): re-derived, AND IT IS NO LONGER THE CONTROL — for the first
+  // time in this table the greedy row moves, on ONE of its five seeds, through the
+  // bond hook rather than through anything it does itself. See the header's entry
+  // 34 for the day-7 / 50-fuel isolation that pins the cause to Doc Salvage's move
+  // off Antares-5. Credits 7,280 -> 7,640, deeds 36 -> 37.
+  greedy: '18404cd9bdb2257e',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

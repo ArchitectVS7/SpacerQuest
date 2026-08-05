@@ -13,8 +13,10 @@ import {
   FLAWS,
   NEMESIS_SYSTEM_ID,
   ALL_NPC_PROFILES,
+  QUEST_PROFILES,
   RENOWN_DEED_THRESHOLDS,
   SIGNAL_FRAGMENTS,
+  STAR_SYSTEMS,
   type RenownRankId,
 } from '@spacerquest/content';
 import { validateGameState } from '../schema.js';
@@ -499,8 +501,9 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     // spent no plays and opened no capped rounds), and neither value is a literal,
     // so `MIGRATIONS[15]` CALLS `freshDailyHangoutCaps` rather than restating it —
     // the `seedLiarsDicePurses` precedent one paragraph up. This pin moved WITH an
-    // intended bump; it is a version pin, not a threshold.
-    expect(CURRENT_SAVE_VERSION).toBe(16);
+    // intended bump; it is a version pin, not a threshold. (T-208 moved it again,
+    // 16 → 17, for the quest captains' declared home ports.)
+    expect(CURRENT_SAVE_VERSION).toBe(17);
   });
 });
 
@@ -1105,10 +1108,11 @@ describe('save envelope — the full Nemesis file round-trips with no migration 
     // per-system job pool, N11 11 → 12 for `NpcState.registry` and T-111 12 → 13
     // for `PlayerState.recovery` and T-135 13 → 14 for the root-level
     // `GameState.dareHand` and T-145 14 → 15 for the fixed Liar's Dice roster's
-    // persisted state and T-197 15 → 16 for the two daily Hangout caps, so this
+    // persisted state and T-197 15 → 16 for the two daily Hangout caps and T-208
+    // 16 → 17 for the quest captains' declared home ports, so this
     // pins the CURRENT version rather than
     // claiming the fragment file caused it.)
-    expect(CURRENT_SAVE_VERSION).toBe(16);
+    expect(CURRENT_SAVE_VERSION).toBe(17);
   });
 
   it('strict schema still rejects an unknown fragment source (drift protection covers it)', () => {
@@ -1157,9 +1161,10 @@ describe('save envelope — an ended career round-trips with no migration (T-150
     // N11 11 → 12 for `NpcState.registry`, T-111 12 → 13 for
     // `PlayerState.recovery`, T-135 13 → 14 for `GameState.dareHand` and T-145
     // 14 → 15 for the fixed Liar's Dice roster's persisted state and T-197
-    // 15 → 16 for the two daily Hangout caps; this
+    // 15 → 16 for the two daily Hangout caps and T-208 16 → 17 for the quest
+    // captains' declared home ports; this
     // pins the CURRENT version.)
-    expect(CURRENT_SAVE_VERSION).toBe(16);
+    expect(CURRENT_SAVE_VERSION).toBe(17);
   });
 
   it('strict schema still rejects an unknown ActionBlocked reason (drift protection)', () => {
@@ -1379,10 +1384,10 @@ describe('save envelope — v12 → v13 recovery migration (T-111)', () => {
 // ---------------------------------------------------------------------------
 describe('save envelope — the explore-module fields round-trip with no migration (T-112)', () => {
   it('CURRENT_SAVE_VERSION is STILL the current one — a pure addition owes no bump', () => {
-    // Moved 14 → 15 by T-145's roster migration and 15 → 16 by T-197's two daily
-    // Hangout caps, both intended bumps owed by a real save-shape change — not by
-    // this task's pure field addition.
-    expect(CURRENT_SAVE_VERSION).toBe(16);
+    // Moved 14 → 15 by T-145's roster migration, 15 → 16 by T-197's two daily
+    // Hangout caps and 16 → 17 by T-208's quest-captain home ports, every one an
+    // intended bump owed by a real change — not by this task's pure field addition.
+    expect(CURRENT_SAVE_VERSION).toBe(17);
   });
 
   it('round-trips a fitted module and a bonus tank through createSave → loadSave', () => {
@@ -1509,5 +1514,130 @@ describe('save envelope — v15 → v16 daily Hangout caps migration (T-197)', (
     const fresh = createInitialState(1);
     expect(restored.player.socialPlaysRemaining).toBe(fresh.player.socialPlaysRemaining);
     expect(restored.player.dareRoundsToday).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-208 · v16 → v17 · the quest captains' declared home ports
+// ---------------------------------------------------------------------------
+//
+// THE ONLY ENTRY IN THE REGISTRY THAT CHANGES NO SHAPE. Every key it touches
+// (`npcs[].currentSystemId`) already exists on a v16 save and is already required
+// by the strict schema. It is a VALUE migration, owed for the v7→v8 reason: the
+// RULE behind a persisted DERIVED value moved. A quest captain is written by
+// nothing after birth (the two writers of `currentSystemId` sit behind `day.ts`'s
+// `isSimulatedCaptain` gate, which they never pass), so their position is a constant
+// of content that a stale save is simply carrying the old value of — which is what
+// makes re-seeding them safe here where N2 refused it for the simulated 30.
+describe('save envelope — v16 → v17 quest captain home ports (T-208)', () => {
+  const questIds = new Set(QUEST_PROFILES.map((p) => p.id));
+
+  /** A v16 save: a real state with the eleven quest captains put back at the
+   *  arbitrary rim/core systems the pre-T-208 `(index % 20) + 1` seed gave them. */
+  function v16Envelope(seed = 4): { version: number; state: unknown } {
+    const state = JSON.parse(serializeState(drive50Days(seed))) as {
+      npcs: { profileId: string; currentSystemId: number }[];
+    };
+    const order = ALL_NPC_PROFILES.map((p) => p.id);
+    for (const npc of state.npcs) {
+      if (!questIds.has(npc.profileId)) continue;
+      npc.currentSystemId = (order.indexOf(npc.profileId) % 20) + 1;
+    }
+    return { version: 16, state };
+  }
+
+  it('a v16 save really does park six of the eleven where there is no Cantina', () => {
+    // The fixture has to be the OLD WORLD or the migration test proves nothing.
+    const env = v16Envelope() as {
+      state: { npcs: { profileId: string; currentSystemId: number }[] };
+    };
+    const stranded = env.state.npcs.filter(
+      (n) => questIds.has(n.profileId) && STAR_SYSTEMS[n.currentSystemId]?.hasHangout !== true,
+    );
+    expect(stranded).toHaveLength(6);
+  });
+
+  it('moves every quest captain to the port their CONTENT declares', () => {
+    const loaded = loadSave(JSON.stringify(v16Envelope())).state;
+    for (const profile of QUEST_PROFILES) {
+      const npc = loaded.npcs.find((n) => n.profileId === profile.id)!;
+      expect(npc.currentSystemId, profile.id).toBe(profile.homePortSystemId);
+      expect(STAR_SYSTEMS[npc.currentSystemId]?.hasHangout, profile.id).toBe(true);
+    }
+  });
+
+  it('leaves every SIMULATED captain exactly where the save left them', () => {
+    // The N2 clause, machine-checked: a captain the simulation has been writing must
+    // not be re-seeded — that would confiscate a career.
+    const env = v16Envelope(9) as {
+      version: number;
+      state: { npcs: { profileId: string; currentSystemId: number }[] };
+    };
+    const before = new Map(
+      env.state.npcs
+        .filter((n) => !questIds.has(n.profileId))
+        .map((n) => [n.profileId, n.currentSystemId]),
+    );
+    expect(before.size).toBe(30);
+    const loaded = loadSave(JSON.stringify(env)).state;
+    for (const npc of loaded.npcs) {
+      if (questIds.has(npc.profileId)) continue;
+      expect(npc.currentSystemId, npc.profileId).toBe(before.get(npc.profileId));
+    }
+  });
+
+  it('is IDEMPOTENT — running it on an already-correct save changes nothing', () => {
+    const correct = JSON.parse(serializeState(drive50Days(11))) as object;
+    const once = migrate({ version: 16, state: correct });
+    const twice = migrate({ version: 16, state: once });
+    expect(JSON.stringify(twice)).toBe(JSON.stringify(once));
+    // …and it was already a no-op the first time, because `createInitialState` seeds
+    // from the same rule the migration reads.
+    expect(JSON.stringify(once)).toBe(JSON.stringify(correct));
+  });
+
+  it('leaves an UNRESOLVABLE profileId exactly as-is rather than throwing', () => {
+    // A migration must never throw and must never teleport a record it cannot
+    // identify. Hand-edited saves and dropped cast members both land here.
+    const state = JSON.parse(serializeState(drive50Days(12))) as {
+      npcs: { profileId: string; currentSystemId: number }[];
+    };
+    state.npcs[0].profileId = 'npc-who-is-this';
+    state.npcs[0].currentSystemId = 19;
+    const migrated = migrate({ version: 16, state }) as {
+      npcs: { profileId: string; currentSystemId: number }[];
+    };
+    expect(migrated.npcs[0].currentSystemId).toBe(19);
+  });
+
+  it('a migrated v16 save still passes the STRICT schema', () => {
+    expect(() => loadSave(JSON.stringify(v16Envelope(7)))).not.toThrow();
+    expect(() => validateGameState(migrate(v16Envelope(8)))).not.toThrow();
+  });
+
+  it('THE ROUND TRIP: createSave → loadSave preserves every position exactly', () => {
+    const state = drive50Days(13);
+    const positions = state.npcs.map((n) => n.currentSystemId);
+    const restored = loadSave(createSave(state, 13)).state;
+    expect(restored.npcs.map((n) => n.currentSystemId)).toEqual(positions);
+    // …and through `deserializeState` too — the OTHER loader path, the one that
+    // never runs `migrate` and the half a save-compat backfill is most often
+    // forgotten on. Its backfill is unconditional, so this also proves the two
+    // paths agree rather than merely both existing.
+    const direct = deserializeState(serializeState(state));
+    expect(direct.npcs.map((n) => n.currentSystemId)).toEqual(positions);
+  });
+
+  it('deserializeState re-seeds a legacy state, matching the migration', () => {
+    const env = v16Envelope(14) as { state: object };
+    const restored = deserializeState(JSON.stringify(env.state));
+    for (const profile of QUEST_PROFILES) {
+      const npc = restored.npcs.find((n) => n.profileId === profile.id)!;
+      expect(npc.currentSystemId, profile.id).toBe(profile.homePortSystemId);
+    }
+  });
+
+  it('CURRENT_SAVE_VERSION is 17 — an intended bump owed by a real value change', () => {
+    expect(CURRENT_SAVE_VERSION).toBe(17);
   });
 });

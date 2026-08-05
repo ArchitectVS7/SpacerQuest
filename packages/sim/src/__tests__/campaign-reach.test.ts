@@ -925,7 +925,35 @@ describe('T-1204 disposition with teeth (unguided 300-day sim)', () => {
     // the first qualifier.
     // PINNED, NOT STEERED: only the seed changed; the loop body and both
     // assertions are untouched.
-    const CAMPAIGN_SEED = 1;
+    // T-208 re-pin (seed 1 -> 2), and this is the mechanism the header warns about
+    // firing for the SIXTH time — with one difference worth stating, because it is
+    // the whole reason this test moved at all.
+    //
+    // THE CAUSE. Doc Salvage is the game's only `fuel-gift` bondHook, and he is a
+    // QUEST captain — one of the eleven who take no dusk turn and therefore never
+    // move. Before T-208 `createInitialState` seeded him at an ARBITRARY
+    // `(index % 20) + 1` = Antares-5 (15), a RIM system with no Cantina, and he sat
+    // there for the whole 300 days. The bond hook's candidate filter (`day.ts`:
+    // `npc.currentSystemId === player.currentSystemId`) therefore fired only when
+    // the unguided veteran happened to be at Antares-5 on a tank at or below 150.
+    // T-208 moved him to the port his own content declares — Sol-3 (1), where
+    // `chain.doc-salvage.distress-ping` triggers — so the conjunction now has to
+    // land at the HOME PORT instead. Nothing about the bond arc, the decay, the
+    // deltas or the co-location rule changed.
+    //
+    // RE-SWEEP (seeds 1..30, 300-day horizon, this exact committed test driven
+    // through a temporary env-var seed override so the swept code IS the shipped
+    // code — the N4 re-pin's own technique): seeds 2, 3, 4, 7, 9, 13, 15, 21 and 28
+    // land BOTH signals. That is NINE qualifiers in 30 against the previous sweep's
+    // eight in 30 — the conjunction got slightly MORE reachable, not less, which is
+    // what you would expect from parking the only fuel-gift captain at the one port
+    // every career passes through. Every other seed fires the >= 5 grudge but never
+    // the bond, unchanged in character from all five previous re-pins.
+    // Seed 2 is the first qualifier: bond intervention on day 7, peak
+    // |disposition| 6 on day 5.
+    // PINNED, NOT STEERED: only the seed changed; the loop body and both
+    // assertions are untouched.
+    const CAMPAIGN_SEED = 2;
     let state = createInitialState(CAMPAIGN_SEED);
     let sawBond = false;
     let peakDisposition = 0;

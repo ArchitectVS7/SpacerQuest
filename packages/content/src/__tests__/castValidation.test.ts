@@ -6,8 +6,11 @@ import {
   LIARS_DICE_DICE_COUNT_PHRASE,
   NPC_PROFILES,
   QUEST_PROFILES,
+  STAR_SYSTEMS,
   defineNpcProfiles,
+  defineQuestProfiles,
   validateNpcVoices,
+  validateQuestHomePorts,
   validateQuestVoices,
   type BattleCatchphrases,
   type NpcProfile,
@@ -464,5 +467,121 @@ describe('T-206 · the 30 captains are 30 voices, not one template', () => {
     // Function words alone will overlap; a template would overlap far harder.
     expect(shared.length).toBeLessThan(Math.min(vex.size, clad.size) / 2);
     expect(linesOf(profileFor('npc-iron-vex'))).not.toEqual(linesOf(profileFor('npc-iron-clad')));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8 · T-208 · THE DECLARED HOME PORT
+// ---------------------------------------------------------------------------
+//
+// A quest captain never moves — the only two writers of `NpcState.currentSystemId`
+// live behind `day.ts`'s `isSimulatedCaptain` gate, which they never pass — so their
+// position is a constant of CONTENT, and `homePortSystemId` is where it is authored.
+// Before T-208 the engine seeded them at an arbitrary `(index % 20) + 1`, which
+// froze six of the eleven at rim systems with no Cantina, forever.
+//
+// The ENGINE-side half of this (that `createInitialState` actually reads the field,
+// and that a career of dusks never moves anybody) is in
+// `packages/engine/src/__tests__/day.test.ts`, because it has to resolve a row
+// through the engine — the Part I hosting rule this file's header states.
+
+describe('T-208 · every quest captain declares a core port with a Cantina', () => {
+  it('all eleven carry a `homePortSystemId`', () => {
+    expect(QUEST_PROFILES).toHaveLength(11);
+    for (const profile of QUEST_PROFILES) {
+      expect(profile.homePortSystemId, `${profile.id}`).toBeTypeOf('number');
+    }
+  });
+
+  it('every declared port is one of the 14 core ports AND has a bar', () => {
+    // Both, not either: `hasHangout` is the rule the validator enforces (a captain
+    // must be meetable at a Cantina) and 1-14 is the ask's own wording. They agree
+    // today; asserting both means a future rim port that gained a bar would still
+    // surface here as a decision rather than slipping through.
+    for (const profile of QUEST_PROFILES) {
+      const id = profile.homePortSystemId!;
+      expect(id, `${profile.id}`).toBeGreaterThanOrEqual(1);
+      expect(id, `${profile.id}`).toBeLessThanOrEqual(14);
+      expect(STAR_SYSTEMS[id]?.hasHangout, `${profile.id} at ${STAR_SYSTEMS[id]?.name}`).toBe(true);
+    }
+  });
+
+  it('no SIMULATED captain declares one — the asymmetry, checked the other way', () => {
+    // The mirror. A simulated captain's position is earned state `resolveNpcDay`
+    // rewrites every dusk, so a `homePortSystemId` on one of the 30 would be a claim
+    // false by the first jump — and `createInitialState` would silently honour it,
+    // pulling that record out of the `(index % 20) + 1` spread.
+    for (const profile of NPC_PROFILES) {
+      expect(profile.homePortSystemId, `${profile.id}`).toBeUndefined();
+    }
+  });
+
+  it('the shipped quest roster passes `validateQuestHomePorts`', () => {
+    expect(validateQuestHomePorts(QUEST_PROFILES)).toEqual([]);
+  });
+});
+
+describe('T-208 · `validateQuestHomePorts` is PROVEN ABLE TO GO RED', () => {
+  /** The real quest roster with ONE captain's home port replaced. */
+  function questRosterWith(id: string, homePortSystemId: unknown): NpcProfile[] {
+    return QUEST_PROFILES.map((profile) =>
+      profile.id === id
+        ? ({ ...profile, homePortSystemId } as unknown as NpcProfile)
+        : { ...profile },
+    );
+  }
+
+  const VICTIM = 'npc-rust-bucket';
+
+  it('a MISSING home port is an error naming the captain', () => {
+    const errors = validateQuestHomePorts(questRosterWith(VICTIM, undefined));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(VICTIM);
+    expect(errors[0]).toContain('missing');
+  });
+
+  it('a RIM port — no Cantina — is an error naming the captain and the port', () => {
+    // 15 is Antares-5, and this is not a hypothetical: it is exactly where the old
+    // `(index % 20) + 1` seed parked Doc Salvage.
+    expect(STAR_SYSTEMS[15]?.hasHangout ?? false).toBe(false);
+    const errors = validateQuestHomePorts(questRosterWith(VICTIM, 15));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(VICTIM);
+    expect(errors[0]).toContain('no Cantina');
+  });
+
+  it('a NON-INTEGER home port is an error', () => {
+    const errors = validateQuestHomePorts(questRosterWith(VICTIM, 3.5));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('integer');
+  });
+
+  it('a port id that is not in STAR_SYSTEMS at all is an error', () => {
+    const errors = validateQuestHomePorts(questRosterWith(VICTIM, 999));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('not a system');
+  });
+
+  it('EVERY offender is listed, not just the first — the `defineDeeds` shape', () => {
+    const broken: NpcProfile[] = QUEST_PROFILES.map((profile) => ({
+      ...profile,
+      homePortSystemId: undefined,
+    }));
+    expect(validateQuestHomePorts(broken)).toHaveLength(QUEST_PROFILES.length);
+  });
+
+  it('`validateNpcVoices` rejects a home port on a SIMULATED captain', () => {
+    const errors = validateNpcVoices(rosterWith(AUTHORED_ID, { homePortSystemId: 1 }));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(AUTHORED_ID);
+    expect(errors[0]).toContain('homePortSystemId');
+  });
+
+  it('`defineQuestProfiles` THROWS at import time on a bad home port', () => {
+    expect(() =>
+      defineQuestProfiles(
+        questRosterWith(VICTIM, 15) as (NpcProfile & { homePortSystemId: number })[],
+      ),
+    ).toThrow(/Invalid quest profile content/);
   });
 });

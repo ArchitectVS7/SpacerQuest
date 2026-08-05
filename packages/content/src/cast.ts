@@ -103,6 +103,32 @@ export interface NpcProfile {
    * {@link NpcProfile.tableTalk} above. Reader: T-207's combat readout.
    */
   catchphrases?: BattleCatchphrases;
+  /**
+   * T-208 · The CORE PORT this captain sits at for an entire career.
+   *
+   * OPTIONAL ON THE INTERFACE, REQUIRED ON EVERY `QUEST_PROFILES` ROW AND ABSENT
+   * FROM EVERY `NPC_PROFILES` ROW — the exact INVERSE of {@link NpcProfile.tableTalk}'s
+   * asymmetry, and for the same structural reason read the other way round. The 30
+   * simulated captains are mortal and take a turn every dusk, so their position is
+   * EARNED STATE that `resolveNpcDay` writes (`npc.ts` `executeTrade` /
+   * `executeTravel` are the only two writers of `NpcState.currentSystemId` in the
+   * repo). The 11 quest captains take no turn at all ({@link isSimulatedCaptain}
+   * gates the dusk loop at `day.ts`), so their position is a FROZEN CONSTANT OF
+   * CONTENT — which is precisely why it can be authored here, and why authoring it
+   * on a simulated captain would be a lie the first time they jumped.
+   *
+   * MUST NAME A PORT WITH A CANTINA (`STAR_SYSTEMS[id].hasHangout === true`).
+   * `castValidation.ts` enforces that at IMPORT, against `hasHangout` rather than
+   * `id <= 14`, because the Cantina is the REASON the constraint exists: a quest
+   * captain the player can never meet at a bar is a record parked where nothing can
+   * reach it, which is exactly the state T-208 found (six of the eleven were frozen
+   * at rim systems that have no bar at all).
+   *
+   * ENGINE READERS: `packages/engine/src/state.ts` — `createInitialState` (birth)
+   * and `deserializeState` (the carried-save backfill), plus `save.ts`
+   * `MIGRATIONS[16]`, which reads this same field rather than restating a table.
+   */
+  homePortSystemId?: number;
 }
 
 /**
@@ -1023,6 +1049,22 @@ export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
   },
 ]);
 
+/**
+ * The 11 QUEST captains. They take no simulated turn ({@link isSimulatedCaptain}
+ * excludes them from the dusk loop) and are excluded from the named-interceptor
+ * pool by construction (`actions/travel.ts` `buildNamedCandidates` resolves against
+ * `NPC_PROFILES`, not `ALL_NPC_PROFILES`).
+ *
+ * T-208 · EVERY ROW CARRIES A `homePortSystemId`, and the field is REQUIRED here by
+ * the `QuestProfile` type `defineQuestProfiles` takes. Each one names a CORE PORT
+ * (1-14, all of which carry `hasHangout`), chosen by reading that captain's own
+ * content: where a storylet or hangout line already puts them somewhere, that is the
+ * port; where nothing does, the comment says "no location implied" in the open
+ * rather than inventing geography. Before T-208 these eleven took an arbitrary
+ * `(index % 20) + 1` seed in `createInitialState`, which parked six of them at rim
+ * systems that have no Cantina — frozen forever somewhere the player cannot meet
+ * them at a bar.
+ */
 export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
   {
     id: 'npc-silk-dagger',
@@ -1035,6 +1077,9 @@ export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
     flawDc: 12,
     tier: 4,
     archetype: 'gambler',
+    // T-208 · Altair-3 — her chain's opener `chain.silk-dagger.marker` triggers on
+    // `systemIds: [3]` (storylets.ts), so this is where the questline starts.
+    homePortSystemId: 3,
   },
   {
     id: 'npc-lucky-seven',
@@ -1047,6 +1092,10 @@ export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
     flawDc: 16,
     tier: 2,
     archetype: 'gambler',
+    // T-208 · Mira-9 — `passenger.gambler.debt` (storylets.ts, `systemIds: [8]`) says
+    // in so many words that Seven "wants off Mira-9 before a card debt catches up":
+    // his one located line puts him at that port, waiting on a ride out.
+    homePortSystemId: 8,
   },
   {
     id: 'npc-rattlesnake',
@@ -1059,6 +1108,9 @@ export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
     flawDc: 14,
     tier: 3,
     archetype: 'trader',
+    // T-208 · Aldebaran-1 — his chain's opener `chain.rattlesnake.insult` triggers on
+    // `systemIds: [2]` (storylets.ts).
+    homePortSystemId: 2,
   },
   {
     id: 'npc-penny-wise',
@@ -1071,6 +1123,10 @@ export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
     flawDc: 12,
     tier: 2,
     archetype: 'trader',
+    // T-208 · Sol-3 — the Long Table's `borrow` flavour names her desk there:
+    // 'Penny Wise keeps a corner desk here…' (portHangouts.ts `SUN_3_HANGOUT`), the
+    // only port in the game that names her.
+    homePortSystemId: 1,
   },
   {
     id: 'npc-doc-salvage',
@@ -1083,6 +1139,10 @@ export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
     flawDc: 15,
     tier: 2,
     archetype: 'trader',
+    // T-208 · Sol-3 — `chain.doc-salvage.distress-ping` triggers on `systemIds: [1]`
+    // (storylets.ts). Sharing the port with Penny Wise is fine: nothing requires a
+    // captain to have a Cantina to themselves, and both reasons are independent.
+    homePortSystemId: 1,
     bondHook: {
       beat: 'fuel-gift',
       activateAt: 2,
@@ -1103,6 +1163,9 @@ export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
     flawDc: 17,
     tier: 3,
     archetype: 'gambler',
+    // T-208 · Denebola-5 — `chain.wild-card.pitch` triggers on `systemIds: [6]`
+    // (storylets.ts) and its prose has him corner the player at Denebola-5.
+    homePortSystemId: 6,
   },
   {
     id: 'npc-smuggler-ray',
@@ -1115,6 +1178,12 @@ export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
     flawDc: 13,
     tier: 3,
     archetype: 'gambler',
+    // T-208 · NO LOCATION IMPLIED by any content — his fence storylets
+    // (`fence.ray.sealed-pod`, `fence.ray.contraband-cargo`) trigger on CARGO, not on
+    // a system, and `explore-npc-smuggler-ray` is a mark cut into a derelict's frame,
+    // a remote contact rather than a place. Placed at Rigel-8, the Underhold, whose
+    // `clientele.archetypes` is ['smuggler','gambler'] (portHangouts.ts).
+    homePortSystemId: 12,
   },
   {
     id: 'npc-stellar-monk',
@@ -1127,6 +1196,9 @@ export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
     flawDc: 8,
     tier: 3,
     archetype: 'smuggler',
+    // T-208 · Deneb-4 — his chain's opener `chain.stellar-monk.empty-hold` triggers on
+    // `systemIds: [5]` (storylets.ts).
+    homePortSystemId: 5,
   },
   {
     id: 'npc-void-whisper',
@@ -1139,6 +1211,9 @@ export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
     flawDc: 14,
     tier: 4,
     archetype: 'veteran',
+    // T-208 · Mira-9 — `npc.void-whisper.psalm-shard` triggers on `systemIds: [8]`
+    // (storylets.ts).
+    homePortSystemId: 8,
   },
   {
     id: 'npc-the-broker',
@@ -1151,6 +1226,9 @@ export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
     flawDc: 12,
     tier: 4,
     archetype: 'trader',
+    // T-208 · Arcturus-6 — his chain's opener `chain.the-broker.ledger` triggers on
+    // `systemIds: [4]` (storylets.ts).
+    homePortSystemId: 4,
   },
   {
     id: 'npc-rust-bucket',
@@ -1163,6 +1241,9 @@ export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
     flawDc: 13,
     tier: 1,
     archetype: 'trader',
+    // T-208 · Fomalhaut-2 — `npc.rust-bucket.scrap-sliver` triggers on `systemIds: [7]`
+    // (storylets.ts) and its prose puts his pile at Fomalhaut-2.
+    homePortSystemId: 7,
   },
 ]);
 

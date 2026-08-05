@@ -131,6 +131,33 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > one shared path moved. The `.scratch/t125-hangout.ts` lineage is retired
 > (`docs/HANGOUT_REDESIGN.md` §10.7 carries the counter → field map).
 >
+> **BASELINE OF RECORD RE-PINNED AT T-208 (2026-08-05)** to
+> `docs/balance/baseline-t208-quest-captain-ports.json` — the **M19 MILESTONE CLOSER**, and a
+> **CONTENT-AND-ENGINE** capstone: the 11 `QUEST_PROFILES` captains now sit at a **DECLARED
+> HOME PORT** (`NpcProfile.homePortSystemId`, content) read once at birth by
+> `createInitialState` (engine), replacing the arbitrary `(index % 20) + 1` seed that had
+> parked **six of the eleven at rim systems with no Cantina** — permanently, because a quest
+> captain never moves. Same shape as the outgoing capstone: 1,000 seeds × 120 days ×
+> 8 policies = 8,000 rows, eight one-indexed shards then `--merge`,
+> `--milestone-days 21,29,30,41,60,120`, spreads harvested. Gate PASS, **0 invariant
+> violations**. One fingerprint moves and one does not, by construction: `rulesFingerprint`
+> `cbb087860825aa35` → `2f93098dc9ab15f0` (content is hashed WHOLESALE and `state.ts` /
+> `save.ts` are hashed engine rule modules), while `instrumentFingerprint` is **UNMOVED** at
+> `5c230e99648cddee` (nothing under `packages/sim/src` outside `__tests__` was touched) and
+> `docsFingerprint` moves `5ca4979722c55ee1` → `a88b9aa992f78ec6`. `CURRENT_SAVE_VERSION`
+> **DOES** move, 16 → **17** (re-read live at `packages/engine/src/save.ts`): `MIGRATIONS[16]`
+> re-seeds a carried save's quest captains through the same `questHomePortForProfile` rule the
+> two loader paths read, and `save.test.ts` carries the round-trip and the idempotence proof.
+> **`balance:diff` = SIX OF TEN ROWS MOVED** — fleet, explorer, gambler, greedy, smuggler and
+> veteran, with fighter, trader and trader-degraded byte-identical. **THE MOVE WAS PREDICTED
+> IN WRITING BEFORE THE RUN** (`TASKS.md` T-208) together with its channel:
+> `resolveVisitHangout` resolves a Dare dealer and a social target from co-located NPCs
+> **without an `isSimulatedCaptain` filter**, and the bond hook requires co-location too, so
+> relocating eleven records changes which captain is in which room. Headline movement is small
+> in every direction — fleet `tourOneClearRate` 0.6329 → 0.6348, fleet `finalCredits.median`
+> 49,839 → 49,687, fleet `survival.deathsPer1000Days` 0.5125 → 0.5146. **NOTHING WAS TUNED IN
+> RESPONSE**, no band was widened and no threshold moved.
+>
 > **BASELINE OF RECORD RE-PINNED AT T-206 (2026-08-05)** to
 > `docs/balance/baseline-t206-captain-voice.json` — a **CONTENT-ONLY** capstone shipping the
 > authored VOICE of the cast: `tableTalk` (2-4 Liar's Dice lines) and `catchphrases`
@@ -2582,7 +2609,22 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t206-captain-voice.json`** (1,000
+   > **Baseline of record is `docs/balance/baseline-t208-quest-captain-ports.json`** (1,000
+   > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-208 2026-08-05 — the M19
+   > milestone closer, giving the 11 `QUEST_PROFILES` captains a DECLARED HOME PORT
+   > (`NpcProfile.homePortSystemId`) in place of the arbitrary `(index % 20) + 1` seed that
+   > had frozen six of them at rim systems with no Cantina for an entire career.
+   > `rulesFingerprint` moves `cbb087860825aa35` → `2f93098dc9ab15f0`;
+   > `instrumentFingerprint` does NOT (unmoved at `5c230e99648cddee`), so the attribution is
+   > single-arm. SIX OF TEN ROWS MOVED — fleet, explorer, gambler, greedy, smuggler, veteran;
+   > fighter, trader and trader-degraded byte-identical — PREDICTED IN WRITING BEFORE THE RUN
+   > (`TASKS.md` T-208) with the channel named: `resolveVisitHangout` seats a co-located Dare
+   > dealer with no `isSimulatedCaptain` filter, and the bond hook requires co-location.
+   > Movement is small in every headline (fleet `tourOneClearRate` 0.6329 → 0.6348). Gate
+   > PASS, 0 invariant violations, nothing tuned in response. `CURRENT_SAVE_VERSION` moves
+   > 16 → 17 with `MIGRATIONS[16]`, which re-seeds a carried save's quest captains through the
+   > same rule the two loader paths read.
+   > Before that: **`docs/balance/baseline-t206-captain-voice.json`** (1,000
    > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-206 2026-08-05 — a
    > CONTENT-ONLY capstone shipping the cast's authored VOICE: `tableTalk` and the four
    > `catchphrases` slots for the 27 captains T-205 left on its `VOICE_AUTHORING_PENDING`

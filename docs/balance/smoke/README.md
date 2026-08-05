@@ -107,14 +107,21 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t206-captain-voice.json`, re-pinned at
-T-206 2026-08-05 — a CONTENT-ONLY capstone shipping the cast's authored VOICE: `tableTalk`
-and the four `catchphrases` slots for the 27 captains T-205 left on its
-`VOICE_AUTHORING_PENDING` worklist, which T-206 deletes, so voice is required of all 30
-`NPC_PROFILES` unconditionally. It moves `rulesFingerprint` (5ae9a5d473827024 ->
-cbb087860825aa35 — content is hashed wholesale, so authored prose moves it even though
-nothing reads these lines until T-207) and NOT `instrumentFingerprint` (unmoved at
-5c230e99648cddee). EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL — "NOTHING
+exactly like drift. The current baseline (`baseline-t208-quest-captain-ports.json`, re-pinned at
+T-208 2026-08-05 — the M19 milestone closer, giving the 11 `QUEST_PROFILES` captains a
+DECLARED HOME PORT (`NpcProfile.homePortSystemId`) instead of the arbitrary
+`(index % 20) + 1` seed that had frozen six of them at rim systems with no Cantina for a whole
+career. It moves `rulesFingerprint` (cbb087860825aa35 -> 2f93098dc9ab15f0 — content is hashed
+wholesale, and `state.ts` / `save.ts` are hashed engine rule modules) and NOT
+`instrumentFingerprint` (unmoved at 5c230e99648cddee). SIX OF THE TEN ROWS MOVED — fleet,
+explorer, gambler, greedy, smuggler, veteran; fighter, trader and trader-degraded came back
+byte-identical — which was PREDICTED IN WRITING BEFORE THE RUN with its channel named
+(`resolveVisitHangout` picks a co-located Dare dealer with no `isSimulatedCaptain` filter, and
+the bond hook requires co-location). Headline movement is small in every direction: fleet
+`tourOneClearRate` 0.6329 -> 0.6348, fleet `finalCredits.median` 49,839 -> 49,687. Gate PASS,
+0 invariant violations, nothing tuned in response. The one before it was
+`baseline-t206-captain-voice.json` (T-206), a CONTENT-ONLY capstone shipping the cast's
+authored VOICE, where EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL — "NOTHING
 MOVED. Every compared field is equal on both sides." — predicted in writing before the run
 (`TASKS.md` T-206), where a moved row was pre-committed as a finding to escalate rather than
 something to re-baseline around. Gate PASS, 0 invariant violations;

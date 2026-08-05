@@ -172,8 +172,22 @@ const TRADER_CLEAR_DAY_MAX = 30;
 // only correct outcome: nothing reads either field until T-207, so a moved row would have
 // meant something consumes the profile object wholesale and would have been filed as a
 // finding. The bands below are UNTOUCHED — there was nothing to re-derive.
+// RE-PINNED AT T-208 (2026-08-05) to `baseline-t208-quest-captain-ports.json` — the M19
+// milestone closer, and the first capstone in this run whose rows actually MOVED. T-208 gives
+// the 11 `QUEST_PROFILES` captains a declared home port (`NpcProfile.homePortSystemId`)
+// instead of the arbitrary `(index % 20) + 1` seed that had frozen six of them at rim systems
+// with no Cantina for a whole career. `rulesFingerprint` cbb087860825aa35 ->
+// 2f93098dc9ab15f0; `instrumentFingerprint` UNMOVED at 5c230e99648cddee, so the attribution
+// is single-arm. SIX OF TEN ROWS MOVED (fleet, explorer, gambler, greedy, smuggler, veteran;
+// fighter / trader / trader-degraded byte-identical) — PREDICTED IN WRITING BEFORE THE RUN
+// (`TASKS.md` T-208) with its channel named: `resolveVisitHangout` resolves a Dare dealer from
+// co-located NPCs with no `isSimulatedCaptain` filter, and the bond hook requires co-location,
+// so relocating eleven records changes who is in which room. The movement is small in every
+// headline (fleet tourOneClearRate 0.6329 -> 0.6348, fleet finalCredits.median 49,839 ->
+// 49,687). Gate PASS, 0 invariant violations. THE BANDS BELOW ARE UNTOUCHED — nothing was
+// tuned to meet a number.
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
-  new URL('../../../../docs/balance/baseline-t206-captain-voice.json', import.meta.url),
+  new URL('../../../../docs/balance/baseline-t208-quest-captain-ports.json', import.meta.url),
 );
 const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
   label: string;

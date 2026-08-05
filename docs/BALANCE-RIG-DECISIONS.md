@@ -121,18 +121,28 @@ read at runtime, and therefore the authoritative one), amendment 1's own pointer
 `docs/NPC_REDESIGN.md`'s status banner, `docs/balance/smoke/README.md`'s "current
 baseline" line, and — added at T-182 — **this rule's own "current baseline of record"
 sentence below** — with the smoke fixture re-extracted FROM the new capstone file. The current
-baseline of record is `docs/balance/baseline-t206-captain-voice.json` (8,000 rows, 8
-one-indexed shards, spreads harvested, `sweepLabel t206-captain-voice`; re-pinned at T-206
-2026-08-05 — a CONTENT-ONLY capstone shipping the cast's authored VOICE: `tableTalk` and the
-four `catchphrases` slots for the 27 captains T-205 left on its `VOICE_AUTHORING_PENDING`
-worklist, which T-206 deletes along with the branch that read it, so voice is required of all
-30 `NPC_PROFILES` unconditionally. It moves `rulesFingerprint` (5ae9a5d473827024 ->
-cbb087860825aa35 — content is hashed wholesale into the fingerprint, so authored prose moves
-it even though nothing reads these lines until T-207) and NOT `instrumentFingerprint`
-(unmoved at 5c230e99648cddee), so it is a clean single-arm attribution. EVERY ONE OF THE
-EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL — "NOTHING MOVED. Every compared field is equal on
-both sides." — predicted in writing before the run (`TASKS.md` T-206), where a moved row was
-pre-committed as a finding to escalate rather than something to re-baseline around. Gate
+baseline of record is `docs/balance/baseline-t208-quest-captain-ports.json` (8,000 rows, 8
+one-indexed shards, spreads harvested, `sweepLabel t208-quest-captain-ports`; re-pinned at
+T-208 2026-08-05 — the M19 MILESTONE CLOSER, a CONTENT-AND-ENGINE capstone that gives the 11
+`QUEST_PROFILES` captains a DECLARED HOME PORT (`NpcProfile.homePortSystemId`) instead of the
+arbitrary `(index % 20) + 1` seed that had parked six of them at rim systems with no Cantina
+for an entire career. It moves `rulesFingerprint` (cbb087860825aa35 -> 2f93098dc9ab15f0 —
+content is hashed wholesale, and `state.ts` / `save.ts` are hashed engine rule modules) and
+NOT `instrumentFingerprint` (unmoved at 5c230e99648cddee — nothing under `packages/sim/src`
+outside `__tests__` was touched), so it is a clean single-arm attribution. SIX OF THE TEN ROWS
+MOVED — fleet, explorer, gambler, greedy, smuggler and veteran — with fighter, trader and
+trader-degraded byte-identical. THE MOVE WAS PREDICTED IN WRITING BEFORE THE RUN (`TASKS.md`
+T-208) and its channel named: `resolveVisitHangout` picks its Dare dealer from co-located NPCs
+with no `isSimulatedCaptain` filter, and the bond hook requires co-location too, so moving
+eleven records changes which captains are in which room. Headline movement is small in every
+direction — fleet `tourOneClearRate` 0.6329 -> 0.6348, fleet `finalCredits.median` 49,839 ->
+49,687. Gate PASS, 0 invariant violations, and nothing was tuned in response. Before that:
+`baseline-t206-captain-voice.json` at T-206 — a CONTENT-ONLY capstone shipping the cast's
+authored VOICE: `tableTalk` and the four `catchphrases` slots for the 27 captains T-205 left
+on its `VOICE_AUTHORING_PENDING` worklist. It moved `rulesFingerprint` (5ae9a5d473827024 ->
+cbb087860825aa35) and NOT `instrumentFingerprint` (unmoved at 5c230e99648cddee), and EVERY ONE
+OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL — "NOTHING MOVED. Every compared field is
+equal on both sides." — predicted in writing before the run (`TASKS.md` T-206). Gate
 PASS, 0 invariant violations. Before that: `baseline-t204-cantina-rename.json` at T-204 — a
 TEXT-ONLY capstone shipping the player-facing "Hangout" -> "Cantina" rename:
 authored prose STRING VALUES only, with no rule, DC, band, threshold or code path changed. It

@@ -1297,6 +1297,36 @@ stands), and it is not a request to simulate the quest roster (an owner ruling o
 It is the narrower statement that **`regulars` is a field only a simulated captain can
 satisfy**, now enforced.
 
+> **RECORD CORRECTION (T-208, 2026-08-05): HALF OF THE PREMISE ABOVE IS NOW STALE, AND THE
+> ENFORCEMENT IS UNCHANGED.** This finding rests on two facts. The first — that
+> `rankClientele` ranks the set it is handed and never adds to it — is UNTOUCHED, and F-101-2's
+> ruling 4 still stands: nothing spawns a captain into a room.
+>
+> The second — that a quest captain sits at an ARBITRARY system, `(index % 20) + 1` in
+> `engine/state.ts` — is no longer true. T-208 replaced that seed for the eleven
+> `QUEST_PROFILES` records only with the CORE PORT each captain's own content declares
+> (`NpcProfile.homePortSystemId`, `content/cast.ts`), every one of them a port with a Cantina,
+> and pinned the stationary guarantee with a test. The concrete examples above are the two
+> this correction is most owed to: `npc-wild-card` sat at system **16**, a rim system with no
+> bar, and now sits at **Denebola-5 (6)** — the port of the very storylet this finding cites;
+> `npc-rust-bucket` sat at **Sol-3** and now sits at **Fomalhaut-2 (7)**, likewise the port of
+> its own storylet. Both are now exactly where the thematic reading said they should be.
+>
+> T-208 CONFIRMED, RATHER THAN ASSUMED, THE OTHER HALF OF THE SENTENCE: quest captains did not
+> merely start frozen, they have never moved at all, and cannot. The only two writers of
+> `NpcState.currentSystemId` in the engine (`npc.ts`'s `executeTrade` and `executeTravel`) are
+> reachable only through `resolveNpcDay`, whose one production caller is the dusk loop, which
+> is gated by `isSimulatedCaptain`.
+>
+> **WHAT THIS DOES NOT DO.** It does not add any quest captain to a `regulars` list, and
+> `hangoutContent.test.ts`'s `isSimulatedCaptain(profileId)` assertion is left exactly as it
+> is. What changed is the JUSTIFICATION available for that field, not the field: a quest
+> captain is now reliably at exactly one Cantina forever, so a `regulars` entry naming one
+> would no longer be permanently dead content — it would rank at that one port, every day. That
+> makes "should a quest captain be a regular anywhere?" a live CONTENT-DESIGN question with its
+> own capstone, and it is not the question T-208 was asked. Until it is asked and answered, the
+> enforced rule stands as written.
+
 ---
 
 ## §8 · What this spec deliberately does not settle, and the T-102 crossover

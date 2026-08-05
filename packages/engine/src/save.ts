@@ -4,7 +4,7 @@ import { GameState, ShipState } from './types.js';
 import { validateGameState } from './schema.js';
 import { emptyDeedRegistry, rankForDeedCount } from './deeds.js';
 import { computePlayerTier } from './tier.js';
-import { seedNpcShip } from './npc.js';
+import { questHomePortForProfile, seedNpcShip } from './npc.js';
 import { JOB_POOL_MAX_CLAIMS } from './economy.js';
 import { dicePerSideForTier, maxQuantityForDice, seedLiarsDicePurses } from './liarsDiceRules.js';
 import { freshDailyHangoutCaps, wagerBandFor } from './hangoutRules.js';
@@ -264,6 +264,45 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * for free) and neither does `dareHand`: the rounds counter deliberately lives on
  * the PLAYER, not on the hand, because it counts opens across a whole day and a
  * hand is a single scene.
+ *
+ * T-208 bumped {@link CURRENT_SAVE_VERSION} to 17. The v16->v17 change is THE ONLY
+ * ONE IN THIS REGISTRY THAT CHANGES NO SHAPE AT ALL — every key it touches
+ * (`npcs[].currentSystemId`) already exists and is already required by the strict
+ * schema. It is a VALUE migration, and it is owed for the v7->v8 reason: the RULE
+ * behind a persisted DERIVED value moved.
+ *
+ * WHAT MOVED. Before T-208, `createInitialState` seeded all 41 roster records at an
+ * arbitrary `(index % 20) + 1`. The 11 `QUEST_PROFILES` occupy indices 30-40, so six
+ * of them landed on RIM systems (15-20) that have no Cantina — and a quest captain
+ * never moves off their birth system for an entire career, because the only two
+ * writers of `currentSystemId` in the engine (`npc.ts`'s `executeTrade` and
+ * `executeTravel`) are reachable only through `resolveNpcDay`, which `day.ts` gates
+ * behind `isSimulatedCaptain`. Six of eleven were therefore frozen forever somewhere
+ * the player cannot meet them at a bar. T-208 replaced that seed with the port each
+ * captain's own content declares (`NpcProfile.homePortSystemId`).
+ *
+ * WHY RE-SEEDING IS SAFE HERE WHERE N2 REFUSED IT FOR THE SIMULATED ROSTER. N2's
+ * ruling is that you must not re-seed a captain the simulation has been writing —
+ * you would confiscate purchases and undo a career. A quest captain has been written
+ * by nothing: they take no turn, buy nothing and go nowhere, so their
+ * `currentSystemId` is a constant of CONTENT that a stale save is simply carrying
+ * the old value of. Skipping the migration would half-deliver the feature on every
+ * existing career: Rust Bucket would stay parked at Antares-5 while
+ * `npc.rust-bucket.scrap-sliver` says his pile is at Fomalhaut-2.
+ *
+ * AND THE HOUSE RULE BITES: the value is not a literal, so there IS a rule to call,
+ * and it is called — `questHomePortForProfile` (`npc.ts`), the SAME rule
+ * `createInitialState` and `deserializeState` read, the `seedNpcShip` /
+ * `emptyDeedRegistry` pattern by name. An unresolvable `profileId` returns
+ * `undefined` and its record is left EXACTLY as-is: a migration must never throw and
+ * must never teleport a record it does not recognise.
+ *
+ * IDEMPOTENT BY CONSTRUCTION — re-running it on an already-correct save writes the
+ * same value, which is what lets `deserializeState` run the identical backfill
+ * unconditionally rather than behind a `??=`.
+ *
+ * `cloneState` needs no change: `currentSystemId` is a plain number on a roster
+ * record that already round-trips.
  *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
@@ -557,9 +596,35 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
       },
     };
   },
+  // T-208 · v16 -> v17. NO SHAPE CHANGE: `npcs[].currentSystemId` already exists on
+  // every v16 record. This re-seeds the ELEVEN quest captains onto the core port
+  // their content declares, and touches nothing else — see the registry header above
+  // for why a value migration is owed here and why re-seeding these eleven is safe
+  // where N2 refused it for the simulated 30.
+  // The value comes from the RULE (`questHomePortForProfile`), never from a table
+  // restated here, so this site cannot drift from `createInitialState`.
+  // A record whose `profileId` does not resolve — hand-edited, or a captain a later
+  // cast dropped — is LEFT EXACTLY AS-IS rather than defaulted anywhere: a migration
+  // must never throw and must never move a record it cannot identify.
+  16: (v16State) => {
+    const s = v16State as { npcs?: unknown };
+    if (!Array.isArray(s.npcs)) return v16State;
+    const npcs = s.npcs as unknown[];
+    return {
+      ...(v16State as object),
+      npcs: npcs.map((raw: unknown) => {
+        if (typeof raw !== 'object' || raw === null) return raw;
+        const npc = raw as { profileId?: unknown };
+        if (typeof npc.profileId !== 'string') return raw;
+        const homePort = questHomePortForProfile(npc.profileId);
+        if (homePort === undefined) return raw;
+        return { ...raw, currentSystemId: homePort };
+      }),
+    };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 16;
+export const CURRENT_SAVE_VERSION = 17;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

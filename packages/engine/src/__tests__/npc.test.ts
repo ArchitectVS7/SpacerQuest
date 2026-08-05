@@ -188,6 +188,26 @@ describe('NPC Resolution', () => {
 // the file still fails loudly if the seed drifts back.
 // ---------------------------------------------------------------------------
 describe('N2 · the day-1 seed (calibration)', () => {
+  it('T-208 · the 30 SIMULATED captains keep the `(index % 20) + 1` spread, untouched', () => {
+    // T-208 changed where the ELEVEN quest captains are born (to the core port their
+    // content declares) and nothing else. This is the inertness proof for the other
+    // thirty: `QUEST_PROFILES` are still APPENDED AFTER `NPC_PROFILES`, so the 30
+    // occupy indices 0-29 and every one lands on exactly the system it landed on
+    // before. Pinned against the expression itself so that a future reordering of
+    // the roster arrays — or a change to the seed — reddens HERE rather than
+    // silently re-rolling the whole simulated field and every position percentile
+    // this project has measured.
+    const state = createInitialState(31337);
+    NPC_PROFILES.forEach((profile, index) => {
+      const npc = state.npcs.find((n) => n.profileId === profile.id)!;
+      expect(npc.currentSystemId, `${profile.id} at roster index ${index}`).toBe((index % 20) + 1);
+      // The mirror `castValidation.ts` enforces at import, restated at the reader:
+      // a simulated captain declares no home port, because their position is state
+      // the dusk loop earns rather than content.
+      expect(profile.homePortSystemId, `${profile.id} declares no home port`).toBeUndefined();
+    });
+  });
+
   it('still hands rollContract the pods/hull-condition/drives spec the phantom did', () => {
     // UNCHANGED ACROSS N2, and deliberately: `contractSpecFromShip` reads pods,
     // hull CONDITION and drives, none of which this step re-seeds. So NPC contract
@@ -1804,9 +1824,10 @@ describe('N13 · the virtual hand inside resolveNpcDay', () => {
     // and no round-trip test. Asserted rather than asserted-in-prose.
     //
     // The number is 15, not the 12 `TASKS.md`'s standing constraint names — that
-    // constraint records where the 0.5.2 track STARTED, and three later tasks
-    // bumped it legitimately. What N13 claims is that it added none of them.
-    expect(CURRENT_SAVE_VERSION).toBe(16);
+    // constraint records where the 0.5.2 track STARTED, and later tasks (through
+    // T-208's quest-captain home ports) bumped it legitimately. What N13 claims is
+    // that it added none of them.
+    expect(CURRENT_SAVE_VERSION).toBe(17);
     const before = npcFor('npc-cargo-king', { credits: 50000, fuel: 1000 });
     const { npc } = resolveNpcDay(before, new SeededRng(4), NO_BOARD);
     // `lastAction` is the ONE key a resolved day is supposed to write that a

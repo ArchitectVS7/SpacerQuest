@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { NEMESIS_SYSTEM_ID, isGatedDestination, isSimulatedCaptain } from '@spacerquest/content';
+import {
+  NEMESIS_SYSTEM_ID,
+  QUEST_PROFILES,
+  STAR_SYSTEMS,
+  isGatedDestination,
+  isSimulatedCaptain,
+} from '@spacerquest/content';
 import { advanceDay, applyPlayerAction, endDay, startDay } from '../day.js';
 import type { NpcDecisionTrace } from '../npc.js';
 import { createInitialState, serializeState, deserializeState } from '../state.js';
@@ -365,6 +371,110 @@ describe('T-140 · endDay decision tracing', () => {
       expect(JSON.stringify(loud.events)).toBe(JSON.stringify(quiet.events));
       expect(JSON.stringify(empty.state)).toBe(JSON.stringify(quiet.state));
       expect(JSON.stringify(empty.events)).toBe(JSON.stringify(quiet.events));
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-208 · QUEST CAPTAINS ARE STATIONARY — the machine check, not the claim.
+// ---------------------------------------------------------------------------
+//
+// The eleven `QUEST_PROFILES` records never move, and T-208 established that they
+// never did: the only two writers of `NpcState.currentSystemId` in the repo
+// (`npc.ts`'s `executeTrade` and `executeTravel`) are reachable only through
+// `resolveNpcDay`, whose one production caller is `day.ts`'s dusk loop, which is
+// gated by `if (!isSimulatedCaptain(npc.profileId)) continue`.
+//
+// That chain is three links long and a future refactor could break any of them
+// silently, which is what this block exists to stop. It asserts the GUARANTEE
+// (nobody moved over a long career) and the STRUCTURE that produces it (a quest
+// captain is never simulated and authors no dusk decision), so a refactor that
+// re-derived the gate differently reddens here rather than shipping a wandering
+// captain nobody noticed.
+
+describe('T-208 · quest captains are stationary', () => {
+  const QUEST_IDS = QUEST_PROFILES.map((p) => p.id);
+
+  /** `{ profileId -> currentSystemId }` for the eleven, in roster order. */
+  function questPositions(state: GameState): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const npc of state.npcs) {
+      if (QUEST_IDS.includes(npc.profileId)) out[npc.profileId] = npc.currentSystemId;
+    }
+    return out;
+  }
+
+  function simulatedPositions(state: GameState): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const npc of state.npcs) {
+      if (isSimulatedCaptain(npc.profileId)) out[npc.profileId] = npc.currentSystemId;
+    }
+    return out;
+  }
+
+  it('none of the eleven moves across a 40-day career, on several seeds', () => {
+    // SEVERAL SEEDS, because one lucky stream is not evidence: a dusk that simply
+    // happened to roll every captain into a Patrol would pass a single-seed test
+    // while a real drift bug sat underneath it.
+    for (const seed of [11, 2026, 777, 90210]) {
+      let state = createInitialState(seed);
+      const day1 = questPositions(state);
+      expect(Object.keys(day1)).toHaveLength(QUEST_IDS.length);
+      const simDay1 = simulatedPositions(state);
+
+      for (let day = 0; day < 40; day += 1) {
+        state = startDay(state).state;
+        state = endDay(state).state;
+      }
+      expect(state.day).toBe(41);
+
+      // The guarantee: byte-identical, not merely "still a core port".
+      expect(questPositions(state), `seed ${seed}: quest captains moved`).toEqual(day1);
+
+      // THE ANTI-VACUITY CHECK. Without it, a bug that froze the WHOLE roster —
+      // a dusk loop that stopped running at all — would pass the assertion above
+      // silently. At least one SIMULATED captain must have relocated over 40 days
+      // for the stillness of the eleven to mean anything.
+      const simEnd = simulatedPositions(state);
+      const movers = Object.keys(simDay1).filter((id) => simDay1[id] !== simEnd[id]);
+      expect(
+        movers.length,
+        `seed ${seed}: no simulated captain moved — dusk is inert`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it('is structural: no quest captain is simulated, and none authors a dusk decision', () => {
+    // The T-140 trace sink is a free, precise probe that a captain took no turn:
+    // an entry exists if and only if `resolveNpcDay` ran for that record.
+    const entries: NpcDecisionTrace[] = [];
+    let state = startDay(createInitialState(5150)).state;
+    for (let day = 0; day < 15; day += 1) {
+      state = endDay(state, { npcDecisionTrace: (entry) => entries.push(entry) }).state;
+      state = startDay(state).state;
+    }
+    expect(entries.length).toBeGreaterThan(0);
+
+    const tracedProfileIds = new Set(
+      entries.map((entry) => state.npcs.find((n) => n.id === entry.npcId)!.profileId),
+    );
+    for (const id of QUEST_IDS) {
+      expect(isSimulatedCaptain(id), `${id} must not be simulated`).toBe(false);
+      expect(tracedProfileIds.has(id), `${id} authored a dusk decision`).toBe(false);
+    }
+  });
+
+  it('all eleven sit at a CORE PORT WITH A CANTINA from the day they are born', () => {
+    // The placement half of T-208. Content owns the values (`homePortSystemId`) and
+    // `castValidation.ts` proves them well-formed at import; this asserts the ENGINE
+    // actually reads them at birth rather than falling back to the `% 20` spread.
+    const state = createInitialState(4);
+    for (const profile of QUEST_PROFILES) {
+      const npc = state.npcs.find((n) => n.profileId === profile.id)!;
+      expect(npc.currentSystemId, `${profile.id} is at its declared home port`).toBe(
+        profile.homePortSystemId,
+      );
+      expect(STAR_SYSTEMS[npc.currentSystemId]?.hasHangout, `${profile.id} has a bar`).toBe(true);
     }
   });
 });

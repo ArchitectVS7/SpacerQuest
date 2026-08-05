@@ -727,10 +727,14 @@ describe('T-146 · obligation 28 — the odometer round-trips without a version 
     // the accidental one this test guards against. What is still pinned, and is
     // the actual claim here, is that T-146's odometer owed NO migration of its
     // own: `MIGRATIONS[14]` (T-145's roster) is the last one that touches it, and
-    // `MIGRATIONS[16]` — the slot a hypothetical odometer migration would take —
-    // does not exist.
-    expect(CURRENT_SAVE_VERSION).toBe(16);
-    expect(MIGRATIONS[16]).toBeUndefined();
+    // the slot a hypothetical odometer migration would take does not exist.
+    // T-208 · 16 → 17, and again an INTENDED bump owed by a real change (the quest
+    // captains' declared home ports, `MIGRATIONS[16]`), not a pin edited to pass.
+    // The slot named on the second line moves with it: `MIGRATIONS[16]` is now
+    // T-208's, so the "no odometer migration" claim is asserted at the next free
+    // slot. The odometer itself is still untouched by every entry after [14].
+    expect(CURRENT_SAVE_VERSION).toBe(17);
+    expect(MIGRATIONS[17]).toBeUndefined();
   });
 
   it('survives createSave/loadSave exactly, at every tier and between them', () => {

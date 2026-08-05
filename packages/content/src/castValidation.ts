@@ -35,6 +35,14 @@
  */
 
 import type { BattleCatchphrases, NpcProfile } from './cast.js';
+/**
+ * T-208 · Read for `hasHangout` by {@link validateQuestHomePorts}. THIS CLOSES NO
+ * CYCLE and the next reader will ask, because the file already carries a long note
+ * about exactly that hazard on `liarsDiceValidation.ts` below: `systems.ts` has ZERO
+ * imports of its own, so the edge `castValidation.ts -> systems.ts` is a leaf edge
+ * and adds no TDZ risk on module load.
+ */
+import { STAR_SYSTEMS } from './systems.js';
 
 /** The longest a rendered bark may be, and the same number and the same reason as
  *  `liarsDiceValidation.ts`'s `MAX_LINE_LENGTH`: a line gets one row at the table,
@@ -254,6 +262,66 @@ export function validateNpcVoices(profiles: readonly NpcProfile[]): string[] {
   profiles.forEach((profile, index) => {
     const path = `npcProfiles[${index}](${String(profile.id)})`;
     validateVoice(errors, path, profile, { requirePresence: true });
+    // T-208 · The MIRROR of `validateQuestHomePorts`, so the asymmetry is
+    // machine-checked in BOTH directions rather than held by convention. A
+    // simulated captain's position is earned state that `resolveNpcDay` writes every
+    // dusk, so a `homePortSystemId` on one of these 30 is a claim that would be
+    // false the first time they jumped — and `createInitialState` would silently
+    // honour it, quietly pulling a record out of the `(index % 20) + 1` spread.
+    if (profile.homePortSystemId !== undefined) {
+      errors.push(
+        `${path}.homePortSystemId is set — a SIMULATED captain's position is earned state (resolveNpcDay writes it), not authored content; the field belongs to QUEST_PROFILES only`,
+      );
+    }
+  });
+
+  return errors;
+}
+
+/**
+ * T-208 · Every quest captain sits at a CORE PORT WITH A CANTINA, for the whole
+ * career, and this is the load-time proof of it.
+ *
+ * Checked against `STAR_SYSTEMS[id].hasHangout` and NOT against `id <= 14`, because
+ * the bar is the REASON the rule exists: the point of the field is that the player
+ * can walk into a Cantina and find this captain there. Reading the flag also keeps
+ * the rule correct if a port ever gains or loses one.
+ *
+ * READERS PROTECTED: `packages/engine/src/state.ts` `createInitialState` (birth) and
+ * `deserializeState` (the carried-save backfill), and `save.ts` `MIGRATIONS[16]`.
+ * All three read this field rather than restating a table, so a bad value here would
+ * be a bad value in three places at once.
+ */
+export function validateQuestHomePorts(profiles: readonly NpcProfile[]): string[] {
+  const errors: string[] = [];
+
+  profiles.forEach((profile, index) => {
+    const path = `questProfiles[${index}](${String(profile.id)})`;
+    const id: unknown = profile.homePortSystemId;
+    if (id === undefined) {
+      errors.push(
+        `${path}.homePortSystemId is missing — every quest captain owes a declared home port`,
+      );
+      return;
+    }
+    if (typeof id !== 'number' || !Number.isInteger(id)) {
+      // `JSON.stringify`, not `String()`: a hand-authored object or array would
+      // stringify to `[object Object]` and name nothing useful in the error.
+      errors.push(
+        `${path}.homePortSystemId must be an integer system id, got ${JSON.stringify(id)}`,
+      );
+      return;
+    }
+    const system = STAR_SYSTEMS[id];
+    if (system === undefined) {
+      errors.push(`${path}.homePortSystemId ${id} is not a system in STAR_SYSTEMS`);
+      return;
+    }
+    if (system.hasHangout !== true) {
+      errors.push(
+        `${path}.homePortSystemId ${id} (${system.name}) has no Cantina — a quest captain parked there can never be met at a bar`,
+      );
+    }
   });
 
   return errors;
@@ -291,11 +359,20 @@ export function defineNpcProfiles(profiles: NpcProfile[]): NpcProfile[] {
   return profiles;
 }
 
+/**
+ * T-208 · A quest profile is an `NpcProfile` whose `homePortSystemId` is REQUIRED.
+ * The narrowing is what makes a missing home port a `tsc` error at the authoring
+ * site rather than a test failure two packages away; `validateQuestHomePorts` then
+ * catches what a type cannot — that the id names a real port and that the port has
+ * a Cantina.
+ */
+export type QuestProfile = NpcProfile & { homePortSystemId: number };
+
 /** The same contract for the quest roster. Separate function, not a flag, because
  *  the two rosters answer a DIFFERENT question about presence and the call site
  *  should say which one it is asking. */
-export function defineQuestProfiles(profiles: NpcProfile[]): NpcProfile[] {
-  const errors = validateQuestVoices(profiles);
+export function defineQuestProfiles(profiles: QuestProfile[]): NpcProfile[] {
+  const errors = [...validateQuestVoices(profiles), ...validateQuestHomePorts(profiles)];
   if (errors.length > 0) {
     throw new Error(`Invalid quest profile content:\n - ${errors.join('\n - ')}`);
   }

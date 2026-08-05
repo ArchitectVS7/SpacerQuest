@@ -703,12 +703,24 @@ export function runDayLoopGolden(
 // because the rename edits prose the events carry verbatim; what proves nothing
 // mechanical drifted is the reversal identity, not stillness.
 //
+// T-208 · ALL FOUR HASHES MOVED, and this is a REGENERATION THROUGH THE COMMITTED
+// REGENERATOR AFTER AN INTENTIONAL RULE CHANGE (the T-156 precedent), not a
+// hand-edit to make a test pass. `createInitialState` now seeds the eleven quest
+// captains at the CORE PORT their content declares (`NpcProfile.homePortSystemId`)
+// instead of at the arbitrary `(index % 20) + 1` that parked six of them at rim
+// systems with no Cantina. Both goldens serialize whole state, so eleven changed
+// `npc.currentSystemId` values move the state hash by construction; the event
+// hashes follow because `resolveVisitHangout` and `hangoutRumors` resolve
+// co-located NPCs off that field, so which captain is in the room at a given port
+// changed too. The 30 simulated captains are untouched — they occupy indices 0-29
+// and still take the `% 20` spread, which `state.test.ts` pins directly.
+//
 // Regenerated via gen-day-loop-golden.ts. Never hand-edited.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'bb802e463fe7f5d9f884feb846cf5b93125e1900299abde3b424eab877dd1522';
+  'd0f98ba753b3184f3453eeaa3ca154f45205672515cdf043e4034afe63d366a8';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  'e4b7cdd3e8159e4d86161b25f3789ed01ac20c92645f977db8ecdc5e8fa01711';
+  'b86dd884c33c801d5cea19aa4f6535bcfe272e66cd8540167a18893a54a766f1';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '9ac5a34e3f0de46be5c151eccd1907dd4aac9989a1983912a99199367a3cdd5c';
+  '6cac8f615077d5db84bad46c59c434669f100bb5a8877266c8143f03fc22d86a';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '1472645fa88b0e92fc1d8857f662fef3df15a4b821ae16754a6b1f4b56bbf119';
+  '1bd799be858ad23c1a6aa194172de4bda3bb131419edd94eae02716ce4ef34c2';

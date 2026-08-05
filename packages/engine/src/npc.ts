@@ -18,6 +18,7 @@ import {
   NpcArchetype,
   NpcIntentType,
   NpcProfile,
+  QUEST_PROFILES,
   STAR_SYSTEMS,
   SYSTEM_DANGER_LEVELS,
   SHIP_COMPONENTS,
@@ -455,6 +456,24 @@ export function seedNpcShip(profileId: string, carriedFuel: unknown): ShipState 
     ship.fuel = Math.max(0, Math.min(ship.maxFuel, carriedFuel));
   }
   return ship;
+}
+
+/**
+ * T-208 · THE ONE PLACE that answers "where does this quest captain sit?", for the
+ * same reason {@link seedNpcShip} is one place: there are THREE readers and they
+ * must not drift — `createInitialState` (birth), `deserializeState` (the
+ * schema-tolerant load path) and `save.ts`'s v16→v17 migration (the versioned
+ * envelope path). All three ask this function; none of them restates a table.
+ *
+ * Returns `undefined` for anything that is not a quest captain — a simulated
+ * captain (whose position is earned state that {@link resolveNpcDay} writes) and an
+ * unrecognised `profileId` alike. NOTE THE POLARITY, and it is the same one
+ * `isSimulatedCaptain` chose: an unknown id gets `undefined` and is therefore LEFT
+ * EXACTLY WHERE IT IS, because a migration must never be the thing that throws and
+ * must never be the thing that teleports a record it does not recognise.
+ */
+export function questHomePortForProfile(profileId: string): number | undefined {
+  return QUEST_PROFILES.find((p) => p.id === profileId)?.homePortSystemId;
 }
 
 /** The fuel an NPC jump costs, through the SAME call the player's travel makes

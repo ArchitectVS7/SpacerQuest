@@ -115,9 +115,10 @@ describe('T-141 · the toggle is a client preference, never save state', () => {
     // feature adds no `GameState` field, so no migration is owed. A later change
     // that quietly persisted the toggle would have to bump the version, and this
     // is the assertion that would fail first and loudly. (Moved 15 → 16 by T-197's
-    // two daily Hangout caps, an intended bump owed by a real save-shape change —
-    // this pin tracks the current version, it is not a threshold.)
-    expect(CURRENT_SAVE_VERSION).toBe(16);
+    // two daily Hangout caps, an intended bump owed by a real save-shape change,
+    // then 16 → 17 by T-208's quest-captain home ports — this pin tracks the
+    // current version, it is not a threshold.)
+    expect(CURRENT_SAVE_VERSION).toBe(17);
   });
 });
 

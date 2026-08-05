@@ -4929,7 +4929,7 @@ analogues.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only the source tree is present) · attempts=1/4.
 
-### T-208 · Pin quest captains stationary, at a port sane for their questline — `status: TODO` · `coder: opus` · `after: —`
+### T-208 · Pin quest captains stationary, at a port sane for their questline — `status: DONE` · `coder: opus` · `after: —`
 
 **The ask (owner, 2026-08-05):** quest-line captains (`QUEST_PROFILES`, 11 records, excluded from
 `NPC_PROFILES`'s combat-interceptor pool by design) don't need to be tracked or moved — they can
@@ -4962,6 +4962,202 @@ with a documented reason; a test asserts a quest captain's `currentSystemId` is 
 multi-day simulated career (the stationary guarantee, machine-checked, not just claimed); the
 Delivered note states plainly whether they moved before this task and what actually changed. Gate
 green.
+
+**Delivered (2026-08-05).**
+
+**(1) THEY DID NOT MOVE BEFORE THIS TASK, AND THEY NEVER HAVE — the case the ask told me to
+confirm rather than assume, confirmed by reading the code path, and it is the FIRST of the two
+cases the block names.** The chain is three links and each was grepped, not inferred:
+
+1. `NpcState.currentSystemId` has exactly **TWO WRITERS** in the whole repo —
+   `packages/engine/src/npc.ts` `executeTrade` (**:1746**, `contract.destination`) and
+   `executeTravel` (**:1887**, `destination`). Every other hit across `packages/*/src` is
+   `player.currentSystemId`, a read, a schema/type declaration, or the `state.ts` seed.
+2. Both writers are reachable ONLY from `resolveNpcDay` (`npc.ts:2077`), which has exactly ONE
+   production caller: `packages/engine/src/day.ts:868`.
+3. That call site is gated four lines above it at **`day.ts:852`** —
+   `if (!isSimulatedCaptain(npc.profileId)) continue;` — and `isSimulatedCaptain`
+   (`content/cast.ts`) is a `Set` built from `NPC_PROFILES` **only**. The 11 `QUEST_PROFILES`
+   never enter the dusk loop, so nothing in the engine can advance their position.
+
+So no pinning was needed: this task is the placement fix plus the machine-checked regression test
+the block asks for in that case. `docs/HANGOUT_REDESIGN.md` **F-124-1** already recorded the same
+fact in prose ("sit frozen at their day-1 system for an entire career"); T-208 is the first time it
+is enforced by a test. The block's premise about the interceptor pool also checks out:
+`buildNamedCandidates` (`engine/actions/travel.ts:342`) resolves against `NPC_PROFILES`, not
+`ALL_NPC_PROFILES`.
+
+**AND THE OLD PLACEMENT WAS MEASURABLY NONSENSE — measured by running the real
+`createInitialState` BEFORE changing anything, not quoted from the plan.** `QUEST_PROFILES` are
+appended after `NPC_PROFILES`, so the eleven took indices 30-40 → `(index % 20) + 1`:
+Silk Dagger 11 · Lucky Seven 12 · Rattlesnake 13 · Penny Wise 14 · **Doc Salvage 15 (Antares-5)** ·
+**Wild Card 16 (Capella-4)** · **Smuggler Ray 17 (Polaris-1)** · **Stellar Monk 18 (Mizar-9)** ·
+**Void Whisper 19 (Achernar-5)** · **The Broker 20 (Algol-2)** · Rust Bucket 1.
+**SIX OF ELEVEN were frozen forever at rim systems with `hasHangout` absent** — parked where the
+player can never meet them at a bar, for every career, on every seed.
+
+**(2) WHAT ACTUALLY CHANGED.** Placement only, plus the guarantee now being machine-checked.
+A new **content** field `NpcProfile.homePortSystemId` (`content/cast.ts`) carries the eleven values;
+`createInitialState` reads it in ONE expression — `p.homePortSystemId ?? (index % 20) + 1` — so the
+rule lives in the engine and the instances live in content, per the standing constraint. **`grep -c
+'if (' ` over `cast.ts`'s added lines → 0.** The 30 simulated captains are untouched by
+construction (indices 0-29) and that inertness is PINNED, not claimed: `npc.test.ts`'s new
+"the 30 SIMULATED captains keep the `(index % 20) + 1` spread" asserts each of them lands on exactly
+the system it landed on before, and that none of them declares a home port.
+
+Enforced at IMPORT in two layers, both in `content/castValidation.ts`: `defineQuestProfiles` now
+takes `QuestProfile = NpcProfile & { homePortSystemId: number }`, so a missing value is a `tsc`
+error at the authoring site; and `validateQuestHomePorts` checks present / integer / real system /
+**`STAR_SYSTEMS[id].hasHangout === true`** — against the FLAG, not `id <= 14`, because the Cantina
+is the reason the rule exists. The mirror is enforced too (`validateNpcVoices` rejects a
+`homePortSystemId` on any of the 30), so the asymmetry is machine-checked in both directions.
+`castValidation.ts → systems.ts` closes no cycle (`systems.ts` has zero imports; noted in a comment
+beside the existing `liarsDiceValidation.ts` cycle warning).
+
+**(3) THE ELEVEN PLACEMENTS, each with its reason (all in 1-14, all `hasHangout`).** NINE are
+content-implied; **TWO are declared "no location implied" in the open**, exactly as the ask permits.
+
+| captain | port | reason |
+|---|---|---|
+| `npc-silk-dagger` | **3** Altair-3 | `chain.silk-dagger.marker` triggers on `systemIds: [3]` |
+| `npc-lucky-seven` | **8** Mira-9 | `passenger.gambler.debt` (`systemIds: [8]`) says he "wants off Mira-9 before a card debt catches up" |
+| `npc-rattlesnake` | **2** Aldebaran-1 | `chain.rattlesnake.insult` triggers on `systemIds: [2]` |
+| `npc-penny-wise` | **1** Sol-3 | the Long Table's `borrow` flavour names her desk there (`portHangouts.ts` `SUN_3_HANGOUT`) — the only port that names her |
+| `npc-doc-salvage` | **1** Sol-3 | `chain.doc-salvage.distress-ping` triggers on `systemIds: [1]` |
+| `npc-wild-card` | **6** Denebola-5 | `chain.wild-card.pitch` triggers on `systemIds: [6]` and its prose corners the player at Denebola-5 |
+| `npc-smuggler-ray` | **12** Rigel-8 | **NO LOCATION IMPLIED** — his fence storylets trigger on CARGO, not a system, and `explore-npc-smuggler-ray` is a mark on a derelict. Placed at the Underhold, `clientele.archetypes ['smuggler','gambler']` |
+| `npc-stellar-monk` | **5** Deneb-4 | `chain.stellar-monk.empty-hold` triggers on `systemIds: [5]` |
+| `npc-void-whisper` | **8** Mira-9 | `npc.void-whisper.psalm-shard` triggers on `systemIds: [8]` |
+| `npc-the-broker` | **4** Arcturus-6 | `chain.the-broker.ledger` triggers on `systemIds: [4]` |
+| `npc-rust-bucket` | **7** Fomalhaut-2 | `npc.rust-bucket.scrap-sliver` triggers on `systemIds: [7]`, prose puts his pile at Fomalhaut-2 |
+
+**ONE DEVIATION FROM THE PLAN, and it is toward the ask rather than away from it.** The plan listed
+Lucky Seven as "no location implied" and proposed Regulus-6. Re-running the grep the ask specifies
+turned up `passenger.gambler.debt` (`storylets.ts`), which names Mira-9 for him in so many words —
+so he is placed at the port his own content puts him at, and the count of unsourced placements is
+two rather than three. Sol-3 and Mira-9 each take two captains; nothing requires uniqueness and both
+reasons at each port are independently sourced.
+
+**THE STATIONARY GUARANTEE IS NOW MACHINE-CHECKED**, in `engine/__tests__/day.test.ts`
+(`T-208 · quest captains are stationary`): a **40-day career on four seeds** through the real
+`startDay`/`endDay` loop, asserting the eleven `{id → currentSystemId}` are byte-identical at the
+end — **plus an explicit anti-vacuity assertion** that at least one SIMULATED captain moved over the
+same run, so a bug that froze the whole roster cannot pass silently. A second test pins the
+STRUCTURE (`isSimulatedCaptain` false for all eleven, and no `NpcDecisionTrace` entry is ever
+authored for one over 15 traced dusks), and a third asserts all eleven are born at their declared
+port with a bar. `content/__tests__/castValidation.test.ts` adds the placement checks and drives
+`validateQuestHomePorts` RED on each failure mode (missing / rim / non-integer / unknown id / all
+eleven at once) so the validator is proven able to fail.
+
+**(4) THE SAVE DECISION: A VALUE MIGRATION WAS OWED AND WAS TAKEN.** No shape changed —
+`npcs[].currentSystemId` already exists and is already required by the strict schema — so the
+standing constraint is not triggered by shape. It IS triggered by the v7→v8 rule: **the RULE behind
+a persisted DERIVED value moved.** A quest captain is written by nothing after birth (proven in (1)),
+so their position is a constant of content that a stale save merely carries the old value of; N2's
+"do not re-seed a roster" ruling does not apply, because it protects a career the simulation has
+been writing and a quest captain has bought nothing and been nowhere. Skipping it would have
+half-delivered the feature on every existing save — Rust Bucket parked at Antares-5 while
+`npc.rust-bucket.scrap-sliver` says his pile is at Fomalhaut-2.
+
+Done in **BOTH PATHS** (the `state.ts` two-path rule): `MIGRATIONS[16]` (v16 → v17) in `save.ts`,
+and the same backfill in `deserializeState`'s COW-exempt `npcs` loop. Both CALL the rule
+(`questHomePortForProfile`, `npc.ts` — the `seedNpcShip` / `emptyDeedRegistry` pattern) rather than
+restating a table, and an unresolvable `profileId` is left EXACTLY as-is rather than defaulted or
+thrown on. `deserializeState`'s copy is unconditional rather than `??=` — a quest captain never
+moves, so re-asserting the value is always true, which is what makes the two paths agree. Round-trip
++ idempotence + "the fixture really is the old world (six at rim)" + "no simulated captain moved" are
+all in `save.test.ts`. **`CURRENT_SAVE_VERSION` re-read live at `packages/engine/src/save.ts:627`
+= 17** (read from the file at the end of the task, never copied from T-206's or T-207's note; it read
+16 at `:562` before this task's own header additions shifted the line).
+
+**BOTH GOLDENS WERE REGENERATED THROUGH THEIR COMMITTED REGENERATORS AFTER AN INTENTIONAL RULE
+CHANGE (the T-156 precedent) — never hand-edited to make a test pass.**
+`fixtures/day-loop-golden.ts` via `gen-day-loop-golden.ts` (all four hashes moved) and
+`sim/fixtures/replay-golden.ts` via `gen-golden.ts` (all six constants moved). Both serialize whole
+state, and eleven changed `npc.currentSystemId` values move a state hash by construction. **The dice
+did NOT move**: all three replay session `rngState`s are still 364866002 / 268015010 / -1231248819,
+verified against `git show HEAD:` — quest captains take no turn, so relocating them cannot consume a
+roll, and a moved rngState here would have meant this task perturbed the simulation itself.
+
+**TWO PLANNED TESTS WERE RE-DERIVED THROUGH THE HOUSE PRECEDENT RATHER THAN WEAKENED, and both
+re-derivations turned up a real finding.**
+- `campaign-degraded.test.ts` **ENTRY 34**: two of seven policy fingerprints moved — `gambler` AND
+  `greedy`, and greedy was the table's declared CONTROL row. Channel (a) is `resolveVisitHangout`,
+  which resolves its Dare dealer from co-located NPCs **with no `isSimulatedCaptain` filter**, so
+  quest captains are seatable dealers wherever they sit: gambler `hangoutPlay.visits` 281 → 301,
+  credits 127,628 → 147,288, deeds unchanged at 93. Channel (b) is the BOND HOOK, which also
+  requires co-location. The greedy delta was ISOLATED to channel (b) by diffing all five of its
+  reports: **only seed 1 differs at all**, its divergence begins on **day 7** with player fuel
+  136 → 86 — a 50-unit gap, and 50 is exactly Doc Salvage's `bondHook.fuelAmount` — while the greedy
+  trader was standing at **Antares-5**, which is where the old arbitrary seed had parked Doc.
+  Credits 7,280 → 7,640, deeds 36 → 37. The other five rows are byte-identical, and
+  `hangoutPlay.failedVisits` is 0 on every row before and after.
+- `campaign-reach.test.ts` **T-1204 bond reachability** went red, and was fixed by the SIXTH
+  application of that test's own documented re-pin procedure, not by touching an assertion: a fresh
+  **seeds 1..30, 300-day sweep driven through the shipped test with a temporary env-var seed
+  override** found **NINE qualifying seeds (2, 3, 4, 7, 9, 13, 15, 21, 28) against the previous
+  sweep's eight** — the conjunction became MORE reachable, not less, which is what parking the only
+  fuel-gift captain at the port every career passes through should do. `CAMPAIGN_SEED` 1 → 2 (bond
+  intervention day 7, peak |disposition| 6 day 5). The loop body and both assertions are untouched.
+
+Five `CURRENT_SAVE_VERSION` pins that track the current version (not thresholds) moved 16 → 17 with
+a note at each; no band, threshold, fingerprint or golden was edited to make anything pass.
+
+**SCOPE HELD.** `clientele.regulars` is untouched and `hangoutContent.test.ts`'s
+`isSimulatedCaptain(profileId)` assertion is left exactly as it is; what T-208 changes is the
+JUSTIFICATION available for that field, which is recorded as a dated **RECORD CORRECTION under
+F-124-1 in `docs/HANGOUT_REDESIGN.md`** (the doc's own idiom, and it cites `(index % 20) + 1` at
+`engine/state.ts`, which this task makes stale). No `tableTalk`/`catchphrases` were authored for any
+quest captain — `cast.ts` rules that absence MEANS "no voiced surface" and a stub is forbidden.
+`storylets.ts` and `exploration.ts` were read-only inputs.
+
+**CAPSTONE — M19's single batched capstone, owed by this task as the milestone's final one.**
+`npm run format` FIRST, then `format:check` clean, then **eight 1-indexed shards, every one exit 0**:
+`--label t208-quest-captain-ports --seeds 1000 --days 120 --policies
+trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy --milestone-days
+21,29,30,41,60,120 --shard i/8`, then `--merge --milestone-days 21,29,30,41,60,120` →
+**`merged · 8000 rows · PASS`, `invariants: 0 violations`**, all eight rate gates PASS.
+
+**THE MOVE WAS PREDICTED IN WRITING BEFORE THE RUN, with its mechanism named** (see the plan and
+the entry-34 note): `resolveVisitHangout` and the bond hook both read a roster record's position
+without asking whether it is simulated, so relocating eleven records changes which captain is in
+which room. **MEASURED: SIX OF TEN ROWS MOVED** — fleet, explorer, gambler, greedy, smuggler,
+veteran — with **fighter, trader and trader-degraded byte-identical**. Reported plainly: fleet
+`tourOneClearRate` 0.6329 → 0.6348, fleet `finalCredits.median` 49,839 → 49,687, fleet
+`survival.deathsPer1000Days` 0.5125 → 0.5146, explorer `debtClearedDay.median` 23 → 22, gambler
+`finalCredits.median` 82,965 → 80,244. Every headline moves by well under a percent except the
+gambler's purse. **NOTHING WAS TUNED TO REACH A RESULT**; no band was widened and no threshold
+moved. `rulesFingerprint` `cbb087860825aa35` → `2f93098dc9ab15f0`; `instrumentFingerprint`
+**UNMOVED** at `5c230e99648cddee` (nothing under `packages/sim/src` outside `__tests__` was
+touched), so the attribution is clean single-arm; `docsFingerprint` `5ca4979722c55ee1` →
+`a88b9aa992f78ec6`. `npm run balance:extract -- --aggregate
+docs/balance/baseline-t208-quest-captain-ports.json` re-extracted `docs/balance/smoke/tiers.json`
+with **`spreadSource "harvested"`**, `sweepLabel t208-quest-captain-ports` and
+`saveSchemaVersion 17`. **All five baseline-of-record pointers re-pinned in this same commit**
+(BR-14): `balance-targets.test.ts` `BASELINE_OF_RECORD_PATH`, `docs/NPC_REDESIGN.md` standing
+amendment 1, `docs/NPC_REDESIGN.md`'s status banner, `docs/balance/smoke/README.md`, and
+`docs/BALANCE-RIG-DECISIONS.md` BR-14 — `baseline-pointers.test.ts` green.
+
+**Gate green.** `npm run format`, `npx tsc -b`, `npm run lint`, `npm run format:check` all exit 0;
+`npm test` = **2,582 passed, 0 failed** across all six workspaces (74 + 110 + 61 + 1,359 + 529 +
+449). Baseline was 2,558 at T-207, so the delta is **+24, accounted exactly**: **+11** in
+`content/__tests__/castValidation.test.ts` (4 placement checks + 7 proven-able-to-go-red cases) and
+**+13** in the engine (**+3** `day.test.ts`'s T-208 stationary describe, **+1** `npc.test.ts`'s
+"the 30 are untouched" pin, **+9** `save.test.ts`'s v16→v17 describe). No pre-existing test was
+deleted or weakened.
+
+**Deliverables grepped at their named call sites before marking DONE.** `grep -c "homePortSystemId"
+packages/content/src/cast.ts` → **13** (1 interface declaration + 11 value rows + 1 in the
+`QUEST_PROFILES` header comment); `grep -n "homePortSystemId" packages/engine/src/state.ts` →
+**:100** (the `createInitialState` read) with the `deserializeState` backfill calling
+`questHomePortForProfile` in the same file; `grep -n "homePortSystemId"
+packages/content/src/castValidation.ts` → the validator at **:271** (the simulated-roster mirror),
+**:300-322** (`validateQuestHomePorts`) and **:369** (`QuestProfile`); `grep -n
+"questHomePortForProfile" packages/engine/src/npc.ts packages/engine/src/save.ts` → **npc.ts:475**
+(the rule) and **save.ts:619** (`MIGRATIONS[16]` calling it); `grep -n "CURRENT_SAVE_VERSION = "
+packages/engine/src/save.ts` → **:627 = 17**.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only the source tree is present) · attempts=1/4.
 
 ---
 

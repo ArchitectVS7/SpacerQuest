@@ -283,7 +283,9 @@ describe('T-147 · the event round-trips through eventLog without a version move
   it('CURRENT_SAVE_VERSION does NOT move — no GameState field was added', () => {
     // The event rides `eventLog`, which is already versioned, so §3 of the
     // standing constraints is N/A with the reason stated rather than skipped.
-    expect(CURRENT_SAVE_VERSION).toBe(16);
+    // (16 → 17 by T-208's quest-captain home ports — an intended bump owed by a
+    // real change. This pin tracks the current version, it is not a threshold.)
+    expect(CURRENT_SAVE_VERSION).toBe(17);
   });
 
   it('survives createSave/loadSave byte-identically', () => {

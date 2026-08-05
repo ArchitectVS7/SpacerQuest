@@ -1203,8 +1203,11 @@ describe('T-135 · the hand survives serialization', () => {
   // roster's persisted state (docs/LIARS-DICE-PROGRESSION_SPEC.md §5), so the pin
   // moves with it and MIGRATIONS[13]'s own behaviour is asserted unchanged beside
   // the new MIGRATIONS[14].
-  it('CURRENT_SAVE_VERSION is 15 and MIGRATIONS[13] still backfills dareHand: null', () => {
-    expect(CURRENT_SAVE_VERSION).toBe(16);
+  // T-208 · 16 → 17 with the quest captains' declared home ports (`MIGRATIONS[16]`),
+  // another intended landing. This pin tracks the current version; the claim under
+  // test is still MIGRATIONS[13]'s unchanged behaviour below it.
+  it('CURRENT_SAVE_VERSION tracks the current version and MIGRATIONS[13] still backfills dareHand: null', () => {
+    expect(CURRENT_SAVE_VERSION).toBe(17);
     const v13 = JSON.parse(serializeState(createInitialState(9))) as Record<string, unknown>;
     delete v13.dareHand;
     expect('dareHand' in v13).toBe(false);
