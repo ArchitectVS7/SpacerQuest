@@ -107,11 +107,14 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t196a-free-actions.json`, re-pinned at T-196a
-2026-08-04 — the M17 arm-1 capstone, which freed nine administrative action types from the
-dawn die (`docs/DAWN-HAND-REDESIGN.md` §3) while deliberately leaving the instruments
-budgeting for them, and moves exactly two policy rows, `explorer` and `smuggler` — the only
-two that queue `Explore`;
+exactly like drift. The current baseline (`baseline-t196b-instruments.json`, re-pinned at T-196b
+2026-08-05 — the M17 arm-2 capstone, which taught the eight sim policies and the protocol
+enumerator to stop budgeting a dawn die for those nine (`docs/DAWN-HAND-REDESIGN.md` §3). It
+moves `instrumentFingerprint` and NOT `rulesFingerprint`, and moves seven of the eight policy
+rows — all but `greedy`, whose day plan did not change;
+before that `baseline-t196a-free-actions.json` at T-196a — the M17 arm-1 capstone, which freed
+those nine in the ENGINE while deliberately leaving the instruments budgeting for them, and
+moved exactly two policy rows, `explorer` and `smuggler` — the only two that queue `Explore`;
 before that `baseline-t199-pacifist.json` at T-199 — the F-150-2 capstone, which took
 `assertNoIncomeStall` from 7 violations to 0 and moved all eight policy rows except `greedy`;
 before that `baseline-t195-dawn-dice.json` at T-195 — the travel-die bake-off, a real and

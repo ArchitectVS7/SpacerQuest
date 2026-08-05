@@ -1140,6 +1140,80 @@ const UNCHANGED_POLICIES = [
 //   * `greedy` moving is EXPECTED, and here for the SHAPE reason of entries 4, 11
 //     and 12 rather than a world-side one — no policy and no NPC behaviour changed
 //     at this step at all.
+//
+// ENTRY 32 (T-196b — THE INSTRUMENTS LEARN THE FREE ACTIONS). SIX OF THE SEVEN
+// ROWS IN THIS TABLE MOVE, AND THE ONE THAT DOES NOT IS THE PROOF THE CAUSE IS
+// WHAT IT SAYS. (This table carries seven policies; the 8,000-row capstone carries
+// eight — it adds `trader-degraded` — and reports SEVEN OF EIGHT moved, the same
+// result counted over the same one control. Do not read the two counts as a
+// disagreement.)
+//
+// THE CAUSE, STATED BEFORE THE NUMBERS. T-196a freed nine administrative action
+// types in the ENGINE (`docs/DAWN-HAND-REDESIGN.md` §3) and deliberately left every
+// instrument budgeting a die for them — which is why entry 31 moved only the two
+// rows that queue an `Explore`. T-196b is the other arm: the eight sim policies in
+// `packages/sim/src/index.ts` stop counting the nine against the dawn hand
+// (`planRefuel`, `planCrippledRepair`, `planCaptainOverhead`, `planFighterUpgrade`
+// and `planSpecialEquipment` lose their `DieLedger` entirely; every sign→travel
+// pair is gated on the TRAVEL die alone; the veteran's broker_shark gate falls
+// `>= 3` to `>= 2`). Every policy's DAY PLAN therefore changes shape, so unlike
+// entry 31 the breadth here is the whole fleet — that contrast IS the control-arm
+// result the task was built to measure.
+//
+// `greedy` IS THE CONTROL AND IT CAME BACK BYTE-IDENTICAL (`d17a5e39f79918c6`,
+// unchanged since entry 30). `greedyTraderPolicy`'s only T-196b edit is deleting a
+// residual `spendDie: 0` from its `buy-fuel` — dead payload that zod already
+// stripped before the engine saw it — so a row whose PLAN did not change did not
+// move, while the six whose plans did, all did. No engine or content file is
+// touched by this task, so `rulesFingerprint` is unmoved at `55414694d7187afc`;
+// what moves is `instrumentFingerprint`, and that is the honest name for it.
+//
+// MEASURED over these exact five seeds × 40 days, before -> after (summed):
+//     policy     credits            deeds      component tiers
+//     trader     108,267 -> 131,747   78 ->  75    10 -> 10
+//     fighter     55,035 ->  49,399   68 ->  64    44 -> 37
+//     explorer   146,960 ->  69,158  114 -> 107    15 -> 13
+//     veteran     34,032 ->  39,414   64 ->  68     6 -> 23
+//     smuggler    51,950 ->  67,246  120 -> 115    18 -> 18
+//     gambler    142,830 -> 109,312   95 ->  90    10 ->  8
+//     greedy       7,280 ->   7,280   36 ->  36     0 ->  0   (control, unmoved)
+//     fuel-starvation days: 0 -> 0 on EVERY row, before and after.
+//
+// CREDITS FALL ON THREE OF THE SIX MOVED ROWS — `fighter`, `explorer`, `gambler` —
+// AND THAT IS PREDICTED, NOT A REGRESSION. (`trader`, `veteran` and `smuggler` all
+// RISE; read the count off the table above, not off this sentence.) The single
+// largest mechanism behind the three that fall is `planCaptainOverhead` losing its
+// throttle: it was documented as firing only on a day the working plan left a die
+// spare, and it now fires on every day where `spendable > 0`. Berth tiers, crew
+// hires and port stakes are all SPENDING, and a port stake is a NET CREDIT LOSS
+// inside any window shorter than its 154–1,043-dusk payback (`planPortStake`) — so
+// more shopping inside a 40-day window reads as poorer, exactly as that planner's
+// own comment warns.
+//
+// THE VETERAN IS THE VISIBLE FACE OF THE SHOPPING, NOT OF THE CREDIT FALL, and the
+// distinction matters because the row is cited in both places: its component tiers
+// go 6 -> 23 across these five seeds — the un-throttled chain, plainly — while its
+// CREDITS RISE 34,032 -> 39,414. It is evidence for how much more the fleet buys,
+// never evidence that buying more made a row poorer.
+//
+// THE FALL COUNT WAS FOUR BEFORE F-196b-1 CLOSED, AND THE PRE-FIX TABLE IS KEPT
+// HERE so the "four of six" figure quoted in TASKS.md T-196b's pre-registered
+// predictions can be checked against the tree as it stood when they were written.
+// Both Explore loops now charge their credit bound PER SWEEP (F-196b-1, TASKS.md);
+// with that term forced to 0 in both loops, these same five seeds × 40 days give
+// `explorer` 146,960 -> 100,842 and `smuggler` 51,950 -> 39,162 (deeds 120 -> 112,
+// tiers 18 -> 16), every other row byte-identical to the table above. So the fall
+// was fighter/explorer/smuggler/gambler — FOUR — until the fix moved the smuggler
+// from −12,788 to +15,296: a policy that stops sweeping its purse into the fuel
+// pump keeps more of it. The fix is the whole difference between the two counts,
+// and it is a bug closure, not a tuning.
+// NOTHING WAS TUNED IN RESPONSE, and no band or threshold was moved to absorb it;
+// where a seed pin went stale it was re-derived from a widened sweep with the
+// re-sweep recorded beside it (`campaign-policies.test.ts` FIGHTER_METRIC_SEED
+// 2 -> 6, `campaign-smuggler-gambler.test.ts`'s new SMUGGLER_ENFORCEMENT_SEED,
+// `sweep-gate.test.ts`'s veteran bar re-measured against its own deleted-branch
+// control). The 8,000-row capstone diff against
+// `docs/balance/baseline-t196a-free-actions.json` is the powered read.
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
   // so the trader borrows and repays on the day it needs to rather than on the day
@@ -1155,7 +1229,12 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // trader's new anti-idle rim move (see the header).
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).
-  trader: '937f3a09339d5f5a',
+  // ENTRY 32 (T-196b): re-derived — the trader's own day plan changed. Its
+  // sign→travel pair is gated on the travel die alone, its second run needs
+  // `ledger.remaining() >= 1` instead of `>= 2`, and `planRefuel` /
+  // `planCrippledRepair` / `planCaptainOverhead` take no die at all (see the
+  // header's entry 32). Credits over these five seeds RISE, 108,267 -> 131,747.
+  trader: '4b4115a7c2486def',
   // Entry 27 (T-159): re-derived — and the ONLY row that moves, which is the
   // cross-check that this was a fighter change and nothing else: `trader`,
   // `explorer`, `veteran`, `smuggler`, `gambler` and `greedy` all came back byte
@@ -1193,7 +1272,14 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // 0.570 -> 0.580, worst zero-income streak 9 -> 1).
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).
-  fighter: 'a45b2209bd026fdb',
+  // ENTRY 32 (T-196b): re-derived — same cause, plus the fighter's own three-way
+  // shopping chain (`planSpecialEquipment` -> `planFighterUpgrade` ->
+  // `planCaptainOverhead`) now nets a running `committed` credit total, because all
+  // three can fire on one day where the die used to ration them apart. Component
+  // tiers over the five seeds fall 44 -> 37 and credits 55,035 -> 49,399: the yard
+  // buys are no longer double-funded out of the same dawn balance, which is the
+  // netting working, not a lost capability.
+  fighter: '57afc68979f9ae48',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
   // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4
@@ -1233,7 +1319,17 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   //     fuel-starvation days          0 ->       0
   // Credits up and one seed's marker slipping past day 40 is RE-PHASING, not a
   // regression, and NOTHING WAS TUNED IN RESPONSE.
-  explorer: '87c16b5068222a12',
+  //
+  // ENTRY 32 (T-196b): re-derived — and this time the cause is INSIDE
+  // `explorerPolicy`: its tier-3 drives buy and its sign→travel pair both stopped
+  // taking a die, so the Explore loop below them is handed MORE dice on a fuelled
+  // day, and `drivesCost` now nets into `planCaptainOverhead`. Credits over the five
+  // seeds fall 146,960 -> 69,158 and deeds 114 -> 107, which is the overhead
+  // throttle coming off (the header's entry 32 states the mechanism) plus F-196b-1's
+  // per-sweep credit charge on the Explore loop below it — the loop's REAL bound
+  // finally applied per iteration instead of once (see the finding in TASKS.md). It
+  // caps no iteration count and moves no floor.
+  explorer: 'd5f410e252951823',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   //
   // Entry 29 (T-161): re-derived, and the ONLY row that moves — which is the
@@ -1269,7 +1365,15 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // header's F-199-1 residual), so this row has no second reason to move.
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).
-  veteran: '25293f6a22c22404',
+  // ENTRY 32 (T-196b): re-derived, and the LOUDEST row in the table — component
+  // tiers over the five seeds go 6 -> 23. The veteran's yard chain (cargo pods,
+  // `planFighterUpgrade`, `planSpecialEquipment`) used to compete with its own
+  // haggle/sign/travel for the same five dice and now does not; the pod buy's price
+  // is netted forward through `yardCommitted` so the three cannot spend the same
+  // credits. Its broker_shark gate also falls `>= 3` to `>= 2` (sign is free, so
+  // only haggle and travel still cost dice). Credits RISE, 34,032 -> 39,414, and
+  // deeds 64 -> 68 — a grinder that can shop and fly on the same day earns more.
+  veteran: 'd43d2c45794576e7',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
   // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
   // through the shorter hand on a band-3/4 board rather than through the payout.
@@ -1287,7 +1391,18 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // fuel-starvation days 0 -> 0. Credits fall here where `explorer`'s rise — the two
   // directions are re-phasing on a five-seed sample, not a trend; the 8,000-row
   // capstone puts both rows within a percent or two of their previous medians.
-  smuggler: '68ca024d823c0fa8',
+  //
+  // ENTRY 32 (T-196b): re-derived — and again the cause moves INSIDE the policy:
+  // its two yard-tier branches, its drive repair, its stranded refit and its
+  // sign→travel pair all stopped taking a die, and a new `yardCommitted` running
+  // total threads that spend into the refuel, the repair, the overhead, the Explore
+  // floor and the marker payment so one day's credits cannot fund five purchases.
+  // Its Explore loop also carries F-196b-1's per-sweep credit charge — the finding
+  // this task's own capstone gate caught and closed (TASKS.md), without which the
+  // policy grew a zero-income tail it has never had. Credits over the five seeds
+  // RISE 51,950 -> 67,246 and deeds fall 120 -> 115: a policy that stops sweeping
+  // its purse into the fuel pump keeps more of it. No constant was touched.
+  smuggler: '5a90233fc822d9ee',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sol-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
@@ -1366,10 +1481,17 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // 1..5 x 40 days. A wider window would be expected to move it.
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).
-  gambler: '6b5ca9f45514024c',
+  // ENTRY 32 (T-196b): re-derived, and for once NOT for a `planDare` reason — the
+  // gambler's sign→travel pair lost its sign die and its refuel/repair/overhead
+  // planners lost theirs, exactly like every other row. The tables are untouched by
+  // this task (Hangout is T-197's). Credits 142,830 -> 109,312 over the five seeds.
+  gambler: '88bda8cf38691408',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).
+  // ENTRY 32 (T-196b): UNCHANGED, and deliberately the control — see the header's
+  // entry 32. `greedyTraderPolicy`'s only edit deletes a dead `spendDie: 0` that
+  // zod already stripped, so its careers are bit-for-bit what they were.
   greedy: 'd17a5e39f79918c6',
 };
 

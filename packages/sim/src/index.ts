@@ -1678,11 +1678,23 @@ function ingestBalanceRecords(
   }
 }
 
+/** Queue an action that really does spend a die, handing it the next unused die
+ *  index and refusing once the five-die hand is committed.
+ *
+ *  T-196b · THE COUNT IS OF DIE ACTIONS, NOT OF ACTIONS. It used to be
+ *  `actions.filter(a => a.type !== 'Wait').length`, which was the same number only
+ *  while every non-Wait action cost a die. M17 freed nine action types
+ *  (docs/DAWN-HAND-REDESIGN.md §3), so a `Trade/buy-fuel` sitting in the batch must
+ *  not consume a `spendDie` index — counting it would hand the day's jump index 1
+ *  while die 0 sat unspent, and would spend the budget five actions into a day that
+ *  had rolled nothing. The filter now names the property it always meant. */
 function appendDieAction(
   actions: PlayerAction[],
   makeAction: (spendDie: number) => PlayerAction,
 ): void {
-  const dieActionCount = actions.filter((action) => action.type !== 'Wait').length;
+  const dieActionCount = actions.filter(
+    (action) => 'spendDie' in action && action.spendDie !== undefined,
+  ).length;
 
   if (dieActionCount < 5) {
     actions.push(makeAction(dieActionCount));
@@ -1706,15 +1718,17 @@ export function availablePlannedActions(state: GameState): PlayerAction[] {
 
   const fuelToBuy = affordableFuelAmount(state);
   if (state.player.ship.fuel < state.player.ship.maxFuel && fuelToBuy >= 1) {
-    // T-196a: buy-fuel is a FREE ACTION now, so the builder takes no die. It still
-    // goes through `appendDieAction` — the day-plan budget is deliberately UNCHANGED
-    // in this task (the control arm); T-196b is where the instruments stop budgeting
-    // for it.
-    appendDieAction(actions, () => ({
+    // T-196b: buy-fuel is a FREE ACTION (T-196a freed the engine rule), so it no
+    // longer goes through `appendDieAction` at all — the die budget is for jumps
+    // and checks. Its REAL bounds are the two already tested on the line above:
+    // tank capacity and what the purse can afford. Note the knock-on: because this
+    // no longer consumes a `dieActionCount` slot, the `Travel` below now receives
+    // `spendDie: 0` on a day that also buys fuel (it used to receive 1).
+    actions.push({
       type: 'Trade',
       action: 'buy-fuel',
       fuelAmount: fuelToBuy,
-    }));
+    });
   }
 
   const destinationId = state.player.activeContract
@@ -1840,12 +1854,19 @@ export const greedyTraderPolicy: SimPolicy = ({ state }) => {
 
   const fuelToBuy = affordableFuelAmount(state);
   if (state.player.ship.fuel < 200 && fuelToBuy >= 1) {
+    // T-196b · THE RESIDUAL `spendDie: 0` T-196a's compile sweep could not see.
+    // `PlayerAction` is a union and `Trade` is one member with several sub-action
+    // shapes; TypeScript's excess-property check against a union admits any key
+    // that is present in SOME member, and `Trade/haggle` still has `spendDie` — so
+    // a `spendDie` on the (now field-less) `buy-fuel` shape compiled clean. The
+    // zod schema strips it before the engine sees it, so it was dead payload, but
+    // dead payload in a swept instrument is exactly the "field that silently does
+    // nothing" M17 exists to remove.
     return [
       {
         type: 'Trade',
         action: 'buy-fuel',
         fuelAmount: fuelToBuy,
-        spendDie: 0,
       },
     ];
   }
@@ -1901,9 +1922,16 @@ export function isIncomeAction(action: PlayerAction): boolean {
 /**
  * A per-day die ledger. The dawn hand is sorted DESCENDING (index 0 = the
  * highest-value die), so `takeBest` pops the sharpest remaining die (for skill
- * checks — travel, explore, combat) and `takeWorst` pops the dullest (for rote
- * actions that roll no check — signing, refuelling, buying upgrades). Returns
+ * checks — travel, explore, combat) and `takeWorst` pops the dullest. Returns
  * `undefined` once the hand is exhausted so callers stop queueing actions.
+ *
+ * T-196b · WHAT `takeWorst` IS STILL FOR. It used to serve "rote actions that
+ * roll no check — signing, refuelling, buying upgrades"; M17 freed every one of
+ * those (docs/DAWN-HAND-REDESIGN.md §3) and no planner spends a die on them any
+ * more. What is left on the dull end are the die-costed verbs a policy wants to
+ * take WITHOUT giving up the sharp die the day's real check needs: the veteran's
+ * `haggle`, and the Hangout's borrow/repay/dare (T-197's to revisit). Everything
+ * this ledger hands out now is a Main Action.
  */
 interface DieLedger {
   takeBest(): number | undefined;
@@ -2079,8 +2107,12 @@ function rankedContracts(state: GameState): RankedContract[] {
 const FUEL_REFUEL_THRESHOLD = 180;
 const FUEL_REFUEL_TARGET = 300;
 
-/** Queue a refuel (dull die) when the tank dips below the working threshold,
- *  buying up to the target, capped by what's affordable above `keepFloor`.
+/** Queue a refuel when the tank dips below the working threshold, buying up to
+ *  the target, capped by what's affordable above `keepFloor`.
+ *  T-196b: buying fuel is a FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3), so this
+ *  planner takes no die and no longer needs the `DieLedger` at all. Its REAL
+ *  bounds are unchanged and all still enforced below: tank capacity
+ *  (`maxFuel - fuel`), the working target, and the credits left above `keepFloor`.
  *  Returns the action and its credit cost (so debt planning can reserve it).
  *  T-1601a `extraCredits`: credits the day's plan has ALREADY arranged to have on
  *  hand before this action runs (today only: a Penny Wise advance queued earlier
@@ -2091,7 +2123,6 @@ const FUEL_REFUEL_TARGET = 300;
  *  byte-identical. */
 function planRefuel(
   state: GameState,
-  ledger: DieLedger,
   keepFloor: number,
   threshold = FUEL_REFUEL_THRESHOLD,
   target = FUEL_REFUEL_TARGET,
@@ -2105,8 +2136,6 @@ function planRefuel(
   const affordable = Math.floor(spendable / price);
   const units = Math.min(want, affordable);
   if (units < 1) return null;
-  const die = ledger.takeWorst();
-  if (die === undefined) return null;
   return {
     action: { type: 'Trade', action: 'buy-fuel', fuelAmount: units },
     cost: units * price,
@@ -2138,18 +2167,20 @@ const CRIPPLED_FUEL_FRACTION = 0.7;
  *      a full 210 tank, every board contract 221–494 fuel away). Repairing the
  *      hull restores the 300 tank and reopens the near runs. Reader:
  *      campaign.test.ts poverty-trap invariant (streak < 5).
- *  Returns null when the ship is healthy, unaffordable, or out of dice. */
+ *  Returns null when the ship is healthy or the yard bill is unaffordable.
+ *  T-196b: the yard is a FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3), so this
+ *  takes no die and the `DieLedger` parameter is gone. Its REAL bound is the one
+ *  it always had and still enforces: the quoted repair must clear `reserve` out
+ *  of the purse. It is still at most ONE repair-all per day by construction —
+ *  `crippledRepairNeed` reads the dawn state and returns a single quote. */
 function planCrippledRepair(
   state: GameState,
-  ledger: DieLedger,
   reserve: number,
   extraCredits = 0,
 ): PlayerAction | null {
   const need = crippledRepairNeed(state);
   if (!need.needed || !need.repairable) return null;
   if (state.player.credits + extraCredits - need.cost < reserve) return null;
-  const die = ledger.takeWorst();
-  if (die === undefined) return null;
   return { type: 'Shipyard', action: 'repair', repairMode: 'all' };
 }
 
@@ -2684,12 +2715,16 @@ function expectedFreshDieFace(state: GameState): number {
  * a fresh one would be expected to be.
  *
  * WHY THE SHARPEST AND NOT THE DULLEST. The hand is dealt descending, and every
- * planner in this file spends `takeBest()` (index 0) on the day's one action that
- * actually rolls a check — the jump, the stance, the sweep — and `takeWorst()` on
- * the rote ones (sign, refuel, yard, hire), which roll nothing. Improving the
- * dull end therefore buys nothing at all; improving the top of the hand is the
- * whole value of the charge. And if the sharpest die is below the expected fresh
- * face, so is every other die in the hand, so the re-roll is +EV by construction.
+ * planner in this file spends `takeBest()` (index 0) on the day's actions that
+ * actually roll a check — the jump, the stance, the sweep. Improving the dull end
+ * buys nothing at all; improving the top of the hand is the whole value of the
+ * charge. And if the sharpest die is below the expected fresh face, so is every
+ * other die in the hand, so the re-roll is +EV by construction.
+ *
+ * T-196b: this used to add "and `takeWorst()` on the rote ones (sign, refuel,
+ * yard, hire), which roll nothing" — M17 freed all four, so they take no die at
+ * all now and the dull end serves only `haggle` and the Hangout verbs. The
+ * conclusion is unchanged and, if anything, stronger.
  *
  * COSTS NO DIE — only a `rerollsRemaining` charge (engine `resolveReroll`), so
  * this never competes with the day's income actions and takes nothing from the
@@ -2760,10 +2795,12 @@ function crewBenefitRank(benefit: DiceBenefit): number {
   return 2;
 }
 
-/** One die-costed captain's-overhead purchase, priced before it is committed. */
+/** One captain's-overhead purchase, priced before it is committed. T-196b: the
+ *  builder takes no argument — all three verbs (berth tier, crew hire, port
+ *  stake) are Free Actions and their shapes carry no `spendDie`. */
 interface OverheadPick {
   cost: number;
-  make: (spendDie: number) => PlayerAction;
+  make: () => PlayerAction;
 }
 
 /** What `planCaptainOverhead` decided: the queued actions and the credits they
@@ -2795,9 +2832,9 @@ function planBerthUpgrade(state: GameState, spendable: number): OverheadPick | n
   if (!Number.isFinite(cost) || cost > spendable) return null;
   return {
     cost,
-    // T-196a: the shipyard is FREE now, so the builder takes no die. The
-    // "one die-costed purchase a day, with the dullest die" budget in
-    // `planCaptainOverhead` is deliberately UNCHANGED here (the control arm).
+    // T-196a: the shipyard is FREE, so the builder takes no die; T-196b removed
+    // the die budget in `planCaptainOverhead` that used to ration it. The
+    // ONE-per-day rule there is not a die rule and survives untouched.
     make: () => ({
       type: 'Shipyard',
       action: 'buy-component-tier',
@@ -2874,9 +2911,9 @@ function planPortStake(state: GameState, spendable: number): OverheadPick | null
 }
 
 /**
- * THE CAPTAIN'S OVERHEAD — at most ONE die-costed purchase a day, taken with the
- * DULLEST remaining die, after the day's income actions are already queued, and
- * only out of the surplus left once the whole Guild marker is held back.
+ * THE CAPTAIN'S OVERHEAD — at most ONE purchase a day, after the day's income
+ * actions are already queued, and only out of the surplus left once the whole
+ * Guild marker is held back.
  *
  * THE MARKER-FIRST RULE IS THE HOUSE RULE, and it is recorded here with the
  * measurement that put it back, per BALANCE-POLICY Part B rule 3. It is the same
@@ -2905,30 +2942,39 @@ function planPortStake(state: GameState, spendable: number): OverheadPick | null
  * of the argument for skipping the gate are therefore refuted, and the gate goes
  * back where every other discretionary purchase in this file already has one.
  *
- * Three further properties, each deliberate:
- *   * ONE per day. Berths, hires and stakes all read the DAWN state, so two in a
- *     batch would be planned against preconditions the first one has already
- *     moved (a hire into a berth the same batch is still buying). Mirroring the
- *     engine exactly means planning against the state the engine will see.
- *   * DULLEST die, like every other rote purchase in this file — none of these
- *     three actions rolls a check.
- *   * LAST in the plan, so the ledger is already empty on a full working day and
- *     the shopping simply does not happen. That is what keeps `incomeActionCount`
- *     where it was and the poverty-trap invariant (`longestZeroIncomeStreak < 5`)
- *     untouched — the same rule `planLoanBorrow` states for itself.
+ * Two further properties, each deliberate:
+ *   * ONE per day, and this survives M17 intact. Berths, hires and stakes all
+ *     read the DAWN state, so two in a batch would be planned against
+ *     preconditions the first one has already moved (a hire into a berth the same
+ *     batch is still buying). Mirroring the engine exactly means planning against
+ *     the state the engine will see. The die was never what enforced this, so
+ *     "no longer costs a die" does NOT become "may be taken N times".
+ *   * LAST in the plan, so it can never displace an income action.
+ *
+ * T-196b · THE OLD THIRD PROPERTY IS GONE AND ITS RATIONALE MUST NOT SURVIVE IT.
+ * This block used to read "DULLEST die … LAST in the plan, so the ledger is
+ * already empty on a full working day and the shopping simply does not happen.
+ * That is what keeps `incomeActionCount` where it was and the poverty-trap
+ * invariant (`longestZeroIncomeStreak < 5`) untouched." Both halves are now
+ * false: berths, hires and stakes are Free Actions (docs/DAWN-HAND-REDESIGN.md
+ * §3), so there is no ledger left to be empty and the shopping DOES happen on a
+ * full working day. The invariant is untouched for a stronger reason than the old
+ * accident of ordering: this planner consumes NO die at all, so it cannot take
+ * one from an income action however busy the day is. `incomeActionCount` counts
+ * sign/Travel/Explore/fight-or-talk (`isIncomeAction`) and none of the three
+ * verbs here is one — they neither add to it nor subtract from it. What DID
+ * change, and is the single biggest mechanism in this arm's sweep, is the
+ * FREQUENCY: the throttle was real, and these three verbs now fire on every day
+ * where `spendable > 0` rather than only on days the working plan left a die.
  *
  * `committed` is the credits the rest of today's plan has already spent (refuel,
- * repayment, less any advance), so affordability is judged on what will really be
- * in the purse, not on the dawn balance.
+ * repayment, yard, less any advance), so affordability is judged on what will
+ * really be in the purse, not on the dawn balance. Callers that can now queue
+ * several freed purchases in one day MUST thread their running total through it —
+ * before M17 the die scarcity made that collision rare; it is the common case now.
  */
-function planCaptainOverhead(
-  state: GameState,
-  ledger: DieLedger,
-  reserve: number,
-  committed = 0,
-): CaptainOverhead {
+function planCaptainOverhead(state: GameState, reserve: number, committed = 0): CaptainOverhead {
   if (state.encounter) return NO_OVERHEAD;
-  if (ledger.remaining() === 0) return NO_OVERHEAD;
   // THE MARKER COMES OUT FIRST. `spendable` is what is left after the operating
   // reserve, what the rest of today's plan has already committed, AND THE WHOLE
   // OUTSTANDING GUILD MARKER — see the block comment above for the capstone that
@@ -2948,9 +2994,7 @@ function planCaptainOverhead(
     planCrewHire(state, spendable) ??
     planPortStake(state, spendable);
   if (!pick) return NO_OVERHEAD;
-  const die = ledger.takeWorst();
-  if (die === undefined) return NO_OVERHEAD;
-  return { actions: [pick.make(die)], cost: pick.cost };
+  return { actions: [pick.make()], cost: pick.cost };
 }
 
 // T-1102: the largest share of the tank a single contract's jump may cost. Below
@@ -3164,7 +3208,6 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
   const refuelTarget = Math.min(ship.maxFuel, Math.max(workingTarget, primaryFuelNeed));
   const refuel = planRefuel(
     state,
-    ledger,
     // T-1601a: hold back exactly the repayment queued above (it runs first, but
     // these planners all read the DAWN state), so the tank is never filled with
     // the money that was going to clear the marker.
@@ -3187,7 +3230,11 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
   // advance funds the repair, a repayment is money already spent). The refuel is
   // deliberately NOT subtracted — that was never modelled here, and changing it
   // would move the T-1302 stranding fix this planner exists for.
-  const repair = planCrippledRepair(state, ledger, TRADER_RESERVE, borrowed - repaid);
+  // T-196b: the refuel is STILL deliberately not netted off, for the reason the
+  // comment above already gives — this pair could always co-occur (both were
+  // reachable on a five-die day), so freeing the die did not create the collision
+  // and closing it here would be a behaviour change this task does not own.
+  const repair = planCrippledRepair(state, TRADER_RESERVE, borrowed - repaid);
   if (repair) actions.push(repair);
 
   // The tank the trader will actually have when it flies today — current fuel
@@ -3212,9 +3259,13 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
     // T-1601a: `preferred` is `reachable[0]` unless the rim or head-home
     // preference above swapped in another member of the SAME fundable set.
     const best = preferred;
-    const signDie = ledger.takeWorst();
+    // T-196b · SIGNING IS FREE (docs/DAWN-HAND-REDESIGN.md §3), so the pair is
+    // gated on the TRAVEL die alone — the jump is the only half that rolls a
+    // check. The sign's real bounds are unchanged and both still enforced: the
+    // engine refuses a second active contract (`trade.ts:67`), and `preferred` is
+    // drawn from the already fuel- and net-filtered `reachable` set.
     const travelDie = ledger.takeBest();
-    if (signDie !== undefined && travelDie !== undefined) {
+    if (travelDie !== undefined) {
       actions.push({
         type: 'Trade',
         action: 'sign-contract',
@@ -3224,14 +3275,15 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
 
       // Second run while the debt still bites: throughput matters more than the
       // marginal encounter risk when 25,000 credits are due by day 30.
-      if (state.player.debt > 5000 && reachable.length > 1 && ledger.remaining() >= 2) {
+      // T-196b: `>= 2` became `>= 1` — the second sign is free, so only the
+      // second TRAVEL die has to still be in the hand.
+      if (state.player.debt > 5000 && reachable.length > 1 && ledger.remaining() >= 1) {
         // T-1601a: the richest OTHER fundable run — `reachable[1]` unless a
         // preference above made `best` something other than `reachable[0]`.
         const second = reachable.find((c) => c.index !== best.index)!;
         // The board shifts when the first contract is spliced off; correct the
         // live index for the second sign.
         const liveIndex = second.index > best.index ? second.index - 1 : second.index;
-        const secondSignDie = ledger.takeWorst();
         const secondTravelDie = ledger.takeBest();
         // T-1102: the second leg is flown FROM the first delivery's system, not
         // from here — price it on that leg (distance best.destination → second),
@@ -3243,11 +3295,7 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
           systemDistance(best.destination, second.destination),
         );
         const projectedFuel = availableFuel - primaryFuelNeed;
-        if (
-          secondSignDie !== undefined &&
-          secondTravelDie !== undefined &&
-          projectedFuel >= secondLegFuel
-        ) {
+        if (secondTravelDie !== undefined && projectedFuel >= secondLegFuel) {
           actions.push({
             type: 'Trade',
             action: 'sign-contract',
@@ -3289,12 +3337,12 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
   // that costs far more than the days of marker payment it defers. A repayment
   // queued TODAY needs no such hold; it is already committed spending instead.
   const loanHold = state.player.loan && !repay ? state.player.loan.outstanding : 0;
-  // N9 · The captain's overhead — berths, crew, a port stake — with whatever dull
-  // die the working day left over, and BEFORE the marker payment is sized so the
-  // money it commits is held back from the Guild exactly as the refuel is.
+  // N9 · The captain's overhead — berths, crew, a port stake — BEFORE the marker
+  // payment is sized, so the money it commits is held back from the Guild exactly
+  // as the refuel is. T-196b: it no longer waits on a leftover die (it costs
+  // none), so it now fires on every day the surplus allows.
   const overhead = planCaptainOverhead(
     state,
-    ledger,
     TRADER_RESERVE + loanHold,
     refuelCost + repaid - borrowed,
   );
@@ -3526,16 +3574,22 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   // finish solvent. Component tiers are not renown-gated, so this is reachable
   // from day one; gated above a working reserve so it never spends the last
   // credits at the yard.
+  // T-196b · The yard is FREE, so no die is taken here. The bounds that actually
+  // hold this are the ones already on the branch: the component is bought only
+  // while its strength is below tier 3 (so it fires at most once per component
+  // per career), the two branches are mutually exclusive (`else if`), and the
+  // purse must clear half the working reserve. `yardCommitted` carries the net
+  // cost forward so the refuel/repair/overhead below cannot spend it twice — a
+  // collision that was rare while the die rationed these and is now routine.
+  let yardCommitted = 0;
   if (ship.drives.strength < 30 && state.player.credits >= SMUGGLER_RESERVE / 2) {
-    const die = ledger.takeWorst();
-    if (die !== undefined) {
-      actions.push({
-        type: 'Shipyard',
-        action: 'buy-component-tier',
-        component: 'drives',
-        tier: 3,
-      });
-    }
+    actions.push({
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'drives',
+      tier: 3,
+    });
+    yardCommitted += Math.max(0, componentTierNetCost(state, 'drives', 3));
   } else if (ship.navigation.strength < 30 && state.player.credits >= SMUGGLER_RESERVE / 2) {
     // THEN THE NAV COMPUTER. `navBonus` adds `floor((score - 10) / 10)` to every
     // pilot check, so a tier-3 navigation (+2) buys 4 units of extra reach
@@ -3543,15 +3597,13 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     // rim port being a place you can leave under the NAV GATE below and a place
     // you are stuck at. Also ~0 net at the yard (the strength-10 trade-in covers
     // the tier-3 sticker), so it is affordable the moment the drives are done.
-    const die = ledger.takeWorst();
-    if (die !== undefined) {
-      actions.push({
-        type: 'Shipyard',
-        action: 'buy-component-tier',
-        component: 'navigation',
-        tier: 3,
-      });
-    }
+    actions.push({
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'navigation',
+      tier: 3,
+    });
+    yardCommitted += Math.max(0, componentTierNetCost(state, 'navigation', 3));
   }
 
   // ---- Contract pick (trader machinery, plus a NAV gate) -------------------
@@ -3689,10 +3741,12 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
 
   // Size the refuel to guarantee today's leg (capped at the tank), never below
   // the working defaults — the T-1102 scarcity fix.
+  // T-196b: `repaid + yardCommitted` is the keep-floor — the tank is never filled
+  // with money the day has already spent at the yard, which before this task the
+  // die scarcity made an unlikely pairing and now is an ordinary day.
   const refuel = planRefuel(
     state,
-    ledger,
-    repaid,
+    repaid + yardCommitted,
     Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_THRESHOLD, primaryFuelNeed)),
     Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_TARGET, primaryFuelNeed)),
     borrowed,
@@ -3703,7 +3757,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     refuelCost = refuel.cost;
   }
 
-  const repair = planCrippledRepair(state, ledger, SMUGGLER_RESERVE, borrowed - repaid);
+  const repair = planCrippledRepair(state, SMUGGLER_RESERVE, borrowed - repaid - yardCommitted);
   if (repair) {
     actions.push(repair);
   } else if (ship.drives.condition < SMUGGLER_DRIVE_REPAIR_CONDITION) {
@@ -3712,7 +3766,11 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     // 7 TRIPLES the fuel bill of every leg this policy flies — and it flies the
     // long ones. `planCrippledRepair` above only fires on the HULL's fuel-ceiling
     // collapse, so nothing else in the sim ever notices a worn drive. Affordable
-    // above the working reserve, dull die (a repair rolls no check).
+    // above the working reserve; T-196b took its die (the yard is free) and added
+    // `yardCommitted` to the affordability sum, so a tier bought at the top of
+    // this same day is money this repair can no longer also spend. It stays at
+    // most one repair per day: the `else` arm of `planCrippledRepair`, guarded by
+    // a single dawn-read condition.
     const quote = quoteShipyard(state.player, {
       type: 'Shipyard',
       action: 'repair',
@@ -3720,12 +3778,11 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     });
     if (
       quote.ok &&
-      state.player.credits + borrowed - repaid - refuelCost - quote.cost >= SMUGGLER_RESERVE
+      state.player.credits + borrowed - repaid - refuelCost - yardCommitted - quote.cost >=
+        SMUGGLER_RESERVE
     ) {
-      const die = ledger.takeWorst();
-      if (die !== undefined) {
-        actions.push({ type: 'Shipyard', action: 'repair', repairMode: 'all' });
-      }
+      actions.push({ type: 'Shipyard', action: 'repair', repairMode: 'all' });
+      yardCommitted += Math.max(0, quote.cost);
     }
   }
 
@@ -3745,9 +3802,11 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     }
   } else if (preferred && postRefuelFuel >= primaryFuelNeed) {
     const best = preferred;
-    const signDie = ledger.takeWorst();
+    // T-196b: free sign, so the pair is gated on the travel die alone. The sign's
+    // real bounds hold: one active contract (engine `trade.ts`), and `preferred`
+    // comes from the nav-gated, fuel-capped, net-positive `reachable` set.
     const travelDie = ledger.takeBest();
-    if (signDie !== undefined && travelDie !== undefined) {
+    if (travelDie !== undefined) {
       actions.push({
         type: 'Trade',
         action: 'sign-contract',
@@ -3818,16 +3877,21 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
       component: 'drives',
       tier: 3,
     });
-    if (refitQuote.ok && refitQuote.cost <= state.player.credits + borrowed - repaid - refuelCost) {
-      const die = ledger.takeWorst();
-      if (die !== undefined) {
-        actions.push({
-          type: 'Shipyard',
-          action: 'buy-component-tier',
-          component: 'drives',
-          tier: 3,
-        });
-      }
+    // T-196b: free at the yard now, and `yardCommitted` joins the sum so a tier or
+    // repair already queued today cannot be paid for twice. Reachable only when
+    // the day produced no income action at all, and the drives block at the top of
+    // this policy would have fired instead if it could — so this stays one refit.
+    if (
+      refitQuote.ok &&
+      refitQuote.cost <= state.player.credits + borrowed - repaid - refuelCost - yardCommitted
+    ) {
+      actions.push({
+        type: 'Shipyard',
+        action: 'buy-component-tier',
+        component: 'drives',
+        tier: 3,
+      });
+      yardCommitted += Math.max(0, refitQuote.cost);
     }
   }
 
@@ -3851,17 +3915,17 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   // neither.
   const loanHold = state.player.loan && !repay ? state.player.loan.outstanding : 0;
 
-  // N9 · The captain's overhead. Placed AHEAD of the Explore loop below and
-  // nowhere else it could go: that loop drains every remaining die by design, so
-  // a shopping planner queued after it would be handed an empty ledger on every
-  // fuelled, solvent day — the smuggler and the explorer would have gone on
-  // emitting the three verbs exactly zero times. It still runs after the day's
-  // contract and travel actions, so it never displaces the income work.
+  // N9 · The captain's overhead. It used to have to sit AHEAD of the Explore loop
+  // below, because that loop drains every remaining die by design and a shopping
+  // planner queued after it would have been handed an empty ledger on every
+  // fuelled, solvent day. T-196b removes that constraint (the three verbs take no
+  // die), but the placement is KEPT: it still runs after the day's contract and
+  // travel actions so it never displaces the income work, and its `overhead.cost`
+  // is a term of the Explore floor below, which reads it from here.
   const overhead = planCaptainOverhead(
     state,
-    ledger,
     SMUGGLER_RESERVE + loanHold,
-    refuelCost + repaid - borrowed,
+    refuelCost + repaid + yardCommitted - borrowed,
   );
   actions.push(...overhead.actions);
 
@@ -3877,9 +3941,35 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   // it and backed it out because it re-seeded the smuggler onto a stall in the
   // SHARED `planPacifistCombat`; T-199 fixed that planner first (see its header),
   // which is what made this line safe to add.
+  //
+  // F-196b-1 · THE LOOP'S CREDIT BOUND IS NOW CHARGED PER SWEEP, and this is a
+  // T-196b fix, filed and measured. The credit test above used to be a ONE-SHOT
+  // check taken before the first sweep: it asked "can the purse afford to be
+  // exploring today", never "can it afford THIS MANY sweeps". That was survivable
+  // only while the sign, the refuel and the yard each took a die, which held the
+  // loop to one or two iterations; T-196b freed all three, so the same fuelled day
+  // now hands the loop four dice and it burns 320 fuel instead of 160 — fuel the
+  // NEXT dawn has to buy back at the pump. MEASURED over seeds 1..1000 × 120 days:
+  // before this term the smuggler's longest zero-income streak developed a tail it
+  // never had (seed 42: 6 days, seed 216: 8, against a HEAD maximum of 1 across
+  // the whole 1,000), both stranded at Polaris-1 on the 100-credit subsistence
+  // floor with a tank too thin to sweep and no fundable run. `sweepReplacement`
+  // charges each queued sweep the credits its fuel will cost to replace, which is
+  // the REAL bound the task's own F-116-1/F-150-2 clause demands be enforced IN
+  // THE PLANNER. Note it does NOT cap the iteration count: a rich, fuelled day
+  // still sweeps its whole hand, which is the pacing the loop is there for.
+  const sweepReplacementCost = EXPLORATION_FUEL_COST * fuelDepotPrice;
+  let sweepReplacement = 0;
   while (
     state.player.recovery === null &&
-    state.player.credits + borrowed - refuelCost - repaid - overhead.cost > exploreFloor &&
+    state.player.credits +
+      borrowed -
+      refuelCost -
+      repaid -
+      overhead.cost -
+      yardCommitted -
+      sweepReplacement >
+      exploreFloor &&
     projectedFuel >= EXPLORATION_FUEL_COST &&
     ledger.remaining() > 0
   ) {
@@ -3887,6 +3977,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     if (die === undefined) break;
     actions.push({ type: 'Explore', spendDie: die });
     projectedFuel -= EXPLORATION_FUEL_COST;
+    sweepReplacement += sweepReplacementCost;
   }
 
   // ---- T-199 · F-199-1 · THE WALK HOME, AS THE LAST RUNG.
@@ -3911,10 +4002,15 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   const strandedExplore = planStrandedExplore(state, ledger, actions);
   if (strandedExplore) actions.push(strandedExplore);
 
+  // T-196b: the yard spend joins "everything already committed this day". Unlike
+  // `fighterPolicy`'s equivalent hole (F-199-1, deliberately left open there),
+  // this one is NEW — before this task the smuggler's yard buys competed with the
+  // day's dice and now they do not, so netting them is closing a hole this change
+  // would otherwise open, not re-litigating a filed one.
   const debtPayment = planDebtPayment(
     state,
     SMUGGLER_RESERVE + loanHold,
-    refuelCost + repaid + overhead.cost,
+    refuelCost + repaid + overhead.cost + yardCommitted,
     borrowed,
   );
   if (debtPayment) actions.push(debtPayment);
@@ -4346,7 +4442,6 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
 
   const refuel = planRefuel(
     state,
-    ledger,
     repaid,
     Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_THRESHOLD, primaryFuelNeed)),
     Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_TARGET, primaryFuelNeed)),
@@ -4358,7 +4453,7 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
     refuelCost = refuel.cost;
   }
 
-  const repair = planCrippledRepair(state, ledger, GAMBLER_RESERVE, borrowed - repaid);
+  const repair = planCrippledRepair(state, GAMBLER_RESERVE, borrowed - repaid);
   if (repair) actions.push(repair);
 
   const boughtFuel = refuel ? refuel.cost / fuelDepotPrice : 0;
@@ -4375,9 +4470,10 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
     }
   } else if (preferred && availableFuel >= primaryFuelNeed) {
     const best = preferred;
-    const signDie = ledger.takeWorst();
+    // T-196b: free sign — gated on the travel die alone. Bounds unchanged: one
+    // active contract (engine), and `preferred` is inside the fundable set.
     const travelDie = ledger.takeBest();
-    if (signDie !== undefined && travelDie !== undefined) {
+    if (travelDie !== undefined) {
       actions.push({
         type: 'Trade',
         action: 'sign-contract',
@@ -4423,7 +4519,6 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
   // has already staked.
   const overhead = planCaptainOverhead(
     state,
-    ledger,
     GAMBLER_RESERVE + loanHold,
     refuelCost + repaid - borrowed,
   );
@@ -4557,7 +4652,14 @@ const FIGHTER_EQUIPMENT_PRIORITY: readonly SpecialEquipmentId[] = [
  * list is unchanged, only its ceiling. Shared with the veteran policy, which
  * calls this function too.
  */
-function planFighterUpgrade(state: GameState, ledger: DieLedger): PlayerAction | null {
+/** T-196b · `committed` is what the rest of today's plan has already promised to
+ *  spend. The yard is a Free Action now, so this planner and
+ *  `planSpecialEquipment` / `planCaptainOverhead` can all fire on the SAME day —
+ *  before M17 the die scarcity made that collision rare, and each one reading the
+ *  dawn balance would now let the same credits be spent three times over. Still at
+ *  most ONE wishlist entry per day (the `return` inside the loop): that cap was
+ *  never the die's doing. */
+function planFighterUpgrade(state: GameState, committed = 0): PlayerAction | null {
   const ship = state.player.ship;
   const wishlist: { component: 'weapons' | 'hull' | 'shields' | 'drives'; tier: number }[] = [];
   if (ship.weapons.strength < 30) wishlist.push({ component: 'weapons', tier: 3 });
@@ -4572,9 +4674,7 @@ function planFighterUpgrade(state: GameState, ledger: DieLedger): PlayerAction |
 
   for (const pick of wishlist) {
     const cost = componentTierNetCost(state, pick.component, pick.tier);
-    if (state.player.credits >= FIGHTER_RESERVE + cost) {
-      const die = ledger.takeWorst();
-      if (die === undefined) return null;
+    if (state.player.credits - committed >= FIGHTER_RESERVE + cost) {
       return {
         type: 'Shipyard',
         action: 'buy-component-tier',
@@ -4584,6 +4684,15 @@ function planFighterUpgrade(state: GameState, ledger: DieLedger): PlayerAction |
     }
   }
   return null;
+}
+
+/** The net yard price of a `buy-component-tier` this policy has just queued, for
+ *  the running `committed` total the next planner is judged against. */
+function upgradeCost(state: GameState, upgrade: PlayerAction | null): number {
+  if (!upgrade || upgrade.type !== 'Shipyard' || upgrade.action !== 'buy-component-tier') return 0;
+  if (upgrade.component === undefined || upgrade.tier === undefined) return 0;
+  const cost = componentTierNetCost(state, upgrade.component, upgrade.tier);
+  return Number.isFinite(cost) ? Math.max(0, cost) : 0;
 }
 
 /**
@@ -4657,10 +4766,10 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   // a repair lifts `maxFuel`, so buying fuel into the collapsed ceiling first
   // would cap the top-up at the broken tank. Same reserve the rest of the day
   // spends against, so it cannot itself strand the purse.
-  const crippledRepair = planCrippledRepair(state, ledger, FIGHTER_RESERVE);
+  const crippledRepair = planCrippledRepair(state, FIGHTER_RESERVE);
   if (crippledRepair) actions.push(crippledRepair);
 
-  const refuel = planRefuel(state, ledger, 0);
+  const refuel = planRefuel(state, 0);
   if (refuel) actions.push(refuel.action);
 
   // T-1104: only sign a contract whose jump fits inside SIGN_FUEL_FRACTION of the
@@ -4714,9 +4823,10 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
     }
   } else if (reachable.length > 0) {
     const best = reachable[0];
-    const signDie = ledger.takeWorst();
+    // T-196b: free sign — gated on the travel die alone. Bounds unchanged: one
+    // active contract (engine), and `reachable` is the fuel-capped set.
     const travelDie = ledger.takeBest();
-    if (signDie !== undefined && travelDie !== undefined) {
+    if (travelDie !== undefined) {
       actions.push({
         type: 'Trade',
         action: 'sign-contract',
@@ -4777,17 +4887,26 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   // ARCH_ANGEL (10,000 each) and ASTRAXIAL_HULL (100,000), and letting it through
   // while the marker is open reproduced the full spiral (seed 1 x 300 days: debt
   // back to 4,253,290). Both planners have to wait.
+  // T-196b · THE RUNNING CREDIT COMMITMENT, threaded through the three shopping
+  // planners below. Each of them reads the DAWN balance, and until this task the
+  // die budget made "special equipment AND a component tier AND a berth on one
+  // day" a rarity; now that all three are Free Actions it is the ordinary day, and
+  // without netting the same credits would fund all three. The refuel leads the
+  // total because it is queued above and runs first.
+  let committed = refuel?.cost ?? 0;
   const special = kitAllowed
-    ? planSpecialEquipment(state, ledger, FIGHTER_RESERVE, FIGHTER_EQUIPMENT_PRIORITY)
+    ? planSpecialEquipment(state, FIGHTER_RESERVE, FIGHTER_EQUIPMENT_PRIORITY, committed)
     : null;
   if (special) actions.push(special);
+  committed += specialEquipmentCost(state, special);
 
-  const upgrade = planFighterUpgrade(state, ledger);
+  const upgrade = planFighterUpgrade(state, committed);
   if (upgrade) actions.push(upgrade);
+  committed += upgradeCost(state, upgrade);
 
   // N9 · The captain's overhead, after the gun budget: a fighter fits its ship
   // first and its cabin second.
-  const overhead = planCaptainOverhead(state, ledger, FIGHTER_RESERVE, refuel?.cost ?? 0);
+  const overhead = planCaptainOverhead(state, FIGHTER_RESERVE, committed);
   actions.push(...overhead.actions);
 
   // T-199 · F-199-2 · the second rung, at the tail (see `planStrandedExplore`).
@@ -4821,6 +4940,13 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   // the debt-clear rate rises to 0.580 — better than before the task on every one
   // of the three. The arithmetic hole is real and stays FILED (F-199-2 in TASKS.md)
   // rather than being paid for by a 93% credit regression.
+  //
+  // T-196b · STILL NOT APPLIED, and deliberately so. This task threads a running
+  // `committed` total through the three SHOPPING planners above (they now co-occur
+  // routinely, so each must see what the last one spent) but leaves THIS call
+  // exactly as it was: adding `yardCost` here is the change measured above and
+  // rejected, and re-making it under cover of a different task would silently
+  // re-buy a 93% credit regression. F-199-1 stays filed.
   const debtPayment = planDebtPayment(state, FIGHTER_RESERVE, (refuel?.cost ?? 0) + overhead.cost);
   if (debtPayment) actions.push(debtPayment);
 
@@ -4951,7 +5077,7 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
 
   // T-1205: repair a hull chipped down enough to collapse the fuel ceiling before
   // the explorer strands (it burns fuel fastest, so it feels a shrunk tank first).
-  const crippledRepair = planCrippledRepair(state, ledger, EXPLORER_RESERVE);
+  const crippledRepair = planCrippledRepair(state, EXPLORER_RESERVE);
   if (crippledRepair) actions.push(crippledRepair);
 
   /** What today's plan has already promised the yard, tracked so the remittance
@@ -4988,17 +5114,19 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   // the explorer's income, so gating them behind the marker gates the explorer
   // out of ever paying the marker. The remittance below is what actually settles
   // the Guild, and it settles it in full.
+  // T-196b: the yard is FREE, so no die is taken. The real bound is the branch's
+  // own: it fires only while the drives are below tier 3 — i.e. at most once per
+  // ship, since the very purchase it queues falsifies the condition — and only
+  // above half the working reserve. `drivesCost` was already threaded into the
+  // remittance below and now matters on many more days.
   if (state.player.ship.drives.strength < 30 && state.player.credits >= EXPLORER_RESERVE / 2) {
-    const die = ledger.takeWorst();
-    if (die !== undefined) {
-      actions.push({
-        type: 'Shipyard',
-        action: 'buy-component-tier',
-        component: 'drives',
-        tier: 3,
-      });
-      drivesCost = componentTierNetCost(state, 'drives', 3);
-    }
+    actions.push({
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'drives',
+      tier: 3,
+    });
+    drivesCost = componentTierNetCost(state, 'drives', 3);
   }
 
   const from = state.player.currentSystemId;
@@ -5013,7 +5141,7 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   // Wise One's 500cr fragment is NOT protected by the floor (a high floor re-strands);
   // instead the flight to Polaris-1 below only launches once the ship can afford it.
   const refuelFloor = EXPLORER_FUEL_RESERVE;
-  const refuel = planRefuel(state, ledger, refuelFloor, 200, 400);
+  const refuel = planRefuel(state, refuelFloor, 200, 400);
   // T-1310: refuel BEFORE the jump. The old order pushed the refuel AFTER the travel
   // action, so the ship jumped on its current (possibly near-empty) tank, failed the
   // jump, and then got stuck on an active contract it could neither reach nor abandon
@@ -5119,9 +5247,10 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
       const sageRun = reachable.find((c) => c.destination === SAGE_SYSTEM_ID);
       if (sageRun) best = sageRun;
     }
-    const signDie = ledger.takeWorst();
+    // T-196b: free sign — gated on the travel die alone. Bounds unchanged: one
+    // active contract (engine), and `best` comes from the funded, capped set.
     const travelDie = ledger.takeBest();
-    if (signDie !== undefined && travelDie !== undefined) {
+    if (travelDie !== undefined) {
       actions.push({
         type: 'Trade',
         action: 'sign-contract',
@@ -5141,10 +5270,15 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   // pursuing the arc the explorer banks its contract income instead, so the tier and
   // the fragment become affordable; normal off-lane charting resumes the moment the
   // fragment is in hand (pursuit ends) or before day 25.
-  // N9 · The captain's overhead, ahead of the Explore loop for the reason the
-  // smuggler's copy states: that loop consumes every remaining die by design, so
-  // anything queued after it would never be handed one.
-  const overhead = planCaptainOverhead(state, ledger, EXPLORER_RESERVE, refuel?.cost ?? 0);
+  // N9 · The captain's overhead, kept ahead of the Explore loop. The original
+  // reason (that loop consumes every remaining die by design, so anything queued
+  // after it would never be handed one) is void as of T-196b — the overhead takes
+  // no die — but the placement stands: the loop's credit floor reads
+  // `overhead.cost`, so the overhead has to be decided first.
+  // T-196b: `drivesCost` joins the committed total. The tier-3 drive buy at the
+  // top of this policy no longer competes with the day's dice, so it and a hire
+  // now land on the same day routinely and must not spend the same credits.
+  const overhead = planCaptainOverhead(state, EXPLORER_RESERVE, (refuel?.cost ?? 0) + drivesCost);
   actions.push(...overhead.actions);
 
   if (!pursuingArc) {
@@ -5179,9 +5313,18 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
     // re-planning is refused for the reason T-135 gives for not re-invoking a policy
     // mid-batch, and capping the loop at one Explore per day would be a pacing
     // change by fiat. Measured and reported in §10 as a bounded limitation.
+    //
+    // F-196b-1 · the per-sweep credit charge the smuggler's twin carries, applied
+    // here for the reason the two loops have always been kept identical: the same
+    // one-shot credit test, the same four-dice-instead-of-two after T-196b freed
+    // the sign/refuel/yard, and the same fuel bill landing on the next dawn. Full
+    // provenance and the seeds 1..1000 measurement live at `smugglerPolicy`'s
+    // copy and are not restated.
+    const sweepReplacementCost = EXPLORATION_FUEL_COST * fuelPriceNow;
+    let sweepReplacement = 0;
     while (
       state.player.recovery === null &&
-      state.player.credits - overhead.cost > EXPLORER_RESERVE &&
+      state.player.credits - overhead.cost - drivesCost - sweepReplacement > EXPLORER_RESERVE &&
       projectedFuel >= EXPLORATION_FUEL_COST &&
       ledger.remaining() > 0
     ) {
@@ -5189,6 +5332,7 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
       if (die === undefined) break;
       actions.push({ type: 'Explore', spendDie: die });
       projectedFuel -= EXPLORATION_FUEL_COST;
+      sweepReplacement += sweepReplacementCost;
     }
   }
 
@@ -5268,13 +5412,15 @@ function simEquipmentInstalled(state: GameState, equipment: SpecialEquipmentId):
  */
 function planSpecialEquipment(
   state: GameState,
-  ledger: DieLedger,
   reserve: number,
   // T-1601a: the priority list is now a PARAMETER, defaulting to the veteran's
   // original three so `veteranPolicy` (the T-114a pinned-seed ASTRAXIAL_HULL
   // reachability proof) is byte-for-byte unchanged. The fighter passes its own
   // list, which leads with AUTO_REPAIR — see `FIGHTER_EQUIPMENT_PRIORITY`.
   priority: readonly SpecialEquipmentId[] = ['STAR_BUSTER', 'ARCH_ANGEL', 'ASTRAXIAL_HULL'],
+  /** T-196b · credits the rest of today's plan has already committed. Same reason
+   *  `planFighterUpgrade` grew one: with the yard free, both fire the same day. */
+  committed = 0,
 ): PlayerAction | null {
   const ship = state.player.ship;
   for (const equipment of priority) {
@@ -5298,12 +5444,20 @@ function planSpecialEquipment(
       continue;
     }
     const cost = simSpecialEquipmentCost(state, equipment);
-    if (state.player.credits < reserve + cost) continue;
-    const die = ledger.takeWorst();
-    if (die === undefined) return null;
+    if (state.player.credits - committed < reserve + cost) continue;
     return { type: 'Shipyard', action: 'buy-special-equipment', equipment };
   }
   return null;
+}
+
+/** The price of a `buy-special-equipment` this policy has just queued, for the
+ *  running `committed` total (see `upgradeCost`). */
+function specialEquipmentCost(state: GameState, special: PlayerAction | null): number {
+  if (!special || special.type !== 'Shipyard' || special.action !== 'buy-special-equipment') {
+    return 0;
+  }
+  if (special.equipment === undefined) return 0;
+  return Math.max(0, simSpecialEquipmentCost(state, special.equipment));
 }
 
 const VETERAN_RESERVE = 3000;
@@ -5422,7 +5576,7 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
 
   // T-1205: repair a hull the enemy has chipped down enough to collapse the fuel
   // ceiling, before it strands the grinder and starves its deed income.
-  const repair = planCrippledRepair(state, ledger, VETERAN_RESERVE);
+  const repair = planCrippledRepair(state, VETERAN_RESERVE);
   if (repair) actions.push(repair);
 
   // T-1102: choose the destination FIRST so the refuel can be sized to reach it —
@@ -5513,14 +5667,12 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   const refuel = wantFumes
     ? planRefuel(
         state,
-        ledger,
         0,
         Math.min(ship.maxFuel, primaryFuelNeed),
         Math.min(ship.maxFuel, primaryFuelNeed + 24),
       )
     : planRefuel(
         state,
-        ledger,
         0,
         Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_THRESHOLD, primaryFuelNeed)),
         Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_TARGET, primaryFuelNeed)),
@@ -5542,9 +5694,12 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
       });
     }
   } else if (idx >= 0 && availableFuel >= primaryFuelNeed) {
-    // Haggle the chosen board offer before signing → broker_shark. Needs three
-    // dice for haggle + sign + travel, so gate on the remaining budget.
-    if (need('broker_shark') && !board[idx].haggled && ledger.remaining() >= 3) {
+    // Haggle the chosen board offer before signing → broker_shark.
+    // T-196b: `>= 3` became `>= 2`. The gate used to read "needs three dice for
+    // haggle + sign + travel"; the sign is a Free Action now (§3), so the only two
+    // die spends left in this branch are the haggle's TRADE check and the jump's
+    // pilot check. Haggle keeps its die for real — it IS the check.
+    if (need('broker_shark') && !board[idx].haggled && ledger.remaining() >= 2) {
       const haggleDie = ledger.takeWorst();
       if (haggleDie !== undefined) {
         actions.push({
@@ -5555,9 +5710,9 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
         });
       }
     }
-    const signDie = ledger.takeWorst();
+    // T-196b: free sign — gated on the travel die alone.
     const travelDie = ledger.takeBest();
-    if (signDie !== undefined && travelDie !== undefined) {
+    if (travelDie !== undefined) {
       actions.push({
         type: 'Trade',
         action: 'sign-contract',
@@ -5574,26 +5729,32 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   // Yard: a cargo-pod expansion (earns yard_rat + cargo_expansion), then combat
   // tiers (weapons first, so first_combat_win becomes winnable), then the
   // renown-gated special equipment once the rank opens.
-  if (
-    need('cargo_expansion') &&
-    state.player.credits >= VETERAN_RESERVE + 1000 &&
-    ledger.remaining() > 0
-  ) {
-    const die = ledger.takeWorst();
-    if (die !== undefined) {
-      actions.push({ type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1 });
-    }
+  // T-196b · Free at the yard, so no die and no `ledger.remaining()` gate. The
+  // REAL bounds, both already here and both non-die: the `cargo_expansion` deed is
+  // still unearned (one pod purchase earns it, so this cannot repeat once the
+  // registry catches up) and the purse clears the reserve plus the pod price.
+  // `yardCommitted` then carries the spend into the two planners below, which
+  // before this task were rationed apart by the die and now fire together.
+  let yardCommitted = 0;
+  if (need('cargo_expansion') && state.player.credits >= VETERAN_RESERVE + 1000) {
+    const podAction: PlayerAction = { type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1 };
+    actions.push(podAction);
+    // Priced through the engine's own quote rather than re-stating the 1,000 the
+    // gate above assumes — content owns the number.
+    yardCommitted += Math.max(0, quoteShipyard(state.player, podAction).cost);
   }
-  const upgrade = planFighterUpgrade(state, ledger);
+  const upgrade = planFighterUpgrade(state, yardCommitted);
   if (upgrade) actions.push(upgrade);
-  const special = planSpecialEquipment(state, ledger, VETERAN_RESERVE);
+  yardCommitted += upgradeCost(state, upgrade);
+  const special = planSpecialEquipment(state, VETERAN_RESERVE, undefined, yardCommitted);
   if (special) actions.push(special);
+  yardCommitted += specialEquipmentCost(state, special);
 
   // N9 · The captain's overhead. The veteran is the LONG-HORIZON archetype — the
   // one whose whole premise is that the career outlives the measurement window —
   // so it is the policy a port stake's 154-to-1,043-dusk payback is least unfair
   // to. It plays the verbs on exactly the same rules as everyone else regardless.
-  const overhead = planCaptainOverhead(state, ledger, VETERAN_RESERVE, refuelCost);
+  const overhead = planCaptainOverhead(state, VETERAN_RESERVE, refuelCost + yardCommitted);
   actions.push(...overhead.actions);
 
   // T-199 · F-199-1 · the yard spend is NOT netted off this payment, and that is a

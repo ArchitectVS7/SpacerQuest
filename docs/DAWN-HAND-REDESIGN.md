@@ -26,6 +26,25 @@ and the protocol enumerator still advertises `spendDie` on them (`protocol.ts`) 
 T-196b; the cockpit still gates the buttons on an armed die — that is T-196c. §4's caps and the
 Hangout rows are T-197.
 
+**SHIPPED, PART 2 — T-196b (2026-08-05): the INSTRUMENTS now play the freed economy.**
+The eight sim policies (`packages/sim/src/index.ts`) no longer count the nine against the
+dawn hand — `planRefuel`, `planCrippledRepair`, `planCaptainOverhead`, `planFighterUpgrade`
+and `planSpecialEquipment` lost their `DieLedger` outright; every sign→travel pair is gated
+on the TRAVEL die alone; the trader's second run needs one spare die instead of two; the
+veteran's broker_shark gate falls from three dice to two (haggle + travel). Where the die
+scarcity used to ration two purchases apart, a running `committed`/`yardCommitted` credit
+total now does it, because credits — not the hand — were always the real bound. The protocol
+enumerator (`protocol.ts`) advertises all nine WITHOUT a `spendDie` param and, new at this
+task, KEEPS advertising them when `diceRemaining` is empty: die-actions vanish with the hand,
+Free Actions do not. `packages/sim/src/pilot.ts` needed no change and it was verified rather
+than assumed (removing `spendDie` shrinks each freed spec's odometer domain, so they became
+LESS likely to be truncated, and `abandon-contract`'s now-empty `params` fills to exactly one
+candidate). The capstone is arm 2 of the control-arm pair: `rulesFingerprint` is unmoved
+(`55414694d7187afc` — no engine or content file is touched) and only `instrumentFingerprint`
+changes, so the diff against arm 1 is the measured value of exploitation alone. Baseline of
+record is now `docs/balance/baseline-t196b-instruments.json`. Still open: the cockpit still
+gates the buttons on an armed die (T-196c), and §4's caps plus the Hangout rows are T-197.
+
 ## 1 · The complaint, and the two separate problems it turned out to be
 
 Owner, live playtest: *"it was not at all apparent why I was adding a d20 to any of my tasks...

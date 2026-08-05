@@ -3263,7 +3263,7 @@ than un-advertising the field here.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
 
-### T-196b · Teach the instruments the free actions — sim policy day-budgets + the protocol enumerator — `status: TODO` · `coder: opus` · `after: T-196a`
+### T-196b · Teach the instruments the free actions — sim policy day-budgets + the protocol enumerator — `status: DONE` · `coder: opus` · `after: T-196a`
 
 After T-196a the rules are eased but every instrument still behaves as if the nine cost a die:
 the eight sim policies (`packages/sim/src/index.ts`) plan their day around "5 dice = 5 actions"
@@ -3298,6 +3298,254 @@ fingerprint"), so this task takes the second 8,000-row sweep; its diff against T
 the measured value of exploitation alone, cleanly attributed. Predict before running: clear
 rate and median credits UP again, this arm's move larger than 196a's. Re-pin at all four
 sites. Gate green.
+
+**PREDICTIONS, WRITTEN DOWN BEFORE THE SWEEP RAN (T-160's discipline).** Recorded at the point
+where `npx tsc -b`, `npm run lint` and `npm test` were green except the stale-`tiers.json`
+fixture the capstone's own re-extract clears. The mechanism is named on every row so a wrong
+call is diagnosable rather than merely wrong.
+
+> **READ WITH THE TWO BLOCKS BELOW.** These six are the FORECAST and are kept verbatim; four
+> of them turned out wrong in whole or in part. Two sentences inside them are misstatements of
+> EVIDENCE rather than forecasts and are corrected under **CORRECTIONS** immediately after the
+> list; the forecast-versus-result reconciliation is in **Delivered**, at the end of this task.
+> Do not quote a number out of this list without checking both.
+
+1. **All eight policy rows move**, versus T-196a's exactly two. MECHANISM: every policy's day
+   plan changes shape (sign→travel gated on the travel die alone; `planRefuel`,
+   `planCrippledRepair`, `planCaptainOverhead`, `planFighterUpgrade`, `planSpecialEquipment`
+   take no die at all), where T-196a moved only the two rows that queue an `Explore`. That
+   breadth contrast IS the control-arm result. **Pre-registered counter-evidence:** the
+   5-seed × 40-day fingerprint table (`campaign-degraded.test.ts` ENTRY 32) already shows six
+   of seven rows moving with `greedy` — whose plan did not change — byte-identical.
+2. **Median credits DOWN on most rows, not up**, contradicting the task block's own
+   "median credits UP again". MECHANISM, and it is the single largest one in this arm:
+   `planCaptainOverhead` lost its throttle. It was documented as firing only when the working
+   day left a die spare; it now fires on EVERY day where `spendable > 0`. Berth tiers, crew
+   hires and port stakes are all spending, and a port stake is a NET CREDIT LOSS inside a
+   120-day window (154–1,043-dusk payback, stated at `planPortStake`). The freed-die effect
+   pushes credits up; the un-throttled shopping pushes them down, and the 40-day table says
+   the shopping wins on four of six moved rows (fighter, explorer, smuggler, gambler down;
+   trader and veteran up). Predicted net at 1,000 seeds × 120 days: **down** on a majority of
+   rows, with the veteran and trader the likeliest exceptions.
+3. **Clear rate roughly FLAT to slightly down**, for the same reason as (2) — credits spent
+   before the marker clears are credits the marker compounds against (R2c's mechanism). NOT
+   predicted up, despite the task block's guess.
+4. **Component-tier and crew-hire counts UP sharply on every row.** MECHANISM: the yard chain
+   no longer has to win a die per purchase. The 40-day table's veteran goes 6 → 23 tiers.
+5. **NPC-side rows near-still.** MECHANISM: `npc.ts` is untouched and calls no resolver.
+6. **`fuelStarvationDays` and `longestZeroIncomeStreak` unmoved-or-better.** A RISE in either
+   is a FINDING to file, not a constant to retune. (Known partial exception already measured
+   and re-pinned with its own deleted-branch control: `sweep-gate.test.ts`'s veteran seed 91
+   goes 5 → 12 while the other eight of those nine seeds improve.)
+
+**CORRECTIONS TO TWO STATEMENTS OF FACT INSIDE THE PREDICTIONS ABOVE (2026-08-05, fix round
+1).** The six predictions are left VERBATIM as pre-registered — T-160's discipline is that a
+forecast is worthless once it can be edited after the result, and the reconciliation of forecast
+against result is the Delivered block below, not a rewrite up here. But two sentences inside them
+are claims about EVIDENCE, not about the future, and both were wrong or have gone stale on the
+tree. They are corrected here rather than in place:
+
+- **Point 1's headline "All eight policy rows move" was never arithmetically available**, and
+  point 1's own pre-registered counter-evidence says so two sentences later: `greedy`'s plan does
+  not change, so at most seven of the eight could move. The claim it was reaching for — and the
+  one the capstone confirmed — is **seven of eight, with `greedy` the deliberate unmoved
+  control**, which is how `docs/balance/smoke/README.md`, `docs/NPC_REDESIGN.md` and
+  `balance-targets.test.ts` all state it. Read point 1 as "the breadth is the whole fleet bar the
+  control"; the contrast against T-196a's exactly two is untouched by the correction.
+- **Point 2's "the 40-day table says the shopping wins on four of six moved rows (fighter,
+  explorer, smuggler, gambler down; trader and veteran up)" was TRUE OF THE TABLE IT CITED WHEN
+  IT WAS WRITTEN, and is no longer true of the table on the tree.** F-196b-1 (below) was found
+  *after* these predictions were recorded, by the capstone's own gate, and its per-sweep credit
+  charge moved the smuggler's 40-day row from −12,788 to +15,296. `campaign-degraded.test.ts`
+  ENTRY 32 now reads **three of six down** (fighter, explorer, gambler) and keeps the pre-fix
+  figures beside it — `explorer` 146,960 → 100,842, `smuggler` 51,950 → 39,162 with the
+  `sweepReplacement` term forced to 0 in both loops — precisely so this sentence stays checkable
+  rather than merely contradicted. The point's MECHANISM (`planCaptainOverhead` losing its
+  throttle) is unaffected: it is what still drives the three that fall, and what the 8,000-row
+  arm confirmed at row level.
+
+**F-196b-1 · FOUND, FIXED AND MEASURED INSIDE T-196b — the smuggler's and
+explorer's Explore loops charged their credit bound ONCE instead of PER SWEEP.**
+Found by the capstone's own gate, which failed two of eight shards with
+`assertNoIncomeStall · smuggler` (seed 42: 6 consecutive zero-income days; seed
+216: 8; limit 5).
+
+- **The defect.** Both loops tested `credits - committed > exploreFloor` a single
+  time before the first iteration, then swept once per remaining die. That asked
+  "can the purse afford to be exploring today", never "can it afford THIS MANY
+  sweeps". It was survivable only while the sign, the refuel and the yard each
+  took a die, which held the loop to one or two iterations. T-196b freed all three
+  (`docs/DAWN-HAND-REDESIGN.md` §3), so a fuelled day now hands the loop four
+  dice: 320 fuel burned instead of 160, and the next dawn has to buy it back at
+  the pump. Exactly the F-116-1 / F-150-2 shape the task block warned about — an
+  unbounded "keep taking free actions" loop, here reached indirectly, through the
+  dice the freed actions gave back.
+- **The evidence, measured over seeds 1..1000 × 120 days on both trees.** Longest
+  zero-income streak, `smuggler`: at HEAD **993 seeds at 0, 7 at 1, maximum 1**.
+  With T-196b and WITHOUT this fix: **988 at 0, 9 at 1, one at 4, one at 6, one at
+  8** — a tail the policy has never had. WITH the fix: **996 at 0, 4 at 1, maximum
+  1**, i.e. the tail is gone and the distribution is marginally better than HEAD's.
+  Both stalled seeds were the identical corner: stranded at Polaris-1 (17) on the
+  100-credit dusk subsistence floor with a tank too thin to sweep (`fuel < 80`),
+  no navigable contract on the board, and `planHomewardBurn` unable to afford a
+  leg.
+- **The fix.** `sweepReplacement` — each queued sweep is charged the credits its
+  `EXPLORATION_FUEL_COST` will cost to replace at the local depot price, and the
+  loop's existing credit test is taken against the running total. It caps no
+  iteration count and moves no floor: a rich, fuelled day still sweeps its whole
+  hand. Applied to BOTH loops, which T-199 deliberately keeps byte-identical.
+- **What was tried first and REJECTED on measurement, recorded so it is not
+  re-tried:** a nav gate on `planHomewardBurn` (Guard 4, mirroring
+  `smugglerPolicy`'s `navBeatable`), on the hypothesis that the stall was an
+  unbeatable rim hop re-attempted daily. It changed neither seed's streak — the
+  tank-emptying jumps on seed 42's days 62 and 64 were INTERDICTIONS (an encounter
+  forcing the ship back to origin), not failed pilot checks. Reverted rather than
+  kept as an unmotivated shared-planner change. `planHomewardBurn` still has no
+  nav gate; whether it should is a separate question and not this task's.
+- **Cross-check on the other four gated policies** (seeds 1..300 × 120 days, after
+  the fix): `trader` 286/0 + 14/1, `fighter` 298/0 + 2/1, `explorer` 300/0,
+  `smuggler` 298/0 + 2/1, `gambler` 299/0 + 1/1 — no seed at or over the limit on
+  any row.
+
+**F-196b-2 · OBSERVATION, filed rather than fixed — `fuelStarvationDays` rises on
+three of the eight policy rows in the arm-2 capstone.** Pre-registered as a finding
+trigger in T-196b's own predictions ("a RISE in either is a FINDING"), so it is
+recorded here whether or not it is actionable. Measured, 8,000-row arm-1 → arm-2:
+`trader` mean 0.056 → 0.074 / max 5 → 15; `trader-degraded` mean 0.687 → 0.818 /
+max 114 → 107; `explorer` mean 0.001 → 0.045 / max 1 →
+41. The other five rows all IMPROVED or held (`fighter` 0.385 → 0.146, `veteran`
+2.803 → 2.626, `smuggler` 0.024 → 0.009, `gambler` 0.036 → 0.019, `greedy`
+unchanged at 4.759), and fleet-wide the change is a small IMPROVEMENT (mean 1.0939
+→ 1.0620), not merely a wash. `trader-degraded` is the same finding as `trader` —
+it is that policy with R1's slips on, and it flies the same extra legs per day —
+and it is named separately here only because the eight-row sweep is the sample this
+finding is measured on, where the seven-row `campaign-degraded` table it was first
+counted off does not carry that row at all. All three rises are carried by a small
+number of seeds (an explorer mean of 0.045 over a 120-day run is one starved day
+per ~22 careers), and the mechanism is the predicted one: with the yard and the
+refuel no longer rationed by the hand, the explorer sweeps more per day and the
+trader flies more legs per day, so both spend closer to the tank's edge. NOT fixed
+in T-196b: no invariant is breached (the gate reports 0 violations at 8,000 rows,
+and `assertNoIncomeStall` is clean on every gated policy over seeds 1..300 ×
+120 days), so fixing it would mean retuning a refuel floor with no failing check to
+aim at — which is the "tune a constant to move a number" move BALANCE-POLICY Part B
+forbids. RISK OF DEFERRAL, written down per Bug Discovery Policy rule 3: it is a
+metric drift inside a passing gate, nothing builds on it, and T-196c (UI) and T-197
+(Hangout) touch neither planner — but if a later arm shows the trader's or
+explorer's starvation mean continuing to climb, this is the entry to start from.
+
+**Delivered (2026-08-05).** The instruments now play the freed economy.
+`packages/sim/src/index.ts` — `planRefuel`, `planCrippledRepair`, `planCaptainOverhead`,
+`planFighterUpgrade` and `planSpecialEquipment` lost their `DieLedger` outright; every
+sign→travel pair is gated on the TRAVEL die alone; the trader's second run needs one spare die
+instead of two; the veteran's `broker_shark` gate falls from three dice to two (haggle +
+travel). **The die scarcity that used to ration two purchases apart is replaced by a running
+`committed`/`yardCommitted` CREDIT total**, which is the task block's F-116-1/F-150-2 clause
+discharged in the planner rather than assumed away — credits, the board, the tank and the
+berths were always the real bounds; the hand was only ever standing in for them.
+`packages/sim/src/protocol.ts` — the nine are enumerated with NO `spendDie` param and, the new
+behaviour, are STILL enumerated when `diceRemaining` is empty; `haggle` keeps `hasDie` and its
+die, since that die IS the TRADE check. `protocol.test.ts` gained the empty-hand enumeration
+test the task asked for by name (`T-196b · a dice-exhausted state still offers every FREE
+action, die-free`), plus a full-hand control and an `abandon-contract`-has-empty-params case.
+**`packages/sim/src/pilot.ts` is unchanged and that was VERIFIED, not assumed** (the task
+required the confirmation in writing): dropping `spendDie` SHRINKS each freed spec's odometer
+domain, so the freed candidates became strictly less likely to be truncated by the caps, and
+`abandon-contract`'s now-empty `params` expands to exactly one candidate — `pilot.test.ts`
+carries `T-196b · still enumerates the freed verbs, plus Wait and end-day, on an exhausted
+hand`. No finding was owed and none is filed against the caps.
+
+**Two seed pins went stale and were RE-DERIVED FROM A WIDENED SWEEP, never edited to fit**
+(the standing constraint): `campaign-policies.test.ts` `FIGHTER_METRIC_SEED` 2 → 6, and
+`campaign-smuggler-gambler.test.ts` gained a separate `SMUGGLER_ENFORCEMENT_SEED = 2` rather
+than moving the shared `REPORT_SEED` out from under the file's other assertions.
+`sweep-gate.test.ts`'s veteran bar moved 10 → 12 and is the one number in this task that looks
+like a widened band, so it is called out: it was re-measured against its own DELETED-BRANCH
+control (seed 91 goes 5 → 12 while the other eight of those nine seeds improve), which is the
+evidence that the bar tracks a real re-phasing and not a regression being absorbed.
+
+**Capstone (arm 2 of the control-arm pair).** `npm run format` first, then 8 one-indexed shards
+(`--seeds 1000 --days 120 --policies trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy
+--milestone-days 21,29,30,41,60,120 --shard i/8`), then `--merge`, which wrote 8,000 rows and
+`PASS · 0 invariant violations` into `docs/balance/baseline-t196b-instruments.json`. The gate
+FAILED FIRST — two shards red on `assertNoIncomeStall · smuggler` — which is how F-196b-1 above
+was found, fixed and re-run. `rulesFingerprint` is UNMOVED at `55414694d7187afc` (no engine or
+content file is touched by this task); `instrumentFingerprint` `6106da3575355153` →
+`812d9e87d7307f3c`, and that is the honest name for what changed. Baseline of record re-pinned
+at all four sites plus `balance-targets.test.ts`'s runtime path, with `docs/balance/smoke/tiers.json`
+re-extracted from the new capstone. **Accept clause satisfied:** fleet `tourOneClearRate`
+0.6305 → 0.63425 (UP) and fleet median final credits 49,517 → 49,839 (UP, +0.7%), both moves an
+order of magnitude larger than T-196a's arm (−0.0015 and −212), which is the task block's
+"this arm's move larger than 196a's" met on both metrics.
+
+**THE PREDICTIONS RECONCILED AGAINST THE 8,000 ROWS. Two held, two held at row level and were
+wrong at the fleet, one was wrong outright, and one was right about the wrong row — and the
+last of those is the finding.**
+
+1. **BREADTH: RIGHT IN SUBSTANCE, WRONG IN THE ARITHMETIC OF ITS OWN HEADLINE.** *Seven* of
+   the eight rows moved, not eight, with `greedy` the deliberate control — the number its own
+   pre-registered counter-evidence implied and the headline never absorbed (see CORRECTIONS,
+   above). Against T-196a's exactly two, the contrast the control arm exists to produce is
+   intact and is the arc's headline result.
+2. **MEDIAN CREDITS DOWN ON MOST ROWS: HELD AT ROW LEVEL, WRONG AT THE FLEET, AND WRONG ABOUT
+   WHICH ROWS ESCAPE.** Five of the seven moved rows fall — `smuggler` −2,073, `explorer`
+   −1,642, `trader` −518, `trader-degraded` −382, `gambler` −355 — so the pre-registered
+   `planCaptainOverhead` mechanism is the one that held, against the task block's own
+   "median credits UP again" guess. But the FLEET median RISES anyway (49,517 → 49,839),
+   because the two that rise do not rise a little: `veteran` +815 and **`fighter` +37,120**.
+   The named exceptions were "the veteran and trader"; the veteran is right, the **trader
+   FELL**, and the fighter — the row that actually carries the whole arm — **was not named as
+   a possible exception at all.**
+3. **CLEAR RATE FLAT-TO-SLIGHTLY-DOWN: SAME SHAPE, SAME ERROR.** Six of seven moved rows are
+   flat or down (`smuggler` −0.048, `explorer` −0.036, `trader` −0.001, and `gambler`,
+   `trader-degraded`, `veteran` up by ≤0.005), which is the prediction; the fleet is UP
+   (0.6305 → 0.63425) on the `fighter` alone, **0.499 → 0.603, +0.104**.
+4. **COMPONENT TIERS UP SHARPLY ON EVERY ROW: WRONG, and the most wrong of the six.** Over the
+   5-seed × 40-day table it is ONE row up (`veteran` 6 → 23), two flat (`trader` 10, `smuggler`
+   18) and three DOWN (`fighter` 44 → 37, `explorer` 15 → 13, `gambler` 10 → 8). The
+   prediction reasoned only from "the yard no longer has to win a die per purchase" and missed
+   the other half of its own change: the running `committed` total means a three-planner
+   shopping chain that fires on one day is no longer DOUBLE-FUNDED out of the same dawn
+   balance, so several rows make fewer, funded purchases where they used to over-commit. That
+   netting is also the mechanism behind (2)'s falls, and it is written into `fighter`'s own
+   fingerprint comment in `campaign-degraded.test.ts`.
+5. **NPC-SIDE ROWS NEAR-STILL: HELD, and it is the cleanest of the six.**
+   `fleet.npcSpecialEquipmentPurchasesPerRun` 44.20025 → 44.16013 (−0.09%), inside shard noise,
+   as argued from `npc.ts` being untouched and calling no resolver.
+6. **STARVATION AND STALL UNMOVED-OR-BETTER: HELD FLEET-WIDE, with the row-level rises FILED
+   RATHER THAN TUNED,** which is exactly what the prediction pre-committed to. Fleet
+   `fuelStarvationDays` mean 1.0939 → 1.0620 (better; max 116 both sides); three rows rise and
+   are F-196b-2 above. `assertNoIncomeStall` is clean on every gated policy after F-196b-1.
+
+**THE FINDING, STATED PLAINLY BECAUSE FOUR OF THE SIX PREDICTIONS MISSED IT: the arm is the
+FIGHTER, and it is not close.** +37,120 median credits and +0.104 tour-one clear rate, against
+a fleet that otherwise drifts a few hundred credits per row in the opposite direction; its
+`fuelStarvationDays` mean also falls hardest of any row, 0.385 → 0.146. The mechanism that
+fits is the one the predictions had in hand and priced backwards: the fighter is the policy
+whose day was rationed *hardest* by the hand, because it is the only row running a three-planner
+shopping chain (`planSpecialEquipment` → `planFighterUpgrade` → `planCaptainOverhead`) on top
+of a sign→travel and a combat, so it is where five dice bound the most decisions. Freeing the
+administrative nine returns more of a fighter's day than of anyone else's, and the credit
+netting keeps what it buys affordable. The predictions read the un-throttled shopping as a
+uniform credit drag and never asked which row had been paying the largest die tax for it. Ships
+lost 465 → 487 (+4.7%) is the honest cost side, and `debtClearedRate` improves with the clear
+rate, 0.7395 → 0.7581 (5,916 → 6,065 of the 8,000 runs clear their debt at all). Nothing was
+tuned in response to any of this.
+
+**Delivered (2026-08-05):** T-196b shipped the freed economy across both instruments —
+`packages/sim/src/index.ts`'s eight policies now plan their day off credits/board/tank/berths
+instead of the hand (the F-116-1/F-150-2 discipline the task block demanded, discharged via the
+running `committed`/`yardCommitted` totals and, once the capstone's own gate caught it, the
+F-196b-1 per-sweep `sweepReplacement` fix), and `packages/sim/src/protocol.ts` enumerates the
+nine die-free including on an empty hand, with `pilot.ts` VERIFIED — not assumed — unaffected.
+**Deliberate scope boundary:** T-196c's UI armed-die gating and T-197's Hangout die costs are
+left exactly as they were, each marked in place with the task that owns it; F-196b-2 (three
+policy rows' `fuelStarvationDays` drift) is filed rather than tuned, since no invariant fails
+and BALANCE-POLICY Part B forbids retuning a constant with no failing check to aim at. Capstone
+(arm 2 of the control-arm pair) re-pinned at all four sites, `instrumentFingerprint`
+`6106da3575355153` → `812d9e87d7307f3c`, gate green at 8,000 rows with 0 invariant violations.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=2/4.
 
 ### T-196c · Free the administrative actions in the UI — stop demanding a die, stop clearing the armed one — `status: TODO` · `coder: opus` · `after: T-196b`
 

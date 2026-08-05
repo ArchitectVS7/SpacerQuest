@@ -578,4 +578,49 @@ describe('T-154 · candidate enumeration fills only declared domains', () => {
     const second = enumerateCandidates(liveLegalActions());
     expect(JSON.stringify(first.candidates)).toBe(JSON.stringify(second.candidates));
   });
+
+  // T-196b · THE PILOT IS UNCHANGED BY M17, ASSERTED RATHER THAN CLAIMED.
+  // `pilot.ts` took no edit in that task; this is the evidence that none was owed.
+  // Drive a real day until the hand is spent, then enumerate: the freed verbs are
+  // still candidates (their specs no longer carry `spendDie`, which SHRINKS each
+  // one's domain product by a factor of `diceRemaining.length` — so they are less
+  // likely to hit `DEFAULT_PER_SPEC_CANDIDATE_CAP`, never more), and `Wait` /
+  // `end-day` are appended outside both caps so nothing can starve them.
+  it('T-196b · still enumerates the freed verbs, plus Wait and end-day, on an exhausted hand', () => {
+    const handler = makeSessionHandler();
+    handler({ type: 'new-game', seed: 1 });
+    handler({ type: 'start-day' });
+    // Burn the whole hand on Explore — a Main Action, so this really does empty it.
+    for (let index = 0; index < 5; index += 1) {
+      handler({ type: 'apply-action', action: { type: 'Explore', spendDie: index } });
+    }
+    const response = handler({ type: 'legal-actions' });
+    if (response.type !== 'legal-actions') throw new Error('expected legal-actions');
+    const legal = response.legalActions;
+    expect(legal.diceRemaining).toEqual([]);
+
+    const { candidates } = enumerateCandidates(legal);
+    const specTypes = new Set(
+      candidates.filter((candidate) => candidate.kind === 'action').map((c) => c.specType),
+    );
+    // At least one freed verb survives the empty hand and reaches the pilot.
+    expect(
+      [...specTypes].some(
+        (type) =>
+          type.startsWith('Shipyard/') ||
+          type.startsWith('Crew/') ||
+          type.startsWith('Port/') ||
+          type === 'Trade/buy-fuel' ||
+          type === 'Trade/sign-contract' ||
+          type === 'Trade/abandon-contract',
+      ),
+    ).toBe(true);
+    expect(specTypes.has('Wait')).toBe(true);
+    expect(candidates.some((candidate) => candidate.kind === 'lifecycle')).toBe(true);
+    // Every candidate the pilot may pick is one the enumerator really advertised.
+    for (const candidate of candidates) {
+      if (candidate.kind !== 'action' || candidate.specType === 'Wait') continue;
+      expect(specAdvertises(legal.actions[candidate.specIndex], candidate.action!)).toBe(true);
+    }
+  });
 });

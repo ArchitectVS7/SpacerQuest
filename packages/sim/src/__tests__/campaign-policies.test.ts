@@ -82,7 +82,23 @@ const EXPLORER_METRIC_SEED = 2;
 // 13 component tiers, 2 auto-repair dusks, 81 upgraded volleys, 72 shield points
 // absorbed). The all-or-nothing character stays visible: every non-qualifier in
 // the sweep bought zero special equipment and stalled at 4-7 tiers.
-const FIGHTER_METRIC_SEED = 2;
+//
+// T-196b RE-PIN (seed 2 -> 6), PINNED NOT STEERED — same discipline, same
+// unaltered assertions, and the same failure shape a fourth time. MECHANISM: the
+// eight policies stopped budgeting a die for the nine M17 Free Actions
+// (docs/DAWN-HAND-REDESIGN.md §3), so every policy's day plan changed shape and
+// with it the shared dusk rng stream — on seed 2 the fighter now buys NOTHING at
+// all (empty `specialEquipmentBought`, 4 component tiers), the all-or-nothing
+// character this comment has described since N2.
+// RE-SWEEP (seeds 1..20, `runCampaign(seed, 300, 'fighter')`): seeds 6, 8, 10, 12,
+// 13, 14, 17 and 19 land all six signals — EIGHT qualifiers again, the same count
+// as the last two re-pins, so reachability is unmoved by M17. Seed 6 is the first
+// qualifier (STAR_BUSTER + ARCH_ANGEL + AUTO_REPAIR + ASTRAXIAL_HULL, 13 component
+// tiers, 3 auto-repair dusks, 102 upgraded volleys, 109 shield points absorbed).
+// Note the sweep's own evidence AGAINST reading this as a regression: eleven of
+// the twenty seeds buy the full four-item list and 13 tiers, and the six that buy
+// nothing are the familiar all-or-nothing tail, not a new one.
+const FIGHTER_METRIC_SEED = 6;
 const REPORTS = new Map<string, CampaignStatsReport>();
 const reportFor = (policy: (typeof COMPETENT_POLICIES)[number], seed = REPORT_SEED) =>
   REPORTS.get(`${policy}:${seed}`)!;
@@ -302,14 +318,14 @@ describe('T-201 competent policies', () => {
     // AUTO_REPAIR is priced off the CURRENT hull strength (1,000cr on the junker
     // hull, 20,000 after the tier-3 refit) and carries no renown gate, so a
     // player buys it FIRST — which is why the fighter now shops for special
-    // equipment before component tiers. Measured on seed 2 (T-195 re-pin):
-    // AUTO_REPAIR, STAR_BUSTER and ARCH_ANGEL bought, 13 component tiers.
+    // equipment before component tiers. Measured on seed 6 (T-196b re-pin):
+    // STAR_BUSTER, ARCH_ANGEL, AUTO_REPAIR and ASTRAXIAL_HULL bought, 13 tiers.
     expect(report.equipmentUse.specialEquipmentBought.length).toBeGreaterThan(0);
     expect(report.equipmentUse.specialEquipmentBought).toContain('AUTO_REPAIR');
     expect(report.equipmentUse.componentTiersBought).toBeGreaterThan(0);
     // ...and the fit is USED, not just owned: dusks the module actually restored
-    // component condition (2 on seed 2), winning volleys landed with a
-    // better-than-junker gun (81), and enemy damage the shields absorbed (72).
+    // component condition (3 on seed 6), winning volleys landed with a
+    // better-than-junker gun (102), and enemy damage the shields absorbed (109).
     expect(report.equipmentUse.autoRepairDusks).toBeGreaterThan(0);
     expect(report.equipmentUse.upgradedVolleys).toBeGreaterThan(0);
     expect(report.equipmentUse.shieldAbsorbedPoints).toBeGreaterThan(0);
@@ -717,4 +733,106 @@ describe('T-199 · F-199-1/F-199-2 · the shared anti-idle move and its guards',
     }
     expect(burns).toBeGreaterThan(0);
   }, 120000);
+});
+
+// ---------------------------------------------------------------------------
+// T-196b · THE ACCEPT CRITERION, ASSERTED AS BEHAVIOUR AND NOT ONLY AS A SWEEP
+// NUMBER: "a policy day can spend a full hand on Main Actions AND still
+// sign/fuel/repair the same day."
+//
+// Before this task the eight planners rationed a die per administrative action,
+// so a day that spent five dice on jumps and sweeps had nothing left to sign or
+// refuel with — the day plan itself was the throttle, long after M17 removed the
+// engine's (docs/DAWN-HAND-REDESIGN.md §3). The two witnesses below are the
+// policies whose Explore loop deliberately drains every remaining die, which makes
+// them the sharpest case: if the freed verbs survive THAT, they survive anything.
+// ---------------------------------------------------------------------------
+describe('T-196b · the freed actions no longer compete with the dawn hand', () => {
+  const isMainAction = (action: PlayerAction): boolean =>
+    'spendDie' in action && (action as { spendDie?: number }).spendDie !== undefined;
+
+  const isFreedAction = (action: PlayerAction): boolean => {
+    if (action.type === 'Shipyard' || action.type === 'Crew' || action.type === 'Port') return true;
+    return (
+      action.type === 'Trade' &&
+      (action.action === 'buy-fuel' ||
+        action.action === 'sign-contract' ||
+        action.action === 'abandon-contract')
+    );
+  };
+
+  /** A rich dawn on a big, nearly-dry tank: the refuel is live (a full tank would
+   *  make `buy-fuel` vacuously absent), the yard and the cabin are affordable, and
+   *  the tank has room for a long sweep. `maxFuel` is set directly rather than
+   *  through the hull so the yard prices stay the junker's. */
+  function thirstyRichDawn(seed: number, maxFuel: number): GameState {
+    const initial = createInitialState(seed);
+    const primed: GameState = {
+      ...initial,
+      player: {
+        ...initial.player,
+        credits: 200_000,
+        ship: { ...initial.player.ship, maxFuel, fuel: 100 },
+      },
+    };
+    return startDay(primed).state;
+  }
+
+  // THE HEADLINE CASE. A 900-unit tank is what lets the explorer's sweep loop
+  // actually reach the bottom of the hand; on the shipped 300 tank the loop is
+  // bounded by FUEL first (EXPLORATION_FUEL_COST per sweep), which is a real bound
+  // and not the one this task is about.
+  it('explorerPolicy spends ALL FIVE dice on Main Actions and still fuels, signs and shops', () => {
+    for (let seed = 1; seed <= 4; seed += 1) {
+      const dawn = thirstyRichDawn(seed, 900);
+      const plan = explorerPolicy({ state: dawn, dayIndex: 0, rng: policyRng(seed, dawn.day, 0) });
+
+      const dice = plan.filter(isMainAction).map((a) => (a as { spendDie: number }).spendDie);
+      expect(dice.length, `seed ${seed}: expected the whole hand on Main Actions`).toBe(5);
+      expect(new Set(dice).size, `seed ${seed}: dice must not be double-spent`).toBe(5);
+
+      // …and the SAME day still buys fuel, signs a run, visits the yard and hires.
+      expect(plan.some((a) => a.type === 'Trade' && a.action === 'buy-fuel')).toBe(true);
+      expect(plan.some((a) => a.type === 'Trade' && a.action === 'sign-contract')).toBe(true);
+      expect(plan.some((a) => a.type === 'Shipyard')).toBe(true);
+      expect(plan.some((a) => a.type === 'Crew')).toBe(true);
+
+      // NOT ONE freed verb carries a die — the whole hand went to checks.
+      for (const action of plan.filter(isFreedAction)) {
+        expect(isMainAction(action), `seed ${seed}: ${JSON.stringify(action)} took a die`).toBe(
+          false,
+        );
+      }
+    }
+  });
+
+  // The same property for the smuggler, stated at the strength its own bounds
+  // allow. It CANNOT reach five dice on a refuel day and the reason is fuel, not
+  // dice: `planRefuel` tops it to FUEL_REFUEL_TARGET (300), the jump takes its cut,
+  // and what is left divides into at most three EXPLORATION_FUEL_COST sweeps. So
+  // the claim asserted here is the one that is actually about the die budget — the
+  // day queues MORE actions than the hand has dice, with every die on a check.
+  it('smugglerPolicy queues more actions than the hand has dice, none of them on a freed verb', () => {
+    for (let seed = 1; seed <= 4; seed += 1) {
+      const dawn = thirstyRichDawn(seed, 900);
+      const plan = smugglerPolicy({ state: dawn, dayIndex: 0, rng: policyRng(seed, dawn.day, 0) });
+
+      const dice = plan.filter(isMainAction).map((a) => (a as { spendDie: number }).spendDie);
+      expect(new Set(dice).size, `seed ${seed}: dice must not be double-spent`).toBe(dice.length);
+      expect(dice.length, `seed ${seed}: the sweep should still bite`).toBeGreaterThanOrEqual(3);
+
+      const freed = plan.filter(isFreedAction);
+      expect(freed.length, `seed ${seed}: expected the day's free-action shopping`).toBeGreaterThan(
+        2,
+      );
+      // The arithmetic the old budget forbade: dice + freed verbs > the hand size.
+      expect(dice.length + freed.length).toBeGreaterThan(5);
+
+      for (const action of freed) {
+        expect(isMainAction(action), `seed ${seed}: ${JSON.stringify(action)} took a die`).toBe(
+          false,
+        );
+      }
+    }
+  });
 });

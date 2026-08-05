@@ -764,16 +764,121 @@ describe('legal-actions enumerator', () => {
     expect(dare?.params.face).toEqual({ kind: 'int', min: bid.dareHand.bid?.face, max: 6 });
   });
 
-  it('a dice-exhausted state offers only day-end', () => {
-    const state = createInitialState(1);
-    state.dayPhase = DayPhase.DAY;
+  // T-196b · THE NAMED NEW BEHAVIOUR: die-actions vanish with the hand, the nine
+  // M17 Free Actions (docs/DAWN-HAND-REDESIGN.md §3) do not. This case used to
+  // assert `legal.actions` was `[]` — "a dice-exhausted state offers only day-end"
+  // — which is exactly the claim this task inverts. The fixture buys the tank some
+  // room first, deliberately: a fresh ship starts FULL (300/300), and a full tank
+  // offers no `buy-fuel`, so asserting on it without draining would have proved
+  // nothing about the die and everything about the fixture.
+  it('T-196b · a dice-exhausted state still offers every FREE action, die-free', () => {
+    // A REAL dawn (so the manifest board is live), then the hand spent flat.
+    const state = startDay(createInitialState(1)).state;
     state.player.debt = 0;
+    state.player.credits = 50_000;
+    state.player.ship.fuel = 100; // room at the pump, and the purse to fill it
     state.player.dawnHand = { dice: [10, 10, 10, 10, 10], spent: [true, true, true, true, true] };
+    expect(state.market.manifestBoard.length).toBeGreaterThan(0);
 
     const legal = legalActions(state);
     expect(legal.diceRemaining).toEqual([]);
-    expect(legal.actions).toEqual([]);
+
+    const advertised = legal.actions.map((action) =>
+      action.action === undefined ? action.type : `${action.type}/${action.action}`,
+    );
+
+    // The freed verbs whose own (non-die) preconditions hold in this fixture: the
+    // tank has room and the purse can pay; the board is live and the hold is empty;
+    // the yard sells to a 50,000-credit captain at Sol-3.
+    expect(advertised).toContain('Trade/buy-fuel');
+    expect(advertised).toContain('Trade/sign-contract');
+    expect(advertised).toContain('Shipyard/buy-component-tier');
+    expect(advertised).toContain('Shipyard/buy-special-equipment');
+    expect(advertised).toContain('Crew/hire');
+    // THE FREED VERBS THIS FIXTURE DOES NOT REACH, named rather than glossed —
+    // each is withheld by a precondition that has nothing to do with the die, so a
+    // die-free enumerator cannot make them appear: `Trade/abandon-contract` (the
+    // hold is empty — asserted in its own test below), `Crew/dismiss` (nobody
+    // aboard), `Port/buy` (Sol-3 is not on the purchasable ladder) and
+    // `Shipyard/buy-cargo-pods` (a junker hull has no pod capacity).
+
+    // NOT ONE of the advertised specs carries a `spendDie` — that is the property,
+    // not an accident of which verbs happen to be reachable.
+    for (const spec of legal.actions) {
+      expect(Object.keys(spec.params)).not.toContain('spendDie');
+    }
+
+    // …and every MAIN action is gone with the hand.
+    for (const dieVerb of ['Travel', 'Explore', 'Combat', 'Reroll', 'Dare', 'VisitHangout']) {
+      expect(advertised).not.toContain(dieVerb);
+    }
+    expect(advertised).not.toContain('Trade/haggle');
+
+    expect(legal.canWait).toBe(true);
     expect(legal.lifecycle).toEqual(['end-day']);
+  });
+
+  // T-196b · The companion to the case above, and the pair is the point: the nine
+  // are advertised WITHOUT a die whether or not a die is available, because
+  // die-freedom is a property of the VERB, not of the hand. Same fixture, full hand.
+  it('T-196b · a full hand advertises the freed verbs die-free, while haggle and Travel keep theirs', () => {
+    const state = startDay(createInitialState(1)).state;
+    state.player.debt = 0;
+    state.player.credits = 50_000;
+    state.player.ship.fuel = 100;
+    state.player.dawnHand = {
+      dice: [20, 18, 12, 9, 2],
+      spent: [false, false, false, false, false],
+    };
+
+    const legal = legalActions(state);
+    expect(legal.diceRemaining).toEqual([0, 1, 2, 3, 4]);
+
+    const specOf = (type: string, action?: string) =>
+      legal.actions.find((candidate) => candidate.type === type && candidate.action === action);
+
+    for (const [type, action] of [
+      ['Trade', 'buy-fuel'],
+      ['Trade', 'sign-contract'],
+      ['Shipyard', 'buy-component-tier'],
+      ['Shipyard', 'buy-special-equipment'],
+      ['Crew', 'hire'],
+    ] as const) {
+      const spec = specOf(type, action);
+      expect(spec, `${type}/${action} should be advertised`).toBeDefined();
+      expect(Object.keys(spec!.params)).not.toContain('spendDie');
+    }
+
+    // The Main Actions still name a die, and still name the whole hand as its domain.
+    expect(specOf('Trade', 'haggle')?.params.spendDie).toEqual({
+      kind: 'die-index',
+      choices: [0, 1, 2, 3, 4],
+    });
+    expect(specOf('Travel')?.params.spendDie).toEqual({
+      kind: 'die-index',
+      choices: [0, 1, 2, 3, 4],
+    });
+  });
+
+  // T-196b · `abandon-contract` is the one freed verb whose param set becomes
+  // EMPTY. Asserted concretely because `pilot.ts`'s odometer is fed by
+  // `Object.keys(spec.params)` and an empty params object is the edge case there.
+  it('T-196b · abandon-contract is advertised with an empty param set and no die', () => {
+    const state = startDay(createInitialState(1)).state;
+    state.player.debt = 0;
+    state.player.dawnHand = { dice: [10, 10, 10, 10, 10], spent: [true, true, true, true, true] };
+    state.player.activeContract = { destination: 4, cargoType: 1, payment: 900, pods: 1 };
+
+    const legal = legalActions(state);
+    const abandon = legal.actions.find(
+      (action) => action.type === 'Trade' && action.action === 'abandon-contract',
+    );
+    expect(abandon).toBeDefined();
+    expect(abandon?.params).toEqual({});
+    // …and sign-contract is withheld while the hold is full, unchanged by T-196b.
+    expect(
+      legal.actions.some((action) => action.type === 'Trade' && action.action === 'sign-contract'),
+    ).toBe(false);
   });
 
   // T-1505c · D8 · The headless STOP SIGNAL. On the far side of the Nemesis shear
@@ -895,7 +1000,9 @@ describe('legal-actions enumerator', () => {
         ),
       );
     }
-    expect(buySpecial?.params.spendDie.kind).toBe('die-index');
+    // T-196b: `buySpecial?.params.spendDie.kind` was asserted here. The yard is a
+    // Free Action now (docs/DAWN-HAND-REDESIGN.md §3) and carries no such param;
+    // the die-domain shape is still asserted on `Travel` above, which keeps its.
   });
 
   it('T-1101 · never advertises a sealed destination the engine gate would refuse', () => {

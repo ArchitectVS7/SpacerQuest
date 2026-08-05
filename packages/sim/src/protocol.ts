@@ -182,8 +182,12 @@ export interface StateSummary {
   systemName: string;
   /** The dawn hand rolled at start-day; null before the first start-day. */
   dawnHand: { dice: number[]; spent: boolean[] } | null;
-  /** Indices into `dawnHand.dice` that are still UNSPENT — the legal values for
-   *  any action's `spendDie` field this turn. Empty in DAWN / when exhausted. */
+  /** Indices into `dawnHand.dice` that are still UNSPENT — the legal values for a
+   *  `spendDie` field this turn, and therefore the domain of the MAIN ACTIONS
+   *  (jump, explore, combat, haggle, peek, the Hangout verbs). Empty in DAWN /
+   *  when exhausted. T-196b: an empty list no longer means "nothing is legal" —
+   *  the nine M17 Free Actions (docs/DAWN-HAND-REDESIGN.md §3) are advertised
+   *  independently of it and carry no `spendDie` at all. */
   diceRemaining: number[];
   /** T-1306 · Re-roll charges left today (from a reroll crew member); 0 with none. */
   rerollsRemaining: number;
@@ -452,6 +456,14 @@ const ALL_SYSTEM_IDS: number[] = Object.keys(STAR_SYSTEMS)
  * blocks trade/travel/shipyard/explore and offers only combat; die-spending
  * actions require an unspent die. Unbounded parameters are exposed as
  * {@link ParamSpec} domains, not enumerated. Pure — no I/O, no rng.
+ *
+ * T-196b · DIE-ACTIONS VANISH WITH THE HAND; THE NINE FREE ACTIONS DO NOT.
+ * "Die-spending actions require an unspent die" is a statement about Main Actions
+ * only. `Trade/{buy-fuel,sign-contract,abandon-contract}`, all four `Shipyard`
+ * kinds, `Crew` hire/dismiss and the `Port` buy cost no die
+ * (docs/DAWN-HAND-REDESIGN.md §3), carry no `spendDie` param, and stay advertised
+ * on a fully-spent hand — gated by their own preconditions (credits, tank, board,
+ * berths, the engine's `shipyardFailure`/`quotePort`) and nothing else.
  */
 export function legalActions(state: GameState): LegalActions {
   const phase = state.dayPhase;
@@ -605,41 +617,44 @@ export function legalActions(state: GameState): LegalActions {
   }
 
   // --- Trade -------------------------------------------------------------
-  // T-196b: buy-fuel / sign-contract / abandon-contract are FREE ACTIONS as of
-  // T-196a, but this enumerator still gates them on `hasDie` and still advertises
-  // `spendDie: dieParam`. The engine IGNORES the field (zod strips it), so the
-  // advertising is inert-but-stale — it is the INSTRUMENT, and instruments move in
-  // T-196b so the two capstone arms stay attributable. Same for the Shipyard, Crew
-  // and Port blocks below. `haggle` keeps its die for real.
+  // T-196b · THE FREE ACTIONS ARE ENUMERATED WITHOUT A DIE, AND WITHOUT A HAND.
+  // `buy-fuel`, `sign-contract` and `abandon-contract` are Free Actions
+  // (docs/DAWN-HAND-REDESIGN.md §3, engine rule shipped at T-196a), so they carry
+  // no `spendDie` param and are gated ONLY on their own preconditions — no
+  // `hasDie`. That second half is the new behaviour and is deliberate: die-actions
+  // vanish with the hand, Free Actions do not, so a captain who has spent all five
+  // dice on jumps can still fill the tank and sign tomorrow's run. Same for the
+  // Crew, Port and Shipyard blocks below. `haggle` KEEPS `hasDie` and `spendDie` —
+  // its die IS the TRADE check.
   const fuelPrice = state.market.localFuelPrice || 5;
   const fuelCapacity = ship.maxFuel - ship.fuel;
   const affordableFuel = Math.floor(player.credits / fuelPrice);
-  if (hasDie && fuelCapacity > 0 && affordableFuel >= 1) {
+  if (fuelCapacity > 0 && affordableFuel >= 1) {
     actions.push({
       type: 'Trade',
       action: 'buy-fuel',
       params: {
         fuelAmount: { kind: 'int', min: 1, max: Math.min(fuelCapacity, affordableFuel) },
-        spendDie: dieParam,
       },
     });
   }
 
-  if (hasDie && state.market.manifestBoard.length > 0 && !player.activeContract) {
+  if (state.market.manifestBoard.length > 0 && !player.activeContract) {
     const boardIndices = state.market.manifestBoard.map((_, index) => index);
     actions.push({
       type: 'Trade',
       action: 'sign-contract',
       params: {
         contractIndex: { kind: 'contract-index', choices: boardIndices },
-        spendDie: dieParam,
       },
     });
+    // The `hasDie` gate the whole block used to share now belongs to haggle
+    // alone — it is the one verb here that still spends a die on a real roll.
     const haggleIndices = state.market.manifestBoard
       .map((contract, index) => ({ contract, index }))
       .filter(({ contract }) => !contract.haggled)
       .map(({ index }) => index);
-    if (haggleIndices.length > 0) {
+    if (hasDie && haggleIndices.length > 0) {
       actions.push({
         type: 'Trade',
         action: 'haggle',
@@ -656,13 +671,16 @@ export function legalActions(state: GameState): LegalActions {
   // HEADLESS reachability of the fix: without it a protocol driver carrying an
   // undeliverable contract has no advertised way to free the hold, which is half
   // of the measured poverty trap. Advertised exactly when the engine will honour
-  // it — a die in hand and something in the hold — so it is never a guaranteed
-  // refusal (the same T-1101 law the destination gate below follows).
-  if (hasDie && player.activeContract) {
+  // it — T-196b: something in the hold, and nothing else. The die condition is
+  // gone with the die (§3), which matters most precisely here: the captain whose
+  // hold is stuck is often the one who has already burned the hand on failed jumps.
+  // Its param set is now EMPTY, which the pilot's odometer fills as exactly one
+  // candidate.
+  if (player.activeContract) {
     actions.push({
       type: 'Trade',
       action: 'abandon-contract',
-      params: { spendDie: dieParam },
+      params: {},
       note: 'Dumps the cargo and frees the hold. Forfeits the payment; the contract does not return to the board.',
     });
   }
@@ -759,7 +777,9 @@ export function legalActions(state: GameState): LegalActions {
   // to fill it; dismissing while any crew is aboard. Affordability (hire price) is
   // validated on apply — this only keeps the harness from proposing a hire with no
   // berth. Crew are the dice-progression source (extra die / re-roll / floor).
-  if (hasDie) {
+  // T-196b: no `hasDie` wrapper — hire and dismiss are Free Actions (§3) and are
+  // advertised on an exhausted hand like every other one.
+  {
     const hiredRoleIds = new Set(player.crew.map((member) => member.roleId));
     const hireableRoleIds = CREW_ROLES.map((role) => role.id).filter((id) => !hiredRoleIds.has(id));
     // T-1703 · A demo licence does not sign hands (content demo.ts's
@@ -791,7 +811,6 @@ export function legalActions(state: GameState): LegalActions {
         action: 'hire',
         params: {
           roleId: { kind: 'enum', choices: affordableRoleIds },
-          spendDie: dieParam,
         },
         note: 'Only roles the purse can cover are listed. Berthed against cabin capacity.',
       });
@@ -802,7 +821,6 @@ export function legalActions(state: GameState): LegalActions {
         action: 'dismiss',
         params: {
           roleId: { kind: 'enum', choices: player.crew.map((member) => member.roleId) },
-          spendDie: dieParam,
         },
         note: 'Removes the crew member (no refund), freeing a berth.',
       });
@@ -827,8 +845,10 @@ export function legalActions(state: GameState): LegalActions {
   // the wasted die is gone and the gate stays for the T-1101 reason alone (never
   // advertise a guaranteed refusal). `systemId` is fixed here, so there is no domain
   // to narrow and the whole verb is withheld instead.
+  // T-196b: the `hasDie` conjunct is gone — the buy is a Free Action (§3). What
+  // remains is the demo lock, the port ladder and `quotePort().ok`, i.e. the
+  // T-1101 "never advertise a guaranteed refusal" gates and nothing else.
   if (
-    hasDie &&
     !demoLocked(state, 'port-ownership') &&
     isPurchasablePort(player.currentSystemId) &&
     !player.ports.some((port) => port.systemId === player.currentSystemId) &&
@@ -839,7 +859,6 @@ export function legalActions(state: GameState): LegalActions {
       action: 'buy',
       params: {
         systemId: { kind: 'fixed', value: player.currentSystemId },
-        spendDie: dieParam,
       },
       note: 'Advertised only when affordable (engine quotePort().ok). Accrues per-dusk launch-fee income.',
     });
@@ -948,10 +967,13 @@ export function legalActions(state: GameState): LegalActions {
   //
   // T-196a · the probe actions no longer carry a placeholder `spendDie` — the
   // Shipyard shape dropped the field when M17 made the yard a Free Action
-  // (docs/DAWN-HAND-REDESIGN.md §3). The `hasDie` gate and the `spendDie: dieParam`
-  // entries in the ADVERTISED param specs below are deliberately left in place:
-  // they are the instrument, and the instrument moves in T-196b, not here.
-  if (hasDie) {
+  // (docs/DAWN-HAND-REDESIGN.md §3).
+  // T-196b · …and the ADVERTISEMENT follows: the `hasDie` wrapper and every
+  // `spendDie: dieParam` in the four specs below are gone. All four yard kinds are
+  // now offered on an exhausted hand, gated only by the engine's own
+  // `shipyardFailure` — which is the stronger contract anyway, since it is the one
+  // that decides whether the purchase will actually be honoured.
+  {
     const canAfford = (action: Extract<PlayerAction, { type: 'Shipyard' }>): boolean =>
       shipyardFailure(state.player, action) === null;
 
@@ -980,7 +1002,6 @@ export function legalActions(state: GameState): LegalActions {
           params: {
             component: { kind: 'fixed', value: component },
             tier: { kind: 'int', min: 1, max: maxTier },
-            spendDie: dieParam,
           },
           note: `Every listed tier is affordable right now (tiers above ${maxTier} are not).`,
         });
@@ -998,7 +1019,6 @@ export function legalActions(state: GameState): LegalActions {
         action: 'repair',
         params: {
           repairMode: { kind: 'fixed', value: 'all' },
-          spendDie: dieParam,
         },
         note: 'Repairs every component. Send no `component` key — its presence selects a single-part repair.',
       });
@@ -1018,7 +1038,6 @@ export function legalActions(state: GameState): LegalActions {
           params: {
             repairMode: { kind: 'fixed', value: 'single' },
             component: { kind: 'fixed', value: component },
-            spendDie: dieParam,
           },
           note: 'Repairs this component only; it is below max condition and the repair is affordable.',
         });
@@ -1051,7 +1070,6 @@ export function legalActions(state: GameState): LegalActions {
         action: 'buy-cargo-pods',
         params: {
           quantity: { kind: 'int', min: 1, max: low },
-          spendDie: dieParam,
         },
         note: 'Every quantity in range fits the hull and the purse.',
       });
@@ -1073,7 +1091,6 @@ export function legalActions(state: GameState): LegalActions {
         action: 'buy-special-equipment',
         params: {
           equipment: { kind: 'enum', choices: [...purchasableEquipment] },
-          spendDie: dieParam,
         },
         note: 'Only equipment that passes affordability, renown and mutual exclusion is listed.',
       });

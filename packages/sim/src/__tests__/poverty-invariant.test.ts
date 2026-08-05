@@ -281,18 +281,6 @@ function verbLabel(action: PlayerAction): string {
   return subAction === undefined ? action.type : `${action.type}/${subAction}`;
 }
 
-/** T-196a · The nine action types M17 freed from the dawn hand
- *  (docs/DAWN-HAND-REDESIGN.md §3). Their engine shapes carry no `spendDie` at all. */
-function isFreeAction(action: PlayerAction): boolean {
-  if (action.type === 'Shipyard' || action.type === 'Crew' || action.type === 'Port') return true;
-  return (
-    action.type === 'Trade' &&
-    (action.action === 'buy-fuel' ||
-      action.action === 'sign-contract' ||
-      action.action === 'abandon-contract')
-  );
-}
-
 /** Why `action` is not advertised by `legal`, or `null` when it is. Returned as a
  *  string so a failure names the exact action and the exact reason. */
 function advertisementViolation(legal: LegalActions, action: PlayerAction): string | null {
@@ -304,15 +292,13 @@ function advertisementViolation(legal: LegalActions, action: PlayerAction): stri
     return `${verbLabel(action)} is not advertised`;
   }
   for (const [key, param] of Object.entries(spec.params)) {
-    // T-196a · `legalActions` still ADVERTISES `spendDie` on the nine M17 Free
-    // Actions (docs/DAWN-HAND-REDESIGN.md §3) even though the engine's action shapes
-    // dropped the field and zod strips it. That staleness is deliberate and belongs
-    // to T-196b — the instruments move in the second arm of the control-arm pair, so
-    // the two capstones stay attributable. Until then an OMITTED die on a verb the
-    // engine will not accept one for is conformant, not a violation. The check still
-    // bites everywhere else, including `Trade/haggle`, whose die is real.
-    const dieIsVestigial = key === 'spendDie' && fields[key] === undefined && isFreeAction(action);
-    if (dieIsVestigial) continue;
+    // T-196b · THE T-196a ESCAPE HATCH IS GONE, and its removal makes this checker
+    // STRICTLY STRONGER rather than more permissive. T-196a left `legalActions`
+    // advertising a `spendDie` on the nine M17 Free Actions (§3) that the engine's
+    // shapes no longer carry, so this loop needed a `dieIsVestigial` shim to accept
+    // an omitted die. T-196b stopped advertising the field on those nine, so there
+    // is nothing left to excuse: every advertised param must now be satisfied, on
+    // every verb, with no exemption — including `Trade/haggle`, whose die is real.
     if (!paramSatisfied(param, fields[key])) {
       return `${verbLabel(action)} param ${key}=${JSON.stringify(fields[key])} is outside the advertised ${param.kind} domain`;
     }

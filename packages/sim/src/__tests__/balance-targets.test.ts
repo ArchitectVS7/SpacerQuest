@@ -115,7 +115,21 @@ const TRADER_CLEAR_DAY_MAX = 30;
  * when any disagrees — it was RED ON ARRIVAL against three genuinely stale sites
  * left by T-188, T-195 and T-199.
  */
-// T-196a re-pin (t199-pacifist -> t196a-free-actions). Same shape, same 8,000 rows,
+// T-196b re-pin (t196a-free-actions -> t196b-instruments). Same shape, same 8,000
+// rows, same eight policies, same milestone days (21,29,30,41,60,120). This is ARM 2
+// of the control-arm pair T-196a opened: the RULES did not move (`rulesFingerprint`
+// is still 55414694d7187afc — no engine or content file is touched), the INSTRUMENTS
+// did (6106da3575355153 -> 812d9e87d7307f3c), because the eight sim policies stopped
+// budgeting a dawn die for the nine M17 Free Actions and the protocol enumerator
+// stopped advertising one. The diff against the T-196a arm is therefore the measured
+// value of EXPLOITATION alone. The bands below are UNTOUCHED. SEVEN of the eight
+// policy rows moved (all but `greedy`, whose plan did not change) against T-196a's
+// two — that breadth contrast is the result. Fleet `tourOneClearRate` 0.6305 ->
+// 0.6342, median final credits 49,517 -> 49,839 (+0.7%), ships lost 465 -> 487; the
+// fighter carries the arm (clear rate 0.499 -> 0.603, median credits 45,551 ->
+// 82,671) because its three-planner shopping chain no longer has to win a die each.
+//
+// (Prior) T-196a re-pin (t199-pacifist -> t196a-free-actions). Same shape, same 8,000 rows,
 // same eight policies, same milestone days (21,29,30,41,60,120). The capstone was
 // re-taken because M17 (`docs/DAWN-HAND-REDESIGN.md` §3) freed nine administrative
 // action types from the dawn hand, which moves the RULES fingerprint
@@ -131,7 +145,7 @@ const TRADER_CLEAR_DAY_MAX = 30;
 // every fixture measured against it. The bands below are UNTOUCHED — nothing here
 // was re-derived to accommodate the new sample.
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
-  new URL('../../../../docs/balance/baseline-t196a-free-actions.json', import.meta.url),
+  new URL('../../../../docs/balance/baseline-t196b-instruments.json', import.meta.url),
 );
 const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
   label: string;

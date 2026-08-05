@@ -131,6 +131,20 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > one shared path moved. The `.scratch/t125-hangout.ts` lineage is retired
 > (`docs/HANGOUT_REDESIGN.md` §10.7 carries the counter → field map).
 >
+> **BASELINE OF RECORD RE-PINNED AT T-196b (2026-08-05)** to
+> `docs/balance/baseline-t196b-instruments.json` — the **M17 arm-2** capstone
+> (`docs/DAWN-HAND-REDESIGN.md` §3). The eight sim policies stopped budgeting a dawn die
+> for the nine freed action types and the protocol enumerator stopped advertising one, so
+> the RULES are unmoved (`rulesFingerprint` still `55414694d7187afc`) and only the
+> INSTRUMENT hash changes. Its diff against the T-196a arm is therefore the measured value
+> of EXPLOITATION alone, cleanly attributed. SEVEN of the eight policy rows moved — all but
+> `greedy`, whose day plan did not change — against arm 1's two. Fleet `tourOneClearRate`
+> 0.6305 → 0.6342, median final credits 49,517 → 49,839 (+0.7%), ships lost 465 → 487.
+> The arm is carried by the fighter (clear rate 0.499 → 0.603, median credits 45,551 →
+> 82,671); the smuggler and explorer give a little back (−5.9% and −4.2% clear rate) and
+> both also carry F-196b-1's per-sweep credit charge on their Explore loops, the finding
+> this capstone's own gate caught and closed. Gate PASS, 0 invariant violations.
+>
 > **BASELINE OF RECORD RE-PINNED AT T-196a (2026-08-04)** to
 > `docs/balance/baseline-t196a-free-actions.json` — the **M17 arm-1** capstone
 > (`docs/DAWN-HAND-REDESIGN.md` §3). Nine administrative action types stopped costing a
@@ -2455,7 +2469,27 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t196a-free-actions.json`** (1,000 seeds
+   > **Baseline of record is `docs/balance/baseline-t196b-instruments.json`** (1,000 seeds
+   > × 120 days × 8 policies = 8,000 runs, re-pinned at T-196b 2026-08-05 — the M17 arm-2
+   > capstone: the eight sim policies and the protocol enumerator stopped treating the nine
+   > freed action types as die spends (`docs/DAWN-HAND-REDESIGN.md` §3), so the ruleset is
+   > unmoved and only `instrumentFingerprint` changes. PREDICTED BEFORE THE RUN (TASKS.md
+   > T-196b) and held: NPC-side rows near-still
+   > (`npcSpecialEquipmentPurchasesPerRun` −0.1%), and the BREADTH prediction — seven of
+   > eight policy rows move against arm 1's two, with `greedy` the named control that does
+   > not. (That prediction's headline read "all eight"; its own pre-registered
+   > counter-evidence named `greedy`, so seven is the number it was reaching for and the
+   > number that landed. Corrected in TASKS.md T-196b rather than rewritten in place.)
+   > Fleet `tourOneClearRate` 0.6305 → 0.6342, median final credits 49,517 → 49,839
+   > (+0.7%), ships lost 465 → 487. The task block's own "median credits UP again" guess was
+   > CONTRADICTED at row level — five of seven moved rows fall — and the pre-registered
+   > prediction that `planCaptainOverhead` losing its throttle would push credits down is
+   > what actually held. **The fleet medians rise anyway, and the reason is the row nothing
+   > predicted: the FIGHTER carries the arm alone** (clear rate 0.499 → 0.603, median
+   > credits 45,551 → 82,671), because it is the policy whose day the dawn hand rationed
+   > hardest — a three-planner shopping chain on top of a sign→travel and a combat. Full
+   > reconciliation in TASKS.md T-196b's Delivered block.)
+   > Before that, `docs/balance/baseline-t196a-free-actions.json` (1,000 seeds
    > × 120 days × 8 policies = 8,000 runs, re-pinned at T-196a 2026-08-04 — the M17 arm-1
    > capstone: nine administrative action types stopped costing a dawn die
    > (`docs/DAWN-HAND-REDESIGN.md` §3), with the instruments deliberately left budgeting for

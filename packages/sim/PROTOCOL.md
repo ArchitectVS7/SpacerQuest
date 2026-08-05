@@ -104,8 +104,15 @@ Then repeat `start-day … end-day` for each subsequent day. Phase rules:
 
 - `start-day` requires **DAWN**; `apply-action` and `end-day` require **DAY**.
 - An action that requires a die spends one from the dawn hand. When
-  `diceRemaining` is empty, no die-spending action is legal — the only remaining
-  move is `end-day`.
+  `diceRemaining` is empty, no die-spending action is legal.
+- **T-196b · Die-actions vanish with the hand; the nine Free Actions do not.**
+  An exhausted hand is no longer the end of the day's options: the M17 Free
+  Actions (`docs/DAWN-HAND-REDESIGN.md` §3 — `Trade/{buy-fuel, sign-contract,
+  abandon-contract}`, all four `Shipyard` kinds, `Crew` hire/dismiss, `Port` buy)
+  cost no die, carry **no `spendDie` param at all**, and stay advertised on a
+  fully-spent hand, gated only by their own preconditions. What an empty
+  `diceRemaining` removes is the Main Actions: jump, explore, combat, haggle,
+  Liar's Dice peek, and the Hangout verbs.
 - An **unresolved encounter carries across `end-day`** into the next day (with a
   dusk pressure roll); it does not block `end-day`.
 
@@ -127,7 +134,7 @@ A compact, agent-facing view — deliberately **not** the raw `GameState`. Field
 | `fuel`, `maxFuel`    | Tank state.                                                         |
 | `systemId`, `systemName` | Current location.                                               |
 | `dawnHand`           | `{ dice: number[], spent: boolean[] }` — the day's rolled hand, or `null` before the first `start-day`. |
-| `diceRemaining`      | **Indices** into `dawnHand.dice` that are still unspent — the legal values for any action's `spendDie`. |
+| `diceRemaining`      | **Indices** into `dawnHand.dice` that are still unspent — the legal values for any action's `spendDie`, i.e. the domain of the **Main Actions**. T-196b: the nine Free Actions are advertised independently of it. |
 | `rerollsRemaining`   | Re-roll charges left today (from a re-roll crew member); `0` with none. Spend via a `Reroll` action. |
 | `crew`               | Hired crew, by role id — the dice-progression source (T-1306: `extra-die` / `reroll` / `floor`). |
 | `crewCapacity`       | Cabin berths (the hiring cap; grows with cabin strength).           |
@@ -207,14 +214,12 @@ or large, so the enumerator exposes the action *shape* and each parameter's
 - **pay-debt** — `amount` is an `int` in `[1, min(credits, debt)]` (no die).
 - **haggle** — `contractIndex` from the un-haggled board; the payoff is a TRADE
   roll (unbounded outcome), noted, not enumerated.
-- **abandon-contract** (T-1604b) — advertised only while a die is in hand **and**
-  `player.activeContract` is set, so it is never a guaranteed refusal. `spendDie`
-  is its only parameter. **T-196a (M17, `docs/DAWN-HAND-REDESIGN.md` §3): it costs
-  NO die — only the forfeited payment.** The enumerator still gates it on a die in
-  hand and still advertises `spendDie`; the engine ignores the field (zod strips
-  it). That staleness is deliberate and belongs to T-196b, which moves the
-  instruments. The same applies to `buy-fuel`, `sign-contract`, every `Shipyard`
-  kind, `Crew` hire/dismiss and the `Port` buy. There is **no credit fee** on the
+- **abandon-contract** (T-1604b) — advertised whenever `player.activeContract` is
+  set, so it is never a guaranteed refusal. **T-196a/T-196b (M17,
+  `docs/DAWN-HAND-REDESIGN.md` §3): it costs NO die — only the forfeited
+  payment**, so it is advertised regardless of the hand and its **`params` object
+  is empty** (the harness fills nothing; the pilot's odometer yields exactly one
+  candidate). There is **no credit fee** on the
   dump, so a destitute captain can always free the hold. The dumped
   contract does **not** return to `market.manifestBoard`. This is the escape
   hatch for a hold carrying an undeliverable run — sign-contract stays
@@ -233,9 +238,11 @@ or large, so the enumerator exposes the action *shape* and each parameter's
 - **Shipyard** (T-1604a F5 — reshaped) — the yard is advertised **pre-checked**
   against the engine's own `shipyardFailure`, so **every filling of every listed
   spec will be honoured**. Affordability, renown, condition and mutual exclusion
-  are applied *before* advertising, not left for `apply-action` to refuse — the die
-  is spent before those checks run (`shipyard.ts` ~L545), so a refusal costs a die.
-  The shapes that follow from that:
+  are applied *before* advertising, not left for `apply-action` to refuse. (The
+  original reason — the die was spent before those checks ran, `shipyard.ts` ~L545
+  — died with the die at T-196a; the pre-check stays because a spec must always be
+  fillable into an honoured action.) T-196b: none of the four carries a `spendDie`
+  param, and all four are advertised on an exhausted hand. The shapes:
   - **buy-component-tier** — one spec **per component**, `component` `fixed`, and
     `tier` an `int` domain `1..k` where `k` is the highest tier the purse can cover
     (prices rise with tier, so the affordable tiers are a prefix). Components with
@@ -249,11 +256,15 @@ or large, so the enumerator exposes the action *shape* and each parameter's
     quantity that fits both the hull and the purse.
   - **buy-special-equipment** — `equipment` is an `enum` filtered to items that pass
     affordability, renown **and** mutual exclusion. Absent when none qualify.
-- **Crew/hire** (T-1604a F5) — `roleId` is filtered to roles the purse can cover;
-  `resolveCrew` spends the die before it checks the hire price.
+- **Crew/hire** (T-1604a F5) — `roleId` is filtered to roles the purse can cover.
+  The filter's original reason (`resolveCrew` spent the die before it checked the
+  hire price) died with the die at T-196a; it stays for the standing "never
+  advertise a guaranteed refusal" law. T-196b: no `spendDie` param, and both
+  `hire` and `dismiss` are advertised on an exhausted hand.
 - **Port/buy** (T-1604a F5) — advertised only when the engine's own
   `quotePort().ok` holds. `systemId` is `fixed`, so there is no domain to narrow and
-  the verb is withheld entirely when the stake is unaffordable.
+  the verb is withheld entirely when the stake is unaffordable. T-196b: no
+  `spendDie` param, and it does not need a die in hand.
 - **Combat** — `stance` is an `enum` gated by fuel (`talk` always; `run` needs
   `RUN_FUEL_COST`; `fight` needs `FIGHT_FUEL_COST`); `targetId` is `fixed` to the
   interceptor.
