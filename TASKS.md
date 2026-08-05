@@ -3920,6 +3920,35 @@ helpers (`career.ts`, `longhaul.ts`, and the per-spec files) to dismiss the new 
 block flows those tests already covered.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root; oriented directly from `TASKS.md`, `docs/PRD-REIMAGINED.md`, and… · attempts=1/4.
 
+**CORRECTION (2026-08-05, caught by CI, not the local gate — recorded rather than silently
+patched).** The Delivered note's claim above — "touched the existing e2e specs/support helpers
+... so it doesn't block flows those tests already covered" — was true of `packages/ui/e2e` only.
+CI's "Electron desktop e2e" and both "Package (mac)"/"Package (win)" jobs (run 31011441324,
+commit `aeadf5b7`) failed 8/8 desktop specs on the identical class of defect: the opening marker
+blocking every "New game" click, because `packages/desktop/e2e/support/cockpit.ts` — a SEPARATE,
+duplicated e2e helper for the Electron shell (the file's own header explains the duplication:
+kept apart from `packages/ui/e2e/support/career.ts` so a dev-mode/packaged difference shows up as
+a real failure, not a shared-fixture illusion) — was never touched. The local gate (`npm test`,
+`tsc -b`, lint, `format:check`) cannot catch this: desktop e2e is a separate CI job, not part of
+that gate, which is exactly the T-163 widening's reason to exist. Root cause, precisely: this
+suite's virgin boot arms the opening marker from TWO triggers (`init()` on a save-less boot, and
+`newGame()` unconditionally after Roll) and nothing dismissed either. Fixed in `cockpit.ts`:
+added `skipOpeningMarker` (the same tolerant click-if-present shape as the pre-existing
+`skipFirstTurnWalkthrough`), called BEFORE `skipFirstTurnWalkthrough` in `startCareer` — order is
+load-bearing, since `App.tsx`'s `WalkthroughCard` renders nothing at all while the marker is
+pending, so dismissing the walkthrough first would silently no-op and let it surface (and block)
+right after — and again after "Roll", since `newGame` re-arms the marker unconditionally where
+the walkthrough's own record does not. `shell.spec.ts`'s standalone T-185 audio test (no
+`startCareer` call) needed its own fix: `skipOpeningMarker` before the audio-recorder
+`addInitScript`/`reload()`, not after, since the dismiss click is itself a real `pointerdown`
+that `sound.ts`'s capture-phase listener would otherwise credit as the observed first gesture —
+dismissing before the recorder exists to observe it keeps the die click the first gesture the
+test can see. Verified locally: all 8 `shell.spec.ts` specs green (`npx playwright test
+e2e/shell.spec.ts`, run from `packages/desktop`); `packaged.spec.ts` shares the same
+`startCareer` call path and was not run as a full packaged build locally (mac/win packaging is
+expensive and platform-bound) but is expected to resolve identically — CI will confirm. `tsc -b`,
+lint and `format:check` all exit 0. No engine/content file touched; no capstone owed.
+
 **The ask (owner, 2026-08-05):** a new Tour One run starts $25,000 in debt
 (`Tour One debt`, `packages/engine/src/state.ts:128`), but nothing in the current open/onboarding
 flow makes that legible as a *hook*. The owner wants the opening moments to feel like the

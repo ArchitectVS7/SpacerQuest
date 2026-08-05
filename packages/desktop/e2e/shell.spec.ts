@@ -12,6 +12,7 @@ import {
   openSettings,
   payDebt,
   presenceLog,
+  skipOpeningMarker,
   startCareer,
   steamLog,
   tempDir,
@@ -745,6 +746,18 @@ test.describe('T-185 · audio in the shell', () => {
 
     const { app, page } = await launch({ saveDir, userDataDir });
     await windowShown(app);
+
+    // T-200 · Sign off the opening marker BEFORE the recorder below exists, not
+    // after: `dismissOpeningMarker` PERSISTS (`store.ts` writes the record
+    // beside the save file), so a click here survives the reload that follows
+    // and the marker never reappears — but the click itself is a real
+    // `pointerdown` on `window`, which is exactly what `sound.ts`'s capture-phase
+    // listener treats as a gesture. Taking it now, before `__sqAudio` exists to
+    // observe it, keeps the die click below the FIRST gesture the recorder ever
+    // sees — the die click is not literally the page's first gesture (the
+    // Guild dispatch already claimed that one), only the first the test can see,
+    // which is the only claim `read()` is actually able to make either way.
+    await skipOpeningMarker(page);
 
     // The recorder must be installed BEFORE the cockpit's modules run, and
     // `launch()` hands back a window that has already loaded — so install, then

@@ -334,21 +334,52 @@ export async function skipFirstTurnWalkthrough(page: Page): Promise<void> {
 }
 
 /**
+ * T-200 · Sign off the opening marker if it is currently up, tolerant of it
+ * being absent — the same shape as {@link skipFirstTurnWalkthrough} and for the
+ * identical reason: this suite has no `page.addInitScript` seam (Electron's
+ * window has already navigated by the time `app.firstWindow()` hands it over,
+ * and the record lives beside the save file, not in `localStorage`), so the
+ * only honest dismissal is the click a player makes.
+ *
+ * CALLED TWICE from {@link startCareer}, deliberately — `store.ts` arms the
+ * marker from TWO different triggers that this suite's boot hits in sequence:
+ * `init()` arms it on a virgin boot (every launch in this suite, per {@link
+ * skipFirstTurnWalkthrough}'s doc), and `newGame` arms it AGAIN, unconditionally,
+ * once the roll actually lands a career. A single call before "New game" would
+ * clear the first arm and still leave the second one standing over the cockpit
+ * `startCareer` asserts against next.
+ */
+export async function skipOpeningMarker(page: Page): Promise<void> {
+  const marker = page.getByTestId('opening-marker');
+  if ((await marker.count()) === 0) return;
+  await page.getByTestId('opening-marker-dismiss').click();
+  await expect(marker).toHaveCount(0);
+}
+
+/**
  * Tour One, start of career — the same four assertions
  * `packages/ui/e2e/support/career.ts`'s `startCareer` makes, minus its
  * `page.goto('/')` (the Electron window is already showing the cockpit).
  *
- * The walkthrough is retired FIRST, for the reason {@link
- * skipFirstTurnWalkthrough} states: `newGame` re-arms only a record that has
- * never run (`store.ts`), so a skip taken before the roll stays taken through
- * this career and every relaunch of it.
+ * The opening marker is retired BEFORE the walkthrough, and that order is
+ * load-bearing, not stylistic: `App.tsx`'s `WalkthroughCard` renders nothing at
+ * all while the marker is pending (`openingMarkerPending` short-circuits it),
+ * so on a virgin boot — every launch in this suite — `skipFirstTurnWalkthrough`
+ * would see a zero-count card and return without clicking anything, leaving the
+ * walkthrough to appear (and block "New game") the instant the marker is
+ * cleared. Dismissing the marker first lets the walkthrough surface, if armed,
+ * so its own skip can find and click it. `skipOpeningMarker` then runs a SECOND
+ * time after the roll because `newGame` re-arms the marker unconditionally
+ * (unlike the walkthrough's one-shot record) — see {@link skipOpeningMarker}.
  */
 export async function startCareer(page: Page, seed: number): Promise<void> {
+  await skipOpeningMarker(page);
   await skipFirstTurnWalkthrough(page);
 
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(seed));
   await page.getByRole('button', { name: 'Roll' }).click();
+  await skipOpeningMarker(page);
 
   await expect(page.getByTestId('day')).toHaveText('1');
   await expect(page.getByTestId('debt-chip')).toContainText('25,000');
