@@ -76,17 +76,12 @@ function tableState(beaten: readonly string[], seed = 1): GameState {
 
 /** Open a hand and play it out under the derived script, returning the settled
  *  state and EVERY event the hand produced (opening batch included). */
-function playHand(
-  state: GameState,
-  opponentId: string,
-  spendDie = 0,
-): { state: GameState; events: GameEvent[] } {
+function playHand(state: GameState, opponentId: string): { state: GameState; events: GameEvent[] } {
   const open: PlayerAction = {
     type: 'VisitHangout',
     venue: 'dare',
     opponentId,
     wager: 50,
-    spendDie,
   };
   const opened = applyPlayerAction(state, open);
   let current = opened.state;
@@ -119,10 +114,9 @@ function playHand(
 function playWonHand(
   build: (seed: number) => GameState,
   opponentId: string,
-  spendDie = 0,
 ): { state: GameState; events: GameEvent[] } {
   for (let seed = 1; seed <= 400; seed += 1) {
-    const played = playHand(build(seed), opponentId, spendDie);
+    const played = playHand(build(seed), opponentId);
     if (playerWon(played.events)) return played;
   }
   throw new Error(`no seed in 1..400 won a hand against ${opponentId} under the derived script`);
@@ -265,11 +259,11 @@ describe('T-147 · the whole roster closes exactly once, alongside its port', ()
     const closed = playWonHand((seed) => tableState(ALL_BUT_ONE, seed), SUN3_OPTIMAL).state;
     expect(clearedOf(closed.eventLog)).toHaveLength(2);
 
-    const again = playHand(closed, SUN3_BAD, 1);
+    const again = playHand(closed, SUN3_BAD);
     expect(clearedOf(again.events)).toHaveLength(0);
     expect(again.events.filter((event) => event.type === 'LiarsDiceSetCleared')).toHaveLength(0);
 
-    const roaming = playHand(again.state, ROAMER, 2);
+    const roaming = playHand(again.state, ROAMER);
     expect(clearedOf(roaming.events)).toHaveLength(0);
 
     // ...and the registry still holds exactly the two COMPLETION deeds the clear
@@ -289,7 +283,7 @@ describe('T-147 · the event round-trips through eventLog without a version move
   it('CURRENT_SAVE_VERSION does NOT move — no GameState field was added', () => {
     // The event rides `eventLog`, which is already versioned, so §3 of the
     // standing constraints is N/A with the reason stated rather than skipped.
-    expect(CURRENT_SAVE_VERSION).toBe(15);
+    expect(CURRENT_SAVE_VERSION).toBe(16);
   });
 
   it('survives createSave/loadSave byte-identically', () => {

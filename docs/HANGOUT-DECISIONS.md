@@ -127,3 +127,53 @@ lowered because the floor proved affordable nor raised because the ceiling prove
 owner-gated, not build-task business.** See `docs/BALANCE-RIG-DECISIONS.md` BR-54 (the faucet
 stays open at 0.22% of terminal NPC wealth) and BR-55 (the PARITY LEDGER row stays deferred
 until the cast plays through the real resolver).
+
+---
+
+## 6. The action economy (M17)
+
+**HO-20 — ALL SEVEN Hangout venues are FREE ACTIONS, and one shared daily POOL — not a
+per-NPC ledger — is what bounds the three that move disposition.** (T-197, owner ruling
+2026-08-04, `docs/DAWN-HAND-REDESIGN.md` §3/§4a.)
+
+`dare`-open, `meet`, `befriend`, `insult`, `rumor`, `borrow` and `repay` lost their dawn-die
+cost. `Dare{move:'peek'}` did not, and is now the only die spend left anywhere in the
+Hangout family — it is the one real check inside an open hand.
+
+The pool is `SOCIAL_PLAYS_PER_DAY = 3` plays per day, shared by exactly `meet`, `befriend`
+and `insult`. Its grain was ruled twice in one day and the second ruling stands: an earlier
+draft made it per-NPC-per-day (Meet and Befriend each once per captain), and the owner
+superseded that with the flat daily pool. **The three shapes that were presented and NOT
+chosen, logged so a later reader does not re-propose them as new:** (1) per-(npcId, venue)
+per-day, (2) a hybrid pool-plus-per-NPC, (3) leaving Befriend a Main Action.
+
+**Why the pool and not something finer.** A per-NPC cap bounds a relationship; it does not
+bound the INSULT FARM, which needs only one captain and a repeat. A flat daily total prices
+a manufactured grudge at a whole day's plays no matter who it is aimed at — the exploit §4a
+actually names — and carries no per-captain bookkeeping onto the save.
+
+Three properties make the pool a rule rather than a counter, and all three are load-bearing:
+
+1. **`SOCIAL_PLAYS_PER_DAY` is CONTENT** (`packages/content/src/hangout.ts`, beside
+   `MEET_DISPOSITION`). Tuning X is a content edit, exactly like tuning the deltas it sits
+   next to; the engine owns only the arithmetic that reads it.
+2. **A play is spent when the action RESOLVES, whatever the outcome** — a FAILED Befriend
+   check spends one. A typed refusal spends nothing, which is the same "a refusal is never
+   charged" convention every pre-resolution fail in `resolveVisitHangout` kept for the die.
+3. **A spent-out pool refuses TYPED (`social-limit-reached`), never silently**, and the
+   count is rendered beside the controls (`social-plays-left`) so the refusal can never be
+   the first the player hears of the cap.
+
+`rumor` (read-only), `borrow` and `repay` (single-loan slot + credits) draw from NEITHER
+cap: they already had a real bound, which is the whole of §3's test. `dare`-open has §4b's
+rounds cap instead — see `docs/LIARS-DICE-DECISIONS.md` LD-22.
+
+**HO-21 — Free Befriend rolls an INTERNAL d20 against the port's authored DC.** (T-197,
+owner ruling 2026-08-04, `docs/DAWN-HAND-REDESIGN.md` §5.) The resolver was
+`check(die, GUILE, dc)` — the spent die WAS the roll — so freeing Befriend left the check
+with nothing to roll. Ruled: draw a d20 from the action's own rng. The `check()` call, the
+`StatCheck` event and every port's authored `befriend.dc` stay live and unchanged. What is
+knowingly given up is the player's ability to AIM a chosen die at this check; the owner
+accepted that as part of the same pool ruling. Logged not-chosen: keep Befriend a Main
+Action (smallest change, breaks the "the Hangout is free" story), or drop the check entirely
+(deletes a die-matters moment and kills the DC content at fourteen ports).

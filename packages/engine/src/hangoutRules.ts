@@ -32,9 +32,10 @@ import {
   NpcArchetype,
   PORT_HANGOUTS,
   PortHangout,
+  SOCIAL_PLAYS_PER_DAY,
   Stat,
 } from '@spacerquest/content';
-import { GameState, NpcState, PlayerAction } from './types.js';
+import { GameState, NpcState, PlayerAction, PlayerState } from './types.js';
 
 /**
  * COMPILE-TIME PIN between content's `HangoutVenueId` (declared in
@@ -158,6 +159,75 @@ export function npcGuile(npc: NpcState): number {
 export function venueOffered(systemId: number, venue: HangoutVenueId): boolean {
   const venues = portHangoutFor(systemId).venues ?? DEFAULT_VENUES;
   return venues.includes(venue);
+}
+
+// ---------------------------------------------------------------------------
+// T-197 · THE TWO DAILY CAPS THAT REPLACED THE DIE
+// (`docs/DAWN-HAND-REDESIGN.md` §4a/§4b, owner-ruled 2026-08-04)
+//
+// All seven Hangout venues are Free Actions now, so the dawn die no longer
+// throttles any of them. Two bounds ride that freeing, and BOTH live here as
+// rules rather than in the resolver: the resolver enforces them, the cockpit
+// explains them before the click, and `sim/protocol.ts` declines to advertise an
+// action they would refuse. Three readers, one definition.
+// ---------------------------------------------------------------------------
+
+/**
+ * T-197 · The three venues the social pool bounds (§4a): `meet`, `befriend`,
+ * `insult` — the disposition movers with no other bound. `rumor` is read-only,
+ * `borrow`/`repay` are ledger-bounded, and `dare` has §4b's rounds cap instead.
+ *
+ * Typed as `HangoutVenueId[]`, so removing or renaming a venue in content fails
+ * `tsc` here rather than silently emptying the pool.
+ */
+export const SOCIAL_POOL_VENUES: readonly HangoutVenueId[] = ['meet', 'befriend', 'insult'];
+
+/** T-197 · Does this venue draw from the social pool (§4a)? ONE predicate, read by
+ *  the resolver's decrement, the cockpit's disabled-reason and the protocol
+ *  enumerator's venue filter. */
+export function isSocialPoolVenue(venue: HangoutVenueId): boolean {
+  return SOCIAL_POOL_VENUES.includes(venue);
+}
+
+/** T-197 · Social plays left today (§4a), floored at 0 — a corrupt save carrying a
+ *  negative counter reads as "spent out", never as a negative allowance. */
+export function socialPlaysRemaining(state: GameState): number {
+  return Math.max(0, state.player.socialPlaysRemaining);
+}
+
+/**
+ * T-197 · WHAT BOTH CAPS READ AT THE START OF A DAY (§4a, §4b) — the ONE
+ * definition of the two dawn values, so `createInitialState`, `day.ts`'s NEXT DAY
+ * PREP chokepoint and the v15->v16 migration cannot drift apart. Two shapes exist
+ * for two call idioms (this one for an object literal being built, the mutating
+ * {@link resetDailyHangoutCaps} for a player already in hand), and the second is
+ * defined in terms of the first so there is still only one place the numbers live.
+ *
+ * A NEW DAY HAS SPENT NOTHING AND OPENED NOTHING, and both values are ABSOLUTE
+ * rather than deltas: nothing carries over. An unspent pool is not a saving, which
+ * is what makes "a relationship costs real time across days" (§4a) true rather
+ * than merely slow.
+ */
+export function freshDailyHangoutCaps(): Pick<
+  PlayerState,
+  'socialPlaysRemaining' | 'dareRoundsToday'
+> {
+  return { socialPlaysRemaining: SOCIAL_PLAYS_PER_DAY, dareRoundsToday: 0 };
+}
+
+/**
+ * T-197 · THE DAWN RESET FOR BOTH CAPS (§4a, §4b), applied to a player already in
+ * hand. `day.ts` calls this at its existing chokepoint; the v15->v16 migration
+ * reads the same values through {@link freshDailyHangoutCaps}. That is the
+ * `emptyDeedRegistry` / `seedLiarsDicePurses` house rule — "a migration CALLS a
+ * rule, it never restates one" — discharged for a rule that did not exist before
+ * this task.
+ *
+ * Mutates in place: every caller owns a fresh or already-cloned player (`day.ts`
+ * writes into `nextState`, never into the state it was handed).
+ */
+export function resetDailyHangoutCaps(player: PlayerState): void {
+  Object.assign(player, freshDailyHangoutCaps());
 }
 
 /** Archetype behind an `NpcState` (through its `profileId` — an `NpcState` carries

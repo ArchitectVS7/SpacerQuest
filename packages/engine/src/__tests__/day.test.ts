@@ -401,13 +401,25 @@ describe('T-196a · Free Actions through the day loop', () => {
     return day;
   }
 
-  /** Spend EVERY die in the hand on real Main Actions. `VisitHangout{'rumor'}` is
-   *  the read-only die burner: it emits rumors and mutates nothing else. */
+  /**
+   * Put the hand in the EXHAUSTED state this block's premise needs, and advance
+   * `dayEventCount` by one per die exactly as the old burner did.
+   *
+   * T-197 · `VisitHangout{'rumor'}` used to be the read-only die burner; T-197
+   * freed all seven Hangout venues (docs/DAWN-HAND-REDESIGN.md §3), so no
+   * read-only action spends a die any more and none is left to burn with. The two
+   * jobs are now done separately and honestly: the rumor calls are KEPT (they
+   * still emit exactly one event each, so `dayEventCount` advances identically and
+   * this block's counter assertion still means what it meant), and the dice are
+   * marked spent directly — a FIXTURE, since "an exhausted hand" is a STATE and
+   * what this block actually tests is that the Free Actions ignore it.
+   */
   function spendWholeHand(state: GameState): GameState {
     let live = state;
     for (let i = 0; i < live.player.dawnHand!.dice.length; i += 1) {
-      live = applyPlayerAction(live, { type: 'VisitHangout', venue: 'rumor', spendDie: i }).state;
+      live = applyPlayerAction(live, { type: 'VisitHangout', venue: 'rumor' }).state;
     }
+    live.player.dawnHand!.spent = live.player.dawnHand!.spent.map(() => true);
     expect(live.player.dawnHand!.spent.every(Boolean)).toBe(true);
     return live;
   }
@@ -502,7 +514,7 @@ describe('T-196a · Free Actions through the day loop', () => {
     const dusk = endDay(burned);
 
     expect(before.spent.every((s) => !s)).toBe(true); // premise: started clean
-    expect(burned.dayEventCount).toBe(before.dayEventCount + 5); // one event per rumor
+    expect(burned.dayEventCount).toBe(before.dayEventCount + 5); // one event per rumor visit
     expect(dusk.state.day).toBe(before.day + 1);
     expect(dusk.state.dayPhase).toBe(DayPhase.DAWN);
     expect(dusk.state.dayEventCount).toBe(0);
@@ -558,5 +570,54 @@ describe('T-196a · Free Actions through the day loop', () => {
     });
     expect(result.state.player.dawnHand!.spent[0]).toBe(true);
     expect(result.events.some((e) => e.type === 'StatCheck')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-197 · BOTH DAILY HANGOUT CAPS RESET AT DAWN, THROUGH THE EXISTING CHOKEPOINT
+// (`docs/DAWN-HAND-REDESIGN.md` §4a/§4b)
+//
+// The caps are what replaced the Hangout's die, so a cap that failed to roll over
+// would silently end the Hangout for the rest of the career — the single worst
+// failure mode this task can have, and the reason it gets its own block beside the
+// day loop rather than riding the resolver's suite.
+// ---------------------------------------------------------------------------
+describe('T-197 · both Hangout caps reset at dawn', () => {
+  it('a spent-out pool and a used-up round allowance are both full again next dawn', () => {
+    const day = startDay(createInitialState(1)).state;
+    const perDay = day.player.socialPlaysRemaining;
+    expect(perDay).toBeGreaterThan(0); // NON-VACUITY: a zero pool resets trivially
+
+    // Spend the day out on both axes.
+    day.player.socialPlaysRemaining = 0;
+    day.player.dareRoundsToday = 3;
+
+    const dusk = endDay(day);
+    expect(dusk.state.dayPhase).toBe(DayPhase.DAWN);
+    expect(dusk.state.player.socialPlaysRemaining).toBe(perDay);
+    expect(dusk.state.player.dareRoundsToday).toBe(0);
+  });
+
+  it('the reset is the NEXT-DAY-PREP chokepoint’s — `startDay` must not have a second one', () => {
+    // ONE write site. If `startDay` acquired a matching reset, a mid-day reload
+    // (which re-enters dawn) would refill an allowance the player already spent,
+    // and the caps would be advisory. Driven by observation, not by grep: spend the
+    // pool AT DAWN, run `startDay`, and require the spend to SURVIVE it.
+    const dawn = createInitialState(1);
+    dawn.player.socialPlaysRemaining = 0;
+    dawn.player.dareRoundsToday = 2;
+
+    const started = startDay(dawn).state;
+    expect(started.player.socialPlaysRemaining, 'startDay refilled the social pool').toBe(0);
+    expect(started.player.dareRoundsToday, 'startDay cleared the rounds counter').toBe(2);
+  });
+
+  it('nothing carries over — an UNSPENT pool does not bank into tomorrow', () => {
+    // §4a: both values are absolute, not deltas. A pool that accumulated would let
+    // a captain save up a week of grudges and spend them in one afternoon.
+    const day = startDay(createInitialState(1)).state;
+    const perDay = day.player.socialPlaysRemaining;
+    const dusk = endDay(day); // a day on which NOTHING was spent
+    expect(dusk.state.player.socialPlaysRemaining).toBe(perDay);
   });
 });

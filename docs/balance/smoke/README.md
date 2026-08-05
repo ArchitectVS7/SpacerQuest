@@ -107,8 +107,16 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t196b-instruments.json`, re-pinned at T-196b
-2026-08-05 — the M17 arm-2 capstone, which taught the eight sim policies and the protocol
+exactly like drift. The current baseline (`baseline-t197-hangout-caps.json`, re-pinned at T-197
+2026-08-05 — the M17 MILESTONE CLOSER, which freed all seven Hangout venues and replaced the
+die with two daily caps (`docs/DAWN-HAND-REDESIGN.md` §3/§4a/§4b). It is the first capstone
+of the arc to move BOTH `rulesFingerprint` (10e19c88e9a07856) and `instrumentFingerprint`
+(5c230e99648cddee), so unlike the arm-1/arm-2 pair before it its diff cannot be split into
+rule effect and exploitation effect. THREE of the eight policy rows moved — `gambler`,
+`smuggler`, `trader-degraded` — and `fighter` came back BYTE-IDENTICAL, which is the
+measured answer to the Insult farming question: no sim policy plays a social venue, so the
+loop cannot be exhibited by this instrument at all;
+before that `baseline-t196b-instruments.json` at T-196b — the M17 arm-2 capstone, which taught the eight sim policies and the protocol
 enumerator to stop budgeting a dawn die for those nine (`docs/DAWN-HAND-REDESIGN.md` §3). It
 moves `instrumentFingerprint` and NOT `rulesFingerprint`, and moves seven of the eight policy
 rows — all but `greedy`, whose day plan did not change;

@@ -1806,7 +1806,7 @@ describe('N13 · the virtual hand inside resolveNpcDay', () => {
     // The number is 15, not the 12 `TASKS.md`'s standing constraint names — that
     // constraint records where the 0.5.2 track STARTED, and three later tasks
     // bumped it legitimately. What N13 claims is that it added none of them.
-    expect(CURRENT_SAVE_VERSION).toBe(15);
+    expect(CURRENT_SAVE_VERSION).toBe(16);
     const before = npcFor('npc-cargo-king', { credits: 50000, fuel: 1000 });
     const { npc } = resolveNpcDay(before, new SeededRng(4), NO_BOARD);
     // `lastAction` is the ONE key a resolved day is supposed to write that a

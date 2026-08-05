@@ -92,6 +92,26 @@ export const LIARS_DICE_UNLOCK_GAMES: readonly [5, 10, 20, 40, 80] = [5, 10, 20,
  *  inert until T-146 reads it. */
 export const LIARS_DICE_RAISED_CEILING_MULT = 3;
 
+/**
+ * T-197 · ROUNDS PER DAY, BY UNLOCK TIER (`docs/DAWN-HAND-REDESIGN.md` §4b, owner
+ * ruling: "clamp liars dice at X number of rounds, scaling with a player's rank in
+ * liars dice (rewarding good play)"). Index = the tier `liarsDiceTier` returns
+ * (0-5); the value is how many hands that captain may OPEN in one day.
+ *
+ * **PROPOSED — AWAITING OWNER CONFIRMATION OF THE EXACT COUNTS.** The SHAPE (more
+ * rounds at a higher tier, monotone non-decreasing) is the ruled part; §4b's own
+ * table calls these numbers "a starting suggestion, not a ruling". They ship as
+ * authored here so the mechanism is real and measurable, and they are cheap to
+ * change: this array is the only place they exist. See `docs/LIARS-DICE-DECISIONS.md`
+ * LD-23 for the standing question.
+ *
+ * A SIX-TUPLE, not a bare `number[]`, for the same reason `LIARS_DICE_UNLOCK_GAMES`
+ * is a five-tuple: `liarsDiceTier` returns `0|1|2|3|4|5`, so a row per tier is a
+ * compile-time obligation and a short table cannot silently read `undefined`.
+ */
+export const LIARS_DICE_ROUNDS_PER_DAY: readonly [number, number, number, number, number, number] =
+  [1, 2, 2, 3, 3, 4] as const;
+
 /** The four tone mixes (§2.5). The port's authored `prose.tone` picks the row —
  *  the TONE, not the id, so a port re-toned in a later content pass moves with it
  *  and no engine code ever learns a port id. */

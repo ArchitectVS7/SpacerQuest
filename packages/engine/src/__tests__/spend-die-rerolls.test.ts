@@ -348,7 +348,16 @@ describe('T-182 · the spendDie caller manifest', () => {
     'exploreOutcomes.ts': { assign: 1, mutate: 0 },
     // MUTATE-IN-PLACE family — calls for the face and the guards, then writes
     // `spent[index]` on the live hand. Safe by the copy contract, not by luck.
-    'actions/hangout.ts': { assign: 0, mutate: 1 },
+    //
+    // T-197 · `actions/hangout.ts` IS GONE FROM THIS MANIFEST ENTIRELY, and its
+    // absence is the assertion: M17's Hangout row (docs/DAWN-HAND-REDESIGN.md §3
+    // as amended 2026-08-04) freed ALL SEVEN venues — dare-open, meet, befriend,
+    // insult, rumor, borrow, repay — so the resolver calls `spendDie` nowhere and
+    // does not touch the dawn hand at all. `actions/dare.ts` is now the ONLY
+    // mutate-in-place caller left, and the one thing it spends for is PEEK, which
+    // stayed a Main Action by ruling (§3: "the one real check inside an open
+    // hand"). This guard runs in BOTH directions, so a Hangout venue that starts
+    // eating a die again fails right here.
     'actions/dare.ts': { assign: 0, mutate: 1 },
     // INERT — the virtual hand is transient and never serialized.
     'npcHand.ts': { assign: 1, mutate: 0 },

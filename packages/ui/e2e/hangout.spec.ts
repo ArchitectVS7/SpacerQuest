@@ -82,9 +82,15 @@ test('visit the Hangout, pick an opponent, and seat yourself at the dice table',
   await expect(page.getByTestId('dare-wager-bounds')).toContainText(`WAGER ${DARE_MIN_WAGER}`);
   await page.getByTestId('dare-wager').fill('100');
 
-  // 4) Arm a die from the (still-reachable) HandDock and commit the Dare.
-  await page.getByTestId('die').nth(0).click();
+  // 4) T-197 · NO DIE IS ARMED. Opening a hand is a Free Action
+  //    (docs/DAWN-HAND-REDESIGN.md §3), so the commit is enabled the moment an
+  //    opponent is chosen — the arm-a-die step this test used to take is gone, and
+  //    its absence is part of what is being asserted.
   await expect(page.getByTestId('dare-commit')).toBeEnabled();
+  //    …and the day's rounds allowance is READABLE BEFORE THE CLICK, so the cap
+  //    that replaced the die can never refuse a button the player could not see
+  //    coming (§4b, the "never a silent dead button" clause).
+  await expect(page.getByTestId('dare-rounds-left')).toContainText('ROUNDS');
   await page.getByTestId('dare-commit').click();
 
   // 5) The SCENE opened. The opening visit no longer resolves anything — it deals
@@ -96,11 +102,13 @@ test('visit the Hangout, pick an opponent, and seat yourself at the dice table',
   // The seed is debited the moment the hand opens (§2.4 — escrow, not a promise).
   await expect(page.getByTestId('credits')).toHaveText('900');
 
-  // 6) Exactly one die was spent to seat yourself; the rest of the hand is credits.
+  // 6) T-197 · ZERO dice were spent to seat yourself — INVERTED from "exactly one",
+  //    which is the assertion this task exists to flip. The whole cost of the seat
+  //    is credits (the escrow above) plus one of the day's rounds.
   const spent = await page
     .getByTestId('die')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-spent')));
-  expect(spent.filter((s) => s === '1').length).toBe(1);
+  expect(spent.filter((s) => s === '1').length).toBe(0);
 
   // Fold out so the rest of this file's tests are not run behind a locked panel.
   await page.locator('[data-testid="dare-move"][data-move="fold"]').click();
@@ -123,8 +131,8 @@ test('take and repay a Penny Wise loan entirely through the UI', async ({ page }
   // Starter credits are 1000; borrowing the minimum principal advances +250.
   await expect(page.getByTestId('credits')).toHaveText('1,000');
 
-  // Borrow: arm a die, take the loan at the minimum principal (the input default).
-  await page.getByTestId('die').nth(0).click();
+  // Borrow: T-197 · no die is armed — the desk is a Free Action (§3) and outside
+  // both daily caps. Take the loan at the minimum principal (the input default).
   await page.getByTestId('loan-borrow').click();
 
   await expect(page.getByTestId('credits')).toHaveText('1,250');
@@ -133,8 +141,7 @@ test('take and repay a Penny Wise loan entirely through the UI', async ({ page }
   await expect(status).toContainText(`${LOAN_MIN_PRINCIPAL}`); // outstanding = principal at issue
   await expect(status).toContainText('DUE D'); // engine-written due day
 
-  // Repay: arm a second die and pay the balance in full — the loan clears.
-  await page.getByTestId('die').nth(1).click();
+  // Repay: pay the balance in full — the loan clears. No die here either.
   await page.getByTestId('loan-repay-amount').fill(String(LOAN_MIN_PRINCIPAL));
   await page.getByTestId('loan-repay').click();
 
@@ -142,6 +149,13 @@ test('take and repay a Penny Wise loan entirely through the UI', async ({ page }
   // The desk returns to the no-loan state: the status is gone, borrow is offered again.
   await expect(page.getByTestId('loan-status')).toHaveCount(0);
   await expect(page.getByTestId('loan-borrow')).toBeVisible();
+
+  // T-197 · …and the WHOLE dawn hand is still unspent. Two desk visits used to
+  // cost two dice; they now cost none.
+  const spent = await page
+    .getByTestId('die')
+    .evaluateAll((els) => els.map((e) => e.getAttribute('data-spent')));
+  expect(spent.filter((s) => s === '1').length).toBe(0);
 });
 
 // T-121 · INVERTED, deliberately (docs/HANGOUT_REDESIGN.md §4.2). This test used
@@ -182,10 +196,13 @@ test('the Hangout pane follows the engine gate to a second port', async ({ page 
 // venue gate — all through real clicks.
 // ---------------------------------------------------------------------------
 
-/** Arm a die, dispatch one social venue against the chosen captain, and confirm the
- *  engine's readout came back with NO typed fail notice. */
-async function dispatchSocial(page: Page, venue: string, dieIndex: number): Promise<void> {
-  await page.getByTestId('die').nth(dieIndex).click();
+/** Dispatch one social venue against the chosen captain and confirm the engine's
+ *  readout came back with NO typed fail notice.
+ *
+ *  T-197 · NO `dieIndex` PARAMETER ANY MORE. All three social beats are Free
+ *  Actions (docs/DAWN-HAND-REDESIGN.md §3); what bounds them is the day's SOCIAL
+ *  POOL (§4a), which the pane renders as `social-plays-left`. */
+async function dispatchSocial(page: Page, venue: string): Promise<void> {
   const button = page.locator(`[data-testid="hangout-social"][data-venue="${venue}"]`);
   await expect(button).toBeEnabled();
   await button.click();
@@ -209,13 +226,13 @@ test('meet, befriend and insult are each dispatchable at the Long Table', async 
 
   // 1) meet — an introduction, no roll: the readout carries the engine's applied
   //    disposition delta and NO StatCheck at all.
-  await dispatchSocial(page, 'meet', 0);
+  await dispatchSocial(page, 'meet');
   await expect(page.getByTestId('social-check')).toHaveCount(0);
   await expect(page.getByTestId('social-result')).toHaveAttribute('data-delta', /^-?\d+$/);
 
   // 2) befriend — the one social venue that ROLLS: a GUILE check against the
   //    port's authored DC, rendered through the shared honest-dice readout.
-  await dispatchSocial(page, 'befriend', 1);
+  await dispatchSocial(page, 'befriend');
   const check = page.getByTestId('social-check');
   await expect(check).toBeVisible();
   await expect(check.getByTestId('check-stat')).toHaveText('GUILE');
@@ -224,15 +241,18 @@ test('meet, befriend and insult are each dispatchable at the Long Table', async 
   await expect(check.getByTestId('check-result')).toHaveText(/SUCCESS|FAILURE/);
 
   // 3) insult — always lands, never rolls, and the delta is negative.
-  await dispatchSocial(page, 'insult', 2);
+  await dispatchSocial(page, 'insult');
   await expect(page.getByTestId('social-check')).toHaveCount(0);
   await expect(page.getByTestId('social-result')).toHaveAttribute('data-delta', /^-\d+$/);
 
-  // Exactly three dice were spent — one per venue, none burned by a refusal.
+  // T-197 · ZERO dice were spent — INVERTED from "exactly three, one per venue".
+  // What the three beats DID spend is the day's social pool, which the readout
+  // below reports and which the dedicated cap test at the foot of this file drives
+  // to its limit.
   const spent = await page
     .getByTestId('die')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-spent')));
-  expect(spent.filter((s) => s === '1').length).toBe(3);
+  expect(spent.filter((s) => s === '1').length).toBe(0);
 });
 
 test('the house speaks: its name, its room line and its venue flavour', async ({ page }) => {
@@ -300,7 +320,6 @@ test('a tight-credit port fronts less than you ask for, and says so up front', a
   // THE CLAMP, THROUGH THE TERMINAL. Ask for the galaxy's ceiling; the garrison
   // counts out its own. Not an error, not a refusal notice — a smaller marker.
   await input.fill(String(LOAN_MAX_PRINCIPAL));
-  await page.getByTestId('die').nth(1).click();
   await page.getByTestId('loan-borrow').click();
 
   const status = page.getByTestId('loan-status');
@@ -337,4 +356,63 @@ test('a hall that seats no stranger offers no introduction', async ({ page }) =>
   await expect(page.locator('[data-testid="hangout-social"][data-venue="befriend"]')).toBeVisible();
   // The hall DOES run a credit desk, so this is not a blanket social hide either.
   await expect(page.getByTestId('loan-terms')).toBeVisible();
+});
+
+// ---------------------------------------------------------------------------
+// T-197 · THE SOCIAL POOL, DRIVEN TO ITS LIMIT THROUGH THE REAL TERMINAL
+// (`docs/DAWN-HAND-REDESIGN.md` §4a)
+//
+// The Accept clause is "never a silent dead button", and that is a claim about
+// what a PLAYER sees — so it is proved here, with real clicks, rather than in a
+// store test. Three social beats, then a fourth: the readout must fall to zero,
+// the control must disable itself with a reason, and the reason must be visible
+// BEFORE the click rather than as a notice after it.
+//
+// NOT ONE NUMBER IS RESTATED. The pool size is read off the rendered readout, so a
+// content retune of `SOCIAL_PLAYS_PER_DAY` moves this test with the content.
+// ---------------------------------------------------------------------------
+test('the social pool spends out through the UI, and says so before the dead click', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await newGameSeed(page, SEED);
+
+  await page.getByTestId('hangout-toggle').click();
+  await expect(page.getByTestId('hangout-panel')).toBeVisible();
+  await expect(npcRow(page, DEALER)).toBeVisible();
+  await npcRow(page, DEALER).click();
+
+  // The readout is on screen BEFORE anything is spent — this is the affordance the
+  // criterion is about.
+  const readout = page.getByTestId('social-plays-left');
+  await expect(readout).toBeVisible();
+  const opening = (await readout.textContent()) ?? '';
+  const perDay = Number(opening.match(/(\d+)\s*\/\s*(\d+)/)![2]);
+  expect(perDay).toBeGreaterThan(0);
+  await expect(readout).toContainText(`${perDay}/${perDay}`);
+
+  // Spend the pool out, one real click at a time, reading the counter down.
+  const venues = ['meet', 'befriend', 'insult'];
+  for (let i = 0; i < perDay; i += 1) {
+    const venue = venues[i % venues.length];
+    const button = page.locator(`[data-testid="hangout-social"][data-venue="${venue}"]`);
+    await expect(button).toBeEnabled();
+    await button.click();
+    await expect(page.getByTestId('social-outcome')).toBeVisible();
+    await expect(readout).toContainText(`${perDay - (i + 1)}/${perDay}`);
+  }
+
+  // THE LIMIT, AS THE PLAYER MEETS IT. The counter reads zero, and every social
+  // control is disabled with the cap's own reason ON THE BUTTON — not a notice
+  // raised after a click that looked available.
+  await expect(readout).toContainText(`0/${perDay}`);
+  for (const venue of venues) {
+    const button = page.locator(`[data-testid="hangout-social"][data-venue="${venue}"]`);
+    await expect(button, `${venue} is still clickable at a spent-out pool`).toBeDisabled();
+    await expect(button).toHaveText(/no social plays left today/i);
+  }
+
+  // …and the caps are INDEPENDENT: the dice table is untouched by the social pool,
+  // which is §4a/§4b's whole shape.
+  await expect(page.getByTestId('dare-commit')).toBeEnabled();
 });

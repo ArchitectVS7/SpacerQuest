@@ -303,6 +303,21 @@ export type ExplorationFailReason =
  *   - 'opponent-broke'    — T-145 · a `VisitHangout{venue:'dare'}` naming a ROSTER
  *     opponent whose live purse is <= 0 (`docs/LIARS-DICE-PROGRESSION_SPEC.md`
  *     §7.4). Refused BEFORE the die is spent, like every other pre-spend refusal.
+ *   - 'social-limit-reached' — T-197 · the SOCIAL POOL is spent out
+ *     (`docs/DAWN-HAND-REDESIGN.md` §4a). `meet`/`befriend`/`insult` are Free
+ *     Actions now; the day's `SOCIAL_PLAYS_PER_DAY` plays are what bounds them,
+ *     and a spent-out pool refuses TYPED rather than silently no-opping. Nothing
+ *     is spent, exactly as the three die reasons above spent nothing.
+ *   - 'daily-round-limit' — T-197 · a `VisitHangout{venue:'dare'}` past the day's
+ *     rounds cap (§4b), which scales with `liarsDiceTier`. Refused before any
+ *     mutation AND before any rng draw, so a refused open cannot move the day's
+ *     dice stream.
+ *
+ * T-197 · THE THREE DIE REASONS ARE STILL LIVE, AND THAT IS NOT AN OVERSIGHT.
+ * `no-die` / `invalid-die-index` / `die-already-spent` are no longer reachable
+ * from `resolveVisitHangout` — every venue is free — but `actions/dare.ts`'s PEEK
+ * still raises all three. Peek is the one check inside an open hand and it stayed
+ * a Main Action by ruling (§3), so the reasons stay.
  */
 export type HangoutFailReason =
   | 'no-die'
@@ -313,7 +328,9 @@ export type HangoutFailReason =
   | 'dare-hand-open'
   | 'no-dare-hand'
   | 'illegal-dare-move'
-  | 'opponent-broke';
+  | 'opponent-broke'
+  | 'social-limit-reached'
+  | 'daily-round-limit';
 
 /**
  * T-135 · One standing claim in a Liar's Dice hand: "there are at least
@@ -1529,6 +1546,15 @@ export type PlayerAction =
        * NPC whose SIMULATED position is in the player's current system, else a
        * typed HangoutEvent fail. `borrow`/`repay`/`rumor` need no opponent.
        * RESOLVER: actions/hangout.ts resolveVisitHangout.
+       *
+       * T-197 · M17 FREE ACTION, ALL SEVEN VENUES (docs/DAWN-HAND-REDESIGN.md §3
+       * as amended 2026-08-04) — no die. Two DAILY CAPS took the die's place and
+       * both live on the save rather than on the action: the social pool bounds
+       * meet/befriend/insult (§4a) and the rounds-per-day cap bounds the dare open
+       * (§4b). Nothing here needs to name them — a caller asks for the venue, and
+       * the resolver answers with a typed refusal when the day's allowance is out.
+       * `Dare{move:'peek'}` KEEPS its `spendDie`: it is the one check inside an
+       * open hand and stayed a Main Action.
        */
       type: 'VisitHangout';
       venue: 'dare' | 'meet' | 'befriend' | 'insult' | 'rumor' | 'borrow' | 'repay';
@@ -1536,7 +1562,6 @@ export type PlayerAction =
       wager?: number;
       /** T-1304: borrow principal / repay amount (venue 'borrow' / 'repay'). */
       amount?: number;
-      spendDie?: number;
     }
   | {
       /**
@@ -2079,6 +2104,38 @@ export interface PlayerState {
    *  Drives the unlock ladder (§4); T-146 wires the increment into the single
    *  settlement site. Initialised here so T-146 needs no save-version move. */
   liarsDiceGamesPlayed: number;
+  /**
+   * T-197 · FREE SOCIAL PLAYS LEFT TODAY (`docs/DAWN-HAND-REDESIGN.md` §4a, owner
+   * ruling 2026-08-04). Integer 0..`SOCIAL_PLAYS_PER_DAY`. Decremented by exactly
+   * `meet` / `befriend` / `insult` — the three venues that move disposition with
+   * no other bound — and by nothing else: `rumor`, `borrow`, `repay` and the Dare
+   * open never touch it.
+   *
+   * SPENT ON RESOLUTION, WHATEVER THE OUTCOME: a FAILED Befriend check spends the
+   * play. A typed refusal spends nothing, which is the same "a refusal is never
+   * charged" convention every pre-spend fail in `actions/hangout.ts` already kept
+   * for the die this counter replaces.
+   *
+   * Reset to the full allowance at dawn through `resetDailyHangoutCaps`
+   * (`hangoutRules.ts`) at `day.ts`'s NEXT DAY PREP chokepoint. It lives on the
+   * SAVE so a mid-day reload cannot refill the pool.
+   */
+  socialPlaysRemaining: number;
+  /**
+   * T-197 · Liar's Dice hands OPENED today (§4b). Integer >= 0, capped against
+   * `liarsDiceRoundsPerDay(liarsDiceTier(liarsDiceGamesPlayed))`.
+   *
+   * COUNTED AT OPEN, NOT AT SETTLEMENT, and that is a ruling rather than a
+   * convenience (§4b): a hand persists across save/reload and can straddle dusk,
+   * so counting at settlement would let a hand opened before dusk dodge the dawn
+   * reset. "One settled hand" defines the round's UNIT; the OPEN is when the day's
+   * allowance is spent. An open-and-fold therefore burns the round — the cap
+   * cannot be laundered through folds.
+   *
+   * Reset to 0 at dawn through the same `resetDailyHangoutCaps` rule, and on the
+   * SAVE for the same reason.
+   */
+  dareRoundsToday: number;
   activeContract?: CargoContract | null;
 }
 

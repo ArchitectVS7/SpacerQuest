@@ -6,7 +6,7 @@ import {
 } from '@spacerquest/content';
 import { createInitialState } from '../state.js';
 import { applyPlayerAction, endDay } from '../day.js';
-import { npcGuile, wagerBandFor } from '../hangoutRules.js';
+import { npcGuile, resetDailyHangoutCaps, wagerBandFor } from '../hangoutRules.js';
 import {
   anteFor,
   dicePerSideForTier,
@@ -98,9 +98,30 @@ function ladderState(
 }
 
 /** Open a hand through the real resolver, against either pool. */
-function open(state: GameState, opponentId: string = DEALER, wager?: number, spendDie = 0) {
-  const action: PlayerAction = { type: 'VisitHangout', venue: 'dare', opponentId, spendDie };
+function open(state: GameState, opponentId: string = DEALER, wager?: number) {
+  const action: PlayerAction = { type: 'VisitHangout', venue: 'dare', opponentId };
   return applyPlayerAction(state, wager === undefined ? action : { ...action, wager });
+}
+
+/**
+ * T-197 · ROLL THE DAY'S LIAR'S DICE ALLOWANCE OVER, the way dawn does.
+ *
+ * The rounds-per-day cap (docs/DAWN-HAND-REDESIGN.md §4b) is what replaced the
+ * die on a hand-open, and at tier 0 it is ONE hand per day — so a test that
+ * settles several hands in a row is now a test that plays several DAYS. This
+ * calls the engine's own dawn-reset RULE (`resetDailyHangoutCaps`, the same one
+ * `day.ts`'s NEXT DAY PREP and `MIGRATIONS[15]` call) rather than restating the
+ * counter, and rather than WIDENING THE CAP to keep an assertion green — which
+ * would be editing a threshold to make a test pass.
+ *
+ * It resets the counters only, not the whole day, because `ladderState` builds a
+ * hand-made DAY state rather than a day-loop one: dragging `endDay` in here would
+ * move every NPC and every purse and turn a ladder test into a dusk test. The same
+ * idiom this file already uses when it re-arms `dawnHand` by hand for a later day.
+ */
+function nextDaysRounds(state: GameState): GameState {
+  resetDailyHangoutCaps(state.player);
+  return state;
 }
 
 function startedOf(events: GameEvent[]) {
@@ -541,7 +562,7 @@ describe('T-146 · obligation 16 — a hand keeps the rules it was dealt under',
     // the freeze is a freeze and not a failure to read the ladder at all.
     state = applyPlayerAction(state, { type: 'Dare', move: 'fold' }).state;
     expect(state.dareHand).toBeNull();
-    const next = open(state, DEALER, 100, 1).state.dareHand!;
+    const next = open(state, DEALER, 100).state.dareHand!;
     expect(next.dicePerSide).toBe(6);
     expect(next.maxQuantity).toBe(12);
   });
@@ -556,7 +577,7 @@ describe('T-146 · obligation 16 — a hand keeps the rules it was dealt under',
     expect(settled.player.liarsDiceGamesPlayed).toBe(T1);
     expect(liarsDiceTier(settled.player.liarsDiceGamesPlayed)).toBe(1);
     // The 6th hand is the first five-dice hand.
-    expect(open(settled, DEALER, 100, 1).state.dareHand!.dicePerSide).toBe(5);
+    expect(open(settled, DEALER, 100).state.dareHand!.dicePerSide).toBe(5);
   });
 });
 
@@ -659,11 +680,12 @@ describe('T-146 · obligation 27 — exactly one increment per SETTLED hand', ()
     let roaming = ladderState(0);
     let roster = ladderState(0);
     for (let hand = 0; hand < 3; hand += 1) {
-      roaming = applyPlayerAction(open(roaming, DEALER, 100, hand).state, {
+      // T-197 · one hand per day at tier 0 (§4b), so three hands is three days.
+      roaming = applyPlayerAction(open(nextDaysRounds(roaming), DEALER, 100).state, {
         type: 'Dare',
         move: 'fold',
       }).state;
-      roster = applyPlayerAction(open(roster, SUN3_BAD, 100, hand).state, {
+      roster = applyPlayerAction(open(nextDaysRounds(roster), SUN3_BAD, 100).state, {
         type: 'Dare',
         move: 'fold',
       }).state;
@@ -677,17 +699,15 @@ describe('T-146 · obligation 27 — exactly one increment per SETTLED hand', ()
     // to five, which is the ladder working end to end.
     let state = ladderState(0, 3, SUN_3, 200_000, [10, 10, 10, 10, 10]);
     for (let hand = 0; hand < 5; hand += 1) {
-      const opened = open(state, DEALER, 100, hand).state;
+      // T-197 · tier 0 allows ONE open per day (§4b), so five hands is five days.
+      const opened = open(nextDaysRounds(state), DEALER, 100).state;
       expect(opened.dareHand!.dicePerSide, `hand ${hand}`).toBe(4);
       state = applyPlayerAction(opened, { type: 'Dare', move: 'fold' }).state;
     }
     expect(state.player.liarsDiceGamesPlayed).toBe(T1);
-    // The dawn hand is spent, so the sixth hand needs a fresh day's dice.
-    state.player.dawnHand = {
-      dice: [10, 10, 10, 10, 10],
-      spent: [false, false, false, false, false],
-    };
-    expect(open(state).state.dareHand!.dicePerSide).toBe(5);
+    // T-197 · the sixth hand needs a fresh day's ROUNDS (the open costs no die any
+    // more, so the dawn hand is no longer what runs out — the day's allowance is).
+    expect(open(nextDaysRounds(state)).state.dareHand!.dicePerSide).toBe(5);
   });
 });
 
@@ -701,8 +721,16 @@ describe('T-146 · obligation 28 — the odometer round-trips without a version 
     // fails loudly in the task that must not make one. T-146 adds one OPTIONAL key
     // to an existing event variant, which `docs/VERSIONING.md` §2 states is not a
     // schema change.
-    expect(CURRENT_SAVE_VERSION).toBe(15);
-    expect(MIGRATIONS[15]).toBeUndefined();
+    // T-197 · CURRENT_SAVE_VERSION moved 15 → 16 for the two DAILY HANGOUT CAPS
+    // (docs/DAWN-HAND-REDESIGN.md §4a/§4b) — a real save-shape change with its own
+    // migration, which is exactly the kind of bump §5.6 Ruling A permits and NOT
+    // the accidental one this test guards against. What is still pinned, and is
+    // the actual claim here, is that T-146's odometer owed NO migration of its
+    // own: `MIGRATIONS[14]` (T-145's roster) is the last one that touches it, and
+    // `MIGRATIONS[16]` — the slot a hypothetical odometer migration would take —
+    // does not exist.
+    expect(CURRENT_SAVE_VERSION).toBe(16);
+    expect(MIGRATIONS[16]).toBeUndefined();
   });
 
   it('survives createSave/loadSave exactly, at every tier and between them', () => {

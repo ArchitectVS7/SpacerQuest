@@ -485,7 +485,6 @@ function buildIndebted(seed: number, systemId: number): AdversarialState {
     type: 'VisitHangout',
     venue: 'borrow',
     amount: LOAN_MAX_PRINCIPAL,
-    spendDie: 0,
   }).state;
 
   for (let i = 0; i < LOAN_TERM_DAYS + 6; i += 1) {
@@ -628,7 +627,6 @@ describe('T-1605b · anti-poverty-trap invariant over adversarial states', () =>
         type: 'VisitHangout',
         venue: 'borrow',
         amount: LOAN_MAX_PRINCIPAL,
-        spendDie: 0,
       });
       expect(
         retry.events.some(

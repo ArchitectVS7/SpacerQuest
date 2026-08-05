@@ -1214,6 +1214,53 @@ const UNCHANGED_POLICIES = [
 // `sweep-gate.test.ts`'s veteran bar re-measured against its own deleted-branch
 // control). The 8,000-row capstone diff against
 // `docs/balance/baseline-t196a-free-actions.json` is the powered read.
+// ENTRY 33 (T-197 — THE HANGOUT GOES FREE, AND TWO DAILY CAPS REPLACE THE DIE).
+// ONLY TWO OF THE SEVEN ROWS MOVE — `smuggler` and `gambler` — AND THAT NARROWNESS
+// IS THE RESULT, not a disappointment. Entry 32's breadth (six of seven) was the
+// signature of a change to every policy's day plan; this task changes only the
+// three planners that touch a Hangout, so only the two policies that CALL them can
+// feel it. Five rows coming back byte-identical is the cross-check that nothing
+// leaked.
+//
+// THE CAUSE, STATED BEFORE THE NUMBERS. `docs/DAWN-HAND-REDESIGN.md` §3 (as amended
+// 2026-08-04) freed all seven Hangout venues in the ENGINE, and §4a/§4b added the
+// two daily caps that replaced the die. On the INSTRUMENT side that is three edits:
+// `planLoanBorrow` and `planLoanRepay` lose their `DieLedger` (borrow/repay are
+// free and outside both caps), and `planDare` loses its `ledger.takeBest()` while
+// gaining a mirror of §4b's rounds cap — plus the gambler's table loop, whose bound
+// is now `min(GAMBLER_MAX_DARES_PER_DAY, liarsDiceRoundsRemaining(state))` because
+// a planner pure over the dawn state cannot see the hands the same day already
+// queued (the F-116-1 / F-150-2 class, guarded before it could bite).
+//
+// UNLIKE ENTRY 32 THIS IS NOT A CLEAN SINGLE-ARM ATTRIBUTION, and it is said here
+// rather than left for the capstone to discover: T-196a/T-196b were a control-arm
+// PAIR (engine only, then instrument only), so each moved exactly one fingerprint.
+// T-197 moves BOTH — `rulesFingerprint` (engine + content: the freed resolver, the
+// two caps, `SOCIAL_PLAYS_PER_DAY`, `LIARS_DICE_ROUNDS_PER_DAY`) and
+// `instrumentFingerprint` (the three planners above). The two rows below therefore
+// carry a mixed cause by design, and no arithmetic here can split them.
+//
+// MEASURED over these exact five seeds × 40 days, before -> after (summed):
+//     policy     credits              deeds
+//     trader     131,747 -> 131,747    75 ->  75   (unmoved)
+//     fighter     49,399 ->  49,399    64 ->  64   (unmoved)
+//     explorer    69,158 ->  69,158   107 -> 107   (unmoved)
+//     veteran     39,414 ->  39,414    68 ->  68   (unmoved)
+//     smuggler    67,246 ->  67,190   115 -> 115   (MOVED)
+//     gambler    109,312 -> 127,628    90 ->  93   (MOVED)
+//     greedy       7,280 ->   7,280    36 ->  36   (control, unmoved)
+//     `hangoutPlay.failedVisits`: 0 on EVERY row, before and after — the mechanical
+//     proof that both new cap mirrors are correct. A policy that planned an open
+//     past the day's rounds, or a social beat past the pool, would earn a typed
+//     refusal and show up here. NONE DOES.
+//
+// WHY THE TRADER DID NOT MOVE, even though it calls `planLoanBorrow`. The planner's
+// preconditions (a Hangout system, no live loan, a real shortfall) are unchanged
+// and the trader clears its shortfalls out of income over these five seeds — so the
+// borrow never fires, the die it used to take was never taken, and there is nothing
+// for the freeing to change. `hangoutPlay.visits` is 0 on that row, which is the
+// same fact measured a second way.
+//
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
   // so the trader borrows and repays on the day it needs to rather than on the day
@@ -1402,7 +1449,16 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // policy grew a zero-income tail it has never had. Credits over the five seeds
   // RISE 51,950 -> 67,246 and deeds fall 120 -> 115: a policy that stops sweeping
   // its purse into the fuel pump keeps more of it. No constant was touched.
-  smuggler: '5a90233fc822d9ee',
+  // ENTRY 33 (T-197): re-derived — one of only TWO rows that move. `smugglerPolicy`
+  // calls `planLoanBorrow` / `planLoanRepay`, both of which lost their `DieLedger`
+  // (docs/DAWN-HAND-REDESIGN.md §3: the desk is free, and outside both daily caps —
+  // the single-active-loan slot and the player's credits were always its real
+  // bounds). On the days it does visit the desk the die it used to surrender is now
+  // left in the hand for the rest of the day's plan, and the career re-phases from
+  // there. A SMALL move, and honestly so: credits 67,246 -> 67,190 over the five
+  // seeds, deeds unchanged at 115. The tables are untouched on this row — the
+  // smuggler never opens a Dare.
+  smuggler: 'ea0faad190ef6152',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sol-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
@@ -1485,7 +1541,21 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // gambler's sign→travel pair lost its sign die and its refuel/repair/overhead
   // planners lost theirs, exactly like every other row. The tables are untouched by
   // this task (Hangout is T-197's). Credits 142,830 -> 109,312 over the five seeds.
-  gambler: '88bda8cf38691408',
+  // ENTRY 33 (T-197): re-derived, and back to being a `planDare` reason after entry
+  // 32's detour. THREE things changed for this row at once and they pull in
+  // opposite directions, which is why the note names all three rather than the net:
+  //   (a) the open is FREE — `planDare` no longer takes the BEST die off the
+  //       ledger, so the sharpest die stays available to the rest of the day;
+  //   (b) §4b's ROUNDS CAP now bounds the tables, and at tier 0 it is ONE open per
+  //       day against `GAMBLER_MAX_DARES_PER_DAY = 2` — so early days lose a hand;
+  //   (c) the loop bound carries the day's allowance forward, so the second hand is
+  //       never planned into a refusal (`failedVisits` stays 0).
+  // Credits over these five seeds RISE, 109,312 -> 127,628, and deeds 90 -> 93 —
+  // the freed die outweighs the early-tier round the cap takes away. NOTHING WAS
+  // TUNED IN RESPONSE: `LIARS_DICE_ROUNDS_PER_DAY` is content, it ships at §4b's
+  // suggested shape, and the capstone (not this fingerprint) is where its effect is
+  // judged.
+  gambler: 'b4ebcc423e673ca2',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).

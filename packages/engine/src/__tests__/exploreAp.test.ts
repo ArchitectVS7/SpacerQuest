@@ -195,25 +195,34 @@ describe('T-131 · a hand too thin to pay FORFEITS the find', () => {
   //
   // T-196a · THE BURNER CHANGED, DELIBERATELY, AND THE SEED SURVIVED IT. `buy-fuel`
   // was the old burner; M17 (docs/DAWN-HAND-REDESIGN.md §3) made it a FREE ACTION,
-  // so it burns nothing and could no longer thin the hand. The replacement is
-  // `VisitHangout{venue:'rumor'}` — still a die-costed Main Action, read-only (it
-  // emits rumors and mutates nothing), available at the seed's start system, and
-  // it emits EXACTLY ONE event per call just as `buy-fuel` did. That last property
-  // is why `SEED_FORFEIT` did not have to be re-scanned: `dayEventCount` advances
-  // identically, so the Explore that follows draws off the same rng fork it always
-  // did. Re-verified, not assumed — the band-3/4 forfeit assertions below still
-  // hold on seed 25. If the burner ever changes again, RE-SCAN the seed; do not
-  // adjust an assertion to fit.
+  // so it burns nothing and could no longer thin the hand. `VisitHangout{rumor}`
+  // replaced it — and T-197 then freed THAT too, along with the other six venues.
+  //
+  // T-197 · THERE IS NO DIE-COSTED READ-ONLY ACTION LEFT TO BURN WITH, so the two
+  // jobs the old burner did are now done separately and honestly:
+  //
+  //   1. `dayEventCount` must advance exactly as it always did, because
+  //      `applyPlayerAction` forks the Explore's rng off it (`day.ts:448`) and
+  //      `SEED_FORFEIT` was scanned against that stream. The four rumor calls are
+  //      KEPT for precisely this — they still emit exactly one event each, and
+  //      `dayEventCount` advances by `events.length` whether or not a die is spent
+  //      (`day.ts:533`). That is why the seed did NOT have to be re-scanned again.
+  //   2. The four dice are marked spent directly, because no action spends them
+  //      any more. That is a FIXTURE, not a rule under test: this suite is about
+  //      what Explore does with a thin hand, and the thinness is its precondition.
+  //
+  // Re-verified, not assumed — the band-3/4 forfeit assertions below still hold on
+  // seed 25. If the event count ever changes, RE-SCAN the seed; do not adjust an
+  // assertion to fit.
   function burnedDownTo(seed: number): GameState {
     let live = startDay(createInitialState(seed)).state;
     for (const index of [1, 2, 3, 4]) {
       const res = applyPlayerAction(live, {
         type: 'VisitHangout',
         venue: 'rumor',
-        spendDie: index,
       });
-      expect(res.state.player.dawnHand!.spent[index], `die ${index} did not burn`).toBe(true);
       live = res.state;
+      live.player.dawnHand!.spent[index] = true;
     }
     expect(unspentIndices(live)).toEqual([0]);
     return live;

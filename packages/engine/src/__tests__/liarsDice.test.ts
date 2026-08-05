@@ -10,7 +10,7 @@ import {
 } from '@spacerquest/content';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { applyPlayerAction, endDay, startDay } from '../day.js';
-import { venueParamsFor, wagerBandFor } from '../hangoutRules.js';
+import { resetDailyHangoutCaps, venueParamsFor, wagerBandFor } from '../hangoutRules.js';
 import {
   DARE_DICE_PER_SIDE,
   DARE_MAX_QUANTITY,
@@ -141,13 +141,12 @@ function dealerOf(state: GameState) {
 }
 
 /** Open a hand through the real resolver. */
-function openHand(state: GameState, wager = 100, spendDie = 0) {
+function openHand(state: GameState, wager = 100) {
   return applyPlayerAction(state, {
     type: 'VisitHangout',
     venue: 'dare',
     opponentId: DEALER,
     wager,
-    spendDie,
   });
 }
 
@@ -306,13 +305,11 @@ describe('T-135 · a full hand plays through startDay/applyPlayerAction', () => 
     const dealer = state.npcs.find(
       (n) => !n.dead && n.currentSystemId === state.player.currentSystemId,
     )!;
-    const dieIndex = state.player.dawnHand!.spent.findIndex((s) => !s);
     state = applyPlayerAction(state, {
       type: 'VisitHangout',
       venue: 'dare',
       opponentId: dealer.id,
       wager: 100,
-      spendDie: dieIndex,
     }).state;
     expect(state.dareHand).not.toBeNull();
 
@@ -947,10 +944,16 @@ describe('T-135 · the Peek', () => {
 
   it('refuses malformed die input BEFORE the rule input, spending nothing', () => {
     const state = openHand(hangoutState(222)).state;
+    // T-197 · THE OPEN NO LONGER SPENDS A DIE (docs/DAWN-HAND-REDESIGN.md §3), so
+    // die 0 is not already-spent by having opened the hand — it is marked spent
+    // here as a FIXTURE. PEEK is the one Hangout-family verb that still costs a
+    // die and still raises all three of these reasons, which is exactly what this
+    // test exists to pin, and freeing the venues did not touch it.
+    state.player.dawnHand!.spent[0] = true;
     const cases: Array<[number | undefined, string]> = [
       [undefined, 'no-die'],
       [99, 'invalid-die-index'],
-      [0, 'die-already-spent'], // die 0 opened the hand
+      [0, 'die-already-spent'],
     ];
     for (const [spendDie, failReason] of cases) {
       const step = applyPlayerAction(state, { type: 'Dare', move: 'peek', spendDie });
@@ -1201,7 +1204,7 @@ describe('T-135 · the hand survives serialization', () => {
   // moves with it and MIGRATIONS[13]'s own behaviour is asserted unchanged beside
   // the new MIGRATIONS[14].
   it('CURRENT_SAVE_VERSION is 15 and MIGRATIONS[13] still backfills dareHand: null', () => {
-    expect(CURRENT_SAVE_VERSION).toBe(15);
+    expect(CURRENT_SAVE_VERSION).toBe(16);
     const v13 = JSON.parse(serializeState(createInitialState(9))) as Record<string, unknown>;
     delete v13.dareHand;
     expect('dareHand' in v13).toBe(false);
@@ -1271,13 +1274,12 @@ describe('T-135 · resolveChallenge counts across all eight dice', () => {
 const SUN3_ROSTER = ['ld-1-1', 'ld-1-2', 'ld-1-3'] as const;
 
 /** Open a ROSTER hand through the real resolver. */
-function openRosterHand(state: GameState, opponentId: string, wager = 100, spendDie = 0) {
+function openRosterHand(state: GameState, opponentId: string, wager = 100) {
   return applyPlayerAction(state, {
     type: 'VisitHangout',
     venue: 'dare',
     opponentId,
     wager,
-    spendDie,
   });
 }
 
@@ -1393,7 +1395,6 @@ describe('T-145 · the roster is reachable, and its identity survives the round 
         type: 'VisitHangout',
         venue,
         opponentId: 'ld-1-1',
-        spendDie: 0,
       });
       const fail = r.events.find((e) => e.type === 'HangoutEvent');
       expect(fail).toMatchObject({ failReason: 'no-opponent' });
@@ -1592,10 +1593,13 @@ describe('T-145 · obligation 19a — a beaten roster opponent is recorded EXACT
     const third = seedOfPlayerWin('ld-1-3');
     let state = playRosterHand(third, 'ld-1-3', SUN_3, 'challenge').state;
     expect(state.player.liarsDiceBeaten).toEqual(['ld-1-3']);
-    state.player.dawnHand = {
-      dice: [10, 10, 10, 10, 10],
-      spent: [false, false, false, false, false],
-    } satisfies DawnHand;
+    // T-197 · EACH ATTEMPT IS A NEW DAY. §4b caps opens per day (one at tier 0),
+    // so a search that re-opens a hand until it wins one has to roll the day's
+    // allowance over between attempts — through the engine's own dawn-reset rule,
+    // never by widening the cap. The dawn-hand refresh this loop used to carry is
+    // gone with the die: opening a hand costs no die any more, so the hand was
+    // never what ran out here.
+    resetDailyHangoutCaps(state.player);
     for (let seed = 1; seed <= 400 && state.player.liarsDiceBeaten.length < 2; seed += 1) {
       let attempt = openRosterHand(state, 'ld-1-1', 100).state;
       for (let step = 0; step < 24 && attempt.dareHand; step += 1) {
@@ -1606,10 +1610,7 @@ describe('T-145 · obligation 19a — a beaten roster opponent is recorded EXACT
             : { type: 'Dare', move: 'challenge' },
         ).state;
       }
-      attempt.player.dawnHand = {
-        dice: [10, 10, 10, 10, 10],
-        spent: [false, false, false, false, false],
-      } satisfies DawnHand;
+      resetDailyHangoutCaps(attempt.player);
       state = attempt;
     }
     expect(state.player.liarsDiceBeaten).toEqual(['ld-1-3', 'ld-1-1']);

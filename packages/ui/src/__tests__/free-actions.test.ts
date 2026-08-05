@@ -274,11 +274,14 @@ describe('T-196c · every Main Action still demands a die exactly as before', ()
     ['haggleContract', () => haggleContract(0)],
     ['travelTo', () => travelTo(getSnapshot().game.player.currentSystemId + 1)],
     ['explore', () => explore()],
-    ['visitDare', () => visitDare('npc-1', 100)],
+    // T-197 · `visitDare`, `visitSocial`, `borrowLoan` and `repayLoan` LEFT THIS
+    // LIST — all seven Hangout venues are Free Actions now
+    // (docs/DAWN-HAND-REDESIGN.md §3), so none of them refuses for want of a die.
+    // Their new behaviour is asserted in the T-197 block below, and the manifest
+    // guard at the bottom of this file enforces the removal in both directions.
+    // `darePeek` STAYS: it is the one Hangout-family verb that is still a Main
+    // Action, still spends a die, and still refuses without one (§3's ruling).
     ['darePeek', () => darePeek()],
-    ['visitSocial', () => visitSocial('meet', 'npc-1')],
-    ['borrowLoan', () => borrowLoan(500)],
-    ['repayLoan', () => repayLoan(500)],
     ['combat', () => combat('fight')],
     ['resolveStorylet', () => resolveStorylet('any-storylet', 'any-choice', true)],
   ];
@@ -291,6 +294,86 @@ describe('T-196c · every Main Action still demands a die exactly as before', ()
       expect(getSnapshot().game.player.dawnHand!.spent).toEqual(before);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+
+/**
+ * T-197 · THE UI SIDE OF THE FREED HANGOUT (`docs/DAWN-HAND-REDESIGN.md` §3/§4a).
+ *
+ * The four Hangout store creators the cockpit reaches — `visitDare`,
+ * `visitSocial`, `borrowLoan`, `repayLoan` — join the seven above: none requires,
+ * consumes or DISARMS a die. `darePeek` is deliberately NOT here; it is still a
+ * Main Action and is covered by the gate block above.
+ *
+ * The FIXTURE MATTERS: `richCareer` starts the captain at Sol-3, which runs a
+ * Hangout and seats co-located roaming captains, so these are real resolutions
+ * rather than typed refusals — the same non-vacuity discipline the seven-verb test
+ * above keeps.
+ */
+describe('T-197 · the freed Hangout verbs neither require nor disarm a die', () => {
+  /** The first roaming captain actually seated at the player's port. */
+  function seatedOpponent(): string {
+    const game = getSnapshot().game;
+    const npc = game.npcs.find((n) => !n.dead && n.currentSystemId === game.player.currentSystemId);
+    expect(npc, 'fixture: no co-located captain at the starting Hangout').toBeDefined();
+    return npc!.id;
+  }
+
+  it('all four resolve with an EMPTY hand and never raise the die demand', () => {
+    richCareer();
+    exhaustHand();
+    const opponent = seatedOpponent();
+
+    // A social beat lands: the disposition moved, on a hand with nothing left.
+    const before = getSnapshot().game.npcs.find((n) => n.id === opponent)!.disposition;
+    visitSocial('insult', opponent);
+    expect(getSnapshot().notice ?? '').not.toMatch(DIE_DEMAND);
+    expect(getSnapshot().game.npcs.find((n) => n.id === opponent)!.disposition).toBeLessThan(
+      before,
+    );
+
+    // The desk opens and settles, on the same empty hand.
+    borrowLoan(500);
+    expect(getSnapshot().game.player.loan?.outstanding).toBe(500);
+    expect(getSnapshot().notice ?? '').not.toMatch(DIE_DEMAND);
+    repayLoan(500);
+    expect(getSnapshot().game.player.loan).toBeNull();
+    expect(getSnapshot().notice ?? '').not.toMatch(DIE_DEMAND);
+
+    // …and so does a hand of Liar's Dice.
+    visitDare(opponent, 100);
+    expect(getSnapshot().game.dareHand).not.toBeNull();
+    expect(getSnapshot().notice ?? '').not.toMatch(DIE_DEMAND);
+
+    // The hand is still exactly exhausted — nothing un-spent, nothing spent twice.
+    expect(getSnapshot().game.player.dawnHand!.spent.every(Boolean)).toBe(true);
+  });
+
+  it('a queued die survives every one of the four, unbloomed', () => {
+    richCareer();
+    const opponent = seatedOpponent();
+    selectDie(0);
+    expect(getSnapshot().selectedDie).toBe(0);
+
+    for (const [label, run] of [
+      ['visitSocial', () => visitSocial('meet', opponent)],
+      ['borrowLoan', () => borrowLoan(500)],
+      ['repayLoan', () => repayLoan(500)],
+      ['visitDare', () => visitDare(opponent, 100)],
+    ] as const) {
+      run();
+      const snap = getSnapshot();
+      expect(snap.selectedDie, `${label} disarmed the queued die`).toBe(0);
+      expect(snap.game.player.dawnHand!.spent[0], `${label} consumed the queued die`).toBe(false);
+      expect(snap.bloomDie, `${label} bloomed a die it never spent`).not.toBe(0);
+      expect(snap.notice ?? '').not.toMatch(DIE_DEMAND);
+    }
+
+    // …and the die is still USABLE afterwards, not merely still selected.
+    darePeek();
+    expect(getSnapshot().game.player.dawnHand!.spent[0]).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -310,23 +393,23 @@ describe('T-196c · the armed-die gate manifest', () => {
   /** Every exported store creator that raises the "Pick a die …" refusal. These
    *  and ONLY these may demand an armed die.
    *
-   *  The six Hangout/loan entries (`visitDare`, `darePeek`, `visitSocial`,
-   *  `borrowLoan`, `repayLoan`) are T-197's to remove — that task frees the
-   *  Hangout verbs and owns this list's next edit. */
+   *  T-197 REMOVED FOUR OF THE FIVE HANGOUT ENTRIES that T-196c left here for it:
+   *  `visitDare`, `visitSocial`, `borrowLoan` and `repayLoan` are Free Actions now
+   *  (docs/DAWN-HAND-REDESIGN.md §3) and appear in `FREED` below instead.
+   *  `darePeek` STAYS — Peek is the one real check inside an open hand and stayed
+   *  a Main Action by ruling, so it is the only Hangout-family verb left on this
+   *  side of the list. */
   const GATED: readonly string[] = [
     'haggleContract',
     'travelTo',
     'explore',
-    'visitDare',
     'darePeek',
-    'visitSocial',
-    'borrowLoan',
-    'repayLoan',
     'combat',
     'resolveStorylet',
   ];
 
-  /** The ten M17 Free Actions, by the store creator that sends each one. */
+  /** The M17 Free Actions, by the store creator that sends each one. T-197 added
+   *  the four Hangout senders to this side of the manifest. */
   const FREED: readonly string[] = [
     'signContract',
     'abandonContract',
@@ -335,6 +418,10 @@ describe('T-196c · the armed-die gate manifest', () => {
     'dismissCrew',
     'buyPort',
     'shipyard',
+    'visitDare',
+    'visitSocial',
+    'borrowLoan',
+    'repayLoan',
   ];
 
   /** Split the source into `export function NAME(...) { … }` chunks. */

@@ -512,7 +512,7 @@ const RESOLVER_ROWS: readonly ResolverRow[] = [
     setup: (state) => {
       state.player.currentSystemId = 1;
     },
-    action: { type: 'VisitHangout', venue: 'rumor', spendDie: 0 },
+    action: { type: 'VisitHangout', venue: 'rumor' },
   },
   {
     name: 'Port (buy the local stake)',

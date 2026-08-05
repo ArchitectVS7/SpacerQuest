@@ -552,6 +552,37 @@ describe('T-196a · the freed actions neither require nor accept spendDie', () =
     expect(validatePlayerAction(haggle)).toEqual(haggle);
   });
 
+  // T-197 · THE HANGOUT JOINS THE STRIPPED SET, all seven venues at once
+  // (docs/DAWN-HAND-REDESIGN.md §3 as amended 2026-08-04). It is asserted here
+  // rather than in the loop above because `VisitHangout` discriminates on `venue`
+  // rather than on `action`, so it does not fit that fixture's shape.
+  const HANGOUT_VENUES = [
+    'dare',
+    'meet',
+    'befriend',
+    'insult',
+    'rumor',
+    'borrow',
+    'repay',
+  ] as const;
+
+  for (const venue of HANGOUT_VENUES) {
+    it(`VisitHangout · ${venue} — parses without a die, and strips a stale one`, () => {
+      const clean = { type: 'VisitHangout', venue, opponentId: 'npc-iron-vex' };
+      expect(validatePlayerAction(clean)).toEqual(clean);
+      const stale = validatePlayerAction({ ...clean, spendDie: 3 }) as Record<string, unknown>;
+      expect(stale).toEqual(clean);
+      expect('spendDie' in stale).toBe(false);
+    });
+  }
+
+  it('Dare · peek KEEPS its spendDie — the one check inside an open hand', () => {
+    // The counterpart that makes the sweep above a real test rather than a blanket
+    // strip: Peek stayed a Main Action by ruling (§3), so its die survives.
+    const peek = { type: 'Dare', move: 'peek', spendDie: 1 };
+    expect(validatePlayerAction(peek)).toEqual(peek);
+  });
+
   it('the nested Trade union did not break the outer discriminator', () => {
     // The Trade member is a `discriminatedUnion('action', …)` nested inside the
     // outer `discriminatedUnion('type', …)` (zod rejects duplicate discriminator
@@ -559,6 +590,27 @@ describe('T-196a · the freed actions neither require nor accept spendDie', () =
     // an unknown Trade sub-action is rejected too.
     expect(() => validatePlayerAction({ type: 'Teleport' })).toThrow(z.ZodError);
     expect(() => validatePlayerAction({ type: 'Trade', action: 'bribe' })).toThrow(z.ZodError);
+  });
+});
+
+// T-197 · THE TWO NEW PLAYER KEYS ARE NON-OPTIONAL, which is what makes the
+// v15->v16 migration OWED rather than optional: without the backfill, every
+// pre-T-197 save fails this schema at load (docs/DAWN-HAND-REDESIGN.md §4a/§4b).
+describe('T-197 · PlayerStateSchema requires both daily Hangout caps', () => {
+  for (const key of ['socialPlaysRemaining', 'dareRoundsToday'] as const) {
+    it(`rejects a player missing ${key}`, () => {
+      const state = JSON.parse(serializeState(createInitialState(1))) as {
+        player: Record<string, unknown>;
+      };
+      delete state.player[key];
+      expect(() => validateGameState(state)).toThrow(z.ZodError);
+    });
+  }
+
+  it('accepts a player carrying both', () => {
+    expect(() =>
+      validateGameState(JSON.parse(serializeState(createInitialState(1)))),
+    ).not.toThrow();
   });
 });
 

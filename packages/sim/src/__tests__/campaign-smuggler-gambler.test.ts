@@ -1,4 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+// T-197 · the unlock thresholds are CONTENT; the fixture reads them rather than
+// restating a rung number (docs/DAWN-HAND-REDESIGN.md §4b).
+import { LIARS_DICE_UNLOCK_GAMES } from '@spacerquest/content';
 import {
   DARE_MAX_MOVES_PER_HAND,
   gamblerPolicy,
@@ -39,13 +42,11 @@ function openGamblerHand(seed: number): GameState {
     (npc) => !npc.dead && npc.currentSystemId === state.player.currentSystemId,
   );
   if (!dealer) throw new Error('fixture: no co-located dealer at the starting port');
-  const die = state.player.dawnHand!.spent.findIndex((spent) => !spent);
   const opened = applyPlayerAction(state, {
     type: 'VisitHangout',
     venue: 'dare',
     opponentId: dealer.id,
     wager: 100,
-    spendDie: die,
   }).state;
   if (!opened.dareHand) throw new Error('fixture: the hand did not open');
   return opened;
@@ -418,6 +419,16 @@ describe('T-1601b smuggler & gambler policies', () => {
 function oneRoamingDealerDawn(seed: number, dealerCredits: number): GameState {
   const fresh = createInitialState(seed);
   const port = fresh.player.currentSystemId;
+  // T-197 · THE CAPTAIN IS SEATED AT UNLOCK TIER 1, AND THAT IS LOAD-BEARING RATHER
+  // THAN COSMETIC (docs/DAWN-HAND-REDESIGN.md §4b). The rounds-per-day cap allows a
+  // TIER-0 captain exactly ONE open, so on a fresh career the cap — not the
+  // dealer's purse — would be what stops the second hand. The starved arm below
+  // would then pass for the wrong reason and the rich CONTROL could never reach two
+  // hands at all, making the whole test vacuous. One rung up (`gamesPlayed >=
+  // LIARS_DICE_UNLOCK_GAMES[0]`) buys two rounds, which restores the purse rule as
+  // the only binding constraint — which is exactly what this fixture's docstring
+  // has always claimed. The threshold is READ from content, never restated.
+  fresh.player.liarsDiceGamesPlayed = LIARS_DICE_UNLOCK_GAMES[0];
   // bankroll = credits − GAMBLER_RESERVE (3,000); wager = max(band.min,
   // min(band.max, ⌊bankroll × 0.1⌋)). At 3,200 credits that is ⌊20⌋ → clamped up
   // to band.min, and the purse still funds a SECOND hand — so the player's side

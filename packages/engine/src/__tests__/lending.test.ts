@@ -43,7 +43,7 @@ function loanAction(
   venue: 'borrow' | 'repay',
   extra: Partial<VisitHangoutAction> = {},
 ): VisitHangoutAction {
-  return { type: 'VisitHangout', venue, spendDie: 0, ...extra };
+  return { type: 'VisitHangout', venue, ...extra };
 }
 
 /** Run one dusk (endDay) starting from a DAY-phase state, returning the next
@@ -258,46 +258,48 @@ describe('typed fails — no die spent, no credit change', () => {
     expect(after.player.credits).toBe(0); // never driven negative
   });
 
-  it('the three die-validation fails route to a LoanEvent (no die spent)', () => {
-    // no-die
-    const noDie = resolveVisitHangout(
-      lendingState(),
+  // T-197 · THE THREE DIE-VALIDATION FAILS ARE UNREACHABLE FROM THE DESK NOW, and
+  // this test asserts exactly that instead of asserting them. Borrow and repay are
+  // Free Actions (docs/DAWN-HAND-REDESIGN.md §3) and draw from NEITHER daily cap —
+  // the single-active-loan slot and the player's own credits were always the real
+  // bounds, which is why §3 ruled them free with no new cap owed. The reasons
+  // survive in the LoanEvent union because a stale save may carry one; nothing
+  // raises them any more.
+  it('T-197 · a loan action carrying no die RESOLVES — no die reason is raised', () => {
+    const before = lendingState();
+    const credits = before.player.credits;
+    const borrowed = resolveVisitHangout(
+      before,
       { type: 'VisitHangout', venue: 'borrow', amount: 500 },
       new SeededRng(1),
     );
-    expect(noDie.events).toContainEqual(
-      expect.objectContaining({ type: 'LoanEvent', kind: 'failed', failReason: 'no-die' }),
+    expect(borrowed.events).toContainEqual(
+      expect.objectContaining({ type: 'LoanEvent', kind: 'borrowed', principal: 500 }),
     );
+    for (const e of borrowed.events) {
+      if (e.type === 'LoanEvent') {
+        expect(['no-die', 'invalid-die-index', 'die-already-spent']).not.toContain(e.failReason);
+      }
+    }
+    expect(borrowed.state.player.credits).toBe(credits + 500);
+    // …and the dawn hand is untouched, even the die that used to be index 0.
+    expect(borrowed.state.player.dawnHand!.spent.every((spent) => !spent)).toBe(true);
+  });
 
-    // invalid-die-index
-    const badIndex = resolveVisitHangout(
-      lendingState(),
-      loanAction('borrow', { amount: 500, spendDie: 99 }),
+  it('T-197 · a FULLY SPENT hand still borrows — the strongest form of "free"', () => {
+    const spentOut = lendingState();
+    spentOut.player.dawnHand!.spent = spentOut.player.dawnHand!.spent.map(() => true);
+    const { state: after, events } = resolveVisitHangout(
+      spentOut,
+      { type: 'VisitHangout', venue: 'borrow', amount: 500 },
       new SeededRng(1),
     );
-    expect(badIndex.events).toContainEqual(
-      expect.objectContaining({
-        type: 'LoanEvent',
-        kind: 'failed',
-        failReason: 'invalid-die-index',
-      }),
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'LoanEvent', kind: 'borrowed', principal: 500 }),
     );
-
-    // die-already-spent
-    const spentState = lendingState();
-    spentState.player.dawnHand!.spent[0] = true;
-    const alreadySpent = resolveVisitHangout(
-      spentState,
-      loanAction('borrow', { amount: 500 }),
-      new SeededRng(1),
-    );
-    expect(alreadySpent.events).toContainEqual(
-      expect.objectContaining({
-        type: 'LoanEvent',
-        kind: 'failed',
-        failReason: 'die-already-spent',
-      }),
-    );
+    expect(after.player.loan?.outstanding).toBe(500);
+    // The exhausted hand is still exactly exhausted — nothing un-spent.
+    expect(after.player.dawnHand!.spent.every(Boolean)).toBe(true);
   });
 });
 

@@ -152,12 +152,15 @@ describe('T-1306 · crew hiring', () => {
       s.player.credits = 20000;
       s.player.ship.cabin.strength = 30; // berth several
     });
-    // Burn the WHOLE hand on real Main Actions first — the hangout rumor desk is the
-    // read-only die burner (it mutates nothing but the die).
-    let live = state;
-    for (let i = 0; i < live.player.dawnHand!.dice.length; i += 1) {
-      live = applyPlayerAction(live, { type: 'VisitHangout', venue: 'rumor', spendDie: i }).state;
-    }
+    // T-197 · THE HAND IS SPENT OUT AS A FIXTURE, not by driving a burner action.
+    // The rumor desk used to be the read-only die burner; T-197 freed all seven
+    // Hangout venues (docs/DAWN-HAND-REDESIGN.md §3), so no read-only action
+    // spends a die any more. The precondition this test needs is "a spent-out
+    // hand" — which is a STATE, not an act — and stating it directly is both
+    // honest and stronger: the assertion no longer depends on which verb happens
+    // to still cost a die this milestone.
+    const live = state;
+    live.player.dawnHand!.spent = live.player.dawnHand!.spent.map(() => true);
     expect(live.player.dawnHand!.spent.every(Boolean)).toBe(true);
 
     const hired = applyPlayerAction(live, {

@@ -50,6 +50,11 @@ import {
   venueOffered,
   wagerBandFor,
   liarsDiceOpponentsAt,
+  // T-197 · the two daily Hangout caps, read through the ENGINE's own accessors so
+  // the enumerator cannot drift from the refusals it is mirroring.
+  isSocialPoolVenue,
+  socialPlaysRemaining,
+  liarsDiceRoundsRemaining,
   legalDareMoves,
   minOpeningQuantity,
   type Edition,
@@ -890,7 +895,13 @@ export function legalActions(state: GameState): LegalActions {
   const rosterOpponentIds = liarsDiceOpponentsAt(player.currentSystemId)
     .filter((opponent) => (state.liarsDicePurses[opponent.id] ?? 0) > 0)
     .map((opponent) => opponent.id);
-  if (hasDie && STAR_SYSTEMS[player.currentSystemId]?.hasHangout) {
+  // T-197 · THE HANGOUT IS A FREE ACTION NOW, so the `hasDie` conjunct that used
+  // to wrap this block is gone (docs/DAWN-HAND-REDESIGN.md §3, engine rule shipped
+  // at T-197). All seven venues cost no die, so `VisitHangout` stays advertised on
+  // a fully-spent hand — the T-196b contract stated one block up: die-actions
+  // vanish with the hand, Free Actions do not. `Dare{move:'peek'}` above KEEPS its
+  // `hasDie` filter; it is the one Hangout-family verb that still spends a die.
+  if (STAR_SYSTEMS[player.currentSystemId]?.hasHangout) {
     // T-1304: the venue set depends on live state. 'rumor' is always available at
     // a Hangout; the social/dare beats need an in-system NPC to face; the Penny
     // Wise lending beat is `borrow` while there's no loan and `repay` while there
@@ -915,8 +926,20 @@ export function legalActions(state: GameState): LegalActions {
     // refusal, so the harness drops it here — the same rule the engine enforces,
     // read through the same accessor. At Sol-3 all seven are offered, so this
     // filter is the identity and the advertised array is byte-identical to before.
-    const venueChoices: string[] = liveVenues.filter((venue) =>
-      venueOffered(player.currentSystemId, venue),
+    // T-197 · …AND THE TWO DAILY CAPS ARE MIRRORED THE SAME WAY (§4a/§4b). The
+    // engine refuses a spent-out social play with `social-limit-reached` and an
+    // over-cap dare open with `daily-round-limit`; advertising either would hand a
+    // headless driver a guaranteed typed refusal, which is exactly the drift the
+    // `venueOffered` mirror below exists to prevent and what
+    // `hangoutPlay.failedVisits === 0` forbids. Read through the ENGINE's own
+    // accessors, never re-derived here.
+    const socialSpentOut = socialPlaysRemaining(state) <= 0;
+    const roundsSpentOut = liarsDiceRoundsRemaining(state) <= 0;
+    const venueChoices: string[] = liveVenues.filter(
+      (venue) =>
+        venueOffered(player.currentSystemId, venue) &&
+        !(venue === 'dare' && roundsSpentOut) &&
+        !(isSocialPoolVenue(venue) && socialSpentOut),
     );
     // A port that offers none of the currently-possible beats is not advertised at
     // all rather than advertised with an empty domain.
@@ -935,9 +958,8 @@ export function legalActions(state: GameState): LegalActions {
           opponentId: { kind: 'enum', choices: [...inSystemNpcIds, ...rosterOpponentIds] },
           wager: { kind: 'int', min: wagerBand.min, max: wagerBand.max },
           amount: { kind: 'int', min: loanBand.min, max: loanBand.max },
-          spendDie: dieParam,
         },
-        note: "opponentId required for dare/meet/befriend/insult; omitted for rumor/borrow/repay. The choices span BOTH pools: an in-system roaming NPC, or one of the port's three fixed Liar's Dice roster opponents (the 'ld-' ids, listed only while their purse is above zero). A roster id is valid for 'dare' ONLY — meet/befriend/insult need a roaming NPC. wager applies to 'dare' only (clamped to the port's band and to what both sides can cover). amount applies to borrow (principal, clamped to the port's loan band) and repay (credits to pay, default = full outstanding, clamped to credits).",
+        note: "opponentId required for dare/meet/befriend/insult; omitted for rumor/borrow/repay. The choices span BOTH pools: an in-system roaming NPC, or one of the port's three fixed Liar's Dice roster opponents (the 'ld-' ids, listed only while their purse is above zero). A roster id is valid for 'dare' ONLY — meet/befriend/insult need a roaming NPC. wager applies to 'dare' only (clamped to the port's band and to what both sides can cover). amount applies to borrow (principal, clamped to the port's loan band) and repay (credits to pay, default = full outstanding, clamped to credits). Every venue is a FREE ACTION — no die. Two DAILY caps bound them instead and this enumerator already applies both: meet/befriend/insult disappear from the venue domain once the day's social pool is spent, and 'dare' disappears once the day's Liar's Dice rounds (which scale with your unlock tier) are used up.",
       });
     }
   }

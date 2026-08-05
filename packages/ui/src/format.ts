@@ -18,6 +18,9 @@ import {
   LOAN_DAILY_RATE,
   LOAN_TERM_DAYS,
   LENDER_ID,
+  // T-197 · the social pool's size, so the "x of N left" readout prints the
+  // CONTENT number and a retune moves it with no UI edit (§4a).
+  SOCIAL_PLAYS_PER_DAY,
   CREW_ROLES,
   CREW_BY_ID,
   EXPLORE_MODULES,
@@ -78,6 +81,10 @@ import {
   rankClientele,
   venueOffered,
   venueParamsFor,
+  // T-197 · the two daily Hangout caps, read through the engine's own accessors —
+  // the readouts below are pure pass-throughs, never restated arithmetic (§4a/§4b).
+  socialPlaysRemaining,
+  liarsDiceRoundsRemaining,
   // T-136 · The Liar's Dice RULES the fog projection reads. The pane never
   // re-derives legality or headroom; it asks the engine's own functions.
   headroomFor,
@@ -890,6 +897,51 @@ export function lendingTerms(game: GameState): LendingTerms {
   };
 }
 
+/**
+ * T-197 · THE SOCIAL POOL, MADE VISIBLE (`docs/DAWN-HAND-REDESIGN.md` §4a).
+ *
+ * All seven Hangout venues are Free Actions now, so a player has no armed die to
+ * look at and NOTHING on screen would otherwise say why a fourth introduction is
+ * refused. This is the readout that stops `social-limit-reached` from being the
+ * first the player hears of the cap — the criterion is "never a silent dead
+ * button", and a button that explains itself only AFTER the click fails it.
+ *
+ * A PURE PASS-THROUGH TO THE ENGINE'S OWN RULES, the `lendingTerms` /
+ * `hangoutVenueOffered` precedent: `remaining` is `socialPlaysRemaining` (the
+ * accessor the resolver's refusal reads) and `perDay` is the CONTENT constant, so
+ * a retune of `SOCIAL_PLAYS_PER_DAY` moves this line with no UI edit. There is no
+ * arithmetic here of the UI's own.
+ */
+export interface SocialPlays {
+  remaining: number;
+  perDay: number;
+}
+
+export function hangoutSocialPlays(game: GameState): SocialPlays {
+  return { remaining: socialPlaysRemaining(game), perDay: SOCIAL_PLAYS_PER_DAY };
+}
+
+/**
+ * T-197 · THE LIAR'S DICE ROUNDS CAP, MADE VISIBLE (§4b). The Dare twin of
+ * `hangoutSocialPlays` above, and it exists for the same reason: the commit button
+ * must say the table is closed BEFORE the click, not after.
+ *
+ * `remaining` reads the engine's `liarsDiceRoundsRemaining`, which resolves the
+ * captain's live unlock tier against the content rounds table. `perDay` is that
+ * same cap at full strength, derived as `remaining + opened-today` rather than by
+ * re-reading the tier here — a second tier read in the UI is the exact drift
+ * `liarsDiceRules.ts`'s header warns about, and this way there is none.
+ */
+export interface DareRounds {
+  remaining: number;
+  perDay: number;
+}
+
+export function hangoutDareRounds(game: GameState): DareRounds {
+  const remaining = liarsDiceRoundsRemaining(game);
+  return { remaining, perDay: remaining + game.player.dareRoundsToday };
+}
+
 // ---- T-1405 progression, property & smuggling surfaces (display-only) -----
 //
 // The dawn-hand modifiers, crew roster, port ledger and contraband-hold badge are
@@ -1176,10 +1228,22 @@ export function hangoutFailExplanation(reason: HangoutFailReason): string {
   switch (reason) {
     case 'no-opponent':
       return 'That spacer has left the tables — no one here to wager against.';
+    // T-197 · REACHABLE FROM PEEK ONLY now that all seven venues are free
+    // (docs/DAWN-HAND-REDESIGN.md §3). Peek is the one check inside an open hand
+    // and stayed a Main Action, so the line stays and is narrowed to say so.
     case 'no-die':
     case 'invalid-die-index':
     case 'die-already-spent':
-      return 'That table needs a fresh die from the hand.';
+      return 'A peek needs a fresh die from the hand.';
+    // T-197 · the two daily caps that replaced the Hangout's die (§4a, §4b). Two
+    // DISTINCT voices, deliberately: a spent-out social pool and a closed table
+    // are different refusals with different remedies (come back tomorrow vs. play
+    // better and earn more rounds), and collapsing them into one line is exactly
+    // what the no-`default` mechanism above exists to prevent.
+    case 'social-limit-reached':
+      return 'You have said your piece for today — the room has heard enough of you.';
+    case 'daily-round-limit':
+      return 'The house has closed the table to you for tonight — come back tomorrow.';
     // T-132 · the reason that used to be silence.
     case 'venue-not-offered':
       return 'No one here takes that kind of wager.';

@@ -643,12 +643,44 @@ export function runDayLoopGolden(
 // change's real effect is measured: the sim's policies, unlike this script, plan
 // against a die BUDGET, and freeing five verbs frees that budget.
 //
+// T-197 (M17 · the seven Hangout venues went FREE, and two daily caps replaced
+// the die), 2026-08-05. THE TWO STATE HASHES MOVE; BOTH EVENT HASHES ARE
+// BYTE-IDENTICAL — the T-182 split, for the third time, and the split IS the
+// verification:
+//   DAY_LOOP state  7ae0e9ae… -> e93ec6fa…   (events 89fc2999… UNCHANGED)
+//   STORYLET state  4a076b2b… -> 4619a3c0…   (events 6a1beb69… UNCHANGED)
+//
+// WHY THE STATE MOVED, exactly, and it is NOT the Hangout. Neither script visits a
+// Hangout at all — grep them: `TEN_DAY_SCRIPT` is Trade/Travel/Wait and
+// `STORYLET_SCRIPT` is one Storylet plus a Travel, and there is no `VisitHangout`
+// or `Dare` in either. The state moved because T-197 added TWO PLAYER FIELDS to
+// the save shape (`socialPlaysRemaining`, `dareRoundsToday` — the §4a social pool
+// and the §4b rounds counter, both of which must survive a mid-day reload). The
+// state hash is over `serializeState(finalState)`, so two new serialized keys move
+// it by construction on EVERY script, whether or not the script ever exercises the
+// rule. This is a serialization delta of two keys carrying their dawn values —
+// `endDay` resets both at NEXT DAY PREP, so a run that never enters a Hangout
+// serializes `SOCIAL_PLAYS_PER_DAY` and `0` on the final day, exactly as day 1 did.
+//
+// WHY THE EVENTS DID NOT, and why that is the tripwire. No event payload carries
+// either counter, and neither script reaches a resolver that reads one: no
+// `VisitHangout` is dispatched, so the social pool is never decremented, the
+// rounds cap is never evaluated, and neither typed refusal
+// (`social-limit-reached` / `daily-round-limit`) can be raised. The freed venues
+// cannot have moved `dayEventCount` either, for the same reason — they are never
+// called. A MOVED EVENT HASH HERE would have meant the caps had leaked into a
+// resolution path these scripts DO touch (or that the dawn reset in day.ts's NEXT
+// DAY PREP had started emitting something); that is the regression to chase, and
+// the reason both event hashes are asserted unchanged rather than merely
+// regenerated. The `rulesFingerprint` capstone is where this change's real effect
+// is measured.
+//
 // Regenerated via gen-day-loop-golden.ts. Never hand-edited.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '7ae0e9ae9d2c296910a57378115f042e5bf3bfb3a5eacc8128d9ca38a2b7c38e';
+  'e93ec6fa01369ea25c9eb34f17b53b3edea3fa42348a09d985650031c878a66b';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
   '89fc29995688b2df870038ffff8d72d219869802165e0b6c20307944c421fd57';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '4a076b2b97ac854a52e89f81c727a71eff1240ff6dca9c177e256c2114eabc74';
+  '4619a3c0109c5e2836512c72d5f1a3df3121108f84bfba7f4754c93603ec875d';
 export const STORYLET_GOLDEN_EVENTS_HASH =
   '6a1beb69075763394ee0291884b0f193353304f0e0976f19e3a4d3677d83a741';

@@ -68,17 +68,12 @@ function dayOneAtSun3(seed: number): GameState {
 }
 
 /** Open a hand the way the pane does: one `VisitHangout{venue:'dare'}`. */
-function openHand(
-  game: GameState,
-  wager = 25,
-  spendDie = 0,
-): { state: GameState; events: GameEvent[] } {
+function openHand(game: GameState, wager = 25): { state: GameState; events: GameEvent[] } {
   const out = applyPlayerAction(game, {
     type: 'VisitHangout',
     venue: 'dare',
     opponentId: DEALER,
     wager,
-    spendDie,
   });
   expect(out.state.dareHand).not.toBeNull();
   return out;
@@ -255,14 +250,12 @@ function openRosterHand(
   game: GameState,
   opponentId: string,
   wager = 100,
-  spendDie = 0,
 ): { state: GameState; events: GameEvent[] } {
   const out = applyPlayerAction(game, {
     type: 'VisitHangout',
     venue: 'dare',
     opponentId,
     wager,
-    spendDie,
   });
   expect(out.state.dareHand).not.toBeNull();
   return out;

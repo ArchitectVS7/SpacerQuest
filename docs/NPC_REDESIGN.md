@@ -131,6 +131,36 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > one shared path moved. The `.scratch/t125-hangout.ts` lineage is retired
 > (`docs/HANGOUT_REDESIGN.md` §10.7 carries the counter → field map).
 >
+> **BASELINE OF RECORD RE-PINNED AT T-197 (2026-08-05)** to
+> `docs/balance/baseline-t197-hangout-caps.json` — the **M17 MILESTONE CLOSER**
+> (`docs/DAWN-HAND-REDESIGN.md` §3/§4a/§4b). All seven Hangout venues became Free Actions
+> and two DAILY CAPS replaced the die: the social pool (`SOCIAL_PLAYS_PER_DAY = 3`, shared
+> by meet/befriend/insult) and the Liar's Dice rounds cap (scaling with `liarsDiceTier`).
+> **THIS IS THE FIRST CAPSTONE OF THE ARC THAT IS NOT A SINGLE-ARM ATTRIBUTION**, and that
+> is said before the numbers rather than after: T-196a moved only `rulesFingerprint` and
+> T-196b moved only `instrumentFingerprint` by design, whereas T-197 moves BOTH (rules
+> `55414694d7187afc` → `10e19c88e9a07856`, instrument `812d9e87d7307f3c` →
+> `5c230e99648cddee`, save schema 15 → 16), so no arithmetic in its diff can separate the
+> rule effect from the exploitation effect.
+> THREE of the eight policy rows moved — `gambler`, `smuggler`, `trader-degraded` — against
+> arm 2's seven, and the narrowness is the result: this task changes only the three planners
+> that touch a Hangout, so only the policies that call them can feel it. Fleet
+> `tourOneClearRate` 0.6342 → 0.6329, median final credits 49,839 → 49,839 (UNMOVED),
+> ships lost 487 → 492, encounters/run 22.2404 → 22.2482. Gate PASS, 0 invariant violations.
+>
+> **THE INSULT MEASUREMENT, REPORTED HONESTLY AS A NULL RESULT.** The task asked whether
+> `SOCIAL_PLAYS_PER_DAY = 3` holds the free-insult × 2.358× wronged-interceptor farming
+> loop. **The `fighter` row came back BYTE-IDENTICAL** — encounters/run 19.6460, ships lost
+> 11, median credits 82,671, clear rate 0.6030, all unchanged from T-196b. That is NOT
+> evidence the pool works, because **no sim policy has ever emitted `meet`, `befriend` or
+> `insult`** (only `protocol.ts`'s enumerator names them). The loop cannot be EXHIBITED by
+> this instrument, so the pool cannot be measured against it here, and the honest reading is
+> that the fighter's stillness confirms only that the freed dice and the rounds cap do not
+> reach it. What CAN be said is the analytic bound: 3 plays/day × −4 disposition ⇒ at most
+> ONE manufactured grudge per day, from a −10 floor, where before the cap it was three
+> clicks. **The instrument gap is T-198's brief**; an insult-playing policy is a new
+> instrument behaviour and its own arm, and was deliberately not added here.
+>
 > **BASELINE OF RECORD RE-PINNED AT T-196b (2026-08-05)** to
 > `docs/balance/baseline-t196b-instruments.json` — the **M17 arm-2** capstone
 > (`docs/DAWN-HAND-REDESIGN.md` §3). The eight sim policies stopped budgeting a dawn die
@@ -2469,7 +2499,21 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t196b-instruments.json`** (1,000 seeds
+   > **Baseline of record is `docs/balance/baseline-t197-hangout-caps.json`** (1,000 seeds
+   > × 120 days × 8 policies = 8,000 runs, re-pinned at T-197 2026-08-05 — the M17
+   > MILESTONE CLOSER: all seven Hangout venues went free and two daily caps replaced the
+   > die (`docs/DAWN-HAND-REDESIGN.md` §3/§4a/§4b). **Both fingerprints move**, so unlike
+   > the T-196a/T-196b pair this is not a clean single-arm attribution — stated in the
+   > predictions BEFORE the merge ran, not discovered after. PREDICTED AND HELD: the
+   > `gambler` is the largest mover and its credits rise (median 81,667 → 82,965) on the
+   > freed best die; `hangoutPlay.failedVisits` stays 0 on every row (4,445 visits at the
+   > capstone horizon), which is the mechanical proof both cap mirrors are right. PREDICTED
+   > AND CONTRADICTED: the smuggler and trader were predicted to BOTH move over a 120-day
+   > horizon; `trader` came back byte-identical and `trader-degraded` moved instead.
+   > Fleet `tourOneClearRate` 0.6342 → 0.6329, median final credits UNMOVED at 49,839,
+   > ships lost 487 → 492. The fighter row is byte-identical — see the status banner for why
+   > that is a NULL RESULT about the instrument rather than a verdict on the pool.
+   > Before that: **`docs/balance/baseline-t196b-instruments.json`** (1,000 seeds
    > × 120 days × 8 policies = 8,000 runs, re-pinned at T-196b 2026-08-05 — the M17 arm-2
    > capstone: the eight sim policies and the protocol enumerator stopped treating the nine
    > freed action types as die spends (`docs/DAWN-HAND-REDESIGN.md` §3), so the ruleset is

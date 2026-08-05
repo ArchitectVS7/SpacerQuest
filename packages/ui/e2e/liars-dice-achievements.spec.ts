@@ -84,7 +84,8 @@ async function winTheLastSeat(page: Page): Promise<void> {
 
   await rosterRow(page, TARGET).click();
   await page.getByTestId('dare-wager').fill(String(DARE_MIN_WAGER));
-  await page.getByTestId('die').nth(0).click();
+  // T-197 · no die is armed — the open is a Free Action (§3), bounded by the day's
+  // rounds cap (§4b) instead.
   await expect(page.getByTestId('dare-commit')).toBeEnabled();
   await page.getByTestId('dare-commit').click();
 

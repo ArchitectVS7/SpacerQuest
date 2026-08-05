@@ -226,7 +226,7 @@ Release earns its keep, and the rules are: tick **"Set as a pre-release"** so it
 mistaken for a launch, attach the `electron-builder` artefacts, and let the notes be the
 changelog for that stage.
 
-## 2. Save schema version — a plain integer, currently `15`
+## 2. Save schema version — a plain integer, currently `16`
 
 **Answers: can this build read that save file?**
 
@@ -250,6 +250,20 @@ forward-compatible; the obligation for all three is the compile-time drift guard
 `schema.ts`, not a version move. (The fail-reason case is a two-file edit —
 `_covHangoutFailReason` pins the enum VALUE for value, and a value added to the union but
 not the schema sails past `AssertEventKeys` and fails to parse at load.)
+
+**M17 bumped 15 → 16 (T-197, 2026-08-05), and it is a worked example of the paragraph
+above.** `docs/DAWN-HAND-REDESIGN.md` §3 freed all seven Hangout venues and §4a/§4b
+replaced the die with two DAILY ALLOWANCES: `player.socialPlaysRemaining` (the social pool
+shared by meet/befriend/insult) and `player.dareRoundsToday` (Liar's Dice hands opened
+today, counted AT OPEN). Two things in that task looked like schema changes and were not —
+the two new `HangoutFailReason` values `social-limit-reached` and `daily-round-limit`, which
+owed only the two-file edit above. What actually forced the bump is that both counters must
+survive a MID-DAY save/load: a reload that refilled a spent allowance would make the caps
+advisory. `MIGRATIONS[15]` backfills them by CALLING `freshDailyHangoutCaps`
+(`hangoutRules.ts`) — the same rule `createInitialState`, `deserializeState` and `day.ts`'s
+dawn reset read — rather than restating two literals, so a later content retune of
+`SOCIAL_PLAYS_PER_DAY` moves the migration with it and owes no further bump. One bump for
+the whole M17 Hangout row, per the rule above.
 
 ## 3. Rules fingerprint — a content hash, not a number
 

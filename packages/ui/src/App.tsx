@@ -109,6 +109,9 @@ import {
   hangoutVenueOffered,
   hangoutRumorLines,
   dareWagerBounds,
+  // T-197 · the two daily Hangout caps, rendered beside the controls they bound.
+  hangoutSocialPlays,
+  hangoutDareRounds,
   dareScene,
   lendingTerms,
   fuelPurchaseQuote,
@@ -2098,9 +2101,17 @@ const SOCIAL_TITLES: Record<'meet' | 'befriend' | 'insult', string> = {
 // armed exactly as in the storylet flow.
 //
 // T-132 · SIX OF SEVEN VENUES ARE SURFACED HERE, and the seventh is absent on
-// purpose: `rumor` spends a die to emit precisely the `hangoutRumors` output the
-// rumor table below already renders for free, so a paid control would be strictly
-// dominated (see `visitSocial`'s docstring in store.ts).
+// purpose: `rumor` emits precisely the `hangoutRumors` output the rumor table
+// below already renders for free, so a control for it would be strictly dominated
+// (see `visitSocial`'s docstring in store.ts). T-197 · that argument SURVIVED the
+// freeing and got stronger: rumor used to be dominated because it cost a die for
+// nothing new, and now it is dominated because it costs nothing for nothing new.
+//
+// T-197 · NO CONTROL IN THIS PANE REQUIRES AN ARMED DIE ANY MORE except PEEK
+// (docs/DAWN-HAND-REDESIGN.md §3). Two daily caps replaced the die, and BOTH are
+// rendered as counts beside the controls they bound — `social-plays-left` and
+// `dare-rounds-left` — so neither can refuse a click the player could not see
+// coming.
 //
 // EVERY per-port difference in this pane is a CONTENT field read through an engine
 // accessor — `hangoutHouse` (the authored prose) and `hangoutVenueOffered` (the
@@ -2130,6 +2141,14 @@ function HangoutPanel({
   const bounds = dareWagerBounds(game);
   const terms = lendingTerms(game);
   const loan = game.player.loan;
+  // T-197 · the two daily caps, read through `format.ts` accessors that delegate
+  // to the ENGINE's own rules — no restated arithmetic in the pane (§4a/§4b).
+  const socialPlays = hangoutSocialPlays(game);
+  const dareRounds = hangoutDareRounds(game);
+  // T-197 · `armed` SURVIVES, narrowed to ONE reader: the Peek control inside
+  // `LiarsDiceScene`. Peek is the one check inside an open hand, stayed a Main
+  // Action by ruling (§3), and still spends a die. No other control in this pane
+  // reads it — the T-196c treatment at the yard and trade panes, applied here.
   const armed = state.selectedDie !== null;
   // T-136 · THE FOG PROJECTION, and the ONLY thing the live scene is given. It has
   // no `dealerDice` field; see `format.ts`'s `DareSceneView`.
@@ -2181,18 +2200,33 @@ function HangoutPanel({
   const chosenRoster =
     opponentId && roster.some((r) => r.id === opponentId && !r.broke) ? opponentId : null;
   const chosen = chosenRoaming ?? chosenRoster;
-  const dareDisabledReason = !armed
-    ? 'Pick a die to wager'
-    : !chosen
-      ? 'Choose an opponent from the tables'
+  // T-197 · THE DIE IS GONE FROM ALL SEVEN VENUES, AND TWO DAILY CAPS TOOK ITS
+  // PLACE (docs/DAWN-HAND-REDESIGN.md §3/§4a/§4b). Every `!armed` arm below is
+  // retired — a freed Hangout action neither requires nor clears the armed die.
+  // What replaces them is NOT silence: each cap gets its own disabled reason,
+  // drawn from the same engine accessors the resolver refuses on, so a spent-out
+  // pool or a closed table explains itself BEFORE the click. That is the
+  // "never a silent dead button" criterion, and it is why these arms exist at all
+  // rather than the buttons simply being left enabled to earn a typed refusal.
+  // `armed` SURVIVES in this pane, narrowed to ONE reader: PEEK, inside
+  // `LiarsDiceScene`, which is still a Main Action and still spends a die.
+  const dareDisabledReason = !chosen
+    ? 'Choose an opponent from the tables'
+    : dareRounds.remaining <= 0
+      ? 'The house has closed the table for tonight'
       : null;
-  const loanDisabledReason = armed ? null : 'Pick a die first';
-  // T-132 · the same shape as `dareDisabledReason` — a social venue needs an armed
-  // die and a captain who is still at the tables. T-145: a ROAMING one.
-  const socialDisabledReason = !armed
-    ? 'Pick a die first'
-    : !chosenRoaming
-      ? 'Choose someone at the tables'
+  // The lending pair is free AND outside both caps (§3: the single-loan slot and
+  // credits were always its real bounds), so it has no disabled reason left at
+  // all — the engine's own `already-has-loan` / `insufficient-credits` refusals
+  // render as notices, exactly as they did before.
+  const loanDisabledReason: string | null = null;
+  // T-132 · the same shape as `dareDisabledReason` — a social venue needs a
+  // captain who is still at the tables. T-145: a ROAMING one. T-197: …and a play
+  // left in the day's social pool.
+  const socialDisabledReason = !chosenRoaming
+    ? 'Choose someone at the tables'
+    : socialPlays.remaining <= 0
+      ? 'No social plays left today'
       : null;
 
   return (
@@ -2365,6 +2399,14 @@ function HangoutPanel({
                 onChange={(e) => setWager(Math.max(0, Number.parseInt(e.target.value, 10) || 0))}
               />
             </label>
+            {/* T-197 · THE ROUNDS LEFT, VISIBLE BEFORE THE CLICK (§4b). Without
+                this the cap's typed refusal would be the first the player hears
+                of it, which is the "silent dead button" the Accept criterion
+                forbids. `perDay` scales with the Liar's Dice unlock tier, so the
+                line also teaches that playing well buys more table time. */}
+            <span className="hp-k" data-testid="dare-rounds-left">
+              ROUNDS {dareRounds.remaining}/{dareRounds.perDay} TODAY
+            </span>
             <button
               className="btn"
               data-testid="dare-commit"
@@ -2372,7 +2414,9 @@ function HangoutPanel({
               title={dareDisabledReason ?? 'Seat yourself and deal a hand of Liar’s Dice'}
               onClick={() => chosen && visitDare(chosen, wager)}
             >
-              {dareDisabledReason ?? 'Wager a die'}
+              {/* T-197 · "Wager a die" was literally true and is no longer — the
+                  open is free, and the wager is credits. */}
+              {dareDisabledReason ?? 'Deal a hand'}
             </button>
           </div>
         )}
@@ -2400,6 +2444,16 @@ function HangoutPanel({
       {!locked && socialVenues.length > 0 && (
         <div className="hp-section hp-social">
           <div className="hp-shead">THE ROOM</div>
+          {/* T-197 · THE DAY'S SOCIAL PLAYS, VISIBLE BEFORE THE CLICK (§4a). The
+              pool is what replaced the die for meet/befriend/insult, and a
+              `social-limit-reached` refusal must never be the first the player
+              hears of it. Read through `hangoutSocialPlays` → the engine's own
+              `socialPlaysRemaining` + the content constant; the pane computes
+              nothing. A FAILED befriend still spends one, which is why the count
+              can fall without a warmth line appearing beside it. */}
+          <div className="hp-terms" data-testid="social-plays-left">
+            SOCIAL PLAYS {socialPlays.remaining}/{socialPlays.perDay} TODAY
+          </div>
           {socialVenues.map((v) => (
             <div key={v} className="hp-social-venue">
               <button

@@ -44,6 +44,10 @@ import {
   venueOffered,
   wagerBandFor,
   liarsDiceOpponentsAt,
+  // T-197 · §4b's rounds cap, read through the engine's own accessor (never
+  // re-derived from the tier table) — the planner mirror and the gambler's loop
+  // bound are the two readers.
+  liarsDiceRoundsRemaining,
   legalDareMoves,
   minOpeningQuantity,
   applyPlayerAction,
@@ -2569,7 +2573,14 @@ const TRADER_LOAN_HOME_WINDOW = 5;
  * shortfall plan, which is the F-121-1 "the policy's guards are the engine's
  * guards" argument applied to an amount rather than to a gate.
  *
- * The die is the DULLEST remaining: borrowing rolls no check.
+ * T-197 · NO DIE AT ALL. Borrowing is a Free Action
+ * (docs/DAWN-HAND-REDESIGN.md §3) and draws from NEITHER of the two daily caps —
+ * §4a's social pool covers meet/befriend/insult only, and §4b's rounds cap covers
+ * the dare open only. The desk was always bounded by the single-active-loan slot
+ * (the `state.player.loan` guard below, the engine's own `already-has-loan`
+ * refusal mirrored) and by the port's principal band, which is exactly why §3
+ * ruled it free with no new cap owed. The `DieLedger` parameter is gone with the
+ * spend, the T-196b treatment applied to the Hangout.
  *
  * CRITICAL: the caller must queue this as an EXTRA action on an otherwise normal
  * working day, never as a standalone day. A borrow-only day has
@@ -2579,7 +2590,6 @@ const TRADER_LOAN_HOME_WINDOW = 5;
  */
 function planLoanBorrow(
   state: GameState,
-  ledger: DieLedger,
   shortfall: number,
 ): { action: PlayerAction; principal: number } | null {
   if (state.encounter) return null;
@@ -2590,10 +2600,8 @@ function planLoanBorrow(
   if (!(shortfall >= 1)) return null;
   const band = loanBandFor(state.player.currentSystemId);
   const principal = Math.max(band.min, Math.min(band.max, Math.ceil(shortfall)));
-  const die = ledger.takeWorst();
-  if (die === undefined) return null;
   return {
-    action: { type: 'VisitHangout', venue: 'borrow', amount: principal, spendDie: die },
+    action: { type: 'VisitHangout', venue: 'borrow', amount: principal },
     principal,
   };
 }
@@ -2605,10 +2613,14 @@ function planLoanBorrow(
  * rather than let it flip. A default is not a slap on the wrist: it applies
  * LOAN_DEFAULT_DISPOSITION to Penny Wise (grudge-weighting her into the
  * interceptor draw) and multiplies the realized encounter chance by
- * COLLECTION_ENCOUNTER_MULTIPLIER until the balance is cleared. Dull die — a
- * repayment rolls no check.
+ * COLLECTION_ENCOUNTER_MULTIPLIER until the balance is cleared.
+ *
+ * T-197 · NO DIE, AND NO CAP (docs/DAWN-HAND-REDESIGN.md §3/§4a). Repaying is a
+ * Free Action outside the social pool: credits and the outstanding balance were
+ * always its real bounds, and the engine clamps the payment to
+ * `min(requested, credits, outstanding)` regardless.
  */
-function planLoanRepay(state: GameState, ledger: DieLedger): PlayerAction | null {
+function planLoanRepay(state: GameState): PlayerAction | null {
   const loan = state.player.loan;
   if (!loan) return null;
   if (state.encounter) return null;
@@ -2622,9 +2634,7 @@ function planLoanRepay(state: GameState, ledger: DieLedger): PlayerAction | null
     ? state.player.credits >= outstanding
     : state.player.credits >= outstanding + TRADER_RESERVE;
   if (!affordable) return null;
-  const die = ledger.takeWorst();
-  if (die === undefined) return null;
-  return { type: 'VisitHangout', venue: 'repay', amount: outstanding, spendDie: die };
+  return { type: 'VisitHangout', venue: 'repay', amount: outstanding };
 }
 
 // ---------------------------------------------------------------------------
@@ -3173,7 +3183,7 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
     markerShortfall,
     workingCapitalShortfall,
   );
-  const borrow = planLoanBorrow(state, ledger, shortfall);
+  const borrow = planLoanBorrow(state, shortfall);
   let borrowed = 0;
   if (borrow) {
     // FIRST in the day's plan — and an EXTRA action on a normal working day, so
@@ -3184,7 +3194,7 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
 
   // Settle the Penny Wise balance before the day's spending starts, so the
   // repayment is never lost to a refuel that drained the purse first.
-  const repay = planLoanRepay(state, ledger);
+  const repay = planLoanRepay(state);
   let repaid = 0;
   if (repay) {
     actions.push(repay);
@@ -3722,7 +3732,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     state.player.debt > 0 && state.player.credits < SMUGGLER_RESERVE
       ? SMUGGLER_RESERVE - state.player.credits
       : 0;
-  const borrow = planLoanBorrow(state, ledger, Math.max(fuelShortfall, workingCapitalShortfall));
+  const borrow = planLoanBorrow(state, Math.max(fuelShortfall, workingCapitalShortfall));
   let borrowed = 0;
   if (borrow) {
     // An EXTRA action on a normal working day (never a standalone day) — the
@@ -3732,7 +3742,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   }
   // Settle the balance before the day's spending starts, so a refuel can never
   // eat the money that was going to clear the desk.
-  const repay = planLoanRepay(state, ledger);
+  const repay = planLoanRepay(state);
   let repaid = 0;
   if (repay) {
     actions.push(repay);
@@ -4063,9 +4073,22 @@ const GAMBLER_MAX_DARES_PER_DAY = 2;
  *     0 — the one value the acceptance forbids;
  *   - the purse is above the reserve and the dealer can cover the minimum stake.
  *
- * The die is the BEST remaining, unlike planLoanBorrow / planLoanRepay which take
- * the dullest: borrowing and repaying roll no check, but a Dare is a real opposed
- * GUILE check against the dealer's live total — the sharper die wins hands.
+ * T-197 · NO DIE, AND A REAL DAILY BOUND IN ITS PLACE
+ * (docs/DAWN-HAND-REDESIGN.md §3/§4b). Opening a hand is a Free Action, so the
+ * `DieLedger` is gone; what bounds the tables now is the ROUNDS-PER-DAY cap, which
+ * scales with the captain's Liar's Dice unlock tier. This planner mirrors it the
+ * same way it already mirrors `venueOffered` and the two broke rules — an open
+ * past the cap earns a typed `daily-round-limit`, and burning a plan on a knowable
+ * refusal is precisely what `hangoutPlay.failedVisits === 0` forbids.
+ *
+ * WHY THAT MIRROR IS NOT ENOUGH ON ITS OWN, and why the caller's loop counter is
+ * the second half: these planners are PURE over the DAWN state, so
+ * `state.player.dareRoundsToday` is the count at dawn — accurate for the first
+ * queued hand and stale for every one after it. The caller carries the day's
+ * allowance forward in its loop bound, exactly as it already carries `purse` and
+ * `committedStakes` forward for the same reason. (This is the F-116-1 / F-150-2
+ * class in its natural habitat: a free action inside a loop needs the loop to
+ * hold the bound, because the state the planner reads no longer moves.)
  *
  * CRITICAL (same warning planLoanBorrow carries): the caller must queue this as
  * an EXTRA action on an otherwise normal working day, never as a standalone day.
@@ -4078,7 +4101,6 @@ const GAMBLER_MAX_DARES_PER_DAY = 2;
  */
 function planDare(
   state: GameState,
-  ledger: DieLedger,
   credits: number,
   /**
    * T-145 · Roster opponents this day has ALREADY queued a hand against. These
@@ -4127,6 +4149,13 @@ function planDare(
   // and that is precisely why it lands now, on the T-121 precedent of shipping a
   // mirror while it is provably inert rather than after a later row makes it a bug.
   if (!venueOffered(state.player.currentSystemId, 'dare')) return null;
+  // T-197 · THE DAY'S ROUNDS ARE THE NEW BOUND (§4b). Read through the engine's
+  // own `liarsDiceRoundsRemaining`, never re-derived from the tier table here —
+  // the same "the policy's guards are the engine's guards" argument F-121-1 made
+  // for `!npc.dead`. See the docstring for why the CALLER's loop bound is the
+  // other half of this: a pure planner over the dawn state cannot see the hands
+  // this same day has already queued.
+  if (liarsDiceRoundsRemaining(state) <= 0) return null;
 
   // T-145 · THE CANDIDATE SET NOW SPANS BOTH POOLS
   // (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §8 row 38). Without this no sweep row
@@ -4193,9 +4222,7 @@ function planDare(
     Math.min(band.max, Math.floor(bankroll * GAMBLER_BANKROLL_FRACTION)),
   );
 
-  const die = ledger.takeBest();
-  if (die === undefined) return null;
-  return { type: 'VisitHangout', venue: 'dare', opponentId: dealer.id, wager, spendDie: die };
+  return { type: 'VisitHangout', venue: 'dare', opponentId: dealer.id, wager };
 }
 
 // ---------------------------------------------------------------------------
@@ -4427,13 +4454,13 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
     state.player.debt > 0 && state.player.credits < GAMBLER_RESERVE
       ? GAMBLER_RESERVE - state.player.credits
       : 0;
-  const borrow = planLoanBorrow(state, ledger, Math.max(fuelShortfall, workingCapitalShortfall));
+  const borrow = planLoanBorrow(state, Math.max(fuelShortfall, workingCapitalShortfall));
   let borrowed = 0;
   if (borrow) {
     actions.push(borrow.action);
     borrowed = borrow.principal;
   }
-  const repay = planLoanRepay(state, ledger);
+  const repay = planLoanRepay(state);
   let repaid = 0;
   if (repay) {
     actions.push(repay);
@@ -4545,8 +4572,18 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
   // player. See `planDare`'s parameter doc for why the two mechanisms stay
   // separate rather than being collapsed into one.
   const committedStakes = new Map<string, number>();
-  for (let hand = 0; hand < GAMBLER_MAX_DARES_PER_DAY; hand += 1) {
-    const dare = planDare(state, ledger, purse, committedRosterIds, committedStakes);
+  // T-197 · THE LOOP BOUND IS NOW THE DAY'S REMAINING ROUNDS AS WELL
+  // (docs/DAWN-HAND-REDESIGN.md §4b). `planDare` mirrors the engine's cap, but it
+  // is PURE over the DAWN state — `dareRoundsToday` does not move between two
+  // calls in this loop, so the planner alone would happily queue a second hand a
+  // tier-0 captain's cap forbids and earn a typed `daily-round-limit`. The loop
+  // counter is what carries the allowance forward, exactly as `purse` and
+  // `committedStakes` above carry the credits and the dealers' purses forward for
+  // the identical reason. `hangoutPlay.failedVisits === 0` is the mechanical proof
+  // this mirror is right; if it ever goes non-zero, THIS is the line to read first.
+  const roundsToday = Math.min(GAMBLER_MAX_DARES_PER_DAY, liarsDiceRoundsRemaining(state));
+  for (let hand = 0; hand < roundsToday; hand += 1) {
+    const dare = planDare(state, purse, committedRosterIds, committedStakes);
     if (!dare) break;
     dares.push(dare);
     purse -= dare.type === 'VisitHangout' ? (dare.wager ?? 0) : 0;

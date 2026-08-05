@@ -186,3 +186,43 @@ which is circular, because `bad` is only harder *because of* F-137-1. (T-148)
 Ladder pacing (`LIARS_DICE_UNLOCK_GAMES`), the `CONQUEROR` renown threshold and the
 instrument's own seating rule are owner-gated and covered in
 `docs/BALANCE-RIG-DECISIONS.md` Part G.
+
+---
+
+## 6. The action economy (M17)
+
+**LD-23 — Opening a hand is a FREE ACTION, and a ROUNDS-PER-DAY CAP that scales with
+`liarsDiceTier` is what replaced its die.** (T-197, `docs/DAWN-HAND-REDESIGN.md` §4b; owner:
+*"clamp liars dice at X number of rounds, scaling with a player's rank in liars dice
+(rewarding good play)."*)
+
+Four things about the cap are rulings rather than implementation details:
+
+1. **It reuses the EXISTING rank variable at the EXISTING call site.** `liarsDiceTier` is
+   read exactly once per open, at `actions/hangout.ts`'s tier-freeze site, and §4b's cap is
+   evaluated from THAT read — no second progression variable, and no second tier read inside
+   the resolver. (`liarsDiceRoundsRemaining` in `liarsDiceRules.ts` adds a third
+   `liarsDiceTier` call for the UI, the protocol enumerator and the gambler's loop bound;
+   that is a rule ACCESSOR with no hand to read a frozen field off, which is the distinction
+   the file header's "a third call site is a bug" paragraph now records explicitly.)
+2. **The counter increments AT OPEN, not at settlement.** A hand persists across save/reload
+   and can straddle dusk, so a settlement-counted round would let a hand opened before dusk
+   dodge the dawn reset entirely. §4b's "a round is one settled hand" defines the round's
+   UNIT; the OPEN is when the day's allowance is spent. A fold still settles the hand, so an
+   open-and-fold burns the round — **the cap cannot be laundered through folds.**
+3. **A refused open draws NO rng and mutates nothing.** The check sits above the dice draw
+   and the escrow debit, so a day on which the player tried and was refused has a
+   byte-identical rng stream to a day on which they never tried.
+4. **The counter lives on the SAVE** (`player.dareRoundsToday`, `CURRENT_SAVE_VERSION`
+   15 → 16), because a mid-day reload that cleared it would make the cap advisory.
+
+**THE EXACT NUMBERS ARE PROPOSED, NOT RULED — awaiting owner confirmation.**
+`LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]` (`packages/content/src/liarsDice.ts`,
+indexed by tier 0-5) ships as §4b's own suggested table, which that section explicitly calls
+"a starting suggestion, not a ruling". **What IS ruled is the SHAPE** — monotone
+non-decreasing in tier, so playing well buys table time. The question was surfaced to the
+owner before implementation and no answer had arrived at ship time; the numbers are marked
+`PROPOSED` at the constant, in §4b, and here, and they are cheap to change because this
+array is the only place they exist. **Retuning them is a CONTENT edit and must be measured
+by a capstone, not argued from a fingerprint** — T-197's own capstone measured the shipped
+table and is the baseline any revision diffs against.

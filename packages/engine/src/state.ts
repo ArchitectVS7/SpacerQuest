@@ -13,6 +13,7 @@ import { npcShipForProfile, seedNpcShip } from './npc.js';
 import { JOB_POOL_MAX_CLAIMS, calculateFuelCapacity, syncMaxFuel } from './economy.js';
 import { computePlayerTier, syncPlayerTier } from './tier.js';
 import { seedLiarsDicePurses } from './liarsDiceRules.js';
+import { freshDailyHangoutCaps } from './hangoutRules.js';
 
 /** The exact junker every spacer starts (and re-starts) with. SINGLE SOURCE OF
  *  TRUTH: createInitialState builds the opening ship from this, and T-108
@@ -144,6 +145,11 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
       // and has played no hands. Pool A only (types.ts `liarsDiceBeaten`).
       liarsDiceBeaten: [],
       liarsDiceGamesPlayed: 0,
+      // T-197 · day 1's Hangout caps, seeded through the engine's own rule rather
+      // than as two inline literals — the `seedLiarsDicePurses` line above is the
+      // precedent, and it is what keeps this site, `day.ts`'s dawn reset and
+      // `MIGRATIONS[15]` from drifting apart (docs/DAWN-HAND-REDESIGN.md §4a/§4b).
+      ...freshDailyHangoutCaps(),
       stats: {
         [Stat.PILOT]: 1,
         [Stat.GUNS]: 0,
@@ -321,6 +327,19 @@ export function deserializeState(json: string): GameState {
   // an existing save through, with no further version bump.
   parsed.player.liarsDiceBeaten ??= [];
   parsed.player.liarsDiceGamesPlayed ??= 0;
+  // T-197 save-compat: pre-T-197 states carry neither daily Hangout cap. The SAME
+  // backfill `MIGRATIONS[15]` applies for the envelope path, and owed here for the
+  // identical reason the T-145 pair above is — the loader path runs `migrate` and
+  // never comes through this function, so both halves exist or one path is broken.
+  // The values come from the RULE (`freshDailyHangoutCaps`), never from two
+  // literals, so this site cannot drift from the dawn reset it is standing in for.
+  // STATEMENTS OF FACT, not defaults: a pre-T-197 save was written by an engine in
+  // which neither cap existed, so "no social plays have been spent today" and "no
+  // hands have been opened today" are TRUE of that save rather than values this
+  // backfill is choosing.
+  const freshCaps = freshDailyHangoutCaps();
+  parsed.player.socialPlaysRemaining ??= freshCaps.socialPlaysRemaining;
+  parsed.player.dareRoundsToday ??= freshCaps.dareRoundsToday;
   parsed.liarsDicePurses = seedLiarsDicePurses(parsed.liarsDicePurses);
   parsed.npcs ??= [];
   // COW-EXEMPT: these writes reach roster records raw, without `mutableNpc`, and

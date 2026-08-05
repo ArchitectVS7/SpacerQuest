@@ -1598,34 +1598,32 @@ function dareBeatsFrom(events: GameEvent[]): DareBeat[] {
  * `ActionBlocked{active-dare-hand}`. THE SUCCESS SIGNAL IS NOW `next.dareHand !==
  * null` — the scene opened — not an outcome event.
  *
- * A `no-opponent` / `venue-not-offered` / malformed-die fail spends NO die (read
- * the authoritative spent flag), keeps the selection, and surfaces a visible
- * notice, exactly as before.
+ * A `no-opponent` / `venue-not-offered` / `daily-round-limit` fail costs NOTHING,
+ * keeps the selection, and surfaces a visible notice, exactly as before.
+ *
+ * T-197 · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3). Opening a hand no longer
+ * requires, consumes or DISARMS a die, so `selectedDie` survives untouched and no
+ * bloom fires — a player who armed a die for their next Main Action still has it
+ * after sitting down. What bounds the tables now is §4b's rounds-per-day cap,
+ * which the engine enforces and `hangoutRoundsLeft` renders BEFORE the click.
+ * THE SUCCESS SIGNAL IS `next.dareHand !== null` (the scene opened) — the old
+ * `dawnHand.spent[die]` probe no longer exists to be read. The commit CUE does not
+ * fire: it is a die-spend cue and this verb spends no die, the same call T-196c
+ * made for the nine administrative Free Actions.
  */
 export function visitDare(opponentId: string, wager: number): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then wager.' });
-    return;
-  }
   try {
     const { state: next, events } = applyAction({
       type: 'VisitHangout',
       venue: 'dare',
       opponentId,
       wager,
-      spendDie: die,
     });
     autosave(next, state.seed);
-    // The die is spent the instant the Dare commits (past the no-opponent /
-    // malformed-die guards). Read the authoritative spent flag rather than infer.
-    const committed = next.player.dawnHand?.spent[die] === true;
     const failNotice = hangoutFailNoticeFrom(events);
     const opened = next.dareHand !== null;
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice: failNotice,
       // The opening visit rolls nothing the player committed a die to a CHECK for
       // — clear lastCheck so no stale readout lingers over the new table.
@@ -1639,7 +1637,7 @@ export function visitDare(opponentId: string, wager: number): void {
       socialOutcome: null,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That wager could not be resolved.' });
   }
@@ -1791,28 +1789,34 @@ export function clearDareBeats(): void {
  * affordance would be strictly dominated by the free one already on screen. That is
  * why F-101-4 counts "three of six venues" over a SEVEN-member venue union.
  *
- * A typed fail (`no-opponent`, `venue-not-offered`, malformed die) spends NO die —
- * read the authoritative spent flag rather than infer — keeps the selection, and
- * surfaces a visible notice.
+ * A typed fail (`no-opponent`, `venue-not-offered`, `social-limit-reached`) costs
+ * NOTHING, keeps the selection, and surfaces a visible notice.
+ *
+ * T-197 · ALL THREE ARE FREE ACTIONS (docs/DAWN-HAND-REDESIGN.md §3/§4a). No die
+ * is required, consumed or DISARMED — `selectedDie` / `bloomDie` are deliberately
+ * absent from the patch below, and the commit cue (a die-spend cue) does not fire.
+ * What bounds them now is the SOCIAL POOL: `SOCIAL_PLAYS_PER_DAY` plays shared by
+ * the three, spent on RESOLUTION whatever the outcome (a failed Befriend check
+ * spends one), refused with a typed `social-limit-reached` once out. The remaining
+ * count is rendered beside these controls (`hangoutSocialPlays`) so a refusal is
+ * never the first the player hears of the cap.
+ *
+ * `befriend` STILL ROLLS: the engine draws an internal d20 against the port's
+ * authored DC now that there is no die to aim (§5, owner ruling 2026-08-04), and
+ * still emits the `StatCheck` this function captures into `socialOutcome.check`.
+ * So the honest-dice readout below is unchanged.
  */
 export function visitSocial(venue: 'meet' | 'befriend' | 'insult', opponentId: string): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then approach the tables.' });
-    return;
-  }
   try {
     const { state: next, events } = applyAction({
       type: 'VisitHangout',
       venue,
       opponentId,
-      spendDie: die,
     });
     autosave(next, state.seed);
-    const committed = next.player.dawnHand?.spent[die] === true;
     const failNotice = hangoutFailNoticeFrom(events);
     let socialOutcome: CockpitState['socialOutcome'] = null;
-    if (committed && !failNotice) {
+    if (!failNotice) {
       const hangout = events.find(
         (e): e is Extract<GameEvent, { type: 'HangoutEvent' }> =>
           e.type === 'HangoutEvent' && e.venue === venue,
@@ -1843,8 +1847,6 @@ export function visitSocial(venue: 'meet' | 'befriend' | 'insult', opponentId: s
     }
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice: failNotice,
       // The befriend check rides `socialOutcome.check`, its own readout, not the
       // shared single-check one — clear lastCheck so no stale check lingers.
@@ -1854,7 +1856,7 @@ export function visitSocial(venue: 'meet' | 'befriend' | 'insult', opponentId: s
       socialOutcome,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({
       notice: err instanceof Error ? err.message : 'That was not something the room allowed.',
@@ -1866,33 +1868,30 @@ export function visitSocial(venue: 'meet' | 'befriend' | 'insult', opponentId: s
  * T-1404 · Borrow from Penny Wise's desk (PRD §7.5). A pure CLIENT of the T-1304
  * `VisitHangout{borrow}` venue. The engine clamps the requested principal into the
  * content band, advances it to credits and records the loan (interest accrues later
- * at dusk — never here). A lending precondition refusal (`already-has-loan`) spends
- * NO die and surfaces as a visible notice; on commit the die blooms.
+ * at dusk — never here). A lending precondition refusal (`already-has-loan`) costs
+ * NOTHING and surfaces as a visible notice.
+ *
+ * T-197 · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3), and outside BOTH daily
+ * caps: the desk was always bounded by the single-active-loan slot and the port's
+ * principal band, which is exactly why §3 ruled it free with no new cap owed. No
+ * die is required, consumed or DISARMED — `selectedDie` / `bloomDie` are
+ * deliberately absent from the patch below.
  */
 export function borrowLoan(amount: number): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then borrow.' });
-    return;
-  }
   try {
     const { state: next, events } = applyAction({
       type: 'VisitHangout',
       venue: 'borrow',
       amount,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = loanFailNoticeFrom(events);
-    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That loan could not be resolved.' });
   }
@@ -1902,33 +1901,28 @@ export function borrowLoan(amount: number): void {
  * T-1404 · Repay the Penny Wise loan (PRD §7.5). A pure CLIENT of the T-1304
  * `VisitHangout{repay}` venue. The engine clamps the payment to
  * `min(requested, credits, outstanding)` and clears the whole loan when the balance
- * hits zero. A `no-loan` / `insufficient-credits` refusal spends NO die and surfaces
- * as a visible notice; on commit the die blooms.
+ * hits zero. A `no-loan` / `insufficient-credits` refusal costs NOTHING and
+ * surfaces as a visible notice.
+ *
+ * T-197 · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3), and outside BOTH daily
+ * caps for the reason `borrowLoan` above states: credits and the outstanding
+ * balance were always the real bounds. No die is required, consumed or DISARMED.
  */
 export function repayLoan(amount: number): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then repay.' });
-    return;
-  }
   try {
     const { state: next, events } = applyAction({
       type: 'VisitHangout',
       venue: 'repay',
       amount,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = loanFailNoticeFrom(events);
-    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That payment could not be resolved.' });
   }

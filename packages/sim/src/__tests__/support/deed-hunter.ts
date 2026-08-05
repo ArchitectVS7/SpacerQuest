@@ -392,7 +392,6 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
           type: 'VisitHangout',
           venue: 'borrow',
           amount: LOAN_MAX_PRINCIPAL,
-          spendDie: die,
         });
       }
     }
@@ -515,7 +514,6 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
             venue: 'dare',
             opponentId,
             wager,
-            spendDie: spare.shift()!,
           });
         }
       }
@@ -534,7 +532,6 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
               type: 'VisitHangout',
               venue: 'borrow',
               amount: LOAN_MAX_PRINCIPAL,
-              spendDie: spare.shift()!,
             });
           }
         } else if (
@@ -549,7 +546,6 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
             type: 'VisitHangout',
             venue: 'repay',
             amount: loan.outstanding,
-            spendDie: spare.shift()!,
           });
         }
       }
@@ -629,7 +625,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
       for (const opponentId of seatsHere.slice(0, ROSTER_HANDS_PER_DAY)) {
         const die = take();
         if (die === undefined) break;
-        sitDowns.push({ type: 'VisitHangout', venue: 'dare', opponentId, wager, spendDie: die });
+        sitDowns.push({ type: 'VisitHangout', venue: 'dare', opponentId, wager });
       }
       actions.unshift(...sitDowns);
     } else if (

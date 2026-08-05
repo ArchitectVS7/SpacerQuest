@@ -423,7 +423,7 @@ const BLOCKABLE: PlayerAction[] = [
   { type: 'Shipyard', action: 'repair', component: 'hull' },
   { type: 'Storylet', storyletId: 'sage.mizar.decode-first', choiceId: 'decode' },
   { type: 'Explore', spendDie: 0 },
-  { type: 'VisitHangout', venue: 'rumor', spendDie: 0 },
+  { type: 'VisitHangout', venue: 'rumor' },
 ];
 
 describe('T-1505c · the far side is terminal', () => {

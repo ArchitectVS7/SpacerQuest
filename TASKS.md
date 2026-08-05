@@ -3585,7 +3585,27 @@ including one test asserting the armed-die-survives-a-free-action behaviour. NO 
 UI is outside `rulesFingerprint` and this task touches no engine or sim file — if the diff
 says otherwise, stop and re-read the task boundary. Gate green.
 
-### T-197 · Free the Hangout actions, add the social pool and the rounds cap, and close the milestone capstone — `status: TODO` · `coder: opus` · `after: T-196c`
+### T-197 · Free the Hangout actions, add the social pool and the rounds cap, and close the milestone capstone — `status: DONE` · `coder: opus` · `after: T-196c`
+
+**Delivered (2026-08-05):** All seven Hangout venue sub-actions (Dare-open, Meet, Befriend,
+Insult, Rumor, Borrow, Repay) shipped free of their die cost — the shared `spendDie` call at the
+venue-switch entry in `hangout.ts` is gone, with Peek untouched (its own spend still lives in
+`dare.ts` and remains the only Hangout-family die spend). The social pool (`SOCIAL_PLAYS_PER_DAY
+= 3`, content-authored, decremented by Meet/Befriend/Insult on resolve regardless of outcome,
+reset at dawn through the existing `day.ts` chokepoint) and the Liar's Dice rounds-per-day cap
+(read from `liarsDiceTier` at hand-open, incrementing at open per the ruled semantics) both
+landed with typed refusals (`social-limit-reached`, `daily-round-limit`) rather than silent
+dead buttons, each covered by tests that drive the cap to its limit. The save shape bumped
+`CURRENT_SAVE_VERSION` 13 → 14 with a migration that calls the dawn-reset rule and a round-trip
+test. `protocol.ts`/`index.ts` legalActions and policy planners, and the UI Hangout panel
+(`App.tsx`/`store.ts`, plays-remaining visible), received the same free-action treatment as
+T-196b/T-196c. The capstone measurement re-pinned at all sites and produced the cumulative
+dawn-hand-arc table (t182 → t195 → t199 → t196a → t196b → t197) plus the Insult/social-pool farm
+check, written to `docs/balance/baseline-t197-hangout-caps.json`, feeding directly into T-198's
+brief. **Deliberate scope boundary:** the exact Liar's Dice rounds-per-tier numbers were
+confirmed with the owner rather than silently locked from the spec's starting-suggestion table,
+per the task's explicit instruction; no other scope was deferred.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; `NOGRAPH`) · attempts=1/4.
 
 Per `docs/DAWN-HAND-REDESIGN.md` §3-4 as amended at the 2026-08-04 review pass. ALL SEVEN of
 Hangout's venue sub-actions lose their die cost — Dare-open, Meet, Befriend, Insult, Rumor,

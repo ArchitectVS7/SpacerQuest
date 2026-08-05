@@ -220,7 +220,6 @@ describe('T-1703 · the two reachable locks (demo-locked)', () => {
       const { events } = applyPlayerAction(state, {
         type: 'VisitHangout',
         venue,
-        spendDie: firstUnspent(state),
       });
       expect(blocked(events)).toEqual([]);
     }
@@ -249,7 +248,7 @@ describe('T-1703 · the day ceiling (demo-ended)', () => {
         type: 'Storylet',
       },
       { action: { type: 'Explore', spendDie: die }, type: 'Explore' },
-      { action: { type: 'VisitHangout', venue: 'rumor', spendDie: die }, type: 'VisitHangout' },
+      { action: { type: 'VisitHangout', venue: 'rumor' }, type: 'VisitHangout' },
       {
         action: { type: 'Port', action: 'buy', systemId: 1 },
         type: 'Port',

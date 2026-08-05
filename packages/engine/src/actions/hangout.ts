@@ -15,12 +15,14 @@ import { GameEvent, GameState, NpcState, PlayerAction } from '../types.js';
  *  'borrow'/'repay', which report a LoanEvent instead). */
 type HangoutVenue = 'dare' | 'meet' | 'befriend' | 'insult' | 'rumor';
 import { SeededRng } from '../rng.js';
-import { check, spendDie } from '../dice.js';
+import { check } from '../dice.js';
 import { applyDisposition } from '../npc.js';
 import { cloneState } from '../clone.js';
 import {
+  isSocialPoolVenue,
   loanBandFor,
   npcGuile,
+  socialPlaysRemaining,
   venueOffered,
   venueParamsFor,
   wagerBandFor,
@@ -30,6 +32,7 @@ import {
   dicePerSideForTier,
   effectiveWagerBand,
   liarsDiceOpponentFor,
+  liarsDiceRoundsPerDay,
   liarsDiceTier,
   maxQuantityForDice,
   readTheTableLine,
@@ -108,7 +111,7 @@ export function hangoutRumors(state: GameState): string[] {
 }
 
 /**
- * T-1303 · Visit the Spacers Hangout (PRD §7). The player's die-costed scene at a
+ * T-1303 · Visit the Spacers Hangout (PRD §7). The player's scene at a
  * `hasHangout` system: a wagered opposed-GUILE **Spacer's Dare**, three social
  * beats (meet / befriend / insult) that move a co-located NPC's disposition
  * (feeding T-1204's live interception + tribute-DC readers), and the rumor host
@@ -129,9 +132,28 @@ export function hangoutRumors(state: GameState): string[] {
  * `loanBandFor` for the principal band (T-133 / owner ruling D7), `venueParamsFor`
  * for the DCs and disposition deltas, `venueOffered` for whether the house runs
  * the beat at all. THE RULES DID NOT MOVE: the opposed-GUILE
- * resolution, the clamp algebra, `applyDisposition`, `spendDie` and the loan ledger
+ * resolution, the clamp algebra, `applyDisposition` and the loan ledger
  * are all still here, identical, and there is NO port-specific branch anywhere in
  * this file. A port is an instance; this is the rule that reads it.
+ *
+ * T-197 · ALL SEVEN VENUES ARE FREE ACTIONS (`docs/DAWN-HAND-REDESIGN.md` §3 as
+ * amended 2026-08-04). This resolver no longer touches the dawn hand AT ALL —
+ * there is no `spendDie` on the action, no die validation and no spend. Two daily
+ * allowances replaced it, both enforced in this file and both on the save:
+ *
+ *   §4a · THE SOCIAL POOL — `SOCIAL_PLAYS_PER_DAY` plays shared by `meet`,
+ *         `befriend` and `insult`, decremented ON RESOLUTION whatever the outcome,
+ *         refusing with a typed `social-limit-reached` when spent out.
+ *   §4b · THE ROUNDS CAP — how many Liar's Dice hands may be OPENED in a day,
+ *         scaling with `liarsDiceTier`, refusing with a typed `daily-round-limit`.
+ *
+ * `rumor` (read-only), `borrow` and `repay` (single-loan slot + credits) draw from
+ * NEITHER: they already had a real bound, which is the whole §3 test. Both caps
+ * reset at dawn through `resetDailyHangoutCaps` at `day.ts`'s existing chokepoint.
+ *
+ * PEEK IS UNTOUCHED AND STILL COSTS A DIE. It is the one real check inside an open
+ * hand and stayed a Main Action by ruling; its spend lives entirely in
+ * `actions/dare.ts` and is now the only Hangout-family die spend in the engine.
  */
 export function resolveVisitHangout(
   state: GameState,
@@ -145,41 +167,43 @@ export function resolveVisitHangout(
   // Resolved ONCE, from live state — never a literal, never a branch.
   const systemId = nextState.player.currentSystemId;
 
-  // --- Die validation (malformed input → typed fail, NO die spent) ----------
-  // Same three-way split as resolveExploration: a type-valid action can still
-  // name no die / an out-of-range die / an already-burned die. None of those
-  // spend anything. T-1304: the two lending venues report the SAME three
-  // malformed-die fails as a LoanEvent (their reader is the Penny Wise pane, not
-  // the Hangout social pane), so `failVenue` picks the right typed event.
+  // --- T-197 · THERE IS NO DIE VALIDATION HERE ANY MORE ---------------------
+  // All SEVEN venues are FREE ACTIONS (docs/DAWN-HAND-REDESIGN.md §3 as amended
+  // 2026-08-04): dare-open, meet, befriend, insult, rumor, borrow and repay cost
+  // no dawn die. The three malformed-die refusals that stood here — `no-die`,
+  // `invalid-die-index`, `die-already-spent` — are gone with the spend they
+  // guarded, and so is the `spendDie` field on the action shape (types.ts and
+  // schema.ts, in this same commit, so a stale caller's field is STRIPPED by zod
+  // rather than accepted and ignored).
+  //
+  // THE THREE REASONS SURVIVE IN `HangoutFailReason`, and that is deliberate:
+  // `actions/dare.ts`'s PEEK still raises all three. Peek is the one real check
+  // inside an open hand and stayed a Main Action by ruling (§3), so it — and NOT
+  // this file — is now the only Hangout-family die spend in the engine.
+  //
+  // WHAT REPLACED THE DIE: two daily allowances, both enforced below and both on
+  // the save — the SOCIAL POOL for meet/befriend/insult (§4a) and the LIAR'S DICE
+  // ROUNDS CAP for the dare open (§4b). Rumor, borrow and repay needed neither:
+  // rumor is read-only, and the lending pair is bounded by the single-active-loan
+  // slot and by credits.
+  //
+  // T-1304: the two lending venues report their refusal as a LoanEvent (their
+  // reader is the Penny Wise pane, not the Hangout social pane), so `failVenue`
+  // still picks the right typed event — it simply has one reason left to pick for.
   const isLending = action.venue === 'borrow' || action.venue === 'repay';
-  const failVenue = (
-    failReason: 'no-die' | 'invalid-die-index' | 'die-already-spent' | 'venue-not-offered',
-  ): GameEvent =>
+  const failVenue = (failReason: 'venue-not-offered'): GameEvent =>
     isLending
       ? { type: 'LoanEvent', day, kind: 'failed', failReason }
       : { type: 'HangoutEvent', day, venue: action.venue as HangoutVenue, failReason };
 
-  if (action.spendDie === undefined) {
-    events.push(failVenue('no-die'));
-    return { state: nextState, events };
-  }
-  const hand = nextState.player.dawnHand;
-  const index = action.spendDie;
-  if (!hand || index < 0 || index >= hand.dice.length) {
-    events.push(failVenue('invalid-die-index'));
-    return { state: nextState, events };
-  }
-  if (hand.spent[index]) {
-    events.push(failVenue('die-already-spent'));
-    return { state: nextState, events };
-  }
-
   // --- The port must actually run this venue (T-120, HANGOUT_REDESIGN §2.6) ---
   // ONE rule, evaluated the same way at every port — not a per-port branch. A
   // garrison mess with no credit desk omits 'borrow'/'repay'; a card room that will
-  // not seat a stranger omits 'meet'. Refused BEFORE spendDie, like every other
-  // typed refusal, so nothing is charged for an act the house never offered, and
-  // routed through `failVenue` so the lending pair still reports a LoanEvent.
+  // not seat a stranger omits 'meet'. Refused before ANYTHING is mutated, like
+  // every other typed refusal, so nothing is charged for an act the house never
+  // offered — T-197 · which now means the social pool and the rounds counter,
+  // not a die — and routed through `failVenue` so the lending pair still reports
+  // a LoanEvent.
   if (!venueOffered(systemId, action.venue)) {
     events.push(failVenue('venue-not-offered'));
     return { state: nextState, events };
@@ -187,9 +211,11 @@ export function resolveVisitHangout(
 
   // --- GATE 2 (T-135, LIARS-DICE §9.3): one hand at a time ------------------
   // A `VisitHangout{venue:'dare'}` while a hand is already open is a typed refusal
-  // with NO die spent — which is why it sits here, with the other pre-spend
-  // refusals, and not inside the switch (the die is burned a few lines below, for
-  // every venue). `day.ts`'s gate 1 already refuses this with an ActionBlocked;
+  // that costs NOTHING — which is why it sits here, with the other pre-resolution
+  // refusals, and above §4b's rounds counter a few lines below. T-197: it used to
+  // sit above the shared die spend for exactly this reason; the resource it must
+  // stay above changed, the ordering argument did not.
+  // `day.ts`'s gate 1 already refuses this with an ActionBlocked;
   // this is the RESOLVER'S OWN defence, so its never-throws contract is
   // self-contained rather than dependent on its caller. NOT routed through
   // `failVenue`: that helper also serves the two LENDING venues, whose LoanEvent
@@ -203,8 +229,8 @@ export function resolveVisitHangout(
   // The load-bearing "an NPC actually present in-system" guarantee: the dealer /
   // target must be an NPC whose SIMULATED position (currentSystemId, moved by the
   // NPC sim each dusk) is the player's current system. A named opponent who has
-  // wandered off is a typed fail, NOT a crash and NOT a die burned (malformed
-  // targeting, like naming a die that isn't in the hand).
+  // wandered off is a typed fail, NOT a crash and NOT a charge of any kind
+  // (T-197: a refusal spends no social play, exactly as it used to spend no die).
   // T-1304: 'borrow'/'repay' are opponent-less like 'rumor' — Penny Wise is the
   // lender-of-record (the desk), not a co-located NPC, so the §7.5 "quiet word
   // with Penny Wise" bad-day out is reliably available at any Hangout.
@@ -252,10 +278,11 @@ export function resolveVisitHangout(
     }
   }
 
-  // --- T-145 · THE BROKE REFUSAL (§7.4): typed fail, NO die spent ------------
+  // --- T-145 · THE BROKE REFUSAL (§7.4): typed fail, NOTHING SPENT -----------
   // A roster opponent whose LIVE purse has fallen to zero will not sit. Placed
-  // here, with the other pre-`spendDie` refusals, because a refusal must never
-  // burn a dawn die — the invariant every existing refusal in this function keeps.
+  // here, with the other pre-resolution refusals, because a refusal must never
+  // charge anything — the invariant every existing refusal in this function keeps,
+  // and which T-197 carried over from the dawn die to the two daily caps.
   //
   // THEY DO NOT REGENERATE, EVER, and that is safe. The theorem, written here
   // because a future reader who finds a broke-opponent refusal with no
@@ -288,11 +315,13 @@ export function resolveVisitHangout(
     return { state: nextState, events };
   }
 
-  // --- Lending preconditions (T-1304): typed fail, NO die spent -------------
+  // --- Lending preconditions (T-1304): typed fail, NOTHING SPENT ------------
   // A lending rule that refuses the action (already borrowing / nothing to
   // repay / nothing payable) is a typed LoanEvent fail that spends NOTHING —
-  // mirroring the malformed-die fails above and the debt-as-ledger law: a loan
-  // can only ever ADD an out, never burn a resource on a no-op.
+  // mirroring every refusal above and the debt-as-ledger law: a loan
+  // can only ever ADD an out, never burn a resource on a no-op. T-197 · the
+  // lending pair draws from NEITHER cap: the single-active-loan slot and the
+  // player's own credits were always its real bounds (§3).
   let repayPaid = 0;
   if (action.venue === 'borrow' && nextState.player.loan) {
     events.push({ type: 'LoanEvent', day, kind: 'failed', failReason: 'already-has-loan' });
@@ -315,9 +344,41 @@ export function resolveVisitHangout(
     }
   }
 
-  // The attempt commits — spend the die.
-  const { die } = spendDie(hand, index);
-  hand.spent[index] = true;
+  // --- T-197 · THE SOCIAL POOL (§4a), EXACTLY WHERE THE DIE SPEND STOOD ------
+  // The symmetry is deliberate and worth stating: this is the same place in the
+  // resolution order the shared `spendDie` occupied — after every typed
+  // pre-resolution refusal, before the switch that commits. What changed is WHICH
+  // resource is charged and WHICH venues it is charged for.
+  //
+  // THREE VENUES DRAW FROM IT: meet, befriend and insult — the three disposition
+  // movers with no other bound (owner ruling 2026-08-04, superseding the
+  // per-NPC-per-day draft). Rumor is read-only, the lending pair is
+  // ledger-bounded, and the dare open has §4b's rounds cap instead; none of the
+  // four reach this block.
+  //
+  // "SPENT ON RESOLUTION, WHATEVER THE OUTCOME" HOLDS BY CONSTRUCTION, not by
+  // care: every one of the three switch arms below runs to completion once
+  // entered — there is no further refusal, no early return and no throw past this
+  // point — so a FAILED Befriend d20 spends the play exactly as a successful one
+  // does. That is §4a's accounting rule, and the reason it is stated here is that
+  // adding a fourth early return inside one of those arms would quietly break it.
+  //
+  // NOT ROUTED THROUGH `failVenue`, for the same reason `dare-hand-open` above is
+  // not: that helper also serves the two LENDING venues, whose LoanEvent carries
+  // its own reason union, and `social-limit-reached` is not one of them.
+  if (isSocialPoolVenue(action.venue)) {
+    if (socialPlaysRemaining(nextState) <= 0) {
+      events.push({
+        type: 'HangoutEvent',
+        day,
+        venue: action.venue as HangoutVenue,
+        opponentId: action.opponentId,
+        failReason: 'social-limit-reached',
+      });
+      return { state: nextState, events };
+    }
+    nextState.player.socialPlaysRemaining -= 1;
+  }
 
   const playerGuile = nextState.player.stats[Stat.GUILE];
 
@@ -349,6 +410,37 @@ export function resolveVisitHangout(
       // A save/reload, a content edit, or a settlement that crosses a threshold
       // mid-scene therefore cannot move the rules of a hand already in progress.
       const tier = liarsDiceTier(nextState.player.liarsDiceGamesPlayed);
+
+      // --- T-197 · THE ROUNDS-PER-DAY CAP (docs/DAWN-HAND-REDESIGN.md §4b) -----
+      // Owner: "clamp liars dice at X number of rounds, scaling with a player's
+      // rank in liars dice (rewarding good play)." It reuses the tier frozen ONE
+      // LINE ABOVE rather than inventing a second progression variable or adding
+      // a second `liarsDiceTier` read — §4b says so explicitly, and the file
+      // header's "a third call site is a bug" ruling is what makes it load-bearing.
+      //
+      // PLACED BEFORE ANY MUTATION AND BEFORE ANY RNG DRAW. The dice are drawn
+      // below and the escrow is debited after them, so a refused open leaves the
+      // day's rng stream byte-identical to a day on which the player never tried —
+      // which is what keeps a refusal from moving every downstream number in the
+      // campaign.
+      //
+      // COUNTED AT OPEN, NOT AT SETTLEMENT (ruled 2026-08-04). A hand persists
+      // across save/reload and can straddle dusk, so a settlement-counted round
+      // would let a hand opened before dusk dodge the dawn reset entirely. §4b's
+      // "a round is one settled hand" defines the round's UNIT; the open is when
+      // the day's allowance is spent. A fold still settles the hand, so an
+      // open-and-fold burns the round — the cap cannot be laundered through folds.
+      if (nextState.player.dareRoundsToday >= liarsDiceRoundsPerDay(tier)) {
+        events.push({
+          type: 'HangoutEvent',
+          day,
+          venue: 'dare',
+          opponentId: counterparty.dealerId,
+          failReason: 'daily-round-limit',
+        });
+        return { state: nextState, events };
+      }
+      nextState.player.dareRoundsToday += 1;
 
       // The clamp algebra, CHARACTER FOR CHARACTER as before (§3): the requested
       // stake, clamped into the PORT'S band and DOWN to what both sides can cover
@@ -526,9 +618,22 @@ export function resolveVisitHangout(
       // a house that is hard to charm says so with a number, not a rule. No
       // actionContext: a context-less player GUILE check classifies to the wire's
       // 'talk' bucket (wire.ts classifyCheck), not the gamble bucket.
+      //
+      // T-197 · THE ROLL IS AN INTERNAL d20 NOW (§5's blocker, RESOLVED by owner
+      // ruling 2026-08-04 as option 1). Befriend is a Free Action, so there is no
+      // spent die to BE the roll — it draws its own d20 from the action's rng
+      // instead. The `check()` call, the `StatCheck` event and every port's
+      // authored `befriend.dc` stay live and unchanged; what the ruling gave up,
+      // knowingly, is the player's ability to AIM a chosen die at this check.
+      // The two shapes not chosen are logged in §5: keep Befriend a Main Action,
+      // or drop the check entirely.
+      //
+      // THE PLAY IS ALREADY SPENT by the time this line runs, and a failure does
+      // not refund it (§4a's accounting) — which is exactly why the pool, and not
+      // the outcome, is what bounds the grind.
       const dealerNpc = dealer!;
       const befriendParams = venueParamsFor(systemId, 'befriend');
-      const result = check(die, playerGuile, befriendParams.dc);
+      const result = check(rng.d20(), playerGuile, befriendParams.dc);
       events.push({
         type: 'StatCheck',
         actor: 'Player',

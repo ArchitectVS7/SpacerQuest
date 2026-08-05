@@ -31,6 +31,7 @@ import {
   syncMaxFuel,
 } from './economy.js';
 import { advanceEraSchedule } from './era.js';
+import { resetDailyHangoutCaps } from './hangoutRules.js';
 import { resolveTrade } from './actions/trade.js';
 import { resolveTravel } from './actions/travel.js';
 import {
@@ -1486,6 +1487,14 @@ export function endDay(
   nextState.rngState = dayRng.getState();
   nextState.dayPhase = DayPhase.DAWN;
   nextState.dayEventCount = 0;
+  // T-197 · THE DAWN RESET FOR BOTH HANGOUT CAPS
+  // (docs/DAWN-HAND-REDESIGN.md §4a/§4b), at the EXISTING chokepoint beside
+  // `dayEventCount` rather than in a second reset of its own. `startDay` must NOT
+  // acquire a matching write: two reset sites for one daily allowance is exactly
+  // how a mid-day reload or a re-entered dawn silently refills a cap. The values
+  // come from the rule (`resetDailyHangoutCaps`), which `MIGRATIONS[15]` and
+  // `createInitialState` also read, so the three cannot drift.
+  resetDailyHangoutCaps(nextState.player);
   events.push({ type: 'DayAdvanced', day: nextDay });
   appendEvents(nextState, events);
 

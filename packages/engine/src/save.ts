@@ -7,7 +7,7 @@ import { computePlayerTier } from './tier.js';
 import { seedNpcShip } from './npc.js';
 import { JOB_POOL_MAX_CLAIMS } from './economy.js';
 import { dicePerSideForTier, maxQuantityForDice, seedLiarsDicePurses } from './liarsDiceRules.js';
-import { wagerBandFor } from './hangoutRules.js';
+import { freshDailyHangoutCaps, wagerBandFor } from './hangoutRules.js';
 
 // T-1401 · The v5→v6 WireEntry.kind migration's ONE legitimate, retro-only use of
 // the flaw-detail suffix heuristic. A v5 save's WireEntry events predate the typed
@@ -234,6 +234,36 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * the same reason: it is a plain-data root field on a module that JSON round-trips
  * everything except `eventLog` and `npcs`. A hand-written clone clause would be the
  * aliasing bug that module's header warns about.
+ *
+ * T-197 bumped {@link CURRENT_SAVE_VERSION} to 16. The v15->v16 change is an
+ * additive TWO-KEY player backfill, and it exists because
+ * `docs/DAWN-HAND-REDESIGN.md` §4a/§4b replaced the Hangout's die cost with two
+ * DAILY ALLOWANCES that must survive a mid-day save/load:
+ *
+ *   1. `player.socialPlaysRemaining` — free `meet`/`befriend`/`insult` plays left
+ *      today (§4a's social pool)
+ *   2. `player.dareRoundsToday` — Liar's Dice hands OPENED today (§4b's rounds
+ *      cap, counted at open)
+ *
+ * BOTH ARE STATEMENTS OF FACT ABOUT A v15 SAVE, NOT DEFAULTS — `MIGRATIONS[12]`,
+ * `[13]` and `[14]`'s wording, and for the same reason: a v15 save was written by
+ * an engine in which neither cap existed, so "no social plays have been spent
+ * today" and "no hands have been opened today" are TRUE of that save rather than
+ * values this migration is picking. A captain reloading such a save gets a full
+ * day's allowance because they demonstrably spent none of it.
+ *
+ * AND THE HOUSE RULE BITES AGAIN: unlike [12] and [13] the values are NOT literals,
+ * so there IS a rule to call, and it is called — `freshDailyHangoutCaps`
+ * (`hangoutRules.ts`), the SAME rule `createInitialState`, `deserializeState` and
+ * `day.ts`'s dawn reset read. `SOCIAL_PLAYS_PER_DAY` is a CONTENT constant, so a
+ * later tuning pass moves one content number and this migration follows it with no
+ * further version bump. That is the `emptyDeedRegistry` / `seedLiarsDicePurses`
+ * pattern by name.
+ *
+ * `cloneState` needs no change (two plain numbers on the player, JSON round-tripped
+ * for free) and neither does `dareHand`: the rounds counter deliberately lives on
+ * the PLAYER, not on the hand, because it counts opens across a whole day and a
+ * hand is a single scene.
  *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
@@ -504,9 +534,32 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
       dareHand,
     };
   },
+  // v15->v16: T-197 freed all seven Hangout venues and replaced the die with two
+  // DAILY ALLOWANCES that live on the player (docs/DAWN-HAND-REDESIGN.md §4a/§4b).
+  // A v15 save has neither key. See the registry header for why both backfills are
+  // statements of fact about such a save rather than defaults, and why the values
+  // come from `freshDailyHangoutCaps` rather than from two literals here.
+  // Idempotent: a state that already carries a key keeps it EXACTLY — a captain who
+  // saved mid-day with one social play left reloads with one, not with three.
+  15: (v15State) => {
+    const s = v15State as { player?: Record<string, unknown> };
+    const player = s.player ?? {};
+    const fresh = freshDailyHangoutCaps();
+    return {
+      ...(v15State as object),
+      player: {
+        ...player,
+        socialPlaysRemaining:
+          (player as { socialPlaysRemaining?: unknown }).socialPlaysRemaining ??
+          fresh.socialPlaysRemaining,
+        dareRoundsToday:
+          (player as { dareRoundsToday?: unknown }).dareRoundsToday ?? fresh.dareRoundsToday,
+      },
+    };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 15;
+export const CURRENT_SAVE_VERSION = 16;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

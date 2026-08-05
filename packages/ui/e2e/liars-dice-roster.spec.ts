@@ -91,8 +91,7 @@ test('play a hand against a roster opponent end to end, with their lines', async
   await page.getByTestId('dare-wager').fill(String(DARE_MIN_WAGER));
   // The commit button must ENABLE for a roster selection: `chosen` accepts a
   // non-broke roster id, which is the difference between the section rendering
-  // and the section working.
-  await page.getByTestId('die').nth(0).click();
+  // and the section working. T-197 · no die is armed — the open is free (§3).
   await expect(page.getByTestId('dare-commit')).toBeEnabled();
   await page.getByTestId('dare-commit').click();
 
@@ -134,13 +133,15 @@ test('play a hand against a roster opponent end to end, with their lines', async
     playerWon ? seat.lines.lose : seat.lines.win,
   );
 
-  // The purse moved and the cockpit says so, and the whole hand cost exactly one
-  // dawn die — the roster changes none of the shipped economics.
+  // The purse moved and the cockpit says so, and the whole hand cost NO dawn die —
+  // T-197 inverted this from "exactly one" when the open became a Free Action
+  // (docs/DAWN-HAND-REDESIGN.md §3). The roster still changes none of the shipped
+  // economics; the economics themselves moved.
   await expect(page.getByTestId('credits')).not.toHaveText(creditsBefore ?? '');
   const spent = await page
     .getByTestId('die')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-spent')));
-  expect(spent.filter((s) => s === '1').length).toBe(1);
+  expect(spent.filter((s) => s === '1').length).toBe(0);
 
   // A roster hand moves NO disposition (§7.6) — a zero rendered as an honest zero.
   await expect(page.getByTestId('dare-disposition-delta')).toHaveAttribute('data-delta', '0');
@@ -159,11 +160,21 @@ test('a beaten seat is marked, and a rematch is still offered', async ({ page })
   let beaten = false;
   for (let attempt = 0; attempt < 4 && !beaten; attempt += 1) {
     if ((await rosterRow(page, seat.id).getAttribute('data-broke')) === 'true') break;
+    // T-197 · EACH ATTEMPT IS A NEW DAY (docs/DAWN-HAND-REDESIGN.md §4b). A
+    // tier-0 captain may OPEN one hand a day, so a search that plays several hands
+    // has to roll the day over between them — through the real end-day button, the
+    // way a player would. The commit control tells you so before you click it,
+    // which is asserted directly below.
+    if (attempt > 0) {
+      await expect(page.getByTestId('dare-commit')).toBeDisabled();
+      await page.getByTestId('end-day').click();
+      await expect(page.getByTestId('hangout-toggle')).toBeVisible();
+      await page.getByTestId('hangout-toggle').click();
+      await expect(page.getByTestId('hangout-panel')).toBeVisible();
+    }
     await rosterRow(page, seat.id).click();
     await page.getByTestId('dare-wager').fill(String(DARE_MIN_WAGER));
-    const die = page.getByTestId('die').nth(attempt);
-    if ((await die.getAttribute('data-spent')) === '1') break;
-    await die.click();
+    await expect(page.getByTestId('dare-commit')).toBeEnabled();
     await page.getByTestId('dare-commit').click();
     await expect(page.getByTestId('dare-scene')).toBeVisible();
     await page.getByTestId('dare-quantity').fill('2');

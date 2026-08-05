@@ -444,7 +444,7 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     expect(() => loadSave(createSave(state, 14))).toThrow(SaveError);
   });
 
-  it('CURRENT_SAVE_VERSION is 14', () => {
+  it('CURRENT_SAVE_VERSION is 16', () => {
     // T-1401 bumped 5 → 6 (WireEntry.kind); T-1503 bumped 6 → 7 for the required
     // nested PlayerState.reputation container; T-1603b bumped 7 → 8 to re-derive
     // `registry.renownRank` + `player.tier` after the canonical
@@ -487,7 +487,20 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     // the first one in a while whose value is NOT a literal, so it CALLS a rule
     // (`seedLiarsDicePurses`) rather than restating one, the MIGRATIONS[11] /
     // `emptyDeedRegistry` pattern by name. This pin moved WITH an intended bump.
-    expect(CURRENT_SAVE_VERSION).toBe(15);
+    //
+    // T-197 bumped 15 → 16 for the two DAILY HANGOUT CAPS that replaced the
+    // Hangout's die cost (docs/DAWN-HAND-REDESIGN.md §4a/§4b, owner-ruled
+    // 2026-08-04): `player.socialPlaysRemaining` (the social pool shared by
+    // meet/befriend/insult) and `player.dareRoundsToday` (Liar's Dice hands opened
+    // today, counted AT OPEN). Both must survive a MID-DAY save/load — that is the
+    // whole reason they are on the save rather than in memory — which is what
+    // makes this a save-shape change owing a migration and a round-trip test. The
+    // backfills are statements of fact about a v15 save (an engine with no cap
+    // spent no plays and opened no capped rounds), and neither value is a literal,
+    // so `MIGRATIONS[15]` CALLS `freshDailyHangoutCaps` rather than restating it —
+    // the `seedLiarsDicePurses` precedent one paragraph up. This pin moved WITH an
+    // intended bump; it is a version pin, not a threshold.
+    expect(CURRENT_SAVE_VERSION).toBe(16);
   });
 });
 
@@ -1092,9 +1105,10 @@ describe('save envelope — the full Nemesis file round-trips with no migration 
     // per-system job pool, N11 11 → 12 for `NpcState.registry` and T-111 12 → 13
     // for `PlayerState.recovery` and T-135 13 → 14 for the root-level
     // `GameState.dareHand` and T-145 14 → 15 for the fixed Liar's Dice roster's
-    // persisted state, so this pins the CURRENT version rather than
+    // persisted state and T-197 15 → 16 for the two daily Hangout caps, so this
+    // pins the CURRENT version rather than
     // claiming the fragment file caused it.)
-    expect(CURRENT_SAVE_VERSION).toBe(15);
+    expect(CURRENT_SAVE_VERSION).toBe(16);
   });
 
   it('strict schema still rejects an unknown fragment source (drift protection covers it)', () => {
@@ -1142,9 +1156,10 @@ describe('save envelope — an ended career round-trips with no migration (T-150
     // N1 9 → 10 for `NpcState.ship`, N10 10 → 11 for the per-system job pool,
     // N11 11 → 12 for `NpcState.registry`, T-111 12 → 13 for
     // `PlayerState.recovery`, T-135 13 → 14 for `GameState.dareHand` and T-145
-    // 14 → 15 for the fixed Liar's Dice roster's persisted state; this
+    // 14 → 15 for the fixed Liar's Dice roster's persisted state and T-197
+    // 15 → 16 for the two daily Hangout caps; this
     // pins the CURRENT version.)
-    expect(CURRENT_SAVE_VERSION).toBe(15);
+    expect(CURRENT_SAVE_VERSION).toBe(16);
   });
 
   it('strict schema still rejects an unknown ActionBlocked reason (drift protection)', () => {
@@ -1364,9 +1379,10 @@ describe('save envelope — v12 → v13 recovery migration (T-111)', () => {
 // ---------------------------------------------------------------------------
 describe('save envelope — the explore-module fields round-trip with no migration (T-112)', () => {
   it('CURRENT_SAVE_VERSION is STILL the current one — a pure addition owes no bump', () => {
-    // Moved 14 → 15 by T-145's roster migration, which is an intended bump owed by
-    // a real save-shape change — not by this task's pure field addition.
-    expect(CURRENT_SAVE_VERSION).toBe(15);
+    // Moved 14 → 15 by T-145's roster migration and 15 → 16 by T-197's two daily
+    // Hangout caps, both intended bumps owed by a real save-shape change — not by
+    // this task's pure field addition.
+    expect(CURRENT_SAVE_VERSION).toBe(16);
   });
 
   it('round-trips a fitted module and a bonus tank through createSave → loadSave', () => {
@@ -1410,5 +1426,88 @@ describe('save envelope — the explore-module fields round-trip with no migrati
     const state = drive50Days(74);
     (state.player.ship as unknown as Record<string, unknown>).exploreModulez = ['typo'];
     expect(() => loadSave(createSave(state, 74))).toThrow(SaveError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-197 · v15 -> v16 · THE TWO DAILY HANGOUT CAPS
+// (`docs/DAWN-HAND-REDESIGN.md` §4a/§4b)
+//
+// The save-shape obligation the standing constraints attach to a version bump:
+// a migration that CALLS the rule rather than restating it, and a round-trip test
+// that proves the thing the fields exist for — that a MID-DAY save/load cannot
+// refill an allowance the captain has already spent.
+// ---------------------------------------------------------------------------
+describe('save envelope — v15 → v16 daily Hangout caps migration (T-197)', () => {
+  /** A v15 save: a real state with the two new player keys stripped, exactly as an
+   *  engine that predates T-197 would have written it. */
+  function v15Envelope(seed = 4): string {
+    const state = JSON.parse(serializeState(drive50Days(seed))) as {
+      player: Record<string, unknown>;
+    };
+    delete state.player.socialPlaysRemaining;
+    delete state.player.dareRoundsToday;
+    return JSON.stringify({ version: 15, state });
+  }
+
+  it('backfills both keys through the ENGINE’s own dawn rule, not through literals', () => {
+    const loaded = loadSave(v15Envelope()).state;
+    // The values a fresh day carries, read from the rule rather than from a
+    // literal here — so a content retune of `SOCIAL_PLAYS_PER_DAY` moves the
+    // migration and this assertion together, with no further version bump.
+    const fresh = createInitialState(1);
+    expect(loaded.player.socialPlaysRemaining).toBe(fresh.player.socialPlaysRemaining);
+    expect(loaded.player.dareRoundsToday).toBe(0);
+  });
+
+  it('is IDEMPOTENT — a state that already carries the keys keeps them EXACTLY', () => {
+    // The clause that matters most: a captain who saved with one play left must
+    // NOT reload with a full pool. That is the whole reason these live on the save.
+    const state = JSON.parse(serializeState(drive50Days(4))) as {
+      player: Record<string, unknown>;
+    };
+    state.player.socialPlaysRemaining = 1;
+    state.player.dareRoundsToday = 2;
+    const migrated = migrate({ version: 15, state }) as {
+      player: { socialPlaysRemaining: number; dareRoundsToday: number };
+    };
+    expect(migrated.player.socialPlaysRemaining).toBe(1);
+    expect(migrated.player.dareRoundsToday).toBe(2);
+  });
+
+  it('a v15 save missing the keys still passes the STRICT schema after migration', () => {
+    // Without the backfill the strict `PlayerStateSchema` rejects the whole save —
+    // this is the assertion that would go red if the migration were forgotten.
+    expect(() => loadSave(v15Envelope(7))).not.toThrow();
+  });
+
+  it('THE ROUND TRIP: a MID-DAY save preserves both counters exactly', () => {
+    // The obligation stated plainly. Two plays spent and one round opened, through
+    // `createSave` → `loadSave`, at the current version with no migration involved.
+    const state = drive50Days(5);
+    state.player.socialPlaysRemaining = 1;
+    state.player.dareRoundsToday = 1;
+
+    const restored = loadSave(createSave(state, 5)).state;
+    expect(restored.player.socialPlaysRemaining).toBe(1);
+    expect(restored.player.dareRoundsToday).toBe(1);
+    // …and the counters survive `deserializeState` too — the OTHER loader path,
+    // the one that never runs `migrate`, and the half a save-compat backfill is
+    // most often forgotten on.
+    const direct = deserializeState(serializeState(state));
+    expect(direct.player.socialPlaysRemaining).toBe(1);
+    expect(direct.player.dareRoundsToday).toBe(1);
+  });
+
+  it('deserializeState backfills a key-less legacy state, matching the migration', () => {
+    const stripped = JSON.parse(serializeState(drive50Days(6))) as {
+      player: Record<string, unknown>;
+    };
+    delete stripped.player.socialPlaysRemaining;
+    delete stripped.player.dareRoundsToday;
+    const restored = deserializeState(JSON.stringify(stripped));
+    const fresh = createInitialState(1);
+    expect(restored.player.socialPlaysRemaining).toBe(fresh.player.socialPlaysRemaining);
+    expect(restored.player.dareRoundsToday).toBe(0);
   });
 });

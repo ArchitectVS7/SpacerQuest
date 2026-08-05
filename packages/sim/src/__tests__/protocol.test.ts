@@ -10,6 +10,9 @@ import {
   quoteShipyard,
   rollDawnHand,
   liarsDiceOpponentsAt,
+  // T-197 · the rounds cap, read from the engine so the test cannot restate the
+  // content table it is checking a mirror of.
+  liarsDiceRoundsRemaining,
   minOpeningQuantity,
   shipyardFailure,
   startDay,
@@ -176,7 +179,6 @@ function openDareHand(): GameState {
     venue: 'dare',
     opponentId: dealer.id,
     wager: 100,
-    spendDie: 0,
   }).state;
 }
 
@@ -510,12 +512,7 @@ describe('protocol deterministic replay', () => {
       // precisely so this refusal — and this parity assertion — stays reachable.
       state.player.currentSystemId = 15;
     });
-    expectBlocked(
-      session,
-      { type: 'VisitHangout', venue: 'rumor', spendDie: 0 },
-      'VisitHangout',
-      'no-hangout',
-    );
+    expectBlocked(session, { type: 'VisitHangout', venue: 'rumor' }, 'VisitHangout', 'no-hangout');
   });
 
   it('T-1604a · ActionBlocked parity — career-ended commits, spends no die', () => {
@@ -809,7 +806,17 @@ describe('legal-actions enumerator', () => {
     }
 
     // …and every MAIN action is gone with the hand.
-    for (const dieVerb of ['Travel', 'Explore', 'Combat', 'Reroll', 'Dare', 'VisitHangout']) {
+    //
+    // T-197 · `VisitHangout` LEFT THIS LIST, and its absence is the assertion:
+    // all seven venues are Free Actions now (docs/DAWN-HAND-REDESIGN.md §3), so
+    // the verb behaves like the nine above rather than like Travel — it stays
+    // advertised on an exhausted hand and carries no `spendDie` (both already
+    // covered by the two blanket assertions above this comment). `Dare` STAYS on
+    // this list: its `peek` move is still a Main Action and still needs a die.
+    // The fixture is not at a Hangout system anyway, which is why removing the
+    // entry does not change what this particular state advertises — the
+    // dedicated empty-hand Hangout test below is what actually exercises it.
+    for (const dieVerb of ['Travel', 'Explore', 'Combat', 'Reroll', 'Dare']) {
       expect(advertised).not.toContain(dieVerb);
     }
     expect(advertised).not.toContain('Trade/haggle');
@@ -1290,7 +1297,90 @@ describe('legal-actions enumerator', () => {
       expect(opponentParam.choices).toContain('ld-1-1');
     }
     expect(hangout?.params.venue.kind).toBe('enum');
-    expect(hangout?.params.spendDie.kind).toBe('die-index');
+    // T-197 · NO `spendDie` PARAM AT ALL — all seven venues are Free Actions
+    // (docs/DAWN-HAND-REDESIGN.md §3), so the enumerator advertises none. This
+    // assertion is inverted rather than deleted: it used to prove the spec carried
+    // a die domain, and it now proves it carries no die key whatsoever.
+    expect(Object.keys(hangout!.params)).not.toContain('spendDie');
+  });
+
+  // T-197 · THE EMPTY-HAND CASE FOR THE HANGOUT, the twin of T-196b's for the nine
+  // administrative verbs (docs/DAWN-HAND-REDESIGN.md §3). Die-actions vanish with
+  // the hand; Free Actions do not — a captain who has spent all five dice on jumps
+  // can still walk into a bar.
+  it('T-197 · still advertises VisitHangout with an EMPTY dawn hand, die-free', () => {
+    const state = createInitialState(1); // Sol-3 (hasHangout), Iron Vex co-located
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = { dice: [10, 10, 10, 10, 10], spent: [true, true, true, true, true] };
+
+    const legal = legalActions(state);
+    expect(legal.diceRemaining).toEqual([]);
+    const hangout = legal.actions.find((action) => action.type === 'VisitHangout');
+    expect(hangout).toBeDefined();
+    expect(Object.keys(hangout!.params)).not.toContain('spendDie');
+    // …and the whole venue domain is still there: nothing about an exhausted hand
+    // narrows it, only the two DAILY caps do (asserted in the two tests below).
+    const venues = hangout!.params.venue;
+    if (venues.kind === 'enum') {
+      expect(venues.choices).toEqual(
+        expect.arrayContaining(['dare', 'meet', 'befriend', 'insult', 'rumor', 'borrow']),
+      );
+    }
+  });
+
+  // T-197 · THE TWO DAILY CAPS ARE MIRRORED IN THE VENUE DOMAIN (§4a/§4b).
+  // Advertising a venue the engine answers with a typed refusal is exactly the
+  // drift the `venueOffered` mirror already exists to prevent, so the enumerator
+  // drops it — the same rule, read through the same engine accessors.
+  it('T-197 · drops the three SOCIAL venues once the day’s pool is spent out', () => {
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+
+    // Premise: with plays left, all three are advertised.
+    const withPlays = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    const before = withPlays!.params.venue;
+    expect(before.kind === 'enum' && before.choices).toEqual(
+      expect.arrayContaining(['meet', 'befriend', 'insult']),
+    );
+
+    state.player.socialPlaysRemaining = 0;
+    const spentOut = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    // The action itself SURVIVES — rumor, the lending desk and the dare are all
+    // outside the pool, so the visit is still legal; only the three social beats go.
+    expect(spentOut).toBeDefined();
+    const after = spentOut!.params.venue;
+    if (after.kind === 'enum') {
+      expect(after.choices).not.toContain('meet');
+      expect(after.choices).not.toContain('befriend');
+      expect(after.choices).not.toContain('insult');
+      expect(after.choices).toContain('dare');
+      expect(after.choices).toContain('rumor');
+    }
+  });
+
+  it('T-197 · drops `dare` once the day’s Liar’s Dice rounds are used up', () => {
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+
+    // Tier 0 (`liarsDiceGamesPlayed` 0) allows exactly one open per day, so one
+    // opened hand is the whole allowance. Read the cap from the ENGINE rather than
+    // restating the content table here.
+    expect(liarsDiceRoundsRemaining(state)).toBeGreaterThan(0);
+    state.player.dareRoundsToday = liarsDiceRoundsRemaining(state);
+    expect(liarsDiceRoundsRemaining(state)).toBe(0);
+
+    const capped = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    expect(capped).toBeDefined();
+    const venues = capped!.params.venue;
+    if (venues.kind === 'enum') {
+      expect(venues.choices).not.toContain('dare');
+      // …and the social beats and the desk are untouched: the two caps are
+      // independent, which is §4a/§4b's whole shape.
+      expect(venues.choices).toContain('meet');
+      expect(venues.choices).toContain('rumor');
+    }
   });
 
   it('T-1303 · does NOT advertise VisitHangout at a non-Hangout system', () => {

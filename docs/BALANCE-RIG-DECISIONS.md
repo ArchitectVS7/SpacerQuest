@@ -121,11 +121,13 @@ read at runtime, and therefore the authoritative one), amendment 1's own pointer
 `docs/NPC_REDESIGN.md`'s status banner, `docs/balance/smoke/README.md`'s "current
 baseline" line, and — added at T-182 — **this rule's own "current baseline of record"
 sentence below** — with the smoke fixture re-extracted FROM the new capstone file. The current
-baseline of record is `docs/balance/baseline-t196b-instruments.json` (8,000 rows, 8
-one-indexed shards, spreads harvested, `sweepLabel t196b-instruments`; re-pinned at T-196b
-2026-08-05 — the M17 arm-2 capstone, which taught the sim policies and the protocol
-enumerator to stop budgeting a die for those nine, moving `instrumentFingerprint` while
-leaving `rulesFingerprint` untouched. Before that: `baseline-t196a-free-actions.json` at
+baseline of record is `docs/balance/baseline-t197-hangout-caps.json` (8,000 rows, 8
+one-indexed shards, spreads harvested, `sweepLabel t197-hangout-caps`; re-pinned at T-197
+2026-08-05 — the M17 MILESTONE CLOSER, which freed all seven Hangout venues and replaced the
+die with the §4a social pool and the §4b rounds cap. It is the first capstone of the M17 arc
+to move BOTH hashes at once (rules 10e19c88e9a07856, instrument 5c230e99648cddee), so it is
+explicitly NOT a single-arm attribution the way the two before it were. Before that:
+`baseline-t196b-instruments.json` at T-196b, `baseline-t196a-free-actions.json` at
 T-196a, `baseline-t199-pacifist.json` at T-199, `baseline-t195-dawn-dice.json` at T-195, `baseline-t188-orbital-3d.json`
 at T-188, `baseline-t160-dealer-fix.json` at T-160, `baseline-t182-reroll-fix.json` at T-182,
 `baseline-n13-shipped.json` at T-156.)

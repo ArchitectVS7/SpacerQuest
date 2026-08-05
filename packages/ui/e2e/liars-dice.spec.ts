@@ -71,7 +71,9 @@ async function openHand(page: Page): Promise<void> {
   await expect(page.getByTestId('dare-wager-bounds')).toContainText(`WAGER ${DARE_MIN_WAGER}`);
   await npcRow(page, DEALER).click();
   await page.getByTestId('dare-wager').fill(String(DARE_MIN_WAGER));
-  await page.getByTestId('die').nth(0).click();
+  // T-197 · NO DIE IS ARMED to open a hand — the open is a Free Action
+  // (docs/DAWN-HAND-REDESIGN.md §3), bounded by the day's ROUNDS cap (§4b) rather
+  // than by the dawn hand. Peek, below, is what still costs a die.
   await expect(page.getByTestId('dare-commit')).toBeEnabled();
   await page.getByTestId('dare-commit').click();
   await expect(page.getByTestId('dare-scene')).toBeVisible();
@@ -174,12 +176,15 @@ test('play a full hand of Liar’s Dice end to end through the real UI', async (
   // The purse moved, and the cockpit says so.
   await expect(page.getByTestId('credits')).not.toHaveText(creditsBefore ?? '');
 
-  // §9.2 · THE DIE ECONOMY: a whole hand costs exactly ONE dawn die (the opening
-  // wager). Bids, raises, challenges and folds cost credits, never dice.
+  // §9.2 · THE DIE ECONOMY, AS T-197 LEFT IT: a whole hand played without a Peek
+  // costs ZERO dawn dice — INVERTED from "exactly one", because the opening wager
+  // is a Free Action now (docs/DAWN-HAND-REDESIGN.md §3). Bids, raises, challenges
+  // and folds still cost credits, never dice, exactly as before. The Peek — the one
+  // check inside the hand — still costs one, and its own test below asserts that.
   const spent = await page
     .getByTestId('die')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-spent')));
-  expect(spent.filter((s) => s === '1').length).toBe(1);
+  expect(spent.filter((s) => s === '1').length).toBe(0);
 
   // Leaving the table returns the pane to its idle controls — and unlocks it.
   await page.getByTestId('dare-leave').click();
@@ -261,12 +266,15 @@ test('a fold never reveals, and it costs the seed', async ({ page }) => {
   await expect(page.getByTestId('credits')).toHaveText('975');
 });
 
-test('the Peek spends a second die and shows exactly one of the house’s dice', async ({ page }) => {
+test('the Peek spends a die and shows exactly one of the house’s dice', async ({ page }) => {
   await openHand(page);
   await expectDealerHidden(page);
 
-  // The Peek is the ONLY move in the hand that costs a die (§9.2) and the only one
-  // that rolls (§8.4) — so it needs a second die armed, and the control says so.
+  // T-197 · The Peek is now the ONLY thing in the entire Hangout family that costs
+  // a die (§9.2, and docs/DAWN-HAND-REDESIGN.md §3 which kept it a Main Action) and
+  // the only move that rolls (§8.4) — so it needs a die armed, and the control says
+  // so. It used to need a SECOND die because the open took the first; the open is
+  // free now, so this is the first and only die the whole hand spends.
   await expect(move(page, 'peek')).toBeDisabled();
   await page.getByTestId('die').nth(1).click();
   await expect(move(page, 'peek')).toBeEnabled();
@@ -287,11 +295,12 @@ test('the Peek spends a second die and shows exactly one of the house’s dice',
     await expect(page.locator('[data-testid="dare-dealer-die"][data-peeked="1"]')).toHaveCount(1);
   }
 
-  // Two dice spent: the opening wager and the Peek. Nothing else costs one.
+  // T-197 · EXACTLY ONE die spent — the Peek's, and nothing else's. Inverted from
+  // "two: the opening wager and the Peek", because the wager no longer takes one.
   const spent = await page
     .getByTestId('die')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-spent')));
-  expect(spent.filter((s) => s === '1').length).toBe(2);
+  expect(spent.filter((s) => s === '1').length).toBe(1);
 
   // One Peek per hand — the window closes whether it hit or missed.
   await expect(move(page, 'peek')).toHaveCount(0);

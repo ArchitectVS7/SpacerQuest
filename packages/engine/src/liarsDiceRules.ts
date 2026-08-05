@@ -28,12 +28,13 @@ import {
   DARE_ANTE_BAND_FRACTION,
   LIARS_DICE_OPPONENTS,
   LIARS_DICE_RAISED_CEILING_MULT,
+  LIARS_DICE_ROUNDS_PER_DAY,
   LIARS_DICE_UNLOCK_GAMES,
   LiarsDiceMix,
   LiarsDiceOpponent,
 } from '@spacerquest/content';
 import { wagerBandFor } from './hangoutRules.js';
-import { DareBid, DareHandState, DareMoveKind } from './types.js';
+import { DareBid, DareHandState, DareMoveKind, GameState } from './types.js';
 
 // ---------------------------------------------------------------------------
 // §4 · The ante and the headroom
@@ -178,6 +179,17 @@ export const DARE_MAX_FACE = 6;
 // (`hand.maxQuantity`, `hand.dicePerSide`, `hand.bandMax`) — that ruling is what
 // collapses "every validation site must read the live tier" into a finite set of
 // constant-to-field substitutions.
+//
+// T-197 · THE RULING IS ABOUT HANDS, AND THIS IS THE AMENDMENT THAT SAYS SO.
+// `liarsDiceRoundsRemaining` (below) adds a third `liarsDiceTier` call, and it is
+// NOT the bug the paragraph above forbids — the forbidden third is a site that HAS
+// a hand and re-reads the live tier instead of the hand's frozen field. This one
+// has no hand and cannot: it answers "may another hand be OPENED today", a
+// question about the day whose only honest input is the live tier. The rule the
+// paragraph actually protects is unchanged and still true — `actions/hangout.ts`'s
+// open arm remains the ONE site that freezes a tier's effects onto a hand, and
+// §4b's rounds cap is evaluated THERE, from THAT read, rather than by calling this
+// accessor from inside the resolver.
 // ---------------------------------------------------------------------------
 
 /**
@@ -200,6 +212,48 @@ export function liarsDiceTier(gamesPlayed: number): 0 | 1 | 2 | 3 | 4 | 5 {
   if (Number.isNaN(gamesPlayed) || gamesPlayed <= 0) return 0;
   const rungs = LIARS_DICE_UNLOCK_GAMES.filter((threshold) => gamesPlayed >= threshold).length;
   return rungs as 0 | 1 | 2 | 3 | 4 | 5;
+}
+
+/**
+ * T-197 · HOW MANY HANDS A CAPTAIN AT `tier` MAY OPEN IN ONE DAY
+ * (`docs/DAWN-HAND-REDESIGN.md` §4b). A RULE READING CONTENT: the table is
+ * content's (`LIARS_DICE_ROUNDS_PER_DAY`), the read is the engine's, and there is
+ * no threshold literal here — exactly the `dicePerSideForTier` shape it is modelled
+ * on, one file down.
+ *
+ * TOTAL over garbage input, the same contract `liarsDiceTier` keeps and for the
+ * same reason: a corrupt or hand-edited save must produce a cap, never a `NaN` and
+ * never `undefined`. A non-integer, negative or over-long index clamps into the
+ * table's own ends rather than reading off it.
+ *
+ * THIS IS NOT A SECOND TIER READ. It takes the tier as an argument precisely so
+ * the RESOLVER can pass the one it already froze at `actions/hangout.ts`'s open
+ * site (§4b: "the round cap reuses the SAME tier read, at the SAME call site").
+ */
+export function liarsDiceRoundsPerDay(tier: number): number {
+  const last = LIARS_DICE_ROUNDS_PER_DAY.length - 1;
+  if (Number.isNaN(tier) || tier <= 0) return LIARS_DICE_ROUNDS_PER_DAY[0];
+  const index = Math.min(last, Math.floor(tier));
+  return LIARS_DICE_ROUNDS_PER_DAY[index];
+}
+
+/**
+ * T-197 · How many Liar's Dice opens the captain has LEFT today, floored at 0
+ * (§4b). ONE accessor, read by the cockpit (to explain a closed table before the
+ * click), by `sim/protocol.ts` (to stop advertising an open the engine will
+ * refuse) and by `sim/index.ts`'s gambler loop (to stop planning one).
+ *
+ * A RULE ACCESSOR, NOT A THIRD `liarsDiceTier` CALL SITE IN THE SENSE §4.6
+ * FORBIDS. The ruling at the header above is about the RESOLVER: a site that has a
+ * HAND must read the hand's frozen fields rather than the live tier. This function
+ * has no hand — it answers "may another hand be opened at all", which is a
+ * question about the day, not about a hand in progress, and the live tier is the
+ * only honest input to it. The resolver still reads the tier exactly once, at the
+ * open site, and re-derives this bound there rather than trusting a caller.
+ */
+export function liarsDiceRoundsRemaining(state: GameState): number {
+  const cap = liarsDiceRoundsPerDay(liarsDiceTier(state.player.liarsDiceGamesPlayed));
+  return Math.max(0, cap - state.player.dareRoundsToday);
 }
 
 /**

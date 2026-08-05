@@ -144,8 +144,15 @@ const TRADER_CLEAR_DAY_MAX = 30;
 // anti-idle rim-strand rules), which moves the INSTRUMENT fingerprint and stales
 // every fixture measured against it. The bands below are UNTOUCHED — nothing here
 // was re-derived to accommodate the new sample.
+// T-197 re-pin (t196b-instruments -> t197-hangout-caps). Same shape, same 8,000 rows,
+// same eight policies, same milestone days. UNLIKE the T-196a/T-196b pair this capstone
+// moves BOTH fingerprints — the engine and content changed (all seven Hangout venues went
+// free; the social pool and the rounds cap arrived) AND the instruments changed (three
+// planners lost their `DieLedger`, two gained the rounds mirror) — so it is not a clean
+// single-arm attribution and the block comment above should not be read as claiming one.
+// The bands below are UNTOUCHED; nothing here was re-derived to accommodate the new sample.
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
-  new URL('../../../../docs/balance/baseline-t196b-instruments.json', import.meta.url),
+  new URL('../../../../docs/balance/baseline-t197-hangout-caps.json', import.meta.url),
 );
 const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
   label: string;

@@ -625,6 +625,13 @@ const PlayerStateSchema = z
     // `deserializeState` performs the same backfill for the loader path).
     liarsDiceBeaten: z.array(z.string()),
     liarsDiceGamesPlayed: z.number(),
+    // T-197 · the two daily Hangout caps (docs/DAWN-HAND-REDESIGN.md §4a/§4b).
+    // Non-optional — every v16+ save serializes both keys; a v15 save backfills
+    // them via `MIGRATIONS[15]`, and `deserializeState` performs the same backfill
+    // for the loader path that never runs `migrate`. Both halves are owed, exactly
+    // as they were for the T-145 pair above.
+    socialPlaysRemaining: z.number(),
+    dareRoundsToday: z.number(),
     // `activeContract?: CargoContract | null` — absent, null, or a contract.
     activeContract: CargoContractSchema.nullable().optional(),
   })
@@ -968,6 +975,12 @@ const GameEventSchema = z.discriminatedUnion('type', [
         // to one and forgotten in the other sails past `AssertEventKeys` (which
         // compares KEYS) and a save carrying it fails to parse at load.
         'opponent-broke',
+        // T-197 · the two caps that replaced the Hangout die
+        // (docs/DAWN-HAND-REDESIGN.md §4a/§4b). Added HERE and in types.ts's union
+        // in the SAME commit as the refusals that raise them, for the reason the
+        // T-145 note above states verbatim.
+        'social-limit-reached',
+        'daily-round-limit',
       ])
       .optional(),
   }),
@@ -1484,13 +1497,17 @@ export const PlayerActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('Explore'), spendDie: z.number().optional() }),
   z.object({
     // T-1303 · Visit the Spacers Hangout (see types.ts PlayerAction).
+    // T-197 · FREE ACTION, ALL SEVEN VENUES (docs/DAWN-HAND-REDESIGN.md §3): no
+    // `spendDie`. Action schemas are STRICT-less (zod's default strip), so a stale
+    // caller that still sends the field has it DROPPED here rather than accepted
+    // and silently ignored by the resolver — the T-196a precedent for the nine
+    // administrative verbs, applied to the Hangout.
     type: z.literal('VisitHangout'),
     venue: z.enum(['dare', 'meet', 'befriend', 'insult', 'rumor', 'borrow', 'repay']),
     opponentId: z.string().optional(),
     wager: z.number().optional(),
     // T-1304: borrow principal / repay amount.
     amount: z.number().optional(),
-    spendDie: z.number().optional(),
   }),
   z.object({
     // T-135 · one move in the open Liar's Dice hand (see types.ts PlayerAction).
