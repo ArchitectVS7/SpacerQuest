@@ -48,7 +48,13 @@ import {
   type RouteLegRecord,
   type SimPolicyName,
 } from '../../index.js';
-import { summarizeReport, type SeedRow } from '../../balance/aggregate.js';
+import {
+  aggregate,
+  summarizeReport,
+  type BaselineAggregate,
+  type SeedRow,
+} from '../../balance/aggregate.js';
+import type { SensitivityArm } from '../../balance/gate.js';
 
 // ---------------------------------------------------------------------------
 // The clean, current-state base
@@ -206,6 +212,108 @@ export function corruptRows(rows: readonly SeedRow[], mutate: (row: SeedRow) => 
     mutate(copy);
     return copy;
   });
+}
+
+// ---------------------------------------------------------------------------
+// T-167 · The F-151-9 rig, replayed — the arm set for the sensitivity check
+// ---------------------------------------------------------------------------
+
+/**
+ * The seven PATCHED arms of the trinket rig, in the column order
+ * `docs/PLAYER-TRINKETS_SPEC.md` §2.3(b) prints them. `+1` arms patch one stat;
+ * `grit_p2` and `trade_p2` are the `+2` dose-response arms.
+ */
+export const TRINKET_RIG_VARIANTS: readonly string[] = [
+  'pilot_p1',
+  'guns_p1',
+  'trade_p1',
+  'grit_p1',
+  'guile_p1',
+  'grit_p2',
+  'trade_p2',
+];
+
+/**
+ * THE F-151-9 EVIDENCE, TRANSCRIBED VERBATIM — `docs/PLAYER-TRINKETS_SPEC.md`
+ * §2.3(b), "Median final credits, by policy", `n` = 300 per cell, 8 variants x 8
+ * policies x 300 seeds x 35 days.
+ *
+ * Column order is `[control, pilot+1, guns+1, trade+1, grit+1, guile+1, grit+2,
+ * trade+2]` — index 0 is the control and indices 1..7 line up, in order, with
+ * {@link TRINKET_RIG_VARIANTS}.
+ *
+ * THE `fighter` ROW IS THE FINDING: 2825 in every one of the eight columns. Every
+ * other row moves somewhere. `explorer`, `greedy`, `trader` and `veteran` are each
+ * flat under SOME arm and none of them is a defect, which is why the predicate
+ * requires flatness under ALL live arms.
+ *
+ * THIS TABLE IS EVIDENCE AND MAY NEVER BE EDITED TO MAKE A TEST PASS. It is a
+ * measurement someone made, quoted; if a number here disagrees with the spec, the
+ * transcription is wrong and the fix is to re-read the spec. The same
+ * no-editing-to-pass rule this file's header states applies with full force.
+ *
+ * The rig itself ran in a scratch tree and committed no per-arm aggregate, so a
+ * replay of the one published measure is the strongest fixture available. See
+ * {@link trinketRigArms} for exactly how much that weakens the demonstration.
+ */
+export const TRINKET_RIG_MEDIANS: Readonly<Record<string, readonly number[]>> = {
+  explorer: [16847, 17421, 16847, 17112, 17223, 16847, 17360, 17572],
+  fighter: [2825, 2825, 2825, 2825, 2825, 2825, 2825, 2825],
+  gambler: [21418, 21487, 21418, 22378, 21856, 21418, 22081, 22908],
+  greedy: [1120, 1120, 1120, 1130, 1120, 1120, 1120, 1130],
+  smuggler: [6451, 7592, 6451, 6564, 6267, 6478, 6267, 6766],
+  trader: [12725, 12545, 12725, 13438, 13094, 12725, 13289, 13406],
+  'trader-degraded': [8836, 8861, 8836, 10346, 8972, 8836, 9516, 11762],
+  veteran: [4860, 4852, 4875, 4815, 4835, 4860, 4820, 4772],
+};
+
+/**
+ * Build the control aggregate and the seven variant arms of the §2.3(b) rig.
+ *
+ * THE CONSTRUCTION KEEPS THIS FILE'S "ONE NAMED MUTATION OFF A REAL OBJECT" RULE:
+ * every cell is a `structuredClone` of ONE real `SeedRow` — `summarizeReport` of the
+ * cached clean trader career — with exactly two fields restamped, `policy` and
+ * `finalCredits`. Nothing is hand-assembled, so the rows cannot rot as `SeedRow`
+ * grows, and the aggregates are folded by the production `aggregate()` rather than
+ * written out as literals.
+ *
+ * THE DELIBERATE WEAKENING, STATED RATHER THAN DISCOVERED. §2.3(b) published ONE
+ * measure (the median of final credits), so the replay can only carry that one:
+ * every other field of every cell is equal across arms by construction. That makes
+ * this fixture STRICTLY WEAKER than a real rig, where the predicate compares whole
+ * per-policy blocks and any of a hundred fields can move a row. It is weaker in the
+ * safe direction — a policy the fixture calls flat is flat on the published measure,
+ * which is exactly the claim F-151-9 makes — and the suite pairs it with a leg built
+ * from real `cleanRows()` aggregates so the predicate is never proven only against a
+ * transcribed table.
+ *
+ * @param medians column table in {@link TRINKET_RIG_MEDIANS}'s shape; index 0 is the
+ *   control. The suite passes a perturbed clone to build its negative control.
+ * @param variants arm ids for columns 1..n, defaulting to {@link TRINKET_RIG_VARIANTS}.
+ */
+export function trinketRigArms(
+  medians: Readonly<Record<string, readonly number[]>> = TRINKET_RIG_MEDIANS,
+  variants: readonly string[] = TRINKET_RIG_VARIANTS,
+): { control: BaselineAggregate; variants: SensitivityArm[] } {
+  const template = summarizeReport(cleanReport('trader'));
+  const column = (index: number): SeedRow[] =>
+    Object.entries(medians).map(([policy, cells]) => {
+      const value = cells[index];
+      if (value === undefined) {
+        throw new Error(`${policy} has no column ${index} in the rig matrix`);
+      }
+      const row = structuredClone(template);
+      row.policy = policy as SimPolicyName;
+      row.finalCredits = value;
+      return row;
+    });
+  return {
+    control: aggregate('trinket-rig-control', column(0)),
+    variants: variants.map((variant, index) => ({
+      variant,
+      aggregate: aggregate(`trinket-rig-${variant}`, column(index + 1)),
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------

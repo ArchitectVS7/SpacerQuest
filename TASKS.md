@@ -1414,7 +1414,7 @@ fixture freshness — `fixtureFreshness` (`balance-smoke.test.ts`) still owns th
 only "when a re-extraction happens, did anything move that isn't allowed to."
 Orchestration: graphify=none — no graphify-out/graph.json in the repo root · attempts=1/4.
 
-### T-167 · Rig sensitivity check — fail when a policy is bit-for-bit flat across variants that should perturb it — `status: TODO` · `coder: opus` · `after: —`
+### T-167 · Rig sensitivity check — fail when a policy is bit-for-bit flat across variants that should perturb it — `status: DONE` · `coder: opus` · `after: —`
 
 Write the check that would have caught F-151-9 automatically: a rig/gate assertion (natural home
 `packages/sim/src/balance/gate.ts`, alongside the nine named `assert*` predicates and
@@ -1427,6 +1427,73 @@ non-zero. [harvested: T-151/write-rig-flatness-check]
 control-vs-variant pair whose aggregate is byte-identical, demonstrated against the F-151-9 case
 (`fighter` day-35 median 2,825cr flat under all eight rig variants); `gate.ts` is registered
 NON-INSTRUMENT as its siblings are, so `rulesFingerprint` does not move; gate green.
+
+**Delivered (2026-08-04):** `assertVariantsPerturbEveryPolicy(control, variants)` in
+`packages/sim/src/balance/gate.ts` — a tenth exported `assert*` predicate, ARM-LEVEL rather than
+report-level, returning `SweepViolation[]` like its nine siblings. Two limbs, reported separately
+because they blame different things: a **dead arm** (a variant that moved no policy row at all) is
+a harness failure, reported under the *variant's* id and then excluded from the live denominator —
+leaving it in would manufacture one flat-policy violation per policy and bury the real finding
+under noise it caused; a **flat policy** is byte-identical to the control in *every* live variant,
+all of them and never a threshold, which is what keeps the false-positive rate at zero on a matrix
+where `explorer`, `greedy`, `trader` and `veteran` are each flat under *some* arm and none is a
+defect. "Bit-for-bit" is `balance/diff.ts`'s `diffAggregates` at its default epsilon of 0 — reused,
+not re-implemented — which also buys policy-name re-keying (a reordered `--policies` cannot break
+the comparison) and `label` exclusion (load-bearing: two arms of one rig differ in their label by
+construction). `SENSITIVITY_MIN_LIVE_VARIANTS = 2` is a floor with its reason in the evidence
+itself: under `guns_p1` the `explorer` policy legitimately sits at 16,847cr in both columns, so one
+live arm cannot support a flatness claim and the predicate returns **no verdict rather than a false
+one** — the discipline `checkExpectedEventRates` applies with `minSample`. Cross-arm violations
+carry the documented `CROSS_ARM_SEED = -1` sentinel (`0` is a legal seed, and `SweepViolation.seed`
+was deliberately NOT widened to `number | null` because `formatGateReport` and the committed
+`gate-*.json` shape read it as a number) and `day: null`.
+
+**DELIBERATELY NOT IN `runGate`, and the totality guard was repaired rather than dodged.** A sweep
+has exactly one arm, so calling it there would be a check that can never fire. The new exported
+`ARM_LEVEL_ASSERTIONS` registry lets `sweep-gate.test.ts`'s kitchen-sink guard partition the
+exported `assert*` names on SIGNATURE (9 report-level reachable from `runGate`, 10 exported in
+total, both counts asserted) instead of growing an exemption list — and the exemption costs a
+working demonstration: a new registry test asserts every listed name is a real exported function,
+is disjoint from what `runGate` reaches, and actually fires on a seeded-bad arm set drawn from an
+`ARM_LEVEL_FIXTURES` map whose keys must equal the registry.
+
+**Demonstrated against F-151-9 itself.** `docs/PLAYER-TRINKETS_SPEC.md` §2.3(b)'s median matrix
+(8 policies x 8 columns, `n` = 300 per cell) is transcribed verbatim as `TRINKET_RIG_MEDIANS` in
+`packages/sim/src/__tests__/support/gate-fixtures.ts` and replayed through `trinketRigArms()`,
+which builds every cell as a `structuredClone` of ONE real `SeedRow` with `policy` and
+`finalCredits` restamped and folds it with the production `aggregate()` — the file's
+"one named mutation off a real object" rule, kept. The rig committed no per-arm aggregate (it ran
+in a scratch tree), so the replay carries only the one measure §2.3(b) published and the fixture is
+therefore weaker than a real rig in the safe direction; that weakening is stated at the builder and
+paired with a sixth test leg built from real `cleanRows()` aggregates, where the predicate compares
+whole per-policy blocks. Six new tests in `sweep-gate.test.ts` section D: the F-151-9 case names
+`fighter` and **nothing else** (with the four sometimes-flat rows asserted as still-green so the
+control cannot rot vacuous); verdict + `formatGateReport` plumbing; a **negative control** (one
+`fighter` cell moved by 1cr → zero violations, because a check that cannot go green is not a
+check); the dead-arm limb (an eighth arm byte-identical to the control → reported as itself, live
+denominator and flat verdict both unchanged); the under-powered floor; and the real-rows leg.
+`formatGateReport` is asserted directly rather than through `reportGate` so no production-shaped
+`[gate] … FAIL` line leaks into the shared `npm test` log (F-162-5).
+
+**Fingerprint discipline:** nothing hashed was touched. `gate.ts`, `sweep.ts` and `diff.ts` are all
+already listed in `SIM_NON_INSTRUMENT_SOURCES` with written reasons, `__tests__` is in
+`HASHED_ROOT_IGNORED_DIRECTORIES`, and `docsFingerprint` hashes sources rather than `docs/*.md` —
+so **no new module was created** (a new file under `packages/sim/src/balance/` would have owed a
+classification entry, which is precisely what the Accept line's "so `rulesFingerprint` does not
+move" framing forbids) and `packages/sim/src/index.ts` was not edited. Evidence:
+`npm run balance:smoke -w @spacerquest/sim` green (124 tests — `balance-rig.test.ts`'s
+classification totality plus `balance-smoke.test.ts`'s `fixtureFreshness`), so no fingerprint moved
+and no committed fixture staled. `sweep-gate.test.ts` 44 tests green (37 → 44); root `npm test`,
+`npm run typecheck`, `npm run lint` all green. No capstone, no baseline re-pin, no save-version
+change, no sweep run owed. Docs: `docs/TESTING-STRATEGY.md` (Tier 1 now says nine report-level +
+one arm-level, three totality guards, and carries a new "rig sensitivity check" block),
+`docs/BALANCE-RIG-DECISIONS.md` (BR-39 reworded, **BR-57** added), `docs/PLAYER-TRINKETS_SPEC.md`
+(§2.3(b), the F-151-9 row and the §13 instrument row all point at the detector). **Deliberate scope
+boundary:** this task builds the DETECTOR only. The `fighter` defect it detects is still open and
+still belongs to **T-174**, whose Accept now names this predicate returning zero violations over
+its fixed rig's arms as the exit check — so no reader can mistake a shipped detector for a fixed
+instrument.
+Orchestration: graphify=none — no graphify-out/graph.json in the repo root · attempts=1/4.
 
 ---
 
@@ -1630,7 +1697,10 @@ replacing `fighter` is the stated prerequisite to any future GUNS ruling (§13, 
 [harvested: T-151/F-151-9]
 
 **Accept:** the `fighter` policy (or its replacement) demonstrably moves its day-35 median under a
-GUNS/GRIT perturbation, shown as a control-vs-variant delta on a stated rig; the two-leg workaround
+GUNS/GRIT perturbation, shown as a control-vs-variant delta on a stated rig **and verified by
+`assertVariantsPerturbEveryPolicy` (`packages/sim/src/balance/gate.ts`, shipped at T-167) returning
+zero violations over that rig's arms** — a median that merely looks different in a memo is not the
+bar; the two-leg workaround
 in `docs/PLAYER-TRINKETS_SPEC.md` §5.3 and the instrument row in §13 are updated to point at the
 fixed instrument; fingerprint discipline stated (instrument moves, rules does not) and the expected
 pinned rows named; gate green.

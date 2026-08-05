@@ -266,8 +266,9 @@ suite cannot drift into two copies that disagree.
 
 **BR-39 — A validating suite drives the PRODUCTION composer.** (T-153)
 `sweep-gate.test.ts` calls the sweep's own `runGate`/`reportGate` rather than re-listing the
-nine `assert*` calls — a test that re-composes them proves the test's composition, not the
-sweep's.
+report-level `assert*` calls — a test that re-composes them proves the test's composition, not
+the sweep's. (T-167 added one ARM-LEVEL predicate that `runGate` cannot reach by construction;
+it is partitioned out by registry, not exempted — see BR-57.)
 
 **BR-40 — CI shape: a small fixed 2-shard + merge `gate` job on every push/PR, sized so no
 expected-event-rate check reports SKIPPED, plus a `deep` job on nightly cron and
@@ -388,3 +389,39 @@ measurement obligations, on the argument that the faucet keeps dealer purses sol
 dealer purses cap the player's stake. Both obligations were discharged and the measurement
 **partly refuted that argument** (the declared band binds 88.93% of stakes; the dealer only
 10.97%). A deferral's rationale is evidence with an expiry date.
+
+**BR-57 — An experiment that cannot move a row is a broken instrument, and the rig says so
+itself.** (T-167, 2026-08-04) `assertVariantsPerturbEveryPolicy`
+(`packages/sim/src/balance/gate.ts`) FAILS when a policy's aggregate is bit-for-bit identical to
+the control across every variant that was supposed to perturb it. It is the check that would have
+caught **F-151-9** — `docs/PLAYER-TRINKETS_SPEC.md` §2.3(b)'s `fighter` row reading 2,825cr in
+all eight columns, found by a human reading a table.
+
+- **Two limbs, because they blame different things.** A **dead arm** (a variant that moved no
+  policy row at all) is a harness failure, reported under the *variant's* id and then **excluded
+  from the live denominator** — leaving it in would manufacture one flat-policy violation per
+  policy and bury the real finding under noise it caused. A **flat policy** is byte-identical to
+  the control in *every* live variant.
+- **All live arms, never a threshold.** A policy that moves under any one live arm is
+  demonstrably sensitive. That quantifier is what keeps the false-positive rate at zero on a
+  matrix like §2.3(b)'s, where `explorer`, `greedy`, `trader` and `veteran` are each flat under
+  *some* arm and none of them is a defect.
+- **Two live variants is the floor** (`SENSITIVITY_MIN_LIVE_VARIANTS`), and the reason is in the
+  same matrix: under `guns_p1` the `explorer` policy sits at 16,847cr in both columns —
+  identical, and entirely legitimate, because a GUNS bonus has no business moving a policy that
+  never fights. Below the floor the predicate returns **no flatness verdict rather than a false
+  one**, the discipline `checkExpectedEventRates` applies with `minSample`.
+- **Bit-for-bit is `balance/diff.ts` at epsilon 0**, reused rather than re-implemented. That
+  default is BR-era doctrine already: both sweeps are seeded and deterministic, so any tolerance
+  would let a real regression hide under noise this instrument does not have. `diffAggregates`
+  re-keys `byPolicy` by policy NAME (so a reordered `--policies` cannot break the comparison) and
+  ignores `label` (load-bearing — two arms of one rig differ in their label by construction).
+- **It is ARM-LEVEL, and therefore deliberately NOT in `runGate`.** A sweep has exactly one arm,
+  so calling it there would be a check that can never fire. It is registered in
+  `ARM_LEVEL_ASSERTIONS` and the kitchen-sink totality guard partitions on that registry — a
+  partition on *signature*, not an exemption, and the price is a working fixture: the suite
+  asserts every registered name is a real export, is disjoint from what `runGate` reaches, and
+  actually fires on a seeded-bad arm set.
+- **It is the standing exit check for T-174**, which owns the `fighter` defect itself. That task
+  is done when this predicate returns zero violations over its fixed rig's arms — not when a
+  median in a memo looks different.

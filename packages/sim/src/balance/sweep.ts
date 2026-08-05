@@ -95,6 +95,12 @@
  *     EXPECTED_EVENT_RATES — 8 entries, each with a named band and a `minSample`
  *     below which it reports SKIPPED rather than failing on noise.
  *
+ *   ARM-LEVEL, AND DELIBERATELY ABSENT FROM `runGate` — `assertVariantsPerturbEveryPolicy`
+ *     (T-167) takes a CONTROL aggregate and N VARIANT arms, not one report. A sweep
+ *     has exactly one arm, so calling it here would be a check that can never fire.
+ *     It is registered in `./gate.ts`'s ARM_LEVEL_ASSERTIONS, which is what the
+ *     totality guard in `../__tests__/sweep-gate.test.ts` partitions on.
+ *
  *   NOT OBSERVABLE HERE — SWEEP_INVARIANT_DISPOSITIONS names the three UGT
  *   predicates the sweep cannot see (`inv_blocked_from_legal_non_increasing`,
  *   `inv_protocol_errors_non_increasing`, `inv_dice_bounds`) and the task that
@@ -440,6 +446,13 @@ function formatElapsed(ms: number): string {
  * "explicit calls, not a loop" promise above honest — a tenth invariant added to
  * `./gate.ts` and never wired in here fails that test instead of silently never
  * running.
+ *
+ * ONE EXPORTED `assert*` IS NOT LISTED BELOW AND MUST NOT BE (T-167).
+ * `assertVariantsPerturbEveryPolicy` compares a CONTROL aggregate against N VARIANT
+ * arms; this function is handed one finished report, which is one arm, so there is
+ * nothing for it to compare. It is registered in `./gate.ts`'s `ARM_LEVEL_ASSERTIONS`
+ * and the kitchen-sink test partitions on that registry rather than demanding a
+ * report-shaped signature it would have to be faked into.
  */
 export function runGate(report: CampaignStatsReport): SweepViolation[] {
   return [

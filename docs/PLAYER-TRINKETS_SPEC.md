@@ -318,6 +318,14 @@ result: **two of the five stats barely move the game at all.**
 | trader-degraded | 8836 | 8861 | 8836 | 10346 | 8972 | 8836 | 9516 | **11762** |
 | veteran | 4860 | 4852 | 4875 | 4815 | 4835 | 4860 | 4820 | 4772 |
 
+> **This table is now a test fixture (T-167, 2026-08-04).** It is transcribed verbatim as
+> `TRINKET_RIG_MEDIANS` in `packages/sim/src/__tests__/support/gate-fixtures.ts` and replayed
+> through `assertVariantsPerturbEveryPolicy` (`packages/sim/src/balance/gate.ts`), which names
+> `fighter` — and nothing else — as flat. Note that four other rows (`explorer`, `greedy`,
+> `trader`, `veteran`) are *also* byte-identical to the control under some arm and none of them
+> is a defect; that is exactly why the check requires flatness under **all** live arms. The
+> numbers above are EVIDENCE: if the fixture and this table ever disagree, the fixture is wrong.
+
 **(c) Survival — the GRIT question, answered** (totals over `n` = 2,400 campaigns each):
 
 | variant | ships lost | combat defeats | life-support failures | life-support scares | successions |
@@ -863,7 +871,7 @@ owner's call, not this task's.
 | **F-151-6** | No existing test pins `player.stats` across a run, so a missing clamp or a double-applied delta would be caught by nothing | R4; the engine suites use stats as scenario setup | **ESCALATED** — any implementation task must add the pin |
 | **F-151-7** | Routine travel is no longer a PILOT check (`travel.ts:610-629`, T-1605); only the one-time Nemesis Crossing survives. PILOT's recurring check surface is the Explore nav DC 12 plus combat retreat | Read directly; confirmed by two reviewers | **CLOSED** — corrects the task's own MEASURE framing |
 | **F-151-8** | `TASKS.md`'s M6 header says stats are *"rolled once at character creation."* They are hard-coded literals (`state.ts:147-153`); nothing rolls them | Read directly; confirmed by four reviewers | **OPEN** — a `TASKS.md` prose correction for the owner |
-| **F-151-9** | **The `fighter` sim policy's day-35 median is 2,825cr in all eight rig variants — bit-for-bit flat under every stat change, including `+2` GRIT.** A policy that does not move under any stat perturbation cannot measure what a stat does to combat, so the rig cannot separate *"GUNS is a dead option"* from *"the instrument cannot see GUNS"* | §2.3(b), (d); `n` = 300 per cell | **ESCALATED — an INSTRUMENT finding, not a balance one.** It is the reason §5.3's GUNS exclusion is argued on two independent legs. Fixing the instrument is the prerequisite for any future GUNS ruling |
+| **F-151-9** | **The `fighter` sim policy's day-35 median is 2,825cr in all eight rig variants — bit-for-bit flat under every stat change, including `+2` GRIT.** A policy that does not move under any stat perturbation cannot measure what a stat does to combat, so the rig cannot separate *"GUNS is a dead option"* from *"the instrument cannot see GUNS"* | §2.3(b), (d); `n` = 300 per cell | **ESCALATED — an INSTRUMENT finding, not a balance one.** It is the reason §5.3's GUNS exclusion is argued on two independent legs. Fixing the instrument is the prerequisite for any future GUNS ruling. **An automated detector now exists (T-167, 2026-08-04):** `assertVariantsPerturbEveryPolicy` (`packages/sim/src/balance/gate.ts`) fails when a policy is bit-for-bit identical to the control across every live variant, and is replayed against this exact §2.3(b) matrix in `packages/sim/src/__tests__/sweep-gate.test.ts`. **The finding itself is still OPEN — T-174 owns fixing `fighter`;** what changed is that it can no longer go unnoticed |
 | **F-151-10** | `trade_p1`/`trade_p2` drive **life-support failures and scares to zero** (2→0, 7→0) despite TRADE touching neither formula — a second-order routing effect, not a direct one | §2.3(c) | **CLOSED as observed** — evidence for *"check how outcomes are reached, not just who wins"*: a stat delta changes which days happen, not just how well they go |
 
 ---
@@ -950,5 +958,5 @@ itself; if it rules for C, this table is the record of what was declined.
 | *(capstone)* | §9.2 | One batch capstone per milestone, **after `npm run format`**, re-pinning the baseline of record; the fingerprint moves because content moved, which is correct |
 | *(owner, unruled)* | §9.4 | The PARITY LEDGER row: do NPCs wear trinkets, and does a trinket-wearing NPC re-derive `NPC_COMPONENT_STAT_AFFINITY` live or freeze it at spawn |
 | *(owner, unruled)* | §11 | The alternative two reviewers preferred: give GUNS/TRADE a `navBonus`-shaped component pathway instead of a trinket system — damped and death-reset by construction, no `player.stats` write, no save question |
-| *(instrument, prerequisite to any GUNS ruling)* | F-151-9 | Fix or replace the `fighter` sim policy, whose day-35 median is **flat at 2,825cr across all eight rig variants**. Until it moves under a stat perturbation, no measurement can say anything about GUNS — including this spec's own exclusion, which is why §5.3 argues on two legs |
+| *(instrument, prerequisite to any GUNS ruling)* | F-151-9 | Fix or replace the `fighter` sim policy, whose day-35 median is **flat at 2,825cr across all eight rig variants**. Until it moves under a stat perturbation, no measurement can say anything about GUNS — including this spec's own exclusion, which is why §5.3 argues on two legs. The DETECTOR shipped at T-167 (`assertVariantsPerturbEveryPolicy`, `packages/sim/src/balance/gate.ts`); that predicate returning zero violations over the fixed rig's arms is T-174's exit check |
 | *(housekeeping)* | F-151-1, F-151-8 | The `content/components.ts:164` 55% → 60% prose fix, and the `TASKS.md` M6 "rolled once at character creation" correction |

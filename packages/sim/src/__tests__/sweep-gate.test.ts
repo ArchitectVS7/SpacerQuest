@@ -53,12 +53,15 @@ import { JOB_POOL_BOARD_SIZE } from '@spacerquest/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { runCampaign, type CampaignStatsReport, type SimPolicyName } from '../index.js';
-import { isCombatWin, type SeedRow } from '../balance/aggregate.js';
+import { aggregate, isCombatWin, type SeedRow } from '../balance/aggregate.js';
 import * as gateModule from '../balance/gate.js';
 import {
   ABSOLUTE_MAX_FUEL,
+  ARM_LEVEL_ASSERTIONS,
+  CROSS_ARM_SEED,
   GATE_COMPETENT_POLICIES,
   INCOME_STALL_LIMIT,
+  SENSITIVITY_MIN_LIVE_VARIANTS,
   SWEEP_INVARIANT_DISPOSITIONS,
   assertBoardDepthWithinPoolBounds,
   assertCombatRecordsWellFormed,
@@ -69,6 +72,7 @@ import {
   assertOneSamplePerDay,
   assertProgressRatchetsNeverReverse,
   assertRouteRecordsWellFormed,
+  assertVariantsPerturbEveryPolicy,
   buildGateReport,
   checkExpectedEventRates,
   formatGateReport,
@@ -79,6 +83,8 @@ import {
 } from '../balance/gate.js';
 import { main, parseSweepArgs, reportGate, runGate } from '../balance/sweep.js';
 import {
+  TRINKET_RIG_MEDIANS,
+  TRINKET_RIG_VARIANTS,
   cleanReport,
   cleanRows,
   corrupt,
@@ -86,6 +92,7 @@ import {
   encounterRecord,
   legRecord,
   rankOneRungBelow,
+  trinketRigArms,
 } from './support/gate-fixtures.js';
 
 /** Step the LAST day's renown rank one rung below its predecessor's — a genuine
@@ -132,6 +139,65 @@ function expectCaughtBy(
   // (4) the verdict the sweep would actually reach.
   expect(buildGateReport(LABEL_PREFIX, 'fixture', 1, throughSweep, []).passed).toBe(false);
   return found;
+}
+
+/**
+ * The ARM-LEVEL sibling of {@link expectCaughtBy} (T-167).
+ *
+ * Three of the four legs carry over unchanged — it fires, every violation carries
+ * the predicate's OWN name, and `buildGateReport(...).passed` is false. The third
+ * leg (`runGate` also surfaces it) is deliberately DROPPED and not faked: an
+ * arm-level predicate compares a control against N variants and `runGate` is handed
+ * one report, so a sweep has nothing to compare. That absence is what
+ * `ARM_LEVEL_ASSERTIONS` records and what the totality guard below partitions on.
+ *
+ * The two arm-level FIELD conventions are asserted here rather than at each call
+ * site, because they are the contract that keeps a cross-arm row readable in a
+ * printed table: `seed` is the {@link CROSS_ARM_SEED} sentinel (there is no seed to
+ * reproduce a two-aggregate finding with, and `0` is a legal seed) and `day` is null.
+ *
+ * `formatGateReport` is asserted directly rather than through `reportGate`, on
+ * purpose: printing a production-shaped `[gate] … FAIL` line into the shared run log
+ * out of a suite that passes is F-162-5, and it was believed once already. See
+ * {@link withTempDir}.
+ */
+function expectArmLevelCaught(found: readonly SweepViolation[], name: string): SweepViolation[] {
+  expect(found.length).toBeGreaterThan(0);
+  for (const violated of found) {
+    expect(violated.invariant).toBe(name);
+    expect(violated.seed).toBe(CROSS_ARM_SEED);
+    expect(violated.day).toBeNull();
+  }
+  expect(buildGateReport(LABEL_PREFIX, 'fixture', 0, found, []).passed).toBe(false);
+  return [...found];
+}
+
+/**
+ * Every arm-level `assert*` and the seeded-bad fixture that proves it fires.
+ *
+ * THE REGISTRY IS NOT ALLOWED TO BECOME AN ESCAPE HATCH. `ARM_LEVEL_ASSERTIONS`
+ * exempts its members from the "runGate reaches everything" guard, so without this
+ * map a future invariant could be exempted from BOTH by adding one string. The A2
+ * test below asserts the keys here are exactly `ARM_LEVEL_ASSERTIONS`, that each is
+ * a real exported function, and that each fixture actually makes its predicate fire
+ * — so the price of an exemption is a working demonstration.
+ */
+const ARM_LEVEL_FIXTURES: Readonly<Record<string, () => SweepViolation[]>> = {
+  assertVariantsPerturbEveryPolicy: () => {
+    const { control, variants } = trinketRigArms();
+    return assertVariantsPerturbEveryPolicy(control, variants);
+  },
+};
+
+/** A clone of the §2.3(b) matrix with one named cell moved. The table itself is
+ *  EVIDENCE and is never edited — see its definition site — so every perturbation
+ *  the suite needs is built as a copy here. */
+function rigMatrixWith(
+  edit: (cells: readonly number[], policy: string) => readonly number[],
+): Record<string, readonly number[]> {
+  return Object.fromEntries(
+    Object.entries(TRINKET_RIG_MEDIANS).map(([policy, cells]) => [policy, edit(cells, policy)]),
+  );
 }
 
 /** A clean base report per policy, with the shared cache warmed once. */
@@ -517,6 +583,19 @@ describe('T-153 · the gate is TOTAL over its own definitions', () => {
     .map(([name]) => name)
     .sort();
 
+  /**
+   * The exported `assert*` names `runGate` is expected to reach, which is every one
+   * of them MINUS the arm-level registry.
+   *
+   * THE PARTITION IS ON SIGNATURE, NOT AN EXEMPTION (T-167). An arm-level predicate
+   * takes a control aggregate and N variant arms; `runGate` is handed one finished
+   * report, which is one arm, so there is nothing for it to compare — wiring one in
+   * would be a check that can never fire, not a check that is being skipped. The
+   * exemption costs a working fixture: see `ARM_LEVEL_FIXTURES` and the test below.
+   */
+  const armLevel = new Set(ARM_LEVEL_ASSERTIONS);
+  const reportLevelAssertNames = exportedAssertNames.filter((name) => !armLevel.has(name));
+
   it('runGate reaches EVERY invariant gate.ts exports (the kitchen sink)', () => {
     // The sweep-gate analogue of `balance-rig.test.ts`'s classification-totality
     // guard, and the thing that now holds `runGate`'s "EXPLICIT CALLS, NOT A LOOP"
@@ -537,8 +616,26 @@ describe('T-153 · the gate is TOTAL over its own definitions', () => {
     });
 
     const reached = [...new Set(runGate(kitchenSink).map((violated) => violated.invariant))].sort();
-    expect(reached).toEqual(exportedAssertNames);
-    expect(exportedAssertNames).toHaveLength(9);
+    expect(reached).toEqual(reportLevelAssertNames);
+    expect(reportLevelAssertNames).toHaveLength(9);
+    // The whole roster, so an arm-level name cannot be quietly added without this
+    // count moving too. Nine report-level + one arm-level (T-167).
+    expect(exportedAssertNames).toHaveLength(10);
+  });
+
+  it('ARM_LEVEL_ASSERTIONS names only real arm-level exports, and each owes a fixture', () => {
+    // The registry buys an exemption from the kitchen sink above. This is its price.
+    expect([...ARM_LEVEL_ASSERTIONS].sort()).toEqual(Object.keys(ARM_LEVEL_FIXTURES).sort());
+    for (const name of ARM_LEVEL_ASSERTIONS) {
+      // (a) it is a real exported function on the gate module, not a string nobody
+      //     has to keep true;
+      expect(exportedAssertNames).toContain(name);
+      // (b) it is disjoint from what runGate reaches — an arm-level predicate that
+      //     the sweep DOES reach would be miscategorised, not exempt;
+      expect(reportLevelAssertNames).not.toContain(name);
+      // (c) and it actually fires on a seeded-bad arm set, carrying its own name.
+      expectArmLevelCaught(ARM_LEVEL_FIXTURES[name](), name);
+    }
   });
 
   it('SWEEP_INVARIANT_DISPOSITIONS is honest about all eight UGT predicates', () => {
@@ -888,4 +985,130 @@ describe('T-153 · the gate sets a non-zero exit code, and only when it should',
     const leaked = readdirSync(DOCS_BALANCE).filter((name) => name.includes(LABEL_PREFIX));
     expect(leaked).toEqual([]);
   });
+});
+
+// ---------------------------------------------------------------------------
+// D · T-167 — the rig sensitivity check, demonstrated against F-151-9
+// ---------------------------------------------------------------------------
+
+describe('T-167 · the rig sensitivity check', () => {
+  const CHECK = 'assertVariantsPerturbEveryPolicy';
+
+  it('catches F-151-9 — `fighter` flat at 2,825cr under all eight rig variants', () => {
+    // THE CASE THE PREDICATE EXISTS FOR, replayed off the matrix
+    // `docs/PLAYER-TRINKETS_SPEC.md` §2.3(b) published: 8 policies x 8 variants x
+    // 300 seeds x 35 days, and the `fighter` row reads 2825 in every column. A
+    // human found that by reading a table; this is the verdict.
+    const found = expectArmLevelCaught(ARM_LEVEL_FIXTURES[CHECK](), CHECK);
+
+    // EXACTLY ONE policy, and it is the right one. This is the leg that proves the
+    // check is not merely "everything looks flat to me": `explorer`, `greedy`,
+    // `trader` and `veteran` are each byte-identical to the control under SOME arm
+    // in this very matrix, and every one of them must stay green.
+    expect(found.map((violated) => violated.policy)).toEqual(['fighter']);
+    expect(found[0].detail).toContain('2825');
+    expect(found[0].detail).toContain(`all ${TRINKET_RIG_VARIANTS.length} live variants`);
+    for (const variant of TRINKET_RIG_VARIANTS) {
+      expect(found[0].detail).toContain(variant);
+    }
+    // The four rows that are flat SOMEWHERE, named, so this control cannot rot into
+    // a vacuous "no other violations" assertion if the matrix is ever re-transcribed.
+    for (const policy of ['explorer', 'greedy', 'trader', 'veteran'] as const) {
+      const cells = TRINKET_RIG_MEDIANS[policy];
+      expect(cells.slice(1).some((cell) => cell === cells[0])).toBe(true);
+      expect(found.map((violated) => violated.policy)).not.toContain(policy);
+    }
+  });
+
+  it('the verdict and the printed table both carry it', () => {
+    const found = ARM_LEVEL_FIXTURES[CHECK]();
+    const report = buildGateReport(LABEL_PREFIX, 'rig', 0, found, []);
+    expect(report.passed).toBe(false);
+    expect(report.violationCount).toBe(1);
+    // Asserted off `formatGateReport` directly rather than through `reportGate`:
+    // this suite must not print production-shaped `[gate] … FAIL` text into the
+    // shared run log (F-162-5, see `withTempDir`).
+    const text = formatGateReport(report);
+    expect(text).toContain(CHECK);
+    expect(text).toContain('fighter');
+    expect(text).toContain('FAIL');
+  });
+
+  it('goes GREEN when the flat policy moves — a check that cannot pass is not a check', () => {
+    // The negative control. ONE cell moved, by ONE credit, in the `trade_p2` column
+    // (index 7): `fighter` now has somewhere it is sensitive, and the verdict
+    // flips. The matrix itself is evidence and is never edited — this is a clone.
+    const moved = rigMatrixWith((cells, policy) =>
+      policy === 'fighter' ? cells.map((cell, index) => (index === 7 ? cell + 1 : cell)) : cells,
+    );
+    const { control, variants } = trinketRigArms(moved);
+    expect(assertVariantsPerturbEveryPolicy(control, variants)).toEqual([]);
+  });
+
+  it('a DEAD ARM is reported as itself, and never inflates the flat verdict', () => {
+    // An eighth arm byte-identical to the control — the harness failure the first
+    // limb exists for (`§2.1`: the rig's own first draft was not live). It is
+    // reported under the VARIANT id, and it must NOT count toward the live
+    // denominator: a dead arm left in would make every policy "flat in all arms"
+    // and bury the real finding under one violation per policy.
+    const DEAD = 'dead_p0';
+    const withDead = rigMatrixWith((cells) => [...cells, cells[0]]);
+    const { control, variants } = trinketRigArms(withDead, [...TRINKET_RIG_VARIANTS, DEAD]);
+    const found = expectArmLevelCaught(assertVariantsPerturbEveryPolicy(control, variants), CHECK);
+
+    expect(found.map((violated) => violated.policy)).toEqual([DEAD, 'fighter']);
+    expect(found[0].detail).toContain('the patched build is not live');
+    expect(found[0].detail).toContain(control.label);
+    // The flat verdict is UNCHANGED: still seven live variants, still only fighter.
+    expect(found[1].detail).toContain(`all ${TRINKET_RIG_VARIANTS.length} live variants`);
+    expect(found[1].detail).not.toContain(DEAD);
+  });
+
+  it('declines to reach a flatness verdict below the live-variant floor', () => {
+    // ONE live variant proves nothing, and this matrix is the proof: under
+    // `guns_p1` the `explorer` policy sits at 16,847cr in BOTH columns — identical,
+    // and entirely legitimate, because a GUNS bonus has no business moving a policy
+    // that never fights. Asserted, not asserted-about.
+    expect(TRINKET_RIG_MEDIANS.explorer[2]).toBe(TRINKET_RIG_MEDIANS.explorer[0]);
+    expect(SENSITIVITY_MIN_LIVE_VARIANTS).toBe(2);
+
+    const { control, variants } = trinketRigArms();
+    const gunsOnly = variants[TRINKET_RIG_VARIANTS.indexOf('guns_p1')];
+    // The arm IS live (it moves `veteran`, 4860 -> 4875), so this is the
+    // under-powered path and not the dead-arm one — no violation of either kind.
+    expect(assertVariantsPerturbEveryPolicy(control, [gunsOnly])).toEqual([]);
+    // ...and two live arms are enough to reach a verdict again.
+    expect(
+      assertVariantsPerturbEveryPolicy(control, variants.slice(0, SENSITIVITY_MIN_LIVE_VARIANTS)),
+    ).not.toEqual([]);
+  });
+
+  it(
+    'works on aggregates the real engine produced, not only on the transcribed matrix',
+    () => {
+      // The leg that stops this predicate from being proven only against a table
+      // somebody typed in. `cleanRows()` is 52 seeds x {trader, fighter}; both
+      // variants move `trader` and neither touches `fighter`, so the real fold —
+      // whole per-policy blocks, every field the aggregate carries — must name
+      // `fighter` and nothing else.
+      const rows = cleanRows();
+      const control = aggregate('t167-real-control', rows);
+      const variants = [1, 2].map((delta) => ({
+        variant: `trader-plus-${delta}cr`,
+        aggregate: aggregate(
+          `t167-real-plus-${delta}`,
+          corruptRows(rows, (row) => {
+            if (row.policy === 'trader') row.finalCredits += delta;
+          }),
+        ),
+      }));
+      const found = expectArmLevelCaught(
+        assertVariantsPerturbEveryPolicy(control, variants),
+        CHECK,
+      );
+      expect(found.map((violated) => violated.policy)).toEqual(['fighter']);
+      expect(found[0].detail).toContain('all 2 live variants');
+    },
+    SAMPLE_TIMEOUT_MS,
+  );
 });

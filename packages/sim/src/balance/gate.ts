@@ -42,10 +42,20 @@
  * uncovered one with no acknowledged, owner-named gap) sets `passed` false, while
  * an acknowledged gap prints a named warning and does not.
  *
- * READERS (constraint 7): `./sweep.ts` (calls every function below by name),
- * `../__tests__/support/campaign-drivers.ts` (re-exports
- * {@link longestZeroIncomeStreak}), and — from T-153 — the behavioural suite that
- * proves the gate actually catches what it claims to.
+ * T-167 · ONE PREDICATE HERE IS ARM-LEVEL, AND `runGate` CANNOT CALL IT.
+ * {@link assertVariantsPerturbEveryPolicy} takes a CONTROL aggregate and N VARIANT
+ * arms rather than one report, because the defect it exists for (F-151-9) is only
+ * visible ACROSS arms — a single sweep has exactly one arm, so wiring it into
+ * `runGate` would be a check that can never fire. It is registered in
+ * {@link ARM_LEVEL_ASSERTIONS} so the totality guard in
+ * `../__tests__/sweep-gate.test.ts` partitions on SIGNATURE rather than growing an
+ * exemption list, and every name in that registry owes a seeded-bad fixture there.
+ *
+ * READERS (constraint 7): `./sweep.ts` (calls every REPORT-level function below by
+ * name), `../__tests__/support/campaign-drivers.ts` (re-exports
+ * {@link longestZeroIncomeStreak}), `../__tests__/support/gate-fixtures.ts` (builds
+ * the F-151-9 arm set), and — from T-153 — the behavioural suite that proves the
+ * gate actually catches what it claims to.
  */
 
 import { EXPLORE_ITEMS, YARD_COMPONENT_TIER_PRICES, type PowerTier } from '@spacerquest/content';
@@ -63,8 +73,9 @@ import type {
   RouteLegRecord,
   SimPolicyName,
 } from '../index.js';
-import { isCombatWin, type SeedRow } from './aggregate.js';
+import { isCombatWin, type BaselineAggregate, type SeedRow } from './aggregate.js';
 import { coverageFailures, formatCoverageLines, type ArchetypeCoverageResult } from './coverage.js';
+import { diffAggregates } from './diff.js';
 
 // ---------------------------------------------------------------------------
 // The violation record
@@ -631,6 +642,171 @@ export function assertBoardDepthWithinPoolBounds(report: CampaignStatsReport): S
     }
   }
   return violations;
+}
+
+// ---------------------------------------------------------------------------
+// T-167 · The ARM-LEVEL invariant — an instrument that cannot feel the thing it
+// is measuring
+// ---------------------------------------------------------------------------
+
+/** ONE patched build of the rig, paired with the aggregate it produced. `variant`
+ *  is the id the rig names the arm by (`guns_p1`, `trade_p2`, …) and is what a
+ *  dead-arm violation is reported under, because a dead arm is a fact about the
+ *  ARM, not about any policy in it. */
+export interface SensitivityArm {
+  variant: string;
+  aggregate: BaselineAggregate;
+}
+
+/**
+ * The `seed` an arm-level violation carries. There is no seed to reproduce a
+ * cross-arm finding with — it is a statement about two whole aggregates, each
+ * folded from hundreds of seeds.
+ *
+ * `-1` AND NOT `0`, deliberately: `0` is a legal seed and a reader who saw
+ * `seed 0` in the printed table would go and re-run it. The field is not widened
+ * to `number | null` because {@link formatGateReport} and the committed
+ * `gate-<label>-*.json` shape both read it as a number.
+ */
+export const CROSS_ARM_SEED = -1;
+
+/**
+ * How many LIVE variants a flatness verdict needs before it is allowed to be
+ * reached at all.
+ *
+ * ONE LIVE VARIANT PROVES NOTHING, and F-151-9's own matrix is the proof: under
+ * `guns_p1` the `explorer` policy sits at 16,847cr in both columns — identical,
+ * and entirely legitimate, because a GUNS bonus has no business moving a policy
+ * that never fights. "This policy did not move under the one arm I ran" is not a
+ * defect; "this policy did not move under ANY arm" is. Below this floor the
+ * predicate returns no flatness verdict rather than a false one — the same
+ * discipline `checkExpectedEventRates` applies with `minSample` and
+ * `assertNoIncomeStall` applies with its scope return.
+ */
+export const SENSITIVITY_MIN_LIVE_VARIANTS = 2;
+
+/**
+ * The `assert*` exports that take an ARM SET rather than one `CampaignStatsReport`.
+ *
+ * `runGate` cannot reach these BY CONSTRUCTION — a sweep has exactly one arm — so
+ * the totality guard in `../__tests__/sweep-gate.test.ts` partitions the exported
+ * `assert*` names on this registry instead of asserting that every one of them is
+ * reachable from `runGate`. That is a partition on SIGNATURE, not an exemption:
+ * the same suite asserts that every name listed here is a real exported function
+ * AND that it has a seeded-bad fixture that makes it fire. A name added here
+ * without a fixture behind it fails that test.
+ */
+export const ARM_LEVEL_ASSERTIONS: readonly string[] = ['assertVariantsPerturbEveryPolicy'];
+
+/**
+ * RIG SENSITIVITY (T-167) · every policy moves under at least one variant that was
+ * supposed to perturb it.
+ *
+ * THE CHECK THAT WOULD HAVE CAUGHT F-151-9. `docs/PLAYER-TRINKETS_SPEC.md` §2.3(b)
+ * ran 8 policies x 8 variants x 300 seeds x 35 days and published a median-final-
+ * credits matrix in which the `fighter` row reads **2825 in every single column** —
+ * bit-for-bit flat under all eight rig variants, including `+2` GRIT. A policy that
+ * cannot feel ANY stat change cannot measure what a stat does, so the rig could not
+ * separate *"GUNS is a dead option"* from *"the instrument cannot see GUNS"*, and
+ * that spec's §5.3 exclusion had to be argued on two independent legs as a result.
+ * The flatness was found by a human reading a table. This makes it a verdict.
+ *
+ * TWO LIMBS, and they are reported separately because they blame different things:
+ *
+ *   1. **DEAD ARM** — a variant that moved NO policy row against the control. That
+ *      is not a finding about the game; it is a finding about the harness (the
+ *      patched build never got wired in). It is reported under the VARIANT's own
+ *      id, and the arm is then EXCLUDED FROM THE LIVE SET. A dead arm left in the
+ *      denominator would manufacture one flat-policy violation per policy — the
+ *      real defect buried under a wall of noise it caused.
+ *   2. **FLAT POLICY** — a policy byte-identical to the control in EVERY live
+ *      variant. All of them, never a threshold: a policy that moves under any one
+ *      live arm is demonstrably sensitive, and that "all" is what keeps the
+ *      false-positive rate at zero on a matrix like §2.3(b)'s, where `explorer`,
+ *      `greedy`, `trader` and `veteran` are each flat under some arms and none of
+ *      them is a defect.
+ *
+ * "BIT-FOR-BIT" IS `./diff.ts` AT ITS DEFAULT EPSILON OF 0, not a comparison
+ * re-implemented here. That default is the point and that file says why: both
+ * sweeps are seeded and deterministic, so two runs of the same ruleset over the
+ * same seeds produce identical doubles and any tolerance at all would let a real
+ * regression hide under noise this instrument does not have. `diffAggregates`
+ * re-keys `byPolicy` BY POLICY NAME, so this comparison survives a reordered
+ * `--policies`, and it ignores `label` — which is load-bearing here, since two arms
+ * of the same rig differ in their label by construction.
+ *
+ * THE SAME NO-OPT-OUT RULE AS THE REST OF THIS FILE. Neither
+ * {@link SENSITIVITY_MIN_LIVE_VARIANTS} nor the "all live arms" quantifier may be
+ * relaxed to make a rig pass. A policy that will not move is a finding about the
+ * instrument, and the remedy is to fix the instrument — which is exactly what
+ * T-174 owns for `fighter`, and this predicate returning zero violations over that
+ * rig's arms is its standing exit check.
+ *
+ * READERS: `../__tests__/sweep-gate.test.ts` section D (drives this against the
+ * §2.3(b) matrix, transcribed in `../__tests__/support/gate-fixtures.ts`).
+ */
+export function assertVariantsPerturbEveryPolicy(
+  control: BaselineAggregate,
+  variants: readonly SensitivityArm[],
+): SweepViolation[] {
+  const name = 'assertVariantsPerturbEveryPolicy';
+  // The comparison set is taken from `byPolicy`, which is the array `diffAggregates`
+  // re-keys by policy name — not from `control.policies`, which is a parallel list
+  // and would silently disagree if one of the two ever grew a row the other lacked.
+  const policies = control.byPolicy.map((row) => row.policy);
+  const policySet = new Set(policies);
+
+  const deadArms: SweepViolation[] = [];
+  const liveArms: { variant: string; flat: Set<string> }[] = [];
+
+  for (const arm of variants) {
+    const diff = diffAggregates(control, arm.aggregate);
+    const moved = new Set<string>();
+    for (const row of diff.movedRows) {
+      if (policySet.has(row)) moved.add(row);
+    }
+    // Belt AND braces: `movedRows` already folds shape changes in, but a policy
+    // present on one side only is emphatically not "byte-identical to the control"
+    // and must never be able to reach the flat limb through a differ refactor.
+    for (const change of diff.shapeChanges) {
+      if (policySet.has(change.row)) moved.add(change.row);
+    }
+    if (moved.size === 0) {
+      deadArms.push({
+        invariant: name,
+        seed: CROSS_ARM_SEED,
+        policy: arm.variant,
+        day: null,
+        detail:
+          `variant ${arm.variant} moved no policy row against control ${control.label} — ` +
+          'the patched build is not live',
+      });
+      continue;
+    }
+    liveArms.push({
+      variant: arm.variant,
+      flat: new Set(policies.filter((policy) => !moved.has(policy))),
+    });
+  }
+
+  if (liveArms.length < SENSITIVITY_MIN_LIVE_VARIANTS) return deadArms;
+
+  const flatPolicies: SweepViolation[] = [];
+  // Control row order, so two runs of the same rig list findings the same way.
+  for (const row of control.byPolicy) {
+    if (!liveArms.every((arm) => arm.flat.has(row.policy))) continue;
+    flatPolicies.push({
+      invariant: name,
+      seed: CROSS_ARM_SEED,
+      policy: row.policy,
+      day: null,
+      detail:
+        `byte-identical to control in all ${liveArms.length} live variants ` +
+        `(${liveArms.map((arm) => arm.variant).join(', ')}) — ` +
+        `finalCredits.median ${row.finalCredits.median} in every arm`,
+    });
+  }
+  return [...deadArms, ...flatPolicies];
 }
 
 // ---------------------------------------------------------------------------
