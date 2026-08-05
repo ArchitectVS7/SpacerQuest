@@ -585,6 +585,34 @@ export function hangoutRosterOpponents(game: GameState): HangoutRosterOpponent[]
 }
 
 /**
+ * T-207 · ONE authored line out of a pool, picked DETERMINISTICALLY. This is NOT
+ * an RNG, and the reason is structural rather than stylistic: `format.ts` runs on
+ * EVERY React render, so a random pick would reshuffle the captain's line on every
+ * paint — the bark would flicker while the player was still reading it. The seed
+ * is the id of the THING the line belongs to (the hand, the encounter, the
+ * encounter+round), so the line is stable for exactly as long as that thing is,
+ * and two different things draw independently.
+ *
+ * FNV-1a over the seed string. No engine RNG is forked and none could be: nothing
+ * here consumes randomness the engine owns, and a display projection that pulled
+ * from the engine's stream would change the world by being rendered.
+ *
+ * `null` — never a placeholder, never `''` — when the pool is absent or empty. A
+ * QUEST captain carries neither `tableTalk` nor `catchphrases` (T-205's ruling
+ * that ABSENT MEANS "this record has no voiced surface"), and this is the one
+ * place that ruling becomes a rendered nothing rather than a crash.
+ */
+function pickAuthoredLine(lines: readonly string[] | undefined, seed: string): string | null {
+  if (!lines || lines.length === 0) return null;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return lines[hash % lines.length];
+}
+
+/**
  * T-203 · A ROAMING dealer's standing with the player, at the Liar's Dice table.
  *
  * The same 30 named captains the player Meets / Befriends / Insults at a Hangout
@@ -608,6 +636,18 @@ export interface LiarsDiceDealerReadout {
    *  already in. It is omitted because it carries no information here, not because
    *  it was overlooked — do not "restore" it. */
   line: string;
+  /** T-207 · ONE of this roaming captain's authored `NpcProfile.tableTalk` lines,
+   *  or `null` when their profile carries none (a quest captain — T-205's
+   *  ABSENT-means-no-voiced-surface ruling).
+   *
+   *  It lives on THIS interface, and not on a second exported function, because
+   *  the `ld-` / `NpcState` gate below is the ONE place the roaming-vs-roster
+   *  distinction is made in this file. T-207 extends that gate; it must not open a
+   *  second one that could later disagree with it.
+   *
+   *  Note that {@link line} above is UNCHANGED by this field — the table-talk line
+   *  is rendered as its own element, never composed into the standing line. */
+  tableTalk: string | null;
 }
 
 /**
@@ -631,7 +671,17 @@ export function liarsDiceDealerReadout(
   const mentions = countWireMentions(game, npc.name);
   const parts = [standing];
   if (mentions > 0) parts.push(`${mentions} prior wire ${mentions === 1 ? 'mention' : 'mentions'}`);
-  return { standing, mentions, line: `${parts.join(' · ')}.` };
+  // T-207 · seeded on the LIVE HAND's id (falling back to the dealer's id when
+  // there is no hand, which keeps the function total for a bare readout call), so
+  // the captain says one thing for the life of one hand and something else across
+  // a career of hands. Read off `game` inside the function deliberately: adding a
+  // seed parameter would be an optional-argument wart on a function T-203's tests
+  // and `dareScene` both call with exactly two arguments.
+  const tableTalk = pickAuthoredLine(
+    NPC_PROFILES.find((p) => p.id === npc.profileId)?.tableTalk,
+    game.dareHand?.id ?? dealerId,
+  );
+  return { standing, mentions, line: `${parts.join(' · ')}.`, tableTalk };
 }
 
 /** The rumor-table lines — a pure pass-through to the engine's own exported
@@ -766,6 +816,21 @@ export interface DareSceneView {
    * three-dealer-hands experiment still holds with this field present.
    */
   dealerHistory: string | null;
+  /**
+   * T-207 · The ROAMING captain's OWN VOICE at the table — one of the authored
+   * `NpcProfile.tableTalk` lines T-206 wrote for all 30 of them
+   * ({@link LiarsDiceDealerReadout.tableTalk}).
+   *
+   * MUTUALLY EXCLUSIVE WITH {@link tableTalk} ABOVE BY CONSTRUCTION, not by
+   * convention: that field is the pool-A ROSTER seat's authored line and is null on
+   * every roaming hand; this one comes off the pool-B captain's `NpcProfile` and is
+   * null on every roster hand, because the readout that produces it hard-nulls on a
+   * `ld-` id. The pane may therefore render both without ever showing two barks.
+   *
+   * Like `dealerHistory`, it is a function of `npcs` and the hand's ID only, never
+   * of `hand.dealerDice`, so the T-136 deep-equal experiment still holds.
+   */
+  dealerTableTalk: string | null;
 }
 
 /** T-146 · This hand's "Read the Table" line, straight off the `DareHandStarted`
@@ -792,6 +857,10 @@ export function dareScene(game: GameState): DareSceneView | null {
   const roster =
     hand.opponentKind === 'roster' ? liarsDiceOpponentFor(hand.systemId, hand.dealerId) : undefined;
   const dealer = roster ?? game.npcs.find((n) => n.id === hand.dealerId);
+  // T-207 · ONE call, two fields. Hoisted so the projection asks the roaming/roster
+  // gate exactly once — a second call site would be a second place for the two
+  // fields to drift out of step.
+  const dealerReadout = liarsDiceDealerReadout(game, hand.dealerId);
   return {
     handId: hand.id,
     dealerId: hand.dealerId,
@@ -800,7 +869,10 @@ export function dareScene(game: GameState): DareSceneView | null {
     tableTalk: roster?.lines.tableTalk ?? null,
     opponentRead: dareOpponentRead(game, hand.id),
     // T-203 · null on every roster hand, by the readout's own hard null.
-    dealerHistory: liarsDiceDealerReadout(game, hand.dealerId)?.line ?? null,
+    dealerHistory: dealerReadout?.line ?? null,
+    // T-207 · null on every roster hand for the same reason, and null on a roaming
+    // hand whose captain has no authored voice (a quest captain).
+    dealerTableTalk: dealerReadout?.tableTalk ?? null,
     playerDice: [...hand.playerDice],
     // `.length`, deliberately. Never a value, never a map over the array.
     dealerDieCount: hand.dealerDice.length,
@@ -1701,6 +1773,32 @@ export interface EncounterReadout {
   kindLabel: string;
   /** Prose known-history HINT — never a raw stat block. */
   history: string;
+  /**
+   * T-207 · The named captain's authored ENTER bark, on the OPENING ROUND ONLY —
+   * it is what they say ARRIVING, not a banner that hangs over the whole fight.
+   *
+   * `null` for an anonymous raider, always and at every round:
+   * `AnonymousInterceptorProfile` has no `catchphrases` at all (T-205's deliberate
+   * shape — "65 anonymous pirates and patrols are noise with a name"), so this is a
+   * rendered nothing there and never a placeholder line.
+   */
+  enterLine: string | null;
+  /**
+   * T-207 · An OCCASIONAL mid-fight bark.
+   *
+   * THE TIMING RULE (the task left this to the implementer, so it is stated here
+   * rather than left to be re-derived from the code): `null` on round 1 — the enter
+   * line owns the opening and two barks in one header is noise — and thereafter
+   * only on EVEN rounds, so it lands every other round. A bark on every round is
+   * wallpaper; the player stops reading it, which costs the enter and resolution
+   * lines their weight too.
+   *
+   * Seeded on `${encounter.id}:${round}` rather than on the encounter alone, so two
+   * showings within one fight can differ while neither moves between paints.
+   * `null` for an anonymous raider at every round — the timing rule must not leak a
+   * bark onto a raider who has none.
+   */
+  battleLine: string | null;
 }
 
 /**
@@ -1715,6 +1813,11 @@ export function encounterReadout(game: GameState): EncounterReadout | null {
   if (!enc) return null;
   const int = enc.interceptor;
   let history: string;
+  // T-207 · Both barks are resolved INSIDE the existing named/anonymous gate below
+  // — the branch the task said to extend — rather than through a second lookup that
+  // could one day disagree with it about who counts as named.
+  let enterLine: string | null = null;
+  let battleLine: string | null = null;
   if (int.source === 'named') {
     const npc = game.npcs.find((n) => n.id === int.id);
     const mentions = countWireMentions(game, int.name);
@@ -1723,8 +1826,21 @@ export function encounterReadout(game: GameState): EncounterReadout | null {
     if (mentions > 0)
       parts.push(`${mentions} prior wire ${mentions === 1 ? 'mention' : 'mentions'}`);
     history = `${parts.join(' · ')}.`;
+    // `createInitialState` sets `npc.id === npc.profileId === profile.id`, so the
+    // `?? int.id` fallback is the same identity `shipLostToLabel` already relies on.
+    const catchphrases = NPC_PROFILES.find((p) => p.id === (int.profileId ?? int.id))?.catchphrases;
+    enterLine = enc.round === 1 ? pickAuthoredLine(catchphrases?.enter, enc.id) : null;
+    battleLine =
+      enc.round > 1 && enc.round % 2 === 0
+        ? pickAuthoredLine(catchphrases?.duringBattle, `${enc.id}:${enc.round}`)
+        : null;
   } else {
     history = 'Unknown raider — no record on file.';
+    // Set EXPLICITLY on the anonymous arm rather than left to the initialisers
+    // above: an anonymous raider gaining a bark is the one regression this task
+    // must not ship, and it should be readable here, at the gate, not inferred.
+    enterLine = null;
+    battleLine = null;
   }
   return {
     name: int.name,
@@ -1737,6 +1853,8 @@ export function encounterReadout(game: GameState): EncounterReadout | null {
         ? 'Named'
         : 'Raider',
     history,
+    enterLine,
+    battleLine,
   };
 }
 
@@ -1801,7 +1919,45 @@ export function tributeThisRound(
 export interface CombatAftermath {
   resolution: 'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled' | 'interceptor-escaped';
   lines: string[];
+  /**
+   * T-207 · The captain's authored `win` / `loss` bark at the resolution, or `null`
+   * for an anonymous raider.
+   *
+   * DELIBERATELY ITS OWN FIELD RATHER THAN A SIXTH ENTRY IN {@link lines}:
+   * `lines[0]` is the headline the panel renders as its `<h2 data-resolution>` and
+   * `lines.slice(1)` is the `<ul>` of things that HAPPENED ("Paid 1,200cr
+   * tribute", "Resolved on round 3"). A captain's quip is a different register, and
+   * pushing it in there would also have made the anonymous panel's DOM a function
+   * of a T-207 code path. A separate nullable field keeps that panel byte-identical
+   * BY CONSTRUCTION, not by care.
+   */
+  opponentLine: string | null;
 }
+
+/**
+ * T-207 · WHOSE line the resolution is, FROM THE CAPTAIN'S POINT OF VIEW. The
+ * engine already decided the resolution; this table only chooses which authored
+ * slot to quote, and it reads counter-intuitively in two places, so each arm
+ * carries its reason:
+ *
+ * A `Record` and NOT a `switch` on purpose. A sixth resolution arm must fail to
+ * COMPILE here rather than fall through a `default` and quietly quote the wrong
+ * half of a captain's voice.
+ */
+const CAPTAIN_OUTCOME: Record<CombatAftermath['resolution'], 'win' | 'loss'> = {
+  // The PLAYER fled the field. The captain held it.
+  escaped: 'win',
+  // Tribute paid — they got exactly what they stopped you for.
+  'talked-down': 'win',
+  // The wreck drifts.
+  defeated: 'loss',
+  // A bonded friend drove them off (T-106 bond hook).
+  'interceptor-fled': 'loss',
+  // T-1207's "miracle burn": they slipped the KILL off a fight they LOST, so they
+  // live — but `types.ts` is explicit that the player still won the field
+  // ("travel completes, unlike 'escaped', which is the PLAYER fleeing"). A loss.
+  'interceptor-escaped': 'loss',
+};
 
 const RESOLUTION_HEADLINE: Record<CombatAftermath['resolution'], string> = {
   escaped: 'Broke off — you slipped the net.',
@@ -1845,7 +2001,21 @@ export function combatAftermathSummary(events: GameEvent[]): CombatAftermath | n
     }
   }
   lines.push(`Resolved on round ${resolved.round}.`);
-  return { resolution: resolved.resolution, lines };
+  // T-207 · The captain's parting word, resolved from the event's own
+  // `interceptorId` straight in `NPC_PROFILES` — the same content lookup
+  // `shipLostToLabel` below already does off `ShipLost.interceptorId`. That lookup
+  // doubles as the named/anonymous test: an anonymous interceptor's id is `anon-*`
+  // and is not in the cast, so it finds nothing and the field stays null. The
+  // one-argument signature is therefore preserved — a `game` parameter would buy
+  // nothing here (the encounter is already nulled by the time this runs) at the
+  // cost of touching both store call sites and every existing test.
+  const opponentLine = pickAuthoredLine(
+    NPC_PROFILES.find((p) => p.id === resolved.interceptorId)?.catchphrases?.[
+      CAPTAIN_OUTCOME[resolved.resolution]
+    ],
+    resolved.encounterId,
+  );
+  return { resolution: resolved.resolution, lines, opponentLine };
 }
 
 // ---- T-1602b · death & succession (display-only) -------------------------

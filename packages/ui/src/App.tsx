@@ -1808,6 +1808,22 @@ function CombatInstrument({ state }: { state: CockpitState }) {
           <span className="co-enemy-hist" data-testid="combat-enemy-history">
             {readout?.history}
           </span>
+          {/* T-207 · The named captain's own voice. Both are `null` for an
+              ANONYMOUS raider at every round — `AnonymousInterceptorProfile` has no
+              catchphrases (T-205's deliberate shape) — so React emits nothing at
+              all on that path and the anonymous header's DOM is byte-identical to
+              what it was before this task. Printed verbatim: no added quote marks,
+              no case change (the `roomLine` convention this file keeps). */}
+          {readout?.enterLine && (
+            <span className="co-enemy-hist co-enemy-bark" data-testid="combat-enemy-bark">
+              {readout.enterLine}
+            </span>
+          )}
+          {readout?.battleLine && (
+            <span className="co-enemy-hist co-enemy-bark" data-testid="combat-enemy-battle-bark">
+              {readout.battleLine}
+            </span>
+          )}
         </div>
         <div className="co-enemy-meta">
           <span className="co-tier" data-testid="combat-enemy-tier">
@@ -2017,6 +2033,15 @@ function CombatAftermathPanel({
           <li key={i}>{line}</li>
         ))}
       </ul>
+      {/* T-207 · The captain's parting word. Its own element, deliberately OUTSIDE
+          the `<ul>` above: that list is things that happened, this is somebody
+          talking. `null` for an anonymous raider, so this panel is byte-identical
+          to today's on that path — nothing was appended to `lines` either. */}
+      {aftermath.opponentLine && (
+        <p className="co-aftermath-bark" data-testid="combat-aftermath-bark">
+          {aftermath.opponentLine}
+        </p>
+      )}
       <p className="co-hint">Logged to the Galactic Wire.</p>
       <button className="btn" data-testid="combat-dismiss" onClick={dismissAftermath}>
         Back to the cockpit
@@ -2979,6 +3004,18 @@ function LiarsDiceScene({
         {view?.dealerHistory && (
           <p className="ld-tabletalk ld-dealer-standing" data-testid="dare-dealer-history">
             {view.dealerHistory}
+          </p>
+        )}
+        {/* T-207 · The ROAMING captain's own voice, under their standing. Reuses
+            `.ld-tabletalk` verbatim — this is the same KIND of thing as the roster
+            seat's line below (an authored italic bark), so it must not grow a
+            second set of spacing rules that could drift from it. `null` on a
+            roster hand (the readout hard-nulls on a `ld-` id), so nothing renders
+            and the pool-A DOM below is unmoved. Printed verbatim: no quote marks
+            added, no case change. */}
+        {view?.dealerTableTalk && (
+          <p className="ld-tabletalk" data-testid="dare-dealer-table-talk">
+            {view.dealerTableTalk}
           </p>
         )}
         {/* T-145 · The roster opponent's authored TABLE TALK, printed verbatim

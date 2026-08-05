@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyPlayerAction,
   createInitialState,
+  endDay,
   legalDareMoves,
   minOpeningQuantity,
   startDay,
@@ -21,7 +22,11 @@ function openingBid(state: GameState, face: number): Extract<PlayerAction, { typ
   const own = state.dareHand!.playerDice.filter((d) => d === face).length;
   return { type: 'Dare', move: 'bid', face, quantity: minOpeningQuantity(own) };
 }
-import { LIARS_DICE_OPPONENTS, LIARS_DICE_RAISED_CEILING_MULT } from '@spacerquest/content';
+import {
+  LIARS_DICE_OPPONENTS,
+  LIARS_DICE_RAISED_CEILING_MULT,
+  NPC_PROFILES,
+} from '@spacerquest/content';
 import {
   dareRevealFrom,
   dareScene,
@@ -636,5 +641,123 @@ describe('T-203 · a roaming dealer wears their standing with you', () => {
     expect(dareScene(withDealerDice(state, [6, 6, 6, 6]))!.dealerHistory).toBe(
       dareScene(state)!.dealerHistory,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-207 · THE ROAMING CAPTAIN'S OWN VOICE AT THE TABLE (`docs/HANGOUT_REDESIGN.md`;
+// `format.ts`'s `LiarsDiceDealerReadout.tableTalk` → `DareSceneView.dealerTableTalk`).
+//
+// T-206 finished authoring `NpcProfile.tableTalk` for all 30 named captains; this
+// is the reader. EVERY EXPECTATION BELOW IS DERIVED FROM CONTENT — a literal quote
+// here would be a second copy of an authored line that passes while the pane prints
+// something else, which is the same discipline T-203's section states at its head
+// for `dispositionHint`.
+//
+// Two assertions carry more than they look like they do:
+//   · the STABILITY test is what would have caught a `Math.random()` pick. This
+//     projection runs on every React paint, so a random draw would reshuffle the
+//     captain's line while the player was still reading it.
+//   · the ROSTER test asserts BOTH fields in one body, so a regression that swapped
+//     pool A's line for pool B's fails right here rather than passing both halves
+//     separately.
+// ---------------------------------------------------------------------------
+
+describe('T-207 · a roaming captain speaks in their own authored voice', () => {
+  const AUTHORED = NPC_PROFILES.find((p) => p.id === DEALER)!.tableTalk!;
+
+  it('draws the table-talk line from that captain’s own authored pool', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    const readout = liarsDiceDealerReadout(state, DEALER)!;
+    expect(readout.tableTalk).toBeTruthy();
+    // Derived from content, never a hardcoded quote.
+    expect(AUTHORED).toContain(readout.tableTalk);
+    expect(dareScene(state)!.dealerTableTalk).toBe(readout.tableTalk);
+  });
+
+  it('holds the SAME line for the life of the hand, across paints and across moves', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    // Two calls on one state: the anti-`Math.random()` assertion.
+    expect(dareScene(state)!.dealerTableTalk).toBe(dareScene(state)!.dealerTableTalk);
+    const first = dareScene(state)!.dealerTableTalk;
+
+    // And it survives a legal move, exactly as `opponentRead` does.
+    const after = applyPlayerAction(state, openingBid(state, 3)).state;
+    expect(after.dareHand).not.toBeNull();
+    expect(dareScene(after)!.dealerTableTalk).toBe(first);
+  });
+
+  it('does not say the same thing every hand of a career', () => {
+    // The pool is 2-4 lines (`castValidation.ts`), so a single-line captain would
+    // make this vacuous — assert the premise rather than assume it.
+    expect(AUTHORED.length).toBeGreaterThan(1);
+
+    // THE SAMPLE IS A CAREER OF DAYS, NOT A SPREAD OF SEEDS, and that is a
+    // statement about what the line is keyed on rather than a convenience. The
+    // line is seeded on the HAND (`dare-${day}-${dealerId}-${dayEventCount}`,
+    // `actions/hangout.ts`), which is a function of WHEN a hand was dealt and not of
+    // the world seed — forty seeds all deal their first hand on day 1 at the same
+    // event count, so a seed sweep is a sample of size one dressed up as forty. The
+    // day is also the only axis available: the engine allows ONE dare hand per day
+    // (`daily-round-limit`), so "the next hand" is by construction "tomorrow's".
+    let game = atLadder(1, 0); // purses topped up; the ladder tier stays at 0.
+    const drawn = new Set<string>();
+    for (let day = 0; day < 12; day += 1) {
+      const opened = openHand(game, 25).state;
+      drawn.add(dareScene(opened)!.dealerTableTalk!);
+      // Fold to settle, then run the real day loop to reach tomorrow's table.
+      game = startDay(
+        endDay(applyPlayerAction(opened, { type: 'Dare', move: 'fold' }).state).state,
+      ).state;
+      // Same fixture setup as `atLadder`, re-applied so a long career cannot end the
+      // sweep early on an empty purse or a dealer who wandered off.
+      game.player.credits = 200_000;
+      const dealer = game.npcs.find((n) => n.id === DEALER)!;
+      dealer.credits = 200_000;
+      dealer.currentSystemId = game.player.currentSystemId;
+    }
+    // A wider sample is the fix if this ever narrows — never a weaker assertion.
+    expect(drawn.size).toBeGreaterThan(1);
+    for (const line of drawn) expect(AUTHORED).toContain(line);
+  });
+
+  it('is NULL on a `ld-` roster seat, and leaves pool A’s authored line alone', () => {
+    const { state } = openRosterHand(dayOneAtSun3(1), 'ld-1-2');
+    // The roaming/roster gate is the readout's own hard null — T-207 extended it
+    // rather than opening a second one, so this needs no new branch to be true.
+    expect(liarsDiceDealerReadout(state, 'ld-1-2')).toBeNull();
+    const view = dareScene(state)!;
+    expect(view.dealerTableTalk).toBeNull();
+    // Same body, deliberately: a swap of one field for the other dies here.
+    expect(view.tableTalk).toBe(LIARS_DICE_OPPONENTS[SUN_3][1].lines.tableTalk);
+  });
+
+  it('never shows two table-talk lines at once, on either pool', () => {
+    const roaming = dareScene(openHand(dayOneAtSun3(1)).state)!;
+    const roster = dareScene(openRosterHand(dayOneAtSun3(1), 'ld-1-2').state)!;
+    // The claim the pane's comment makes, pinned. Mutually exclusive BY
+    // CONSTRUCTION: `tableTalk` is pool A's, `dealerTableTalk` is pool B's.
+    for (const view of [roaming, roster]) {
+      expect(Boolean(view.tableTalk && view.dealerTableTalk)).toBe(false);
+    }
+    expect(roaming.dealerTableTalk).toBeTruthy();
+    expect(roster.tableTalk).toBeTruthy();
+  });
+
+  it('did not open a leak — the new field is blind to the dealer’s dice', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    // The T-136 experiment, re-run for T-207's field specifically.
+    expect(dareScene(withDealerDice(state, [6, 6, 6, 6]))!.dealerTableTalk).toBe(
+      dareScene(state)!.dealerTableTalk,
+    );
+  });
+
+  it('left T-203’s standing line exactly where it was', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    const readout = liarsDiceDealerReadout(state, DEALER)!;
+    expect(readout.line).toBe(dareScene(state)!.dealerHistory);
+    // The bark is a SEPARATE element, never composed into the standing line.
+    expect(readout.line).not.toContain(readout.tableTalk!);
+    expect(readout.line).toBe(`${dispositionHint(0)}.`);
   });
 });

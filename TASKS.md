@@ -4801,7 +4801,7 @@ packages/content/src/cast.ts` = **30**; `grep -c "catchphrases:" packages/conten
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only the source tree is present) · attempts=1/4.
 
-### T-207 · UI: surface table-talk and catchphrases at the table and in combat — `status: TODO` · `coder: opus` · `after: T-206, T-203`
+### T-207 · UI: surface table-talk and catchphrases at the table and in combat — `status: DONE` · `coder: opus` · `after: T-206, T-203`
 
 **Liar's Dice:** when a ROAMING named captain (not a `ld-` roster seat) deals a hand, show one of
 their `tableTalk` lines — this sits beside T-203's disposition readout at the same seat
@@ -4819,6 +4819,115 @@ interceptor's encounter shows enter/win/loss lines (during-battle line at least 
 is implementer's call); an anonymous interceptor's UI is byte-identical to today; UI test coverage
 for both surfaces, including the "anonymous gets nothing new" negative case. No engine/content
 file touched (this reads data T-205/T-206 already authored). Gate green.
+
+**Delivered (2026-08-05).** The 275 lines T-205/T-206 authored now have a reader. Five files
+touched and no more: `packages/ui/src/format.ts`, `packages/ui/src/App.tsx`,
+`packages/ui/src/theme.css`, `packages/ui/src/__tests__/liars-dice-pane.test.ts` (extended) and
+`packages/ui/src/__tests__/combat-catchphrases.test.ts` (new). `git status --porcelain | grep -E
+"packages/(engine|content)" | wc -l` = **0** — the Accept's no-engine/content clause, checked
+mechanically rather than asserted.
+
+**THE PICK IS DETERMINISTIC, AND THAT IS STRUCTURAL RATHER THAN STYLISTIC.** One shared
+non-exported `pickAuthoredLine(lines, seed)` (`format.ts:605`, FNV-1a over the seed string) serves
+all four surfaces. `format.ts` runs on EVERY React paint, so a `Math.random()` pick would reshuffle
+a captain's line while the player was still reading it — the bark would flicker. The seed is the id
+of the THING the line belongs to (`dareHand.id`; `encounter.id`; `` `${encounter.id}:${round}` ``;
+`EncounterResolved.encounterId`), so a line is stable for exactly as long as that thing is and two
+of them draw independently. No engine RNG is forked and none could be: a display projection that
+pulled from the engine's stream would change the world by being rendered. Four tests pin the
+stability directly — that is the assertion that would have caught a random pick.
+
+**THE ROAMING/ROSTER GATE WAS EXTENDED, NOT DUPLICATED.** T-203's `liarsDiceDealerReadout` already
+hard-nulls on a `ld-` id and on any id with no live `NpcState`; T-207 added a `tableTalk` field to
+that same readout (`format.ts:680`) rather than a second exported function, so the roaming-vs-roster
+distinction still exists in exactly one place. `dareScene` now hoists ONE call into a local and
+reads both fields off it (`dealerHistory`, `dealerTableTalk`) — a second call site would have been a
+second place for the two to drift. T-203's `line` is **provably unchanged**: a test asserts it still
+equals `dareScene(...).dealerHistory`, still equals `` `${dispositionHint(0)}.` ``, and does NOT
+contain the table-talk line, which is rendered as its own element.
+
+**THE DURING-BATTLE TIMING RULE (the task left this to the implementer, so it is stated here).**
+`enterLine` on round 1 only — it is what a captain says ARRIVING, not a banner that hangs over the
+whole fight. `battleLine` null on round 1 (the enter line owns the opening; two barks in one header
+is noise) and thereafter only on EVEN rounds, so it lands every other round. A bark on every round
+is wallpaper: the player stops reading it, which costs the enter and resolution lines their weight
+too. Seeded on `` `${enc.id}:${enc.round}` `` so two showings in one fight differ; a 20-round sweep
+asserts more than one distinct line is actually drawn.
+
+**THE WIN/LOSS ORIENTATION, as a total typed table.** `CAPTAIN_OUTCOME`
+(`format.ts:1947`) is a `Record<CombatAftermath['resolution'], 'win'|'loss'>` and deliberately NOT a
+`switch`: a sixth resolution arm must fail to COMPILE here rather than fall through a `default` and
+quietly quote the wrong half of a captain's voice. It reads the engine's resolution from the
+CAPTAIN's side, which inverts twice — `escaped` is a captain **WIN** (the PLAYER fled; the captain
+held the field) and `interceptor-escaped` is a captain **LOSS**, because `types.ts:1389-1392` is
+explicit that the miracle burn comes off a fight the interceptor LOST and "the player still won the
+field, so travel completes (unlike 'escaped', which is the PLAYER fleeing)". All five arms are
+covered by an `it.each` that also asserts the line is NOT in the opposite pool.
+
+**NO SIGNATURE CHANGED.** `combatAftermathSummary(events)` is still one-argument: the captain is
+resolved from the event's own `interceptorId` straight in `NPC_PROFILES` — the same content lookup
+`shipLostToLabel` already does off `ShipLost.interceptorId` — so both store call sites
+(`store.ts:2208`, `store.ts:2382`) and every existing test are untouched. That lookup doubles as the
+named test: an anonymous id is `anon-*` and is not in the cast.
+
+**THE ANONYMOUS PATH GAINED ZERO DOM, BY CONSTRUCTION AND NOT BY CARE.** Both new
+`EncounterReadout` fields are set EXPLICITLY to `null` on the anonymous arm of the existing gate
+(not left to an initialiser), nothing was pushed into `CombatAftermath.lines` — the bark is its own
+nullable field precisely so the `<h2>`/`<ul>` the panel renders could not move — and all three new
+JSX elements are `null &&` guards, so React emits nothing at all. `git diff packages/ui/src/App.tsx`
+shows only ADDED guarded blocks; not one character inside an existing element changed. The negative
+case is proved with a whole-object `toEqual` on `encounterReadout`, so a future field added without
+a null default on the anonymous arm fails there too, plus a rounds-1..6 sweep (the every-other-round
+rule must not leak), all five resolution arms, and a `lines` deep-equal. A quest captain — absent
+from both voice fields by T-205's ABSENT-means-no-voiced-surface ruling — and an unknown id both
+return `null` rather than throwing.
+
+**CSS: two face-only modifiers, the T-203 precedent exactly.** `.co-enemy-bark` is a modifier ON
+`.co-enemy-hist` setting italic + opacity only, so size and colour stay the single copy
+`.co-enemy-hist` owns; `.co-aftermath-bark` sits beside `.co-aftermath-lines`. The dice table gets
+**no new rule at all** — the roaming bark reuses `.ld-tabletalk` verbatim, because it is the same
+KIND of thing as the roster seat's line and must not grow spacing rules that could drift from it.
+
+**A PLANNED TEST WAS FIXED RATHER THAN WEAKENED.** The "different hands draw different lines" case
+first went red at `drawn.size === 1` on a 40-seed sweep. Root cause, found before touching the
+assertion: the hand id is `` `dare-${day}-${dealerId}-${dayEventCount}` `` (`actions/hangout.ts:536`)
+and is NOT a function of the world seed, so forty seeds all deal their first hand on day 1 at the
+same event count — forty copies of one hand id, a sample of size one dressed up as forty. The
+engine also allows ONE dare hand per day (`daily-round-limit`), so "the next hand" is by
+construction "tomorrow's". The sample was WIDENED to a real 12-day career driven through
+`endDay`/`startDay`; the assertion is unchanged and the reasoning is written at the test.
+
+**NO CAPSTONE, NO SWEEP, NO `balance:extract`, NO FIXTURE RE-STAMP — stated affirmatively so the
+absence does not read as an omission.** `rulesFingerprint` hashes `packages/content/src` plus the
+engine's rule modules (`packages/sim/src/balance/rules-fingerprint.ts:622-694`); `packages/ui` is
+not a hashed root, so a UI-only task cannot move it. T-203 — the other UI-only task in this
+milestone — took none for the same reason. The capstone this milestone owes belongs to **T-208**,
+its final task. `npm run format` was run anyway before `format:check`, per the standing order.
+
+**NO MIGRATION OWED.** No `GameState` field is added; `CombatAftermath` and `DareSceneView` are
+client presentation projections (`store.ts:248-253`), never persisted. `CURRENT_SAVE_VERSION`
+**re-read live** from `packages/engine/src/save.ts:562` = **16** (read, not copied from T-205's or
+T-206's note) and unchanged.
+
+**Gate green.** `npm run format`, `npx tsc -b`, `npm run lint`, `npm run format:check` all exit 0;
+`npm test` = **2,558 passed, 0 failed** across all six workspaces (63 + 110 + 61 + 1,346 + 529 +
+449). Baseline was 2,533 at T-206, so the delta is **+25**, accounted exactly: **+18** in the new
+`combat-catchphrases.test.ts` and **+7** in `liars-dice-pane.test.ts`'s new T-207 describe. No
+pre-existing test moved and no fingerprint, band, threshold or golden was edited. No e2e change was
+needed or made: `combat.spec.ts`'s two seeds are both anonymous encounters (nothing for a bark to
+assert against) and `liars-dice-roster.spec.ts`'s `dare-table-talk` / `dare-dealer-history`
+assertions are on the ROSTER seat, which this task leaves untouched — both still pass their unit
+analogues.
+
+**Deliverables grepped at their named call sites before marking DONE.** `grep -n
+"dare-dealer-table-talk" packages/ui/src/App.tsx` → **3017**; `grep -n
+"combat-enemy-bark\|combat-enemy-battle-bark\|combat-aftermath-bark" packages/ui/src/App.tsx` →
+**1818 · 1823 · 2041**; `grep -n "dealerTableTalk" packages/ui/src/format.ts` → **833 · 875**;
+`enterLine`/`battleLine` populated inside `encounterReadout`'s existing `source === 'named'` arm at
+**1832-1835** and explicitly nulled in the anonymous arm at **1842-1843**; `CAPTAIN_OUTCOME` at
+**1947** consumed by `combatAftermathSummary` at **2012-2014**.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only the source tree is present) · attempts=1/4.
 
 ### T-208 · Pin quest captains stationary, at a port sane for their questline — `status: TODO` · `coder: opus` · `after: —`
 
