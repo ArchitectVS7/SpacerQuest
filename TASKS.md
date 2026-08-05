@@ -4285,7 +4285,7 @@ added asserting the cue's presence for a grudge-holding roaming dealer and its a
 roster dealer; no engine/content file touched (this is a UI-only surfacing of data the engine
 already computes — `npc.disposition` is already on `NpcState`). Gate green.
 
-### T-204 · Rename "Hangout" to "Cantina" in every PLAYER-FACING surface — `status: TODO` · `coder: opus` · `after: —`
+### T-204 · Rename "Hangout" to "Cantina" in every PLAYER-FACING surface — `status: DONE` · `coder: opus` · `after: —`
 
 **The ask (owner, 2026-08-05):** retire "Hangout" (the OG name) in favor of "Cantina" everywhere
 a player sees it. **Scoped deliberately narrow, owner-confirmed (2026-08-05):** this is a
@@ -4339,6 +4339,175 @@ baseline, proving nothing out-of-scope was touched); existing UI/e2e tests that 
 rendered copy are updated to expect "Cantina" and pass; the capstone lands with every
 archetype row byte-identical against the predecessor baseline and re-pinned at all four sites,
 or a filed finding if a row moved. Gate green.
+
+**Delivered (2026-08-05). The prediction HELD: `NOTHING MOVED. Every compared field is equal on
+both sides.`** The player now reads "Cantina" everywhere; every internal identifier still says
+"Hangout", by design.
+
+**What changed — 15 authored prose STRING VALUES across 9 files, and nothing else.** (Filed as
+16 in the first draft of this note; the honest count, `git diff -U0 | grep '^+' | grep -c
+Cantina` per file, is App.tsx 2 · format.ts 2 · walkthrough.ts 2 · portHangouts.ts 1 · deeds.ts 1
+· flaws.ts 1 · wireStories.ts 3 · npc.ts 2 · STEAM-ACHIEVEMENTS.md 1 = **15**, one string value
+per changed line. Corrected rather than left, because a note this precise elsewhere earns no
+benefit of the doubt on a number. "Nothing else" is scoped to SHIPPING bytes: fix round 1 also
+adds one non-shipping dev script, `scripts/prose-scan.mjs`, which no package imports and no
+build consumes — see "THE PROBE IS A COMMITTED SCRIPT" below.)
+UI: `App.tsx` (the launcher button text, `aria-label="Spacers Cantina"`), `format.ts` (the
+`first-hangout` onboarding title + body), `walkthrough.ts` (step 7's `what`, and its no-venue
+fallback). Content: `portHangouts.ts` (`DEFAULT_PORT_HANGOUT`'s generic `houseName`; the
+fourteen authored per-port rows never contained the word), `deeds.ts` (`table_regular`'s
+citation), `flaws.ts` (Compulsive Gambler's detail), `wireStories.ts` (all three gamble
+templates). Engine: `npc.ts:2064,2072`. Plus `docs/STEAM-ACHIEVEMENTS.md:136`.
+
+**SCOPE WIDENING into `packages/engine/src/npc.ts`, declared not smuggled.** The task's IN-SCOPE
+list named only `packages/ui` and `packages/content`, but the two Socialize `lastAction.details`
+clauses in `npc.ts` are player-facing by the task's own definition — the file's own comment at
+`npc.ts:2042` says they are "interpolated VERBATIM into the player-facing rumor mill", and
+`day.ts:1007` renders them straight into Galactic News Wire messages. Included, on three
+grounds: (1) they are unambiguously player-facing; (2) they are baked into the same replay
+golden as `wireStories.ts`, so deferring them would have forced a SECOND golden re-derivation
+for the same rename — which fails the Bug Discovery Policy's Rule-2 exception test (a deferral
+must show it does not roll up technical debt; this one cannot); (3) `lastAction.details` has
+ZERO computational readers — verified every consumer is a display path (`day.ts:658,701,1007`,
+`actions/hangout.ts:99`, `npc.ts:2255`, `ui/store.ts:672`), no deed trigger, coverage metric or
+sweep column reads the prose (deed triggers match `eventType` + `path`/`equals`, never text).
+
+**OUT-OF-SCOPE GREP-PROOF — measured before the first edit and re-run after, byte-identical on
+every probe.** A · tracked file names matching `hangout`: **14 → 14** (`diff` of the sorted
+lists: IDENTICAL). B · exported symbol lines: **36 → 36** (IDENTICAL). C ·
+`VisitHangout` in `packages/engine/src/schema.ts`: **3 → 3** (IDENTICAL, same line numbers) —
+the save literal stored verbatim in every existing save is untouched, and renaming it would owe
+its own migration (explicitly deferred by the owner, not forgotten). D · `TASKS.md`: **142 →
+142 at the moment the code edits finished**, then 170 once THIS Delivered note was appended
+(164 before the fix-round-1 corrections two paragraphs below added six more).
+The literal byte-identical-count wording cannot survive a note the protocol requires, so the
+honest invariant is the one actually checked: `git diff TASKS.md | grep '^-' | grep -i hangout`
+returns exactly ONE line, this task's own `status:` flip — i.e. zero pre-existing occurrences
+were rewritten, the file only grew. E · dated design docs unchanged:
+`HANGOUT_REDESIGN.md` 306, `LIARS-DICE_REDESIGN.md` 108, `DAWN-HAND-REDESIGN.md` 27,
+`HANGOUT-DECISIONS.md` 22, `EXPLORE_REDESIGN.md` 8. `NPC_REDESIGN.md` is the one doc that grew,
+and only by ADDITION — `git diff` shows zero removed lines containing "hangout", i.e. the
+re-pin block was appended and no historical sentence was rewritten.
+
+**THE ACCEPT CLAUSE'S "ZERO HITS" IS RECONCILED, NOT CLAIMED.** A raw
+`grep -ci hangout packages/ui/src` CANNOT reach zero, because the same criterion's OUT-OF-SCOPE
+list preserves `data-testid`s, `railsProps('hangout')`, imported symbol names and comments. Read
+via the criterion's own parenthetical ("authored STRING VALUES … not field/type names"), the
+AST-accurate probe leaves a remainder of exactly **14 hits, none of them player-facing**: 12
+test-name / `describe` strings (explicitly out of scope) and `liarsDiceValidation.ts:133,138` —
+developer-facing validation errors naming the `hasHangout` identifier, which never render to a
+player. Recorded as a decision, not an oversight.
+
+**THE PROBE IS A COMMITTED SCRIPT, `scripts/prose-scan.mjs` — `node scripts/prose-scan.mjs`
+reprints the 14 in one command.** The first draft of this note cited the probe as living at
+`scratchpad/t204-prose-scan.py`, which was a SESSION-SCRATCHPAD path, not a repo path: nothing
+was ever committed there and `scratchpad/` is not even a directory this repo has. A reviewer
+following that citation found nothing, which made an auditable-looking claim unverifiable —
+the exact failure the Standing constraint "never mark a task DONE without grepping for its named
+deliverable at its named call site" exists to catch. Fixed by making the artifact real rather
+than by softening the sentence. The committed script parses each file with the TypeScript
+compiler (the same `import ts from 'typescript'` idiom `rules-fingerprint.ts` already uses to
+strip comments before hashing) and searches ONLY `StringLiteral`, every `Template*` span, and
+`JsxText` — comments are trivia and are never visited. It then applies ONE mechanical split, no
+allow-list: a matching literal with internal whitespace is PROSE, one without is an
+IDENTIFIER-SHAPED TAG (`'hangout-close'`, `'HangoutEvent'`, `'VisitHangout'`,
+`'./portHangouts.js'` — all explicitly out of scope). Over the Accept clause's own three roots
+(`packages/ui/src`, `packages/desktop`, `packages/content/src`, 97 files) it prints
+`14 authored prose hit(s); 57 identifier-shaped tag(s)`, reproducing this paragraph's number
+exactly. `packages/desktop` contributes zero. Exit code is always 0 by design: which prose hits
+are player-facing is a human call, and gating on it would smuggle the stale allow-list back in
+through the exit code.
+
+**AND THE SCRIPT DISCLOSES ITS OWN BLIND SPOT, which the manual probe never could.** A ONE-WORD
+player-facing label has no internal whitespace, so the whitespace rule files it under
+`identifier` — the `App.tsx` launcher button, JSX text reading exactly `Cantina`, is the live
+example (`--term cantina --all` shows it in the identifier bucket). The prose count is therefore
+a LOWER BOUND on player-facing copy, which is why `--all` exists and is the honest read for a
+rename audit. Run that way, all 14 bare `'hangout'` literals were inspected individually and
+every one is a rails/anchor id or a union member, never rendered text: `App.tsx:1048,2345`
+(`railsProps(…, 'hangout')`), `format.ts:3124,3296` (the `OnboardingAnchor`/`OnboardingMount`
+unions) and `:3304` (the anchor→mount map), `walkthrough.ts:96,132,237,240` (`anchor:`/`allow:`),
+and three in `walkthrough.test.ts`.
+
+**FIVE POINTER SITES, NOT FOUR.** The task block said "all four sites"; there are five
+(`baseline-pointers.test.ts` enumerates `balance-targets`, `npc-amendment-1`,
+`npc-status-banner`, `smoke-readme`, `rig-decisions-br14` — the fifth added at T-182, the same
+correction T-197 already recorded). All five re-pinned to
+`docs/balance/baseline-t204-cantina-rename.json`; `baseline-pointers.test.ts` green (8/8).
+`pacing-brief-figures.test.ts`'s `ARC_BASELINES` was checked and deliberately NOT extended —
+it already excludes t202 because every row must appear in the frozen 2026-08-05 pre-session
+brief, and the identical reasoning excludes t204.
+
+**TWO GOLDENS RE-DERIVED — and the honesty check is mechanical, not an assertion.** The task
+block anticipated one (the sim replay golden); there was a second the plan had not identified,
+`packages/engine/src/__tests__/fixtures/day-loop-golden.ts`, whose four sha256 hashes cover
+`serializeState` + the day-event stream and therefore carry the renamed prose. Neither was
+hand-patched to pass. For BOTH, the substitution was mechanically REVERSED before regenerating:
+replacing every "Cantina" with "Hangout" in each newly computed pre-image reproduced the
+COMMITTED predecessor constants EXACTLY — all six replay constants (primary/combat/abandon ×
+session/responses) and all four day-loop hashes. That identity proves the only bytes that moved
+are the rename: every credit, fuel level, system id, event type, `legalActions` list and event
+ordering is byte-identical. **And the dice did not move** — all three replay `rngState`s held at
+`364866002 / 268015010 / -1231248819`. A moved `rngState` would have meant a prose edit changed
+a draw, which is a real bug, not a rename; it was asserted rather than assumed. Both files carry
+a `T-204 RE-DERIVATION` comment block recording this, matching the in-file precedent (T-149,
+N13/T-156) that keeps the record of *why* bytes moved.
+
+**Capstone.** `npm run format` FIRST (all files "unchanged"), then 8 ONE-INDEXED shards
+(`--shard i/8`, i = 1..8), every one exit 0, `--milestone-days 21,29,30,41,60,120`, then
+`--merge` printing `t204-cantina-rename · merged · 8000 rows · PASS` and `invariants: 0
+violations`. `rulesFingerprint` `f33b6af1ee21dffa` → `5ae9a5d473827024` (content is hashed
+WHOLESALE, so authored prose moves it — expected, and paid for with this capstone rather than by
+editing a fingerprint or a golden); `instrumentFingerprint` UNMOVED at `5c230e99648cddee`.
+Smoke re-extracted with the load-bearing `--aggregate` (F-146-0: omitting it silently falls back
+to `baseline-n1.json` and flips `spreadSource` to `estimated`) — `tiers.json` carries
+`provenance.spreadSource "harvested"` and `provenance.sweepLabel "t204-cantina-rename"`.
+`balance:diff` vs `baseline-t202-liars-dice-ceiling.json`: **`NOTHING MOVED`**, as predicted in
+writing before the run. Note `npm run format` was also re-run after the capstone and reported
+every file unchanged — a genuine no-op, machine-confirmed by `balance-smoke.test.ts`'s "is not
+stale" check passing against the recorded fingerprint.
+
+**No migration owed, with the reasoning rather than the assertion.** `CURRENT_SAVE_VERSION` is
+**16**, re-read live at `packages/engine/src/save.ts:562` (never copied from the Standing
+constraints' frozen 12 or T-202's note). No `GameState` field was added, removed or retyped.
+Persisted `lastAction.details` and `wire[].message` *values* differ for newly generated states,
+but old saves keep their old prose and remain schema-valid — **a value change is not a shape
+change** — so no migration and no round-trip test is owed.
+
+**Tests.** Copy assertions updated (sanctioned by Accept): `walkthrough.test.ts:384`,
+`wire.test.ts:132`, `hangout.test.ts:375`, `npc.test.ts:717`. One CHECK WAS STRENGTHENED rather
+than merely updated: `npc.test.ts`'s `VENUE` regex — the negative guard proving the rumor mill
+never narrates a bar at a barless port — was `/hangout|\bbar\b|tables?/i` and would have stopped
+guarding against the new word; it is now `/hangout|cantina|\bbar\b|tables?/i`, so it still fails
+if "Cantina" ever leaks into the off-venue branch. No test name, `describe` title, test-body
+identifier or the `redesign/explore-hangout` branch literals were touched. No e2e selector
+depends on the renamed copy (verified: e2e uses `data-testid`/`data-onboarding-id`; the only
+`getByRole`/`getByLabel` calls target "New game"/"seed"/"Roll").
+
+**Gate green:** `npm test` 2,495 passed / 0 failed across all six projects, `npx tsc -b`,
+`npm run lint`, `npm run format:check` all exit 0. No `it.fails` tripwire flipped.
+
+**F-204-1 (open) · `wireStories.ts`'s "VERBATIM PRD §6 sample — do not reword" contract now
+diverges from the PRD.** `wireStories.ts:49` carries an explicit in-file contract that index 0
+is the verbatim PRD §6 sample, pinned exactly at `wire.test.ts:132`. That line now says
+"Cantina" while `docs/PRD-REIMAGINED.md:113` still says "Hangout" (as do §7.3/§7.5 at lines
+145/163/167/177/195/217/223). The PRD was NOT in this task's IN-SCOPE list and updating it is
+its own scoped decision — filed rather than taken unilaterally. Related and deliberate: the
+comment at `wireStories.ts:16-17` quoting the old sample, and the one at
+`hangout.test.ts:373-374` ("The gamble templates all name the Hangout"), were left UNEDITED to
+keep the out-of-scope comment-count proof clean; both are therefore knowingly stale pending the
+PRD decision, and should be corrected by whichever task takes it.
+
+**F-204-2 (open) · the rename stops at the player's eye, by design — the internal vocabulary is
+now split.** `hangout.ts`/`hangoutRules.ts`, `resolveVisitHangout`, `HangoutEvent`,
+`HangoutTone`/`HangoutProse`, `hasHangout`/`PORT_HANGOUTS` and the `'VisitHangout'` save literal
+all still say "Hangout" while every rendered string says "Cantina". This is exactly what the
+owner scoped, and the save literal genuinely cannot move without a migration — but a future
+reader will hit the mismatch. If anyone wants to close it, that is its own task with its own
+save-shape decision, and it should be taken deliberately rather than drifting into a "while I'm
+here" rename.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=2/4.
 
 ---
 

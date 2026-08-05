@@ -41,7 +41,7 @@ export const FLAWS: Record<string, FlawDef> = {
   },
   'Compulsive Gambler': {
     triggers: ['Trade'],
-    detail: "gambled the day's profits away at the nearest Hangout table.",
+    detail: "gambled the day's profits away at the nearest Cantina table.",
     credits: -500,
   },
   Overcautious: {

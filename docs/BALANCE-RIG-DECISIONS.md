@@ -121,13 +121,13 @@ read at runtime, and therefore the authoritative one), amendment 1's own pointer
 `docs/NPC_REDESIGN.md`'s status banner, `docs/balance/smoke/README.md`'s "current
 baseline" line, and — added at T-182 — **this rule's own "current baseline of record"
 sentence below** — with the smoke fixture re-extracted FROM the new capstone file. The current
-baseline of record is `docs/balance/baseline-t202-liars-dice-ceiling.json` (8,000 rows, 8
-one-indexed shards, spreads harvested, `sweepLabel t202-liars-dice-ceiling`; re-pinned at T-202
-2026-08-05 — a CONTENT-ONLY capstone shipping the owner's R3 ruling from the T-198 pacing
-checkpoint, `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]`. It moves `rulesFingerprint`
-(10e19c88e9a07856 -> f33b6af1ee21dffa) and NOT `instrumentFingerprint` (unmoved at
-5c230e99648cddee), so it is a clean single-arm attribution again after T-197's both-hashes
-capstone. EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL, which was predicted in
+baseline of record is `docs/balance/baseline-t204-cantina-rename.json` (8,000 rows, 8
+one-indexed shards, spreads harvested, `sweepLabel t204-cantina-rename`; re-pinned at T-204
+2026-08-05 — a TEXT-ONLY capstone shipping the player-facing "Hangout" -> "Cantina" rename:
+authored prose STRING VALUES only, with no rule, DC, band, threshold or code path changed. It
+moves `rulesFingerprint` (f33b6af1ee21dffa -> 5ae9a5d473827024 — content is hashed wholesale
+into the fingerprint, so even a pure-text edit moves it) and NOT `instrumentFingerprint`
+(unmoved at 5c230e99648cddee), so it is a clean single-arm attribution. EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL, which was predicted in
 writing before the run and is an INSTRUMENT-GAP NULL RESULT rather than a verdict that the new
 ceiling is balanced: the sim's gambler is the only policy that plays a Dare and is bounded at
 `GAMBLER_MAX_DARES_PER_DAY = 2`, below the ruled ceiling, so it plays the same 1,2,2,2,2,2

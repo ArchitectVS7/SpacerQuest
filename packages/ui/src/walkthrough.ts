@@ -232,7 +232,7 @@ export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
     id: 'w7-liars-dice',
     index: 7,
     title: "A Hand of Liar's Dice",
-    what: 'Open the Hangout, pick someone at the tables, set a wager and commit a die. Then bid, raise, or call them a liar.',
+    what: 'Open the Cantina, pick someone at the tables, set a wager and commit a die. Then bid, raise, or call them a liar.',
     why: 'The tables are where the Rim keeps its reputations. One die buys a whole hand — and the house never shows its cups until somebody challenges.',
     anchor: 'hangout',
     ack: false,
@@ -403,7 +403,7 @@ export function walkthroughCardCopy(
   }
   if (step.id === 'w7-liars-dice' && !hangoutOpen(game)) {
     return {
-      what: 'This port keeps no Hangout — plot a jump to a core port and the tables will be there.',
+      what: 'This port keeps no Cantina — plot a jump to a core port and the tables will be there.',
       why: step.why,
     };
   }

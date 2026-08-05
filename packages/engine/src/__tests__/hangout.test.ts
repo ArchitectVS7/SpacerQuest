@@ -372,7 +372,7 @@ describe('day loop: a Dare nat makes the wire (via T-1202) naming the in-system 
     const wire = events.filter((e) => e.type === 'WireEntry');
     // The gamble templates all name the Hangout, and the player's nat names the
     // co-located dealer (Iron Vex) as the loser — "an NPC actually present".
-    expect(wire.some((w) => w.message.includes('Hangout'))).toBe(true);
+    expect(wire.some((w) => w.message.includes('Cantina'))).toBe(true);
     expect(wire.some((w) => w.message.includes('Iron Vex'))).toBe(true);
   });
 });

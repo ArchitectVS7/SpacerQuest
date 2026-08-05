@@ -260,7 +260,7 @@ export const DEFAULT_PORT_HANGOUT: PortHangout = {
   clientele: {},
   // Generic house, so a `hasHangout` port with no row of its own still renders.
   prose: {
-    houseName: 'the Spacers Hangout',
+    houseName: 'the Spacers Cantina',
     tone: 'everyday',
     flavour: {},
   },

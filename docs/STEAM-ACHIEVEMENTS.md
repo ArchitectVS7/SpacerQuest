@@ -133,7 +133,7 @@ implemented honestly against this API.
 | `DEED_DARE_FIRST` | First Dare | This captain sat down to a Spacer’s Dare and stayed. |
 | `DEED_DARE_WON` | Took the Pot | The table paid out and the dealer counted it twice. |
 | `DEED_HIGH_ROLLER` | High Roller | A stake worth a hold of cargo rode one hand — and came back doubled. |
-| `DEED_TABLE_REGULAR` | Table Regular | The Hangout dealers had stopped explaining the rules to this captain. |
+| `DEED_TABLE_REGULAR` | Table Regular | The Cantina dealers had stopped explaining the rules to this captain. |
 | `DEED_CONTRABAND_RUN` | Contraband Run | A load no manifest describes reached its buyer and no one asked a question. |
 | `DEED_SLIPPED_THE_SCAN` | Slipped the Scan | A patrol swept the hold, found paperwork, and waved this ship through. |
 | `DEED_KNOWN_TO_THE_LEAGUE` | Known to the League | A League scan found what the manifest denied, and the name went on a list. |

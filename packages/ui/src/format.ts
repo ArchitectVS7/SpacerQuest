@@ -3205,8 +3205,8 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   // (the screen mount, plus the in-panel `hangout` mount for `first-loan`).
   {
     id: 'first-hangout',
-    title: 'The Spacers Hangout',
-    body: 'This port keeps a Hangout — open it to wager at the tables or borrow from Penny Wise.',
+    title: 'The Spacers Cantina',
+    body: 'This port keeps a Cantina — open it to wager at the tables or borrow from Penny Wise.',
     // Ranked ABOVE first-loan: at a hangout system both are active, but the
     // player must be told to OPEN the panel before the in-panel loan nudge (which
     // renders inside that panel) can be reached.

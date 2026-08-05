@@ -618,7 +618,7 @@ export const DEEDS: readonly DeedDefinition[] = defineDeeds([
     id: 'table_regular',
     title: 'Table Regular',
     citationTemplate:
-      'By day {day}, the Hangout dealers had stopped explaining the rules to this captain.',
+      'By day {day}, the Cantina dealers had stopped explaining the rules to this captain.',
     trigger: {
       eventType: 'HangoutEvent',
       match: [

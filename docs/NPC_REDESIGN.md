@@ -131,6 +131,36 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > one shared path moved. The `.scratch/t125-hangout.ts` lineage is retired
 > (`docs/HANGOUT_REDESIGN.md` §10.7 carries the counter → field map).
 >
+> **BASELINE OF RECORD RE-PINNED AT T-204 (2026-08-05)** to
+> `docs/balance/baseline-t204-cantina-rename.json` — a **TEXT-ONLY** capstone shipping the
+> player-facing rename of "Hangout" to "Cantina". Scoped deliberately narrow: authored PROSE
+> STRING VALUES only (UI copy, onboarding and walkthrough text, per-port house name, deed
+> citation, flaw detail, the gamble wire templates, and the NPC Socialize clauses those
+> templates interpolate). NOTHING internal moved — not a file name, not an exported symbol,
+> not the `hasHangout`/`PORT_HANGOUTS` identifiers, and **not** the save schema's
+> `z.literal('VisitHangout')`, which is stored verbatim in every existing save and whose
+> rename would owe its own migration (explicitly deferred, not forgotten).
+> One fingerprint moves and one does not, by construction: `rulesFingerprint`
+> `f33b6af1ee21dffa` → `5ae9a5d473827024` — **content is hashed WHOLESALE, so even a pure-text
+> edit moves it, and that is paid for with this capstone rather than by editing a fingerprint
+> or a golden** — while `instrumentFingerprint` is **UNMOVED** at `5c230e99648cddee` (nothing
+> under `packages/sim/src` outside `__tests__` was touched). `CURRENT_SAVE_VERSION` does NOT
+> move (16, re-read live at `packages/engine/src/save.ts:562`): no `GameState` field was
+> added, removed or retyped, so no migration and no round-trip test is owed. Persisted
+> `lastAction.details` and `wire[].message` *values* differ for newly generated states, but
+> old saves keep their old prose and stay valid — **a value change is not a shape change.**
+> **EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL** — `balance:diff` reported
+> *"NOTHING MOVED. Every compared field is equal on both sides."* That was PREDICTED IN
+> WRITING BEFORE THE RUN (a text-only change has no mechanical effect, and `lastAction.details`
+> has zero computational readers — every consumer is a display path), so the run confirms a
+> prediction rather than discovering a result; a moved row would have been a finding to file,
+> not a rename gone right. Two goldens were RE-DERIVED, not hand-patched to pass: the sim
+> replay golden (all six constants) and the engine day-loop golden (all four hashes). Both
+> re-derivations are justified in-file by the same mechanical proof — reverse-substituting
+> "Cantina" → "Hangout" in each new pre-image reproduces the committed predecessor constants
+> EXACTLY, and all three replay `rngState`s held at `364866002 / 268015010 / -1231248819`, so
+> no dice draw moved.
+>
 > **BASELINE OF RECORD RE-PINNED AT T-202 (2026-08-05)** to
 > `docs/balance/baseline-t202-liars-dice-ceiling.json` — a **CONTENT-ONLY** capstone shipping
 > the owner's R3 ruling from the T-198 pacing checkpoint:
@@ -2525,11 +2555,12 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t202-liars-dice-ceiling.json`** (1,000
-   > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-202 2026-08-05 — a
-   > CONTENT-ONLY capstone shipping R3's ruled `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]`
-   > (`docs/DAWN-HAND-REDESIGN.md` §4b). `rulesFingerprint` moves `10e19c88e9a07856` →
-   > `f33b6af1ee21dffa`; `instrumentFingerprint` does NOT (unmoved at `5c230e99648cddee`).
+   > **Baseline of record is `docs/balance/baseline-t204-cantina-rename.json`** (1,000
+   > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-204 2026-08-05 — a
+   > TEXT-ONLY capstone shipping the player-facing "Hangout" → "Cantina" rename (prose string
+   > values only; no rule, DC, band, threshold or code path changed). `rulesFingerprint` moves
+   > `f33b6af1ee21dffa` → `5ae9a5d473827024` (content is hashed wholesale, so authored prose
+   > moves it); `instrumentFingerprint` does NOT (unmoved at `5c230e99648cddee`).
    > **EVERY POLICY ROW IS BYTE-IDENTICAL** — `balance:diff` reported "NOTHING MOVED. Every
    > compared field is equal on both sides" — which was PREDICTED IN WRITING BEFORE THE RUN
    > (`TASKS.md` T-202) and is an INSTRUMENT-GAP NULL RESULT, not a verdict that the new

@@ -107,12 +107,12 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t202-liars-dice-ceiling.json`, re-pinned at
-T-202 2026-08-05 — a CONTENT-ONLY capstone shipping the owner's R3 ruling,
-`LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]` (`docs/DAWN-HAND-REDESIGN.md` §4b). It moves
-`rulesFingerprint` (10e19c88e9a07856 -> f33b6af1ee21dffa) and NOT `instrumentFingerprint`
-(unmoved at 5c230e99648cddee), so it is a clean single-arm attribution again after T-197's
-both-hashes capstone. EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL — "NOTHING
+exactly like drift. The current baseline (`baseline-t204-cantina-rename.json`, re-pinned at
+T-204 2026-08-05 — a TEXT-ONLY capstone shipping the player-facing "Hangout" -> "Cantina"
+rename: authored prose STRING VALUES only, with no rule, DC, band, threshold or code path
+changed. It moves `rulesFingerprint` (f33b6af1ee21dffa -> 5ae9a5d473827024 — content is hashed
+wholesale, so even pure text moves it) and NOT `instrumentFingerprint` (unmoved at
+5c230e99648cddee), so it is a clean single-arm attribution. EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL — "NOTHING
 MOVED. Every compared field is equal on both sides." That was predicted in writing before the
 run and is an INSTRUMENT-GAP NULL RESULT rather than a verdict that the new ceiling is
 balanced: the sim's gambler is the only policy that plays a Dare and is bounded at

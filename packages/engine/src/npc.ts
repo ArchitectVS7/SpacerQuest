@@ -2061,7 +2061,7 @@ function executeSocialize(
     return {
       type: 'Socialize',
       details: hasBar
-        ? `cleaned up at the ${systemName(npc.currentSystemId)} Hangout tables`
+        ? `cleaned up at the ${systemName(npc.currentSystemId)} Cantina tables`
         : `swapped stories at the ${systemName(npc.currentSystemId)} docks`,
     };
   }
@@ -2069,7 +2069,7 @@ function executeSocialize(
   return {
     type: 'Socialize',
     details: hasBar
-      ? `bought a round at the ${systemName(npc.currentSystemId)} Hangout`
+      ? `bought a round at the ${systemName(npc.currentSystemId)} Cantina`
       : `drank alone at ${systemName(npc.currentSystemId)}, poorer for it`,
   };
 }

@@ -685,7 +685,7 @@ describe('T-149 Socialize flavor respects hasHangout', () => {
   /** GUILE-leaning, the same driver the T-1201 DC test uses for Socialize. */
   const SOCIALIZER = 'npc-silk-dagger';
   /** Any venue word. The rumor mill must name none of these off-Hangout. */
-  const VENUE = /hangout|\bbar\b|tables?/i;
+  const VENUE = /hangout|cantina|\bbar\b|tables?/i;
 
   it('has both port sets non-empty, so nothing below can pass vacuously', () => {
     expect(OFF_HANGOUT_IDS.length).toBeGreaterThan(0);
@@ -724,7 +724,7 @@ describe('T-149 Socialize flavor respects hasHangout', () => {
         const startCredits = before.credits;
         const { npc } = resolveNpcDay(before, new SeededRng(seed), NO_BOARD);
         if (npc.lastAction?.type !== 'Socialize') continue;
-        expect(npc.lastAction.details ?? '').toMatch(/Hangout/);
+        expect(npc.lastAction.details ?? '').toMatch(/Cantina/);
         if (npc.credits > startCredits) sawWin = true;
         else if (npc.credits < startCredits) sawLoss = true;
       }

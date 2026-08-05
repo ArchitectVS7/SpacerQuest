@@ -1049,7 +1049,7 @@ export function App() {
                 aria-expanded={hangoutPanelOpen}
                 onClick={() => setHangoutPanelOpen((v) => !v)}
               >
-                Hangout
+                Cantina
               </button>
             )}
             <button data-testid="records-toggle" onClick={() => setRecordsOpen((v) => !v)}>
@@ -2338,7 +2338,7 @@ function HangoutPanel({
       className="hangout-panel"
       data-testid="hangout-panel"
       role="dialog"
-      aria-label="Spacers Hangout"
+      aria-label="Spacers Cantina"
       // T-187 · Open only on step 7. `railsSuspended` covers a LIVE hand
       // (`game.dareHand`), so once the cards are dealt the table is fully
       // playable with no rails over it — which is what step 7 is asking for.

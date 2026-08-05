@@ -381,7 +381,7 @@ describe('T-187 · the dead-end escapes', () => {
     expect(railsAllows(r, { game }, 'fuel')).toBe(true);
     // and the card says why, rather than pointing at a switch that is not there.
     const copy = walkthroughCardCopy(r, WALKTHROUGH_STEPS[6], game);
-    expect(copy.what).toContain('no Hangout');
+    expect(copy.what).toContain('no Cantina');
   });
 
   it('step 6 with a tank that cannot pay for the sweep opens the depot', () => {

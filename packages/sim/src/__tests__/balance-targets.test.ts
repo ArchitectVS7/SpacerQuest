@@ -162,7 +162,7 @@ const TRADER_CLEAR_DAY_MAX = 30;
 // in `TASKS.md`'s T-202 block. The bands below are UNTOUCHED — nothing here was re-derived
 // to accommodate the new sample (there was nothing to re-derive: the sample did not move).
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
-  new URL('../../../../docs/balance/baseline-t202-liars-dice-ceiling.json', import.meta.url),
+  new URL('../../../../docs/balance/baseline-t204-cantina-rename.json', import.meta.url),
 );
 const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
   label: string;

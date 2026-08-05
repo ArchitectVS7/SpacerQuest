@@ -675,12 +675,40 @@ export function runDayLoopGolden(
 // regenerated. The `rulesFingerprint` capstone is where this change's real effect
 // is measured.
 //
+// ---------------------------------------------------------------------------
+// T-204 RE-DERIVATION — the "Hangout" -> "Cantina" player-facing rename.
+//
+// ALL FOUR hashes moved, which is expected: the rename touched authored PROSE
+// STRING VALUES that both scripts render into the eventLog (and therefore into
+// `serializeState`) and into the returned day-event stream — the `wireStories.ts`
+// gamble templates and `npc.ts`'s Socialize `lastAction.details` clauses. No
+// rule, DC, band, threshold or code path changed.
+//
+// THE CHECK THAT MAKES THIS A RE-DERIVATION AND NOT A REBALANCE. Rather than
+// eyeballing an opaque sha256, the pre-images were recomputed and the
+// substitution mechanically reversed: replacing every "Cantina" with "Hangout"
+// in `serializeState(finalState)` and in `JSON.stringify(events)` reproduced all
+// four COMMITTED pre-rename constants EXACTLY, for both scripts —
+//     TEN_DAY   reversed state + events == committed  ✓
+//     STORYLET  reversed state + events == committed  ✓
+// so the ONLY bytes that moved in either pre-image are the rename itself. Every
+// credit, fuel level, system id, rng draw, event type and event ordering is
+// byte-identical to the predecessor. The reversed pre-images additionally
+// contained zero residual "Hangout" occurrences (35 state / 31 events replaced
+// on TEN_DAY, 11 / 7 on STORYLET), confirming the rename is complete in the
+// rendered prose rather than partial.
+//
+// Note this is the OPPOSITE tripwire reading from the T-197 block above: there,
+// an unmoved event hash was the evidence. Here the event hashes SHOULD move,
+// because the rename edits prose the events carry verbatim; what proves nothing
+// mechanical drifted is the reversal identity, not stillness.
+//
 // Regenerated via gen-day-loop-golden.ts. Never hand-edited.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'e93ec6fa01369ea25c9eb34f17b53b3edea3fa42348a09d985650031c878a66b';
+  'bb802e463fe7f5d9f884feb846cf5b93125e1900299abde3b424eab877dd1522';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '89fc29995688b2df870038ffff8d72d219869802165e0b6c20307944c421fd57';
+  'e4b7cdd3e8159e4d86161b25f3789ed01ac20c92645f977db8ecdc5e8fa01711';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '4619a3c0109c5e2836512c72d5f1a3df3121108f84bfba7f4754c93603ec875d';
+  '9ac5a34e3f0de46be5c151eccd1907dd4aac9989a1983912a99199367a3cdd5c';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '6a1beb69075763394ee0291884b0f193353304f0e0976f19e3a4d3677d83a741';
+  '1472645fa88b0e92fc1d8857f662fef3df15a4b821ae16754a6b1f4b56bbf119';
