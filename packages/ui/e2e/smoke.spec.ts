@@ -46,8 +46,10 @@ test('signing a contract is FREE: the hold fills and the hand is untouched', asy
   // T-196a · This test used to be "signing a contract requires a die and then
   // consumes it". M17 (docs/DAWN-HAND-REDESIGN.md §3) freed the signature, so the
   // assertion is INVERTED rather than deleted: signing must still WORK, and must
-  // now leave every die unspent. The cockpit still asks for an armed die before it
-  // will submit — that gating is UI-only and T-196c retires it.
+  // now leave every die unspent. T-196c retired the cockpit's armed-die gate too,
+  // so the die armed below is no longer a precondition — it is kept deliberately,
+  // as proof that a Free Action does not DISARM what a player queued for their
+  // next Main Action (asserted at the end).
   await page.goto('/');
   const contracts = page.getByTestId('contract');
   await expect(contracts.first()).toBeVisible();
@@ -63,4 +65,7 @@ test('signing a contract is FREE: the hold fills and the hand is untouched', asy
     .getByTestId('die')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-spent')));
   expect(spent.filter((s) => s === '1').length).toBe(0);
+  // T-196c · …nor DISARMED. The die armed before the signature is still armed
+  // after it, ready for the Main Action it was queued for.
+  await expect(page.getByTestId('die').first()).toHaveAttribute('aria-pressed', 'true');
 });

@@ -1250,11 +1250,6 @@ export function selectDie(index: number): void {
 }
 
 export function signContract(contractIndex: number): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then sign.' });
-    return;
-  }
   try {
     const { state: next, events } = applyAction({
       type: 'Trade',
@@ -1262,49 +1257,40 @@ export function signContract(contractIndex: number): void {
       contractIndex,
     });
     autosave(next, state.seed);
-    // T-196a made signing a FREE ACTION, so `committed` below is now always false
-    // and the selection simply persists — the armed-die gate above is UI-only and
-    // T-196c retires it. Signing emits no StatCheck either way, so lastCheck
-    // resolves to null here — the readout stays cleared, which is honest.
+    // Signing emits no StatCheck, so this resolves to null — the readout stays
+    // cleared, which is honest. (HAGGLE is the manifest's one real TRADE roll.)
     const lastCheck = lastCheckFrom(events);
     // Surface an engine refusal (already carrying a contract) instead of a
-    // silent die-deselect. On success this scan returns null and the notice
-    // clears — the previous behaviour, preserved.
+    // silent no-op. On success this scan returns null and the notice clears.
     const notice = failNoticeFrom(events);
-    // T-162 · F-162-1 — the same authoritative read as `buyFuel` below. The
-    // sign-contract refusal path happens to spend no die today, but "a refusal
-    // spent no die" is an ASSUMPTION about another package; the spent flag is a
-    // fact. Reading the fact costs nothing and cannot go stale.
-    const committed = next.player.dawnHand?.spent[die] === true;
+    // T-196c · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3). It neither requires,
+    // consumes, nor DISARMS a die: `selectedDie` / `bloomDie` are deliberately
+    // absent from this patch, so a die armed for the next Main Action survives a
+    // signature untouched. `reactToEvents(_, false)` for the same reason — the
+    // commit cue is the die-spend cue, and no die was spent.
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, !notice);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That action could not be resolved.' });
   }
 }
 
 /**
- * T-1604b · Dump the run riding in the hold (UGT finding F2). Costs a die and the
- * whole payment, so it mirrors `signContract` exactly: a die must be armed first,
- * the ENGINE owns the refusal (nothing in the hold → a failed `TradeEvent` that
- * `failNoticeFrom` surfaces as a visible notice, never a silent no-op), and the
- * die only blooms when the engine actually spent it. No rule lives here — the UI
- * is a client of `resolveTrade`, not its owner.
+ * T-1604b · Dump the run riding in the hold (UGT finding F2). It mirrors
+ * `signContract` exactly: the ENGINE owns the refusal (nothing in the hold → a
+ * failed `TradeEvent` that `failNoticeFrom` surfaces as a visible notice, never a
+ * silent no-op). No rule lives here — the UI is a client of `resolveTrade`, not
+ * its owner. The whole forfeited payment is the cost.
+ *
+ * T-196c · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3) — see `signContract`.
  */
 export function abandonContract(): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then abandon the run.' });
-    return;
-  }
   try {
     const { state: next, events } = applyAction({
       type: 'Trade',
@@ -1312,34 +1298,33 @@ export function abandonContract(): void {
     });
     autosave(next, state.seed);
     const notice = failNoticeFrom(events);
-    // T-162 · F-162-1 — the spent flag is a fact; "a refusal spent no die" was
-    // an assumption. See `buyFuel`, where that assumption was false.
-    const committed = next.player.dawnHand?.spent[die] === true;
+    // T-196c · no die is required, consumed or DISARMED: `selectedDie` /
+    // `bloomDie` are deliberately absent from this patch.
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, !notice);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That action could not be resolved.' });
   }
 }
 
 /**
- * Top up fuel at the local depot. Fueling consumes a die (engine PRD §7: every
- * meaningful action spends a die), so this requires a selection. A shortfall
- * (not enough credits) comes back as a failed TradeEvent and is surfaced via
- * `notice` — never a silent no-op.
+ * Top up fuel at the local depot. A shortfall (not enough credits) comes back as
+ * a failed TradeEvent and is surfaced via `notice` — never a silent no-op.
+ *
+ * T-196c · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3). This verb is where
+ * F-162-1 was found — the old code read the authoritative `spent` flag because
+ * `resolveTrade`'s `buy-fuel` branch used to burn the die BEFORE its
+ * affordability gate, so an unaffordable fill left the whole cockpit rendering
+ * as ARMED over a die the engine had already eaten. M17 removed the burn
+ * entirely, so there is no flag left to read and no way to desynchronise: fuel
+ * neither requires, consumes nor DISARMS a die. Buying fuel silently dropping
+ * your jump die is exactly the regression this shape prevents.
  */
 export function buyFuel(amount: number): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then buy fuel.' });
-    return;
-  }
   try {
     const { state: next, events } = applyAction({
       type: 'Trade',
@@ -1348,26 +1333,13 @@ export function buyFuel(amount: number): void {
     });
     autosave(next, state.seed);
     const notice = failNoticeFrom(events);
-    // T-162 · F-162-1 — READ THE AUTHORITATIVE SPENT FLAG, NEVER INFER IT FROM
-    // THE NOTICE. `resolveTrade`'s `buy-fuel` branch spends the die BEFORE the
-    // affordability gate (actions/trade.ts:23), so an "Not enough credits"
-    // refusal STILL BURNS IT. The old `selectedDie: notice ? die : null` kept
-    // the selection pointing at a die the engine had already consumed, and
-    // `armed` is `selectedDie !== null` everywhere in the cockpit — so one
-    // unaffordable fill left the manifest, the shipyard, the crew bench, the
-    // port desk, the hangout and the starmap all rendering as ARMED while every
-    // one of those clicks threw `Die already spent` from `dice.ts`. This is the
-    // same authoritative read `explore`, `shipyard`, `crew`, `port`, `hangout`
-    // and `loan` already use; the assumption is now gone rather than restated.
-    const committed = next.player.dawnHand?.spent[die] === true;
+    // `selectedDie` / `bloomDie` are deliberately absent from this patch.
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, !notice);
+    reactToEvents(events, false);
   } catch (err) {
     set({
       notice: err instanceof Error ? err.message : 'The fuel purchase could not be resolved.',
@@ -1968,15 +1940,14 @@ export function repayLoan(amount: number): void {
  * role, and this is the single engine call. Crew grant the dawn-hand progression
  * (extra die / re-roll charge / roll floor) at the NEXT dawn — `dawnDiceModifiers`
  * is read in `startDay`, so a mid-day hire does not re-roll the live hand. A typed
- * `CrewEvent{failed}` (no berth / unaffordable / already aboard) spends NO die (read
- * the authoritative spent flag), keeps the selection, and surfaces a visible notice.
+ * `CrewEvent{failed}` (no berth / unaffordable / already aboard) surfaces a visible
+ * notice.
+ *
+ * T-196c · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3): no die is required,
+ * consumed or DISARMED, so `selectedDie` / `bloomDie` are deliberately absent
+ * from the patch below and the commit cue (a die-spend cue) does not fire.
  */
 export function hireCrew(roleId: string): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then hire.' });
-    return;
-  }
   try {
     const { state: next, events } = applyAction({
       type: 'Crew',
@@ -1985,15 +1956,12 @@ export function hireCrew(roleId: string): void {
     });
     autosave(next, state.seed);
     const notice = crewFailNoticeFrom(events);
-    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That hire could not be resolved.' });
   }
@@ -2004,15 +1972,11 @@ export function hireCrew(roleId: string): void {
  * dismiss path — frees a cabin berth, no refund. A typed
  * `CrewEvent{failed:'not-hired'}` surfaces a visible notice.
  *
- * T-196a made this a FREE ACTION (no die at all). The armed-die precondition below
- * is UI gating that T-196c retires; the engine no longer asks for a die.
+ * T-196a made this a FREE ACTION (no die at all); T-196c retired the UI's
+ * armed-die gate to match (docs/DAWN-HAND-REDESIGN.md §3). No die is required,
+ * consumed or DISARMED — `selectedDie` / `bloomDie` are deliberately untouched.
  */
 export function dismissCrew(roleId: string): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then dismiss.' });
-    return;
-  }
   try {
     const { state: next, events } = applyAction({
       type: 'Crew',
@@ -2021,15 +1985,12 @@ export function dismissCrew(roleId: string): void {
     });
     autosave(next, state.seed);
     const notice = crewFailNoticeFrom(events);
-    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That dismissal could not be resolved.' });
   }
@@ -2066,19 +2027,18 @@ export function reroll(dieIndex: number): void {
 
 /**
  * T-1405 · Buy a controlling stake in the local port authority (PRD §9). A pure
- * CLIENT of the T-1307 `Port` action: the trade pane arms a die and this is the
+ * CLIENT of the T-1307 `Port` action: the trade pane names the buy and this is the
  * single engine call. `systemId` is always the current system — the engine requires
  * you buy the port you stand in. The stake accrues per-dusk launch-fee income
  * (surfaced in the ledger, accrued by day.ts endDay). A typed `PortEvent{failed}`
- * (not-at-port / not-purchasable / already-owned / unaffordable) spends NO die and
- * surfaces a visible notice; on commit the die blooms.
+ * (not-at-port / not-purchasable / already-owned / unaffordable) surfaces a visible
+ * notice.
+ *
+ * T-196c · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3): no die is required,
+ * consumed or DISARMED, so `selectedDie` / `bloomDie` are deliberately absent
+ * from the patch below.
  */
 export function buyPort(): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then buy the port.' });
-    return;
-  }
   try {
     const { state: next, events } = applyAction({
       type: 'Port',
@@ -2087,15 +2047,12 @@ export function buyPort(): void {
     });
     autosave(next, state.seed);
     const notice = portFailNoticeFrom(events);
-    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({
       notice: err instanceof Error ? err.message : 'That port purchase could not be resolved.',
@@ -2212,19 +2169,19 @@ function shipyardFailFrom(events: GameEvent[]): ShipyardFail | null {
 /**
  * Commit a shipyard purchase / repair (T-308). The pane previews every action
  * through the engine's pure `quoteShipyard` and only enables a button when the
- * quote is `ok`, so a die is never wasted on a predictable refusal — important
- * because the engine (by the established ShipyardFail convention) spends the die
- * BEFORE the business checks. If a refusal does slip through (e.g. a race with
- * state change) it is surfaced as a visible notice via the typed reason, never a
- * silent no-op. On success the spent die blooms and the selection clears; the
- * shipyard emits no StatCheck, so `lastCheck` stays null.
+ * quote is `ok`; if a refusal does slip through (e.g. a race with state change)
+ * it is surfaced as a visible notice via the typed reason, never a silent no-op.
+ * The shipyard emits no StatCheck, so `lastCheck` stays null.
+ *
+ * T-196c · A FREE ACTION, all four kinds (docs/DAWN-HAND-REDESIGN.md §3). This
+ * was the ONE creator that cleared `selectedDie` unconditionally and bloomed the
+ * die — a bloom is the die-spent flash, and T-196a stopped spending, so both
+ * were a visual lie about a die the yard no longer touches. Neither key appears
+ * in the patch below: a Free Action must not disarm the die a player armed for
+ * their next Main Action. (`bloomDie` is OMITTED, not nulled — nulling it would
+ * kill an in-flight bloom from a preceding Main Action, which `clearBloom` owns.)
  */
 export function shipyard(request: ShipyardRequest): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then buy.' });
-    return;
-  }
   try {
     const { state: next, events } = applyAction({
       type: 'Shipyard',
@@ -2240,21 +2197,13 @@ export function shipyard(request: ShipyardRequest): void {
     const notice = fail ? shipyardFailureExplanation(fail) : null;
     set({
       game: next,
-      // T-196c OWES THIS ONE. The yard used to spend the die either way (engine
-      // convention), so blooming it and clearing the selection was honest. T-196a
-      // made the yard a FREE ACTION — no die is spent now — so this bloom is a
-      // visual lie. It is left EXACTLY as it was on purpose: T-196a is the engine
-      // arm and changes no UI behaviour; T-196c retires the armed-die gating.
-      selectedDie: null,
-      bloomDie: die,
       notice,
       lastCheck: null,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    // (Pre-T-196a: the shipyard spent the die before its business checks, so this
-    // was always committed. It costs no die at all now; a refusal still emits
-    // ShipyardFail → the fail cue, which is what this `true` actually drives.)
-    reactToEvents(events, true);
+    // No die was committed, so the commit cue must not fire. The FAIL cue is
+    // unaffected: `cuesForEvents` reads ShipyardFail unconditionally.
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That yard order could not be resolved.' });
   }

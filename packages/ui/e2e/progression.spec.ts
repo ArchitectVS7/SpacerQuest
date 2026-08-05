@@ -100,22 +100,22 @@ test('with a hired crew the dock shows 6 dice and the re-roll works through the 
   await expect(page.getByTestId('die')).toHaveCount(5);
 
   // Hire all three roles through the ShipPane. T-196a: a hire is a FREE ACTION
-  // (docs/DAWN-HAND-REDESIGN.md §3), so no die is consumed — but the cockpit still
-  // gates the button on an armed die until T-196c retires that. The selection
-  // therefore SURVIVES each hire, and re-clicking the already-armed die would
-  // DISARM it (`store.ts` `selectDie`), so arm only when nothing is armed.
-  const hire = async (dieIdx: number, roleId: string) => {
-    const die = page.locator('[data-testid="die"][data-spent="0"]').nth(0);
-    if ((await die.getAttribute('aria-pressed')) !== 'true') await die.click();
+  // (docs/DAWN-HAND-REDESIGN.md §3), so no die is consumed; T-196c retired the
+  // cockpit's armed-die gate on the button to match, so no die needs arming here
+  // at all — the whole arm-only-if-not-armed scaffold this loop used to carry is
+  // gone with it.
+  const hire = async (roleId: string) => {
     await page.locator(`[data-testid="hire-crew"][data-role-id="${roleId}"]`).click();
     await expect(
       page.locator(`[data-testid="crew-member"][data-role-id="${roleId}"]`),
     ).toBeVisible();
-    void dieIdx;
   };
-  await hire(0, 'crew-second'); // First Officer — +1 die
-  await hire(1, 'crew-navigator'); // Navigator — one re-roll/day
-  await hire(2, 'crew-quartermaster'); // Quartermaster — floor 5
+  await hire('crew-second'); // First Officer — +1 die
+  await hire('crew-navigator'); // Navigator — one re-roll/day
+  await hire('crew-quartermaster'); // Quartermaster — floor 5
+  // Nothing was armed and nothing was spent: three Free Actions left the hand
+  // exactly as dawn dealt it.
+  await expect(page.locator('[data-testid="die"][data-spent="1"]')).toHaveCount(0);
 
   // Crew benefits land at DAWN (dawnDiceModifiers is read in startDay), so roll
   // into the next day, then read the grown hand.

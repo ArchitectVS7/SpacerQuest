@@ -205,8 +205,8 @@ test('paying debt clamps to credits, then over-paying with none surfaces a failu
 
 // T-1604b · F2 (part B) through the cockpit. UGT finding F2: a captain carrying
 // an undeliverable run had no way to free the hold, because signing is refused
-// while a contract rides. The Trade pane now carries the release, and — like every
-// other die-cost control in this pane — it must never be a dead click.
+// while a contract rides. The Trade pane now carries the release, and it must
+// never be a dead click.
 test('dumping the run clears the hold and re-opens the board', async ({ page }) => {
   await page.goto('/');
 
@@ -220,23 +220,23 @@ test('dumping the run clears the hold and re-opens the board', async ({ page }) 
   // exactly what the counts below now assert.
   expect(await spentCount(page)).toBe(0);
 
-  // Never a dead click: the release control still refuses while no die is armed
-  // (UI gating that T-196c retires; the ENGINE no longer wants a die), so the
-  // player is told what is missing rather than clicking into silence.
-  //
-  // T-196a · The disarm below is NEW SCAFFOLDING, not a weakened assertion. Signing
-  // no longer consumes the armed die, so the die armed for the signature is STILL
-  // armed here and the control would legitimately be enabled. Clicking the armed
-  // die disarms it (`store.ts` `selectDie`), which restores the no-die-armed state
-  // this guard is about.
+  // T-196c · INVERTED, NOT DELETED. This guard used to disarm the hand and assert
+  // the release went DISABLED with a `Pick a die first` title. M17 freed the dump
+  // (docs/DAWN-HAND-REDESIGN.md §3), so the same scaffold now proves the opposite
+  // and stronger thing: with NOTHING armed the release is live, its title names
+  // the act rather than a missing die, and clicking it still dumps the hold and
+  // still spends nothing. "Never a dead click" is the clause either way.
   await page.locator('[data-testid="die"][aria-pressed="true"]').click();
-  await expect(page.getByTestId('abandon-contract')).toBeDisabled();
-  await expect(page.getByTestId('abandon-contract')).toHaveAttribute('title', /Pick a die first/);
+  await expect(page.locator('[data-testid="die"][aria-pressed="true"]')).toHaveCount(0);
+  await expect(page.getByTestId('abandon-contract')).toBeEnabled();
+  await expect(page.getByTestId('abandon-contract')).toHaveAttribute(
+    'title',
+    /Vent the cargo and clear the hold/,
+  );
   expect(await spentCount(page)).toBe(0);
   await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
 
-  // Arm a die and dump: the hold empties, and NO die is consumed doing it.
-  await selectUnspentDie(page);
+  // Dump with an EMPTY selection: the hold empties, and NO die is consumed.
   await page.getByTestId('abandon-contract').click();
   await expect(page.getByTestId('active-contract-empty')).toBeVisible();
   expect(await spentCount(page)).toBe(0);

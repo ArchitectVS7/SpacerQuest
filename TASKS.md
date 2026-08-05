@@ -3547,7 +3547,27 @@ and BALANCE-POLICY Part B forbids retuning a constant with no failing check to a
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=2/4.
 
-### T-196c · Free the administrative actions in the UI — stop demanding a die, stop clearing the armed one — `status: TODO` · `coder: opus` · `after: T-196b`
+### T-196c · Free the administrative actions in the UI — stop demanding a die, stop clearing the armed one — `status: DONE` · `coder: opus` · `after: T-196b`
+
+**Delivered (2026-08-05):** All nine freed verbs in `packages/ui/src/store.ts` —
+`signContract`, `abandonContract`, `buyFuel`, `hireCrew`, `dismissCrew`, `buyPort`,
+and all four `shipyard` kinds — dropped their `selectedDie === null` refusal, their
+authoritative-`spent`-flag read, and their `selectedDie`/`bloomDie` writes on
+commit; each now leaves a player's armed die untouched and passes `reactToEvents`
+a hard `false` for the commit cue (the FAIL cue still fires unconditionally on a
+refusal). `App.tsx` dropped the corresponding `armed`/`dieArmed` gates and "Pick a
+die first" copy on every freed control (ship pane, crew bench, port desk,
+manifest sign/abandon rows) while leaving Main-Action gates — starmap jump,
+off-lane sweep, haggle, combat — exactly as they were; the obsolete `dropDie`
+drag-bridge (built around the old die-then-run shape) was removed along with it.
+New coverage lives in `packages/ui/src/__tests__/free-actions.test.ts` (empty-hand
+reachability and armed-die survival, store-level since this repo has no rendered-
+DOM test environment) plus updated Playwright specs at every touched pane.
+**Deliberate scope boundary:** the Hangout actions and their die costs are left
+untouched — T-197 owns freeing those and closing the milestone capstone; this
+task touches no engine or sim file and stays outside `rulesFingerprint`.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
 
 **Files:** `packages/ui/src/store.ts` — the real gate lives here, not in a per-button
 `dieArmed` prop: each freed action's creator reads `const die = state.selectedDie`, refuses

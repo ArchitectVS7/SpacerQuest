@@ -153,6 +153,16 @@ export interface WalkthroughStep {
  * could ever complete the step. The flag is still RECORDED (it carries
  * `lastPayment` for the card's body); it just does not gate.
  */
+/**
+ * T-196c · STALE COPY IN w1–w4, LEFT DELIBERATELY AND OWNED BY T-194. M17
+ * (docs/DAWN-HAND-REDESIGN.md §3) freed the administrative actions, so "sign a
+ * job, buy fuel" are no longer die-priced (w1), "nothing in the cockpit will
+ * take an action until a die is armed" is no longer true (w2), "the armed die
+ * pays for the signature" is false (w3), and "buy some at the depot first — that
+ * costs a die too" is false (w4). T-196c changes UI BEHAVIOUR only; the teaching
+ * copy belongs to T-194, gated behind T-198 precisely so the new economy settles
+ * before the tutorial bakes it in. Marked here rather than silently half-fixed.
+ */
 export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
   {
     id: 'w1-dawn-hand',

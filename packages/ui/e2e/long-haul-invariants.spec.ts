@@ -41,6 +41,12 @@ function cleanSnapshot(overrides: Partial<CockpitSnapshot> = {}): CockpitSnapsho
     present: { 'end-day': 1, hand: 1, 'crash-screen': 0, 'starmap-system': 14, contract: 3 },
     enabled: { 'end-day': 1, contract: 3 },
     modalOwner: null,
+    // SYNTHETIC FIXTURE DATA, not a live DOM read: these two rows exist to feed
+    // the evaluator a shaped `disabledControls` list, and the strings are opaque
+    // to it. T-196c freed `buy-fuel`, so the cockpit no longer emits the first
+    // reason — the fixture keeps it because what is under test here is the
+    // evaluator's handling of a disabled control WITH a reason, not the reason's
+    // wording. (Left deliberately; changing it would prove nothing.)
     disabledControls: [
       {
         testid: 'buy-fuel',

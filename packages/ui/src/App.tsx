@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type DragEvent as ReactDragEvent,
   type ReactNode,
 } from 'react';
 // T-136 · THE ANIMATION DEPENDENCY, NEW TO THIS REPO (GSAP 3.15.0, GreenSock
@@ -250,20 +249,13 @@ import { CREDITS, creditDetail, creditLine } from './credits';
 // promise the spec makes without failing anything.
 import { PLAYTEST_DISCLOSURE, PLAYTEST_TOGGLE_LABEL } from './playtestLog';
 
+// T-196c · `dropDie` is GONE. It bridged a native HTML5 drop back into the
+// store's selection model by calling `selectDie` and then running the action —
+// correct while its only caller (drag-to-sign) cost a die, and wrong the moment
+// signing became a FREE ACTION: a free verb would have armed or replaced the die
+// the player had queued for their next Main Action. Its sole call site now signs
+// directly. `DIE_MIME` stays — the hand dock's `dragstart` still writes it.
 const DIE_MIME = 'application/x-sq-die';
-
-// Bridge a native HTML5 drop back into the store's selection model, then run the
-// action. Click-to-select is the primary path (what Playwright drives); drag is
-// an accessible-parallel affordance. Selecting the dropped die first keeps the
-// store the sole engine caller — the drop never reaches into the engine itself.
-function dropDie(e: ReactDragEvent, run: () => void): void {
-  e.preventDefault();
-  const raw = e.dataTransfer.getData(DIE_MIME);
-  const idx = Number.parseInt(raw, 10);
-  if (!Number.isFinite(idx)) return;
-  if (getSnapshot().selectedDie !== idx) selectDie(idx);
-  run();
-}
 
 function useCockpit(): CockpitState {
   return useSyncExternalStore(subscribe, getSnapshot);
@@ -3939,7 +3931,12 @@ function ShipDiagram({
 function ShipPane({ state }: { state: CockpitState }) {
   const game = state.game;
   const ship = game.player.ship;
-  const armed = state.selectedDie !== null;
+  // T-196c · NO `armed` CONST HERE, deliberately. Every verb this pane reaches —
+  // all four Shipyard kinds, plus Crew hire/dismiss below — is a FREE ACTION
+  // (docs/DAWN-HAND-REDESIGN.md §3). A Free Action must neither require, consume
+  // nor DISARM the die a player armed for their next Main Action, so the yard
+  // must not gate on one either. Main-Action gates (starmap jump, off-lane
+  // sweep, haggle, combat) keep theirs.
   const components = shipComponents(game);
   const equipment = specialEquipmentRows(game);
   const [podQty, setPodQty] = useState(10);
@@ -4047,15 +4044,11 @@ function ShipPane({ state }: { state: CockpitState }) {
             <button
               className="btn"
               data-testid="buy-pods"
-              disabled={!armed || !podQuote.ok}
-              title={
-                armed
-                  ? `Buy ${podQty} pods · ${podQuote.cost.toLocaleString()}cr`
-                  : 'Pick a die first'
-              }
+              disabled={!podQuote.ok}
+              title={`Buy ${podQty} pods · ${podQuote.cost.toLocaleString()}cr`}
               onClick={() => shipyard({ action: 'buy-cargo-pods', quantity: Math.max(1, podQty) })}
             >
-              {armed ? `Buy pods · ${podQuote.cost.toLocaleString()}cr` : 'Pick a die to buy'}
+              Buy pods · {podQuote.cost.toLocaleString()}cr
             </button>
           </div>
           <div className="pods-preview" data-testid="pods-preview">
@@ -4079,26 +4072,18 @@ function ShipPane({ state }: { state: CockpitState }) {
           <div className="bench-head">YARD BENCH · UPGRADE &amp; REPAIR</div>
           <div className="ship-grid" data-testid="component-grid">
             {components.map((c) => (
-              <ComponentRow
-                key={c.id}
-                row={c}
-                game={game}
-                armed={armed}
-                focused={focusedComponent === c.id}
-              />
+              <ComponentRow key={c.id} row={c} game={game} focused={focusedComponent === c.id} />
             ))}
           </div>
           <div className="ship-repair-all">
             <button
               className="btn"
               data-testid="repair-all"
-              disabled={!armed || !anyDamaged || !repairAllQuote.ok}
+              disabled={!anyDamaged || !repairAllQuote.ok}
               title={
                 !anyDamaged
                   ? 'All systems at full condition'
-                  : armed
-                    ? `Repair every system · ${repairAllQuote.cost.toLocaleString()}cr`
-                    : 'Pick a die first'
+                  : `Repair every system · ${repairAllQuote.cost.toLocaleString()}cr`
               }
               onClick={() => shipyard({ action: 'repair', repairMode: 'all' })}
             >
@@ -4136,17 +4121,15 @@ function ShipPane({ state }: { state: CockpitState }) {
                   <button
                     className="btn small"
                     data-testid="buy-equipment"
-                    disabled={row.owned || !armed || !row.quote.ok}
+                    disabled={row.owned || !row.quote.ok}
                     title={
                       row.owned
                         ? 'Already installed'
-                        : !armed
-                          ? 'Pick a die first'
-                          : row.quote.ok
-                            ? `Install · ${row.quote.cost.toLocaleString()}cr`
-                            : row.quote.failure
-                              ? shipyardFailureExplanation(row.quote.failure)
-                              : 'Unavailable'
+                        : row.quote.ok
+                          ? `Install · ${row.quote.cost.toLocaleString()}cr`
+                          : row.quote.failure
+                            ? shipyardFailureExplanation(row.quote.failure)
+                            : 'Unavailable'
                     }
                     onClick={() => shipyard({ action: 'buy-special-equipment', equipment: row.id })}
                   >
@@ -4216,7 +4199,7 @@ function ShipPane({ state }: { state: CockpitState }) {
         </div>
 
         {/* ---- crew roster (T-1405 · the dice-progression source) ---- */}
-        <CrewSection game={game} armed={armed} />
+        <CrewSection game={game} />
       </div>
     </section>
   );
@@ -4228,7 +4211,7 @@ function ShipPane({ state }: { state: CockpitState }) {
 // the equipment list it disables-not-hides an unaffordable hire and shows the
 // engine-derived reason. A hire's dice benefit lands at the NEXT dawn (the store
 // verb documents why), so this pane surfaces the roster, not a live-hand change.
-function CrewSection({ game, armed }: { game: GameState; armed: boolean }) {
+function CrewSection({ game }: { game: GameState }) {
   const roster = crewRoster(game);
   // T-1703 · The demo's 'crew-progression' lock — "Hangout progression" on the
   // task's gate list, read as the crew/dice progression bought at the Hangout
@@ -4255,10 +4238,10 @@ function CrewSection({ game, armed }: { game: GameState; armed: boolean }) {
               className="btn small ghost"
               data-testid="dismiss-crew"
               data-role-id={row.role.id}
-              disabled={!armed}
-              title={
-                armed ? 'Dismiss this crew member (spends a die, no refund)' : 'Pick a die first'
-              }
+              // T-196c · No `disabled` and no die in the copy: a dismiss is a
+              // FREE ACTION. The old title said "spends a die", which had been
+              // false since T-196a freed the verb in the engine.
+              title="Dismiss this crew member (free, no refund)"
               onClick={() => dismissCrew(row.role.id)}
             >
               Dismiss
@@ -4287,14 +4270,12 @@ function CrewSection({ game, armed }: { game: GameState; armed: boolean }) {
               // makes Playwright's `click({ trial: true })` REJECT, which is a
               // stronger proof than absence: a hidden control proves nothing about
               // a control that is merely off-screen.
-              disabled={!armed || !row.canHire || demoLock !== null}
+              disabled={!row.canHire || demoLock !== null}
               title={
                 demoLock ??
-                (!armed
-                  ? 'Pick a die first'
-                  : row.canHire
-                    ? `Hire · ${row.role.hirePrice.toLocaleString()}cr`
-                    : (row.reason ?? 'Cannot hire'))
+                (row.canHire
+                  ? `Hire · ${row.role.hirePrice.toLocaleString()}cr`
+                  : (row.reason ?? 'Cannot hire'))
               }
               {...(demoLock !== null ? { 'data-demo-locked': 'crew-progression' } : {})}
               onClick={() => hireCrew(row.role.id)}
@@ -4323,12 +4304,10 @@ function CrewSection({ game, armed }: { game: GameState; armed: boolean }) {
 function ComponentRow({
   row,
   game,
-  armed,
   focused = false,
 }: {
   row: ShipComponentRow;
   game: GameState;
-  armed: boolean;
   /** T-189 · Set for ~700ms after its region is clicked on the ship diagram, so
    *  a click on the hull lands visibly on the bench row that controls it. Pure
    *  presentation; the flash itself is gated behind `prefers-reduced-motion`. */
@@ -4403,12 +4382,8 @@ function ComponentRow({
             <button
               className="btn small"
               data-testid="upgrade-component"
-              disabled={!armed || !upgradeQuote.ok}
-              title={
-                armed
-                  ? `Upgrade to tier ${row.nextTier} · ${upgradeQuote.cost.toLocaleString()}cr`
-                  : 'Pick a die first'
-              }
+              disabled={!upgradeQuote.ok}
+              title={`Upgrade to tier ${row.nextTier} · ${upgradeQuote.cost.toLocaleString()}cr`}
               onClick={() =>
                 shipyard({ action: 'buy-component-tier', component: row.id, tier: row.nextTier! })
               }
@@ -4442,12 +4417,8 @@ function ComponentRow({
           <button
             className="btn small ghost"
             data-testid="repair-component"
-            disabled={!armed || !repairQuote.ok}
-            title={
-              armed
-                ? `Repair one step · ${repairQuote.cost.toLocaleString()}cr`
-                : 'Pick a die first'
-            }
+            disabled={!repairQuote.ok}
+            title={`Repair one step · ${repairQuote.cost.toLocaleString()}cr`}
             onClick={() => shipyard({ action: 'repair', component: row.id, repairMode: 'single' })}
           >
             Repair · {repairQuote.cost.toLocaleString()}cr
@@ -4495,9 +4466,11 @@ function ComponentRow({
 function Manifest({ state }: { state: CockpitState }) {
   const board = state.game.market.manifestBoard;
   const here = state.game.player.currentSystemId;
+  // T-196c · `armed` SURVIVES HERE, narrowed to ONE reader: HAGGLE, which is a
+  // Main Action and still spends the die it rolls. SIGN below is a Free Action
+  // (docs/DAWN-HAND-REDESIGN.md §3) and no longer reads this at all — hence no
+  // `dieVal` either, since the sign row stopped rendering a die slot.
   const armed = state.selectedDie !== null;
-  const dieVal =
-    state.selectedDie !== null ? state.game.player.dawnHand?.dice[state.selectedDie] : undefined;
   const sheet = manifestSheet(state.game);
   const [stowed, setStowed] = useState(false);
   const open = !stowed || walkthroughActive(state.walkthrough);
@@ -4562,7 +4535,9 @@ function Manifest({ state }: { state: CockpitState }) {
               const preview = routePreview(state.game, c.destination);
               return (
                 <div
-                  className={armed ? 'contract pickable' : 'contract'}
+                  // T-196c · ALWAYS pickable: signing is free, so a row is
+                  // clickable whether or not a die is armed.
+                  className="contract pickable"
                   key={i}
                   data-testid="contract"
                   // T-1602a · STRUCTURED reads of the numbers this row already renders
@@ -4588,9 +4563,16 @@ function Manifest({ state }: { state: CockpitState }) {
                     e.currentTarget.classList.add('dropready');
                   }}
                   onDragLeave={(e) => e.currentTarget.classList.remove('dropready')}
+                  // T-196c · The drop no longer routes through `dropDie`. That
+                  // helper called `selectDie` before running the action, so a
+                  // drag-to-sign would ARM (or replace) the player's queued die
+                  // as a side effect of a FREE action — exactly the disarm this
+                  // task exists to prevent. Drag is still the accessible
+                  // parallel to click-to-sign; it just signs, nothing more.
                   onDrop={(e) => {
+                    e.preventDefault();
                     e.currentTarget.classList.remove('dropready');
-                    dropDie(e, () => signContract(i));
+                    signContract(i);
                   }}
                 >
                   <div className="row1">
@@ -4614,18 +4596,18 @@ function Manifest({ state }: { state: CockpitState }) {
                   <div className="dest">
                     &#9656; {systemName(c.destination)} · {preview.fuelCost} fuel · {c.pods} pods
                   </div>
-                  {/* T-1402 · Signing SPENDS a die — it is not a TRADE check. The engine
-                  (resolveTrade) burns the die and never rolls or reads its value, so
-                  the manifest must render signing as a die COST, not a "+ TRADE" check.
-                  (HAGGLE below is the real TRADE DC-12 roll.) */}
+                  {/* T-196c · Signing is a FREE ACTION (docs/DAWN-HAND-REDESIGN.md
+                  §3) — it costs no die and it is still not a TRADE check, so the
+                  row renders neither a die slot nor a "+ TRADE" check. (T-1402
+                  wrote this row as a die COST; M17 removed the cost, so the slot
+                  and the "assign a die" prompt went with it.) HAGGLE below is the
+                  manifest's one real TRADE DC-12 roll, and the one control here
+                  that still demands an armed die. */}
                   <div className="check" data-testid="sign-row">
                     <span className="lbl">SIGN</span>
-                    <span className={dieVal !== undefined ? 'slot ready' : 'slot'}>
-                      {dieVal ?? '—'}
-                    </span>
-                    <span className="mono">costs 1 die</span>
+                    <span className="mono">FREE</span>
                     <span className="arrow">&rarr;</span>
-                    <span className="mono">{armed ? 'commit to sign' : 'assign a die'}</span>
+                    <span className="mono">click to sign</span>
                     {/* Kept ENABLED even once haggled: a second haggle is an engine
                     refusal that spends no die, and the store surfaces it as a
                     visible notice. Disabling it here would make that failure a
@@ -4750,7 +4732,10 @@ function TradePane({
   const game = state.game;
   const p = game.player;
   const active = p.activeContract;
-  const armed = state.selectedDie !== null;
+  // T-196c · NO `armed` CONST HERE, deliberately. All three verbs this pane
+  // reaches — abandon-contract, buy-fuel and the port buy — are FREE ACTIONS
+  // (docs/DAWN-HAND-REDESIGN.md §3), so none may require, consume or DISARM the
+  // die a player armed for their next Main Action.
 
   const [fuelAmount, setFuelAmount] = useState(100);
   const [debtAmount, setDebtAmount] = useState(500);
@@ -4894,27 +4879,21 @@ function TradePane({
               {/* T-1604b · The hold release (UGT finding F2). A run you cannot
                   reach — no fuel, no credits, no way to the destination — used to
                   lock the hold forever, because signing is refused while a
-                  contract rides. Dumping costs a die and the whole payment, so
-                  the control mirrors the manifest rows' "arm a die" affordance
-                  and is never a dead click. The engine owns the refusal and the
-                  die; this button only sends the action. */}
+                  contract rides. T-196c · dumping is a FREE ACTION now: the
+                  forfeited payment is the whole cost, so the control is never
+                  gated and never dead. The engine owns the refusal; this button
+                  only sends the action. */}
               <div className="lb-controls">
                 <button
                   className="btn"
                   data-testid="abandon-contract"
-                  disabled={!armed}
-                  title={
-                    armed
-                      ? 'Spend the selected die to vent the cargo and clear the hold'
-                      : 'Pick a die first, then dump the run'
-                  }
+                  title="Vent the cargo and clear the hold"
                   onClick={() => abandonContract()}
                 >
-                  {/* The label is deliberately CONSTANT (the armed state rides
-                      `disabled` + `title` instead): this block's text is read
-                      whole by e2e/manifest-trade.spec.ts to prove a refused
+                  {/* The label is deliberately CONSTANT: this block's text is
+                      read whole by e2e/manifest-trade.spec.ts to prove a refused
                       second signing left the tracker untouched, and a label that
-                      flickered with the die selection would break that read. */}
+                      flickered with state would break that read. */}
                   DUMP THE RUN
                 </button>
               </div>
@@ -4938,8 +4917,9 @@ function TradePane({
           )}
         </div>
 
-        {/* Fuel depot — buy-fuel consumes a die (PRD §7), so the control mirrors
-            the manifest's "assign a die" affordance and is never a dead click. */}
+        {/* Fuel depot — T-196c · buying fuel is a FREE ACTION
+            (docs/DAWN-HAND-REDESIGN.md §3): credits are the whole cost, so the
+            control is gated on the amount alone and is never a dead click. */}
         <div
           className="ledger-block fuel-depot"
           data-testid="fuel-depot"
@@ -4980,13 +4960,11 @@ function TradePane({
             <button
               className="btn"
               data-testid="buy-fuel"
-              disabled={!armed || fuelAmount <= 0}
-              title={armed ? 'Spend the selected die to refuel' : 'Pick a die first, then buy fuel'}
+              disabled={fuelAmount <= 0}
+              title="Refuel at the depot"
               onClick={() => buyFuel(fuelAmount)}
             >
-              {armed
-                ? `Buy · ${(fuelAmount * fuelPrice).toLocaleString()}cr`
-                : 'Pick a die to fuel'}
+              Buy · {(fuelAmount * fuelPrice).toLocaleString()}cr
             </button>
           </div>
           {/* T-1402 · The overspend warning fires pre-commit whenever the request
@@ -5098,23 +5076,19 @@ function TradePane({
                     // task's gate list). Disabled-not-hidden, so the price and the
                     // income figure stay legible — the tease is the dock you can
                     // see and cannot buy.
-                    disabled={!armed || !ledger.current.quote.ok || portDemoLock !== null}
+                    disabled={!ledger.current.quote.ok || portDemoLock !== null}
                     title={
                       portDemoLock ??
-                      (!armed
-                        ? 'Pick a die first'
-                        : ledger.current.quote.ok
-                          ? `Buy the stake · ${ledger.current.quote.cost.toLocaleString()}cr`
-                          : ledger.current.quote.failure
-                            ? portFailureExplanation(ledger.current.quote.failure)
-                            : 'Unavailable')
+                      (ledger.current.quote.ok
+                        ? `Buy the stake · ${ledger.current.quote.cost.toLocaleString()}cr`
+                        : ledger.current.quote.failure
+                          ? portFailureExplanation(ledger.current.quote.failure)
+                          : 'Unavailable')
                     }
                     {...(portDemoLock !== null ? { 'data-demo-locked': 'port-ownership' } : {})}
                     onClick={() => buyPort()}
                   >
-                    {armed
-                      ? `Buy · ${ledger.current.quote.cost.toLocaleString()}cr`
-                      : 'Pick a die to buy'}
+                    Buy · {ledger.current.quote.cost.toLocaleString()}cr
                   </button>
                 )}
               </div>

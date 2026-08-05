@@ -94,14 +94,18 @@ function choice(page: Page, choiceId: string) {
   return page.locator(`[data-testid="storylet-choice"][data-choice-id="${choiceId}"]`);
 }
 
-test('the manifest sign flow renders a die cost, not a TRADE check', async ({ page }) => {
+test('the manifest sign flow renders a FREE signature, not a TRADE check', async ({ page }) => {
   await page.goto('/');
 
-  // The sign row on every offer speaks in a DIE COST — no "+ TRADE" fragment, no
-  // check-stat element. Signing spends the die; the engine never rolls it.
+  // The sign row on every offer prices the signature as FREE — no "+ TRADE"
+  // fragment, no check-stat element. T-196c: it used to read "costs 1 die", which
+  // stopped being true when M17 (docs/DAWN-HAND-REDESIGN.md §3) freed signing;
+  // the die slot and the "assign a die" prompt went with the cost. The contrast
+  // this test exists for — signature vs. honest check — is untouched.
   const signRow = page.getByTestId('sign-row').first();
   await expect(signRow).toBeVisible();
-  await expect(signRow).toContainText('costs 1 die');
+  await expect(signRow).toContainText('FREE');
+  await expect(signRow).not.toContainText('costs 1 die');
   await expect(signRow).not.toContainText('TRADE');
   await expect(signRow.getByTestId('check-stat')).toHaveCount(0);
   // No check breakdown is open at rest — signing is not a check surface.

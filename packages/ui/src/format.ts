@@ -3018,6 +3018,14 @@ export interface OnboardingPrompt {
  * the combat teaching instead of the jump teaching. Predicates read only
  * existing engine surface (`encounter`, `day`, `dawnHand`, `activeContract`,
  * `market.manifestBoard`).
+ *
+ * T-196c · STALE COPY BELOW, LEFT DELIBERATELY AND OWNED BY T-194. `first-sign`
+ * still says "assign a die to a manifest offer", and `dawn-roll` still frames a
+ * die as the price of every action. M17 (docs/DAWN-HAND-REDESIGN.md §3) made
+ * signing free, so that instruction is now false. T-196c changes UI BEHAVIOUR
+ * only; the teaching copy belongs to T-194, which is gated behind T-198 for the
+ * express reason that the new economy must settle before the tutorial bakes it
+ * in. Marked here rather than silently half-fixed.
  */
 export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   {
