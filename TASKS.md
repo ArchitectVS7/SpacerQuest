@@ -3605,6 +3605,17 @@ check, written to `docs/balance/baseline-t197-hangout-caps.json`, feeding direct
 brief. **Deliberate scope boundary:** the exact Liar's Dice rounds-per-tier numbers were
 confirmed with the owner rather than silently locked from the spec's starting-suggestion table,
 per the task's explicit instruction; no other scope was deferred.
+**CORRECTION TO THE SENTENCE ABOVE (recorded at T-198, 2026-08-05, not deleted).** "Confirmed
+with the owner" is contradicted by the repository. `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]`
+still ships marked `PROPOSED — AWAITING OWNER CONFIRMATION` in all three places T-197 itself put the
+marker: `packages/content/src/liarsDice.ts:101` (the docblock; the array at :111-112),
+`docs/DAWN-HAND-REDESIGN.md` §5's last bullet (headed **STILL OPEN**), and
+`docs/LIARS-DICE-DECISIONS.md` LD-23 — all three of which say the question was *surfaced* before
+implementation and that **no answer had arrived at ship time**. Surfacing is not confirming. What
+T-197 actually did was right (ship the mechanism against the suggested table, mark it PROPOSED in
+three places, refuse to resolve it quietly); only this sentence is wrong. The open question is
+promoted to **R3** at T-198 rather than left to ride inside T-198's ruling (1), where a "pacing is
+fine" answer would silently bless numbers nobody ruled on. See **F-198-3** in T-198's block.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; `NOGRAPH`) · attempts=1/4.
 
 Per `docs/DAWN-HAND-REDESIGN.md` §3-4 as amended at the 2026-08-04 review pass. ALL SEVEN of
@@ -3680,7 +3691,7 @@ t199 is named explicitly so the smuggler/`planPacifistCombat` fix isn't silently
 "dawn-hand easing" it isn't part of. That cumulative table plus the Insult measurement are
 T-198's brief. Gate green.
 
-### T-198 · CHECKPOINT — owner pacing read on the post-M17 economy `[BLOCKED BY = Human ruling]` — `status: TODO` · `coder: —` · `after: T-197`
+### T-198 · CHECKPOINT — owner pacing read on the post-M17 economy `[BLOCKED BY = Human ruling]` — `status: BLOCKED(Human ruling)` · `coder: opus` · `after: T-197`
 
 The dawn-hand arc is the game's second intentional easing in a week: T-195 alone moved
 `fleet.tourOneClearRate` 0.5605 → 0.6310 and `finalCredits.median` +40.5%, and M17 roughly
@@ -3699,6 +3710,158 @@ rounds table) before T-194 runs; (2) whether `SOCIAL_PLAYS_PER_DAY = 3` needs ti
 pool was ruled with the prediction that X = 3 holds the Insult encounter-farming loop, and
 T-197's capstone measurement either confirms that or is the finding this ruling answers. Record
 both rulings in this block, dated; T-194 un-gates on them.
+
+**Prepared (2026-08-05, AUTOMATED HALF ONLY — this task is NOT done and was not self-approved).**
+The automated half of the checkpoint is complete and the run **halts here**, per the T-158
+convention. What landed:
+
+- **The brief: `docs/playtests/T-198-pacing-brief.md`.** Ten sections, mirroring T-158's: what
+  closes the task (**three** rulings, not two — F-198-3); the runbook, which does **not** duplicate
+  T-158 §2 but points at it and adds only the M17 deltas (every administrative verb and all seven
+  Hangout verbs free; `Dare{move:'peek'}` the only Hangout die spend left; the two live readouts
+  `social-plays-left` / `dare-rounds-left`; the two typed refusals `social-limit-reached` /
+  `daily-round-limit`; the standing play-through-the-UI rule restated); a suggested-not-scripted
+  pass aimed at the pacing question; **§4 the cumulative arc as measured**, with F-198-2's
+  two-origins sentence; **§5 the pacing clamps and the F-198-1 correction**; **§6 R2's evidence, the
+  Insult null result**; **§7 R3's evidence, the rounds table**; §8 instrumentation, re-grepped at
+  each call site rather than copied from T-158's block; §9 a session-notes template with the Bug
+  Discovery Policy pointer; **§10 the three EMPTY ruling slots**, in T-158 §9's table idiom.
+- **One heading inserted in `docs/DAWN-HAND-REDESIGN.md`** — `## 0 · M17 as measured — the Insult
+  null result and the cumulative arc` — so the Insult block, the still-open-rounds bullet, the
+  cumulative table and "what the arc actually shows" become one section-pinnable region running to
+  `## 1 ·`, plus one sentence pointing at the brief. **No existing section was renumbered**, and no
+  test parses this document's heading structure (checked: only comment references in
+  `protocol.test.ts` and `campaign-smuggler-gambler.test.ts`).
+- **New test: `packages/sim/src/__tests__/pacing-brief-figures.test.ts`** (5 tests). (1) Sixteen
+  prose figures pinned in **both** directions — heading exists, value is inside that section, value
+  is in the brief — with non-vacuity asserted. (2) **The cumulative arc table is DERIVED, not
+  transcribed**: all six committed aggregates are read, `runs === 8000` is asserted on each, and the
+  four columns are re-formatted and required to appear as whole table rows in **both** the spec §0
+  and the brief — so a re-pinned baseline cannot leave a stale arc row standing anywhere. (3) The
+  F-198-4 null result is **machine-checked** against `packages/sim/src/index.ts`: no
+  `venue: 'meet'|'befriend'|'insult'` literal may appear, and the three venues that ARE planned are
+  asserted positively so the check cannot pass by the file having moved. (4) R3's receipt: the
+  `PROPOSED` marker must be present at all three sites AND the array must still read
+  `[1, 2, 2, 3, 3, 4]`, so a ruling moves all four together or the suite goes red. (5) All three
+  ruling cells and all three date cells asserted **EMPTY** — a filled cell no owner wrote is a
+  self-waiver. The file header states that **test 5 INVERTS when the owner rules** and names the
+  T-158 precedent (`uat-brief-figures.test.ts`'s third test) so the closer flips it rather than
+  deleting it.
+
+**FOUR FINDINGS — these are the brief's spine, filed here so they survive a cleared session.**
+
+**F-198-1 · "Contract deadlines" do not exist in this game — a correction to this task block's own
+framing, recorded rather than silently substituted** (the idiom T-197's Delivered note used for its
+two). This block names contract deadlines among the things tuned against the old action economy.
+`CargoContract` (`packages/engine/src/types.ts:2142-2148`) is
+`{ destination, cargoType, payment, pods, haggled? }` — **no deadline, no expiry, no due-day field**
+— and `/usr/bin/grep -rn "deadline\|expiresDay\|daysToDeliver"` over `packages/engine/src` and
+`packages/content/src` returns nothing for contracts. The manifest board rerolls
+(`generateManifestBoard`, `packages/engine/src/day.ts:145`); a *signed* contract has no clock on it.
+The pacing clamps that DO exist, and that R1 actually rules on, are four:
+
+| clamp | value | pin |
+| --- | --- | --- |
+| the day-30 marker | a literal `30`, **not a constant** | `packages/engine/src/day.ts:1284` (`nextState.day === 30`) |
+| Tour One debt | `25000` | `packages/engine/src/state.ts:128` |
+| Guild debt interest | `GUILD_DEBT_DAILY_RATE = 0.02`/dusk | `packages/content/src/guild.ts:80` |
+| loan term / rate | `LOAN_TERM_DAYS = 15`, `LOAN_DAILY_RATE = 0.05` | `packages/content/src/lending.ts:69,63` |
+
+plus T-195's own two magnitudes, `NAV_DIE_FUEL_DISCOUNT_MAX = 0.15` / `NAV_DIE_EVASION_MAX = 0.2`
+(`packages/engine/src/actions/travel.ts:128-129`), which the block names correctly.
+
+**F-198-2 · This block's headline figure and the cumulative table's origin row are two different
+"before"s, and both are correct.** This block (and T-195's, above) quote `fleet.tourOneClearRate`
+**0.5605 → 0.6310**; `0.5605` is `docs/balance/baseline-t188-orbital-3d.json`, T-195's *immediate*
+predecessor. The cumulative table (`docs/DAWN-HAND-REDESIGN.md` §0) starts at **0.5689**, which is
+`docs/balance/baseline-t182-reroll-fix.json`, the last **pre-T-195** baseline T-197's capstone was
+required to span. Both verified by reading the files. The brief says so in one sentence with both
+pins, so the checkpoint does not spend the owner's attention on an artefact.
+
+**F-198-3 · There is a THIRD ruling already pending at this checkpoint, and T-197's Delivered note
+contradicts the repository on it — a correction to T-197's framing, recorded rather than silently
+substituted.** `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]` still ships marked
+`PROPOSED — AWAITING OWNER CONFIRMATION` in three places (`packages/content/src/liarsDice.ts:101`,
+`docs/DAWN-HAND-REDESIGN.md:283-289` §5's last bullet headed **STILL OPEN**,
+`docs/LIARS-DICE-DECISIONS.md:219-228` LD-23), yet T-197's Delivered note says the numbers "were
+confirmed with the owner". Surfacing is not confirming; the correction is recorded beside that
+sentence above, and the sentence is not deleted. This is the T-158 "POINTER, NOT AN AMENDMENT"
+situation except that it lands **inside** the checkpoint — T-198's own text already names "the §4b
+rounds table" inside ruling (1). It is therefore promoted to its own slot, **R3**. **Three rulings,
+not two.**
+
+**F-198-4 · The Insult measurement is a NULL RESULT, and the reason is structural and
+machine-checkable.** `docs/DAWN-HAND-REDESIGN.md` §0 and `docs/NPC_REDESIGN.md:161` already state
+it; this pass proved the mechanism. The only `venue:` literals any policy PLANS in
+`packages/sim/src/index.ts` are `venue: 'borrow'` (`:2604`), `venue: 'repay'` (`:2637`) and
+`venue: 'dare'` (`:4225`). `meet`/`befriend`/`insult` appear at `:1399-1401` **only as a telemetry
+reader** (`hangoutPlay.socialBeats += 1`), and `socialBeats` is not even in the committed aggregate;
+`packages/sim/src/protocol.ts:914` enumerates them for the protocol seam, but nothing emits them. So
+the fighter row coming back byte-identical to T-196b is **not** evidence that X = 3 holds the loop —
+the loop cannot be exhibited by this instrument at all. **`SOCIAL_PLAYS_PER_DAY = 3` is UNVERIFIED,
+not verified.** What R2 actually rules on is the analytic bound: 3 plays/day × −4 disposition
+(`INSULT_DISPOSITION = -4`, `packages/content/src/hangout.ts:96`) ⇒ at most **one** manufactured
+grudge to the −10 floor per day, against unbounded before the cap; the −10 hunt weight is 16×
+(`packages/content/src/hangout.ts:118`) and the measured wronged-captain lift is 2.358×
+(`docs/HANGOUT_REDESIGN.md` §11.3). Test 3 of `pacing-brief-figures.test.ts` makes this durable: the
+day a policy learns to plan a social venue, the suite says the finding is stale.
+
+**Gate transcript, run BEFORE writing anything and again AFTER, so a pre-existing red could not be
+mis-attributed.** BEFORE: `npm test` → **126 files / 2,473 tests passing, 0 failing**
+(content 2/25 · desktop 7/110 · devpanel 5/61 · engine 50/1346 · sim 37/524 · ui 25/407). AFTER:
+**127 files / 2,478 tests passing, 0 failing** — exactly this task's one new file and its five
+tests (`packages/sim` 37/524 → 38/529), nothing else moved. The known-red `it.fails` tripwires behaved
+as expected-red on both runs and none flipped to unexpectedly passing. `npx tsc -b`, `npm run lint`
+and `npm run format:check` exit 0 on both runs.
+
+**NO FINGERPRINT MOVED, NO CAPSTONE IS OWED, AND NO SWEEP WAS RUN — stated rather than left
+unaddressed.** Every edit is under `docs/` (not hashed at all) or `packages/sim/src/__tests__/`
+(`__tests__` is in `HASHED_ROOT_IGNORED_DIRECTORIES`, `rules-fingerprint.ts:255-267`). Therefore
+`rulesFingerprint` is **unmoved at `10e19c88e9a07856`** and `instrumentFingerprint` **unmoved at
+`5c230e99648cddee`**; the baseline of record `docs/balance/baseline-t197-hangout-caps.json` is
+untouched, with no re-pin and no `smoke/tiers.json` re-extract. The brief is assembled from work
+already done, which is this task's own instruction. `CURRENT_SAVE_VERSION` stays **16** — re-read at
+`packages/engine/src/save.ts:562`, not copied out of a task block (T-197's block carries a stale
+"13 → 14"; the shipped bump was 15 → 16). No new non-test module was added under `packages/sim/src`,
+so **no `SIM_NON_INSTRUMENT_SOURCES` entry is owed** — the figure table lives inside the test file
+for exactly that reason. Nothing under `packages/engine`, `packages/content`, `packages/ui` or
+`packages/desktop` changed: `SOCIAL_PLAYS_PER_DAY`, `LIARS_DICE_ROUNDS_PER_DAY`,
+`NAV_DIE_FUEL_DISCOUNT_MAX`, `NAV_DIE_EVASION_MAX`, `LOAN_TERM_DAYS`, `LOAN_DAILY_RATE`,
+`GUILD_DEBT_DAILY_RATE` and `day.ts`'s `=== 30` are all untouched, by name.
+
+**TO CLOSE THIS TASK — where each ruling gets transcribed when it arrives.** Do not re-derive this
+after the halt; it is written down here on purpose.
+
+1. **R1 (is the post-M17 pacing acceptable?)** → (a) this block, dated; (b)
+   `docs/DAWN-HAND-REDESIGN.md`, as a dated ruling line at the top beside the existing SHIPPED
+   PART 1/2/3 blocks; (c) **if and only if the ruling is "re-tune"**, a NEW TASK BLOCK — never a
+   constant edited inline, because every named lever (the day-30 literal, the debt/interest, the
+   loan terms, the two `NAV_DIE_*_MAX` magnitudes) moves the fleet economy and owes its own capstone
+   diffed against `docs/balance/baseline-t197-hangout-caps.json`.
+2. **R2 (`SOCIAL_PLAYS_PER_DAY = 3`)** → (a) this block; (b) `docs/DAWN-HAND-REDESIGN.md` §4a; (c)
+   if "tighten", a new **content** task plus its capstone; if "measure first", a new **instrument**
+   task for the insult-playing policy arm — a new instrument BEHAVIOUR with its own arm, moving
+   `instrumentFingerprint` only.
+3. **R3 (the §4b rounds table)** → all four sites in ONE edit:
+   `packages/content/src/liarsDice.ts:101`'s docblock, `docs/DAWN-HAND-REDESIGN.md` §5's last
+   bullet, `docs/LIARS-DICE-DECISIONS.md` LD-23, plus the array itself if revised. **A
+   marker-comment flip alone is FREE**: `rulesFingerprint` is *semantic* and strips comments
+   (`packages/sim/src/balance/rules-fingerprint.ts:448-496`), so only `docsFingerprint` moves and
+   that is a NOTE, not a failure (`packages/sim/src/balance/checkpoints.ts:467-490`). **Revising the
+   ARRAY is a content edit and DOES owe a capstone**, diffed against
+   `baseline-t197-hangout-caps.json`. Stated explicitly so the closer does not run 8,000 rows for a
+   comment.
+4. Then flip **test 5** of `packages/sim/src/__tests__/pacing-brief-figures.test.ts` from
+   asserts-empty to asserts-non-empty, per that file's own header comment and the T-158 precedent.
+5. **T-194 and the ~12 backlog tasks whose `after:` names T-198 stay gated.** No `after:` field was
+   touched by this pass — they un-gate when the owner rules, not when the brief was written.
+
+**THE HALT (2026-08-05).** Nothing further was done on this task by any coder. **No ruling was made,
+guessed at, paraphrased or implied by this pass** — the coder does not self-waive, and the six empty
+cells in the brief's §10 are the record that it did not. The task now awaits: Human ruling (R1, R2,
+R3).
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent). · attempts=1/4 · HUMAN-GATE HALT.
 
 ---
 

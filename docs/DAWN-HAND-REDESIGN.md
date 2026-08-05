@@ -75,6 +75,13 @@ survives as §5's ruled internal d20. Both counts are RENDERED beside the contro
 (`social-plays-left`, `dare-rounds-left`) so neither cap can refuse a click the player could
 not see coming.
 
+## 0 · M17 as measured — the Insult null result and the cumulative arc
+
+*This section is what **T-198**, the owner pacing checkpoint, reads. Its brief —
+`docs/playtests/T-198-pacing-brief.md` — quotes this section's figures and is pinned back to it
+by `packages/sim/src/__tests__/pacing-brief-figures.test.ts` in both directions, so neither the
+section nor the brief can drift from the other unnoticed.*
+
 **THE INSULT MEASUREMENT, AND WHY IT IS A NULL RESULT RATHER THAN A PASS.** §4a predicted
 the pool would hold the free-insult × 2.358× wronged-interceptor farming loop, and the
 capstone was required to check it against the fighter's encounter/combat income. The
