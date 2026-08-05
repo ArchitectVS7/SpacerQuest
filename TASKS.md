@@ -208,6 +208,18 @@ Out of scope for 0.5.2 — recorded so a coder does not re-scope them in:
   **Still no tag** — a tag is a stage marker cut by the ceremony, and the first (`alpha`) waits
   on T-158's own UAT pass per `docs/VERSIONING.md`'s stage table.
 - **Anything R-owned:** R10's tier-1 hull cliff and the known-red `it.fails` tripwires.
+- **Outer-rim Cantina venues, with pirates as clientele (owner, 2026-08-05).** Raised while
+  reviewing the pirate/anonymous-interceptor roster: the rim is smuggling territory by design
+  (`allowsContraband` flags exactly the six rim systems), so the owner finds it "exactly on
+  flavor" that those ports would have their own — dangerous — Cantinas. **This directly reopens
+  a standing ruling, not a gap:** `packages/content/src/systems.ts`'s `hasHangout` doc states
+  outright that the rim (15–20), Andromeda, Maligna and Nemesis carry NO venue **"and that is a
+  design requirement rather than an omission"** — fourteen core ports was the owner's own target
+  verbatim, with an explicit "do not finish the job by flagging the rim" instruction, because an
+  empty un-flagged set is what keeps `ActionBlocked{reason:'no-hangout'}` a real, tested path.
+  Flagged here as a genuine future-expansion idea (a new venue archetype, not a reachability
+  fix), explicitly NOT scheduled — it needs its own fresh owner ruling before any task is filed,
+  since it supersedes rather than extends the T-121 ruling above.
 
 ---
 
@@ -4508,6 +4520,213 @@ save-shape decision, and it should be taken deliberately rather than drifting in
 here" rename.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=2/4.
+
+---
+
+## M19 — Captain voice: table talk, battle catchphrases, and quest-captain pinning (owner, 2026-08-05)
+
+Two owner requests from reviewing the cast content-authoring survey. Both are about the 30 named
+captains (`NPC_PROFILES`, `packages/content/src/cast.ts`) and the 11 quest captains
+(`QUEST_PROFILES`, same file) specifically — NOT the 42-seat Liar's Dice roster (already has its
+own `lines`) and NOT the 65-entry anonymous pirate/patrol pool (explicitly out of scope here; the
+owner confirmed the gambler ladder and dropped the random-gambler idea with no further action).
+
+### T-205 · Schema: give the 30 named captains table-talk and battle-catchphrase slots — `status: TODO` · `coder: opus` · `after: —`
+
+**The ask (owner, 2026-08-05):** captains should have a few table-talk lines for when they deal a
+Liar's Dice hand (mirroring the shape `LiarsDiceOpponent.lines` already has for the 42-seat
+roster, `packages/content/src/liarsDice.ts:58-79`) AND a set of battle catchphrases — since a
+captain the player has insulted can turn up as a combat interceptor (the `chooseWeighted` grudge
+mechanism, `packages/engine/src/actions/travel.ts`), a captain needs something to say entering a
+fight, during it, on a win, and on a loss.
+
+**Files:** `packages/content/src/cast.ts` — add to `NpcProfile` (not `AnonymousInterceptorProfile`
+and not a change to `QUEST_PROFILES`'s shape, though `QUEST_PROFILES` reuses the same interface so
+decide explicitly whether quest captains get placeholder/empty lines or the field is optional and
+absent for them — state the choice, don't leave it implicit): a `tableTalk: readonly string[]`
+("a few" per the ask — 2-4 lines, drawn from at Liar's Dice open, mirroring how the roster's
+`lines.tableTalk` is used) and a `catchphrases: { enter: readonly string[]; duringBattle: readonly
+string[]; win: readonly string[]; loss: readonly string[] }` (each 1-3 lines is enough; these are
+barks, not paragraphs). Extend whatever hand-rolled content validator already covers `cast.ts`
+(the project uses `defineX`/`validateX` functions per file, not zod, in `packages/content` — follow
+that existing convention, do not introduce zod here) to assert every one of the 30 `NPC_PROFILES`
+has non-empty entries in all five slots. **This task is schema + validator + a SMALL number of
+real example entries to prove the shape works end-to-end (2-3 captains, not all 30)** — the full
+authoring pass for the remaining captains is T-206, kept separate for the same reason this
+project already splits "framework" from "content pass" (the N-series/Explore/Hangout precedent):
+one task should not be both a type decision and 150+ lines of prose review.
+
+**Accept:** `NpcProfile` carries both new fields; the validator fails loudly on any of the 30
+missing a slot; 2-3 captains have real authored lines in the new shape as a working example;
+`packages/content`'s existing "no `if (` decides an outcome" discipline holds (the new fields are
+data, the validator is the only new logic and it lives in the validation file, not inline).
+**Capstone owed** (content is hashed wholesale into `rulesFingerprint`) — batch it with T-206
+rather than taking one here, per the Standing constraints' "re-extract once" rule. Gate green.
+
+### T-206 · Content pass: author table-talk and catchphrases for all 30 captains — `status: TODO` · `coder: opus` · `after: T-205`
+
+Fill in the remaining ~27-28 captains' `tableTalk` and `catchphrases` (T-205 seeds a few as the
+worked example). Voice each captain's lines from their EXISTING authored `ideal`/`bond`/`flaw`
+and `archetype` (`cast.ts`) — a `gambler` archetype's table-talk should read differently from a
+`fighter` archetype's battle catchphrase, and a captain's established flaw is a good source for
+what they say under pressure (losing a hand, taking a beating). Keep every line SHORT (this is a
+bark, not a paragraph — match the terseness of the existing `lines.tableTalk`/`win`/`lose` entries
+on the 42-seat roster for tone calibration). **Capstone here** (batched from T-205 per the
+Standing constraints): `npm run format` first, the standard 8-shard sweep, `--merge`, diff against
+the last baseline of record, predict and confirm the row movement (none expected — this is prose
+content with no numeric/mechanical change, same class as T-204's rename capstone), re-pin at all
+four sites.
+
+**Accept:** all 30 `NPC_PROFILES` entries pass T-205's validator with real, distinct-per-captain
+content (not a copy-pasted template — a spot-check comparing two captains' lines must show real
+voice difference); capstone lands with the predicted flat row-movement confirmed or a finding
+filed. Gate green.
+
+### T-207 · UI: surface table-talk and catchphrases at the table and in combat — `status: TODO` · `coder: opus` · `after: T-206, T-203`
+
+**Liar's Dice:** when a ROAMING named captain (not a `ld-` roster seat) deals a hand, show one of
+their `tableTalk` lines — this sits beside T-203's disposition readout at the same seat
+(`packages/ui/src/App.tsx`'s `ld-seat`/`dare-dealer-name` region), so build on that task's landed
+work rather than duplicating the roaming-vs-roster distinction it already made. **Combat:** when a
+NAMED interceptor (not an anonymous pirate/patrol) is drawn, show an `enter` line at the start of
+the encounter, occasionally a `duringBattle` line, and a `win`/`loss` line at resolution —
+`packages/ui/src/App.tsx`'s `CombatInstrument`/`co-enemy` region already reads `encounterReadout`
+(`packages/ui/src/format.ts:1643`) for the named-interceptor case; extend that reader rather than
+building a second lookup path. An anonymous pirate has no catchphrases (T-205 deliberately did not
+give `AnonymousInterceptorProfile` this shape) — its encounter UI is unchanged.
+
+**Accept:** a roaming named captain's Liar's Dice seat shows a table-talk line; a named combat
+interceptor's encounter shows enter/win/loss lines (during-battle line at least available, timing
+is implementer's call); an anonymous interceptor's UI is byte-identical to today; UI test coverage
+for both surfaces, including the "anonymous gets nothing new" negative case. No engine/content
+file touched (this reads data T-205/T-206 already authored). Gate green.
+
+### T-208 · Pin quest captains stationary, at a port sane for their questline — `status: TODO` · `coder: opus` · `after: —`
+
+**The ask (owner, 2026-08-05):** quest-line captains (`QUEST_PROFILES`, 11 records, excluded from
+`NPC_PROFILES`'s combat-interceptor pool by design) don't need to be tracked or moved — they can
+sit stationary at a Cantina. **First confirm the current behavior rather than assume it:**
+`createInitialState` (`packages/engine/src/state.ts:79-105`) seeds every one of the 41 total
+profiles (30 + 11) with a `currentSystemId: (index % 20) + 1` — an ARBITRARY placement, not one
+chosen for questline sense — but whether the shared day-tick NPC-movement logic
+(`packages/engine/src/npc.ts`) subsequently moves a `QUEST_PROFILES`-backed `NpcState` over the
+course of a career is NOT yet established; read the movement/travel-planning code path and state
+plainly, in the Delivered note, which case it actually was. If they already never move (the
+tick logic may already be scoped to `NPC_SYSTEM_IDS`-eligible or otherwise gated in a way that
+happens to exclude them), this task is mostly the placement fix below plus a regression test
+proving they don't move now and won't later. If they DO currently drift, pin them: quest captains
+must never be selected by whatever function advances an NPC's `currentSystemId`.
+
+**Placement — the "sanity check" half of the ask.** Replace the arbitrary `% 20` assignment for
+each of the 11 `QUEST_PROFILES` records specifically (the 30 `NPC_PROFILES` keep their existing
+placement/roaming behavior unchanged) with a deliberately chosen CORE port (one of systems 1-14 —
+only core ports have a Cantina to sit in), picked per captain by reading that captain's own
+`ideal`/`bond`/`flaw` prose and cross-referencing any `packages/content/src/exploration.ts` outcome
+or storylet that names them (e.g. `npc-doc-salvage`, `npc-rust-bucket` — grep `profileId:` in
+`exploration.ts` and `trigger.npc.id` in `storylets.ts` for every quest-captain id) for any location
+context their content already implies. Where no location is implied by existing content, pick any
+core port and say so plainly — this is a sanity check against nonsense placement, not a demand that
+every captain have lore-mandated geography. Document the chosen system per captain with a one-line
+comment naming the reasoning (or "no location implied, placed at X").
+
+**Accept:** every `QUEST_PROFILES` record's `currentSystemId` is one of the 14 core ports, each
+with a documented reason; a test asserts a quest captain's `currentSystemId` is unchanged across a
+multi-day simulated career (the stationary guarantee, machine-checked, not just claimed); the
+Delivered note states plainly whether they moved before this task and what actually changed. Gate
+green.
+
+---
+
+## M20 — Admin/balance authoring panel: the "Tier 2 levers dashboard" (owner, 2026-08-05)
+
+**Deliberately gated, not urgent.** The owner is prioritizing visual presentation and the core
+game loop first; this becomes a "must have" after a full 30-day Tour One playthrough, not before.
+`docs/TELEMETRY-REPORT_SPEC.md` §7 already named and deferred this exact idea (a UI where a
+content/balance lever is adjusted and a sweep fires on demand) when `packages/devpanel` (T-143,
+the read-only Tier 1.5 panel) shipped, and named the real difficulty: editing what are today
+plain, git-committed, fingerprinted TypeScript constants without breaking their provenance. This
+milestone is that idea, scoped as the owner described it 2026-08-05: select a few levers (captain
+stats, ship upgrades, port distances, fuel costs, Liar's Dice payouts, pirate aggression, Explore
+rewards — eventually most of `packages/content`), run against a **cloned** config that never
+overwrites the committed source, click a test button that runs the real balance sweep, and see
+results — ideally visualized — before deciding whether to actually make the change for real.
+
+### T-209 · CHECKPOINT — do not start M20 until the owner says so — `status: TODO` · `coder: —` · `after: —` · `[BLOCKED BY = Owner priority — resume after visual/core-loop work]`
+
+This task exists ONLY to keep every other task in this milestone from being picked up by
+`/orchestrate all`. It has no automated deliverable — the runner will find nothing to prepare and
+should commit it `BLOCKED(Owner priority — resume after visual/core-loop work)` and halt
+immediately per the standard human-gate protocol. **Do not build anything for this task.** The
+owner un-gates the milestone by flipping this task's status directly (not via the orchestrator) or
+by explicitly re-scoping a future `/orchestrate` call to name T-210 onward.
+
+### T-210 · Design: the sandboxed hypothesis/clone architecture — `status: TODO` · `coder: fable` · `type: design` · `after: T-209`
+
+Before any of this is built, the hardest question needs an actual answer, not an assumption: HOW
+does "select a lever, run a hypothesis, never touch committed source" actually work given this
+project's fingerprint/provenance discipline? Research and propose, with competing options and a
+recommendation: (1) where a cloned config lives (the existing `packages/devpanel` precedent writes
+ad hoc runs to a gitignored `.scratch/balance/panel-runs/` — is that the right model, or does a
+lever-adjusted content clone need its own location/lifecycle); (2) how a "lever" is represented —
+a small typed override layered on top of the real committed content at read time, vs. a full
+file-copy-and-edit, and what that means for reusing the existing `defineX`/`validateX` content
+validators (`packages/content`'s hand-rolled per-file validation, not zod) against a hypothesis
+that was never committed; (3) how the sweep CLI (`packages/sim/src/balance/sweep.ts`) is pointed at
+a hypothesis instead of real content — an env var, a CLI flag, a config-resolution seam that
+doesn't exist yet; (4) what "results, ideally visualized" means concretely — reuse
+`packages/sim/src/balance/report-html.ts`'s existing rendering, or something new; (5) an HONEST
+read on how much of `packages/content`'s ~22 editable-shaped files (per the earlier survey) a
+FIRST slice should cover — the owner named many domains at once, but a pilot should probably be 2-3
+levers, not all of them, and the design should say which and why. Ground every claim in the actual
+code (`packages/devpanel/src/*`, `packages/sim/src/balance/*`), not assumption.
+
+**Accept:** a written proposal under `docs/design/`, citing real file:line throughout, presenting
+genuinely competing options with a recommendation per open question above, and naming its own
+first-slice scope recommendation. `.md`-only diff (design gate). Gate green.
+
+### T-211 · Build: lever selection + the clone-write backend — `status: TODO` · `coder: opus` · `after: T-210`
+
+Implement T-210's recommended architecture for the FIRST-SLICE lever set it named. Extends
+`packages/devpanel` rather than starting a new package, per the existing foundation. No commit to
+the real repo ever happens as a side effect of selecting/adjusting a lever — this is the task
+where that guarantee gets its own test.
+
+**Accept:** a lever can be selected and adjusted through the panel's backend API/CLI without
+`git status` on the real repo ever showing a change; the clone is validated against the same
+content-validator functions the real files use. Gate green.
+
+### T-212 · Build: wire the "test" action to the real sweep — `status: TODO` · `coder: opus` · `after: T-211`
+
+The panel's "test" button runs the actual balance-sweep program (not a reimplementation) against
+the cloned/hypothesis config from T-211, at a seed/day count practical for interactive use (the
+owner's own example was "1000 headless games" — confirm that's a reasonable interactive-latency
+target or recommend a smaller default with an "expand" option).
+
+**Accept:** clicking test runs a real sweep against the hypothesis config and returns a result
+distinguishable from the baseline (committed) sweep; the committed baseline files are never
+overwritten by a test run. Gate green.
+
+### T-213 · Build: results visualization — hypothesis vs. baseline — `status: TODO` · `coder: opus` · `after: T-212`
+
+Graphs/comparison view: the hypothesis run's results against the current committed baseline,
+across whatever metrics the existing balance-report tooling already tracks (clear rate, median
+credits, ships lost, encounters/run, etc. — the same figures this session's capstones have been
+quoting all day). Reuse `report-html.ts`/`report-model.ts` rendering conventions rather than
+inventing a new visual language for the same numbers.
+
+**Accept:** a hypothesis test's results render as a real comparison (not just two raw JSON blobs)
+against the current baseline. Gate green.
+
+### T-214 · Expand lever coverage beyond the pilot slice — `status: TODO` · `coder: opus` · `after: T-213`
+
+Once T-210 through T-213 prove the pipeline on its first-slice levers, extend coverage toward the
+owner's full list: captain stats, ship upgrades, port distances, fuel costs, Liar's Dice payouts,
+pirate aggression/stats, Explore rewards. Likely several sub-tasks in practice (`T-214a`,
+`T-214b`, …) rather than one — split at whatever the actual pilot reveals about per-domain cost,
+not decided in advance here.
+
+**Accept:** at minimum one additional content domain beyond the T-210 pilot slice is a working
+lever. Gate green.
 
 ---
 
