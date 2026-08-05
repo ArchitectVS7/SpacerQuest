@@ -20,7 +20,9 @@ export * from './eraEvents.js';
 export * from './exploration.js';
 export * from './nemesis.js';
 export * from './nemesisValidation.js';
+// T-205 · the 41 named-captain profiles and their voice validator.
 export * from './cast.js';
+export * from './castValidation.js';
 export * from './flaws.js';
 export * from './ideals.js';
 export * from './upgrades.js';

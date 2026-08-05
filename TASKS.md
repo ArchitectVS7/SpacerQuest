@@ -4531,7 +4531,7 @@ captains (`NPC_PROFILES`, `packages/content/src/cast.ts`) and the 11 quest capta
 own `lines`) and NOT the 65-entry anonymous pirate/patrol pool (explicitly out of scope here; the
 owner confirmed the gambler ladder and dropped the random-gambler idea with no further action).
 
-### T-205 · Schema: give the 30 named captains table-talk and battle-catchphrase slots — `status: TODO` · `coder: opus` · `after: —`
+### T-205 · Schema: give the 30 named captains table-talk and battle-catchphrase slots — `status: DONE` · `coder: opus` · `after: —`
 
 **The ask (owner, 2026-08-05):** captains should have a few table-talk lines for when they deal a
 Liar's Dice hand (mirroring the shape `LiarsDiceOpponent.lines` already has for the 42-seat
@@ -4562,6 +4562,113 @@ missing a slot; 2-3 captains have real authored lines in the new shape as a work
 data, the validator is the only new logic and it lives in the validation file, not inline).
 **Capstone owed** (content is hashed wholesale into `rulesFingerprint`) — batch it with T-206
 rather than taking one here, per the Standing constraints' "re-extract once" rule. Gate green.
+
+**Delivered (2026-08-05).** `NpcProfile` now carries `tableTalk?: readonly string[]` and
+`catchphrases?: BattleCatchphrases` (a new exported interface: `enter` / `duringBattle` / `win` /
+`loss`, each `readonly string[]`). `AnonymousInterceptorProfile` is untouched — the only two hits
+for it in the diff are a hunk header and a doc-comment cross-reference, which is what T-207's
+"an anonymous pirate has no catchphrases" branch relies on.
+
+**THE TWO DECISIONS THE TASK ASKED TO BE STATED, both written into the code and both
+machine-pinned rather than asserted in prose:**
+
+1. **Quest captains: OPTIONAL FIELD, ABSENT, NEVER A PLACEHOLDER.** The 11 `QUEST_PROFILES` rows
+   carry neither field — no empty arrays, no `''` stubs (an empty array is a stub that games the
+   "field exists" signal and reads as authored content that is not). The reason is written on
+   `NpcProfile.tableTalk`: a quest captain takes no simulated turn (`isSimulatedCaptain`), is never
+   dealt a roaming Liar's Dice seat, and is excluded from the named-interceptor pool by
+   construction, so no surface could draw a line from them. Absent therefore *means* "no voiced
+   surface", the same way `bondHook?` already means "no player-facing obligation". Voice is NOT
+   forbidden on them — T-208 parks them at Cantinas and a later task may legitimately voice one —
+   so `validateQuestVoices` checks quest rows for well-formedness IF PRESENT and never for
+   presence, and a test pins that all eleven are unvoiced today so adding one is visible.
+2. **How the coverage rule is loud at T-205 without turning the gate red.** A `defineNpcProfiles`
+   that threw on 27 unauthored rows would make `import '@spacerquest/content'` throw and every
+   suite in the repo red. So the rule is unconditional for every captain NOT on an explicit,
+   self-staling worklist — `VOICE_AUTHORING_PENDING`, 27 literal ids, T-206's job list. It is
+   deliberately NOT a ratcheting count (`MIN_VOICED = 2` would fail only on the aggregate, not "on
+   any of the 30 missing a slot"), and it cannot rot silently: an id on it that is not on the
+   roster is an error, a captain on it who HAS been authored is an error whose message says to
+   delete them from the set, and a `QUEST_PROFILES` id on it is an error. T-206's mechanical
+   instruction is in the set's own docblock — author a captain, delete their id; when the set is
+   empty, delete it and the one `waived` branch that reads it.
+
+**New file `packages/content/src/castValidation.ts`** — the ONLY new logic, and it lives in the
+validation file, not inline: `validateNpcVoices` / `validateQuestVoices` collect every error and
+`defineNpcProfiles` / `defineQuestProfiles` throw `Invalid NPC profile content:` /
+`Invalid quest profile content:` at IMPORT, the `defineDeeds`/`defineLiarsDiceOpponents` shape.
+Hand-rolled `defineX`/`validateX` per the package convention — NO zod (zod stays in the engine's
+`schema.ts`). `git diff packages/content/src/cast.ts | grep '^+' | grep -c 'if ('` = **0**: the two
+new fields are data and the file gained exactly two wrapper calls. Rules, each naming what it
+protects: coverage (five distinct messages, one per slot, so a failure names which); all-or-nothing
+(half a voice is an error even when waived — T-207 would otherwise render a captain who enters a
+fight silently and quips on the win); per-line shape (non-empty after `trim`, <= 120 chars, no
+`{…}` placeholder since lines print verbatim, no duplicate line within a slot); counts
+(`tableTalk` 2-4, each catchphrase slot 1-3); and the dice-count ban on `tableTalk` ONLY, carried
+over from `liarsDiceValidation.ts` because the count moves with the unlock ladder.
+
+**The dice-count regex is DUPLICATED, not imported, and that is forced.**
+`liarsDiceValidation.ts` does a RUNTIME `import { ALL_NPC_PROFILES } from './cast.js'`, so
+importing it from `castValidation.ts` would close `cast.ts → castValidation.ts →
+liarsDiceValidation.ts → cast.ts` — a real module-init cycle with a TDZ hazard, not a style
+preference. So `DICE_COUNT_PHRASE` was exported as `LIARS_DICE_DICE_COUNT_PHRASE`, the copy is
+`CAST_DICE_COUNT_PHRASE`, and a test asserts `.source` and `.flags` match — a test file is a leaf
+and adds no edge to the module graph. `castValidation.ts` imports from `cast.ts` TYPE-ONLY, which
+is erased, so the wrapper direction carries no runtime edge either.
+
+**Three worked examples, three archetypes, on purpose:** `npc-iron-vex` (fighter · Dominance ·
+Warlord Confed · Bloodthirsty), `npc-cargo-king` (trader · Wealth · Astro League · Cowardly),
+`npc-solar-flare` (gambler · Power · Rebel Alliance · Arrogant). The differentiation IS the point
+of the example — Iron Vex loses angry ("Not finished. Just out of hull."), Cargo King loses buying
+his way out ("Fine. Fine! Take the hold. Just leave me the ship."), Solar Flare loses explaining it
+away ("Luck. Nothing else."). A test asserts the three share no identical line in any slot, so
+T-206 inherits the standard rather than a template.
+
+**Tests — `packages/content/src/__tests__/castValidation.test.ts`, 37 new, all passing.** Hosted
+in the CONTENT suite, not the engine one, per `docs/TESTING-STRATEGY.md` Part I: nothing in it
+reads an engine symbol (the cast's other invariant, the archetype distribution, resolves through
+the engine's `ARCHETYPE_INTENT_MULTIPLIERS` and correctly stays in `npc.test.ts`). Every fixture is
+a CLONE of the real 30-row roster with one entry patched — never a one-row array, which would make
+the waiver-hygiene rule fire 27 times and drown the assertion under test. The Accept criterion is
+covered by 10 `it.each` cases (each of the five slots, deleted and emptied), plus the partition
+assertion `voiced ∪ VOICE_AUTHORING_PENDING === the 30 ids, no overlap, |voiced| = 3`, which is
+what makes T-206 mechanical and stops a captain falling between the two sets. `__tests__` is in
+`HASHED_ROOT_IGNORED_DIRECTORIES`, so the test file itself costs no capstone.
+
+**NO MIGRATION OWED, with the reasoning rather than the assertion.** `createInitialState`
+(`packages/engine/src/state.ts:79-105`) maps `NpcProfile` into `NpcState` FIELD BY FIELD with no
+`...p` spread, so no new field reaches a persisted record and no save shape changed.
+`CURRENT_SAVE_VERSION` re-read live from `packages/engine/src/save.ts:562` = **16** (read, not
+copied from a header or a predecessor's note), and it is unchanged.
+
+**NO CAPSTONE TAKEN HERE — batched into T-206**, per the Standing constraints' "re-extract once"
+rule. Stated explicitly so a later auditor does not read the missing sweep as an omission: there
+is no `docs/balance/baseline-t205*.json`, no 8-shard sweep and no `balance:diff` in this commit,
+by design. What content DID owe, and was paid: content is hashed wholesale into
+`rulesFingerprint`, so authoring three captains moved it and made the committed smoke fixture
+stale — the T-122 (`b5dab264`) precedent of a content task re-stamping `tiers.json` without a
+sweep. `npm run format` ran BEFORE the extract (the fingerprint is not formatting-invariant).
+**The prediction was written down before running the extractor, and HELD EXACTLY:** moved =
+`rulesFingerprint` (`5ae9a5d473827024` → `6635ee318436f99f`), `docsFingerprint`
+(`49579090e8a50e44` → `22c4de362494c36a`), `provenance.gitCommit`; unmoved =
+`instrumentFingerprint` (`5c230e99648cddee`), `saveSchemaVersion` (16), `productVersion`,
+`spreadSource: "harvested"`, and **every `outcomeHash` and every number in all four tiers** — the
+`diff` of the fixture before and after is exactly three lines. That is the expected result for
+inert data with no reader until T-207; a moved outcome hash would have meant something consumes
+the profile object wholesale, and would have been escalated as a finding rather than accepted.
+Re-extracted with `npm run balance:extract -- --aggregate
+docs/balance/baseline-t204-cantina-rename.json` (`--aggregate` is load-bearing: omitting it falls
+back to `baseline-n1.json` and flips `spreadSource` to `estimated`, F-146-0).
+
+**Gate green.** `npx tsc -b`, `npm run lint`, `npm run format:check` all exit 0; `npm test` =
+**2,532 passed, 0 failed** across all six workspaces. The four failures seen before the re-extract
+were the predicted stale-fixture ones and nothing else: `balance-smoke.test.ts` "is not stale"
+plus three `balance-rig.test.ts` cases that assert `fixtureFreshness` returns EXACTLY ONE problem
+field for a deliberately-corrupted copy of the committed fixture — with the real fingerprint
+already stale they each saw two. All four cleared on the re-stamp; no fingerprint, band, threshold
+or golden was edited.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only the source tree is present). · attempts=1/4.
 
 ### T-206 · Content pass: author table-talk and catchphrases for all 30 captains — `status: TODO` · `coder: opus` · `after: T-205`
 

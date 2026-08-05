@@ -42,8 +42,15 @@ const REQUIRED_SEATS: readonly number[] = [1, 2, 3];
  * catchphrase, because the count moves with the unlock ladder (§4): a line that
  * names it is a lie at tier 2. This is the mechanical trap §2.7 rule 3 exists to
  * catch, which is why it is a regex here rather than a note to the author.
+ *
+ * T-205 · EXPORTED, and duplicated (not imported) by `castValidation.ts`'s
+ * `CAST_DICE_COUNT_PHRASE`, which enforces the identical rule on the named
+ * captains' `tableTalk`. The duplication is forced: this file imports
+ * `ALL_NPC_PROFILES` from `./cast.js` at RUNTIME, so an import the other way would
+ * close a module cycle. Both are exported so a test can assert they stay the same
+ * pattern.
  */
-const DICE_COUNT_PHRASE =
+export const LIARS_DICE_DICE_COUNT_PHRASE =
   /\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|a|an)\s+(?:dice|die|d6s?)\b/i;
 
 /** The `wager` band the ENGINE's `wagerBandFor` will resolve for this port, derived
@@ -104,7 +111,7 @@ function validateLines(errors: string[], path: string, opponent: LiarsDiceOppone
     if (line.includes('{') || line.includes('}')) {
       errors.push(`${path}.lines.${key} must not contain a {…} placeholder`);
     }
-    if (DICE_COUNT_PHRASE.test(line)) {
+    if (LIARS_DICE_DICE_COUNT_PHRASE.test(line)) {
       errors.push(
         `${path}.lines.${key} must not name a dice count — the count moves with the unlock ladder`,
       );

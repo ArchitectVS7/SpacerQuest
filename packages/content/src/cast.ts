@@ -1,5 +1,6 @@
 import { StatBlock } from './stats.js';
 import { BondHook } from './disposition.js';
+import { defineNpcProfiles, defineQuestProfiles } from './castValidation.js';
 
 export type PowerTier = 1 | 2 | 3 | 4 | 5;
 
@@ -18,6 +19,28 @@ export interface AnonymousInterceptorProfile {
 }
 
 export type NpcArchetype = 'trader' | 'fighter' | 'explorer' | 'smuggler' | 'gambler' | 'veteran';
+
+/**
+ * T-205 · What a named captain says entering, fighting, winning and losing an
+ * encounter. Barks, not paragraphs — 1-3 lines per slot, and all four slots are
+ * authored TOGETHER (`castValidation.ts` refuses a partial set, because a captain
+ * who enters a fight silently and then quips on the win reads as a bug rather
+ * than as unfinished content).
+ *
+ * Deliberately NOT on {@link AnonymousInterceptorProfile}: the 65 anonymous
+ * pirates and patrols are noise with a name, and T-207's combat readout branches
+ * on exactly that absence.
+ */
+export interface BattleCatchphrases {
+  /** On the encounter opening. */
+  readonly enter: readonly string[];
+  /** Mid-fight, drawn occasionally rather than every round. */
+  readonly duringBattle: readonly string[];
+  /** The captain beat the player. */
+  readonly win: readonly string[];
+  /** The player beat the captain. */
+  readonly loss: readonly string[];
+}
 
 export interface NpcProfile {
   id: string;
@@ -41,6 +64,44 @@ export interface NpcProfile {
    *  one their Bond fictionally supports. Engine reader: the bond hook in
    *  `day.ts` endDay. */
   bondHook?: BondHook;
+  /**
+   * T-205 · 2-4 lines drawn from when this captain DEALS a Liar's Dice hand as a
+   * roaming seat. Mirrors `LiarsDiceOpponent.lines.tableTalk`
+   * (`liarsDice.ts`) in purpose; PLURAL here because a named captain is met
+   * repeatedly across a career, where a fixed roster seat is met once per port.
+   *
+   * MUST NOT NAME A DICE COUNT — the count moves with the unlock ladder
+   * (`LIARS_DICE_UNLOCK_GAMES`), so "four dice apiece" is a lie at tier 2. That is
+   * the same mechanical trap `liarsDiceValidation.ts` enforces on the roster, and
+   * `castValidation.ts` enforces it here for the same reason.
+   *
+   * OPTIONAL, AND THAT IS A DECISION (T-205), not laxity — the same shape as
+   * `bondHook` above. On the 30 `NPC_PROFILES` it is REQUIRED in practice: the
+   * validator demands it of every captain not on its T-206 worklist. On the 11
+   * `QUEST_PROFILES`, which reuse this interface, it is ABSENT BY DESIGN and is
+   * never given a placeholder or an empty array: a quest captain takes no
+   * simulated turn ({@link isSimulatedCaptain}), is never dealt a roaming Liar's
+   * Dice seat and is excluded from the named-interceptor pool by construction, so
+   * there is no surface that could draw a line from them. Absent therefore MEANS
+   * "this record has no voiced surface", where `[]` would be a stub that reads as
+   * authored content and is not. If a later task (T-208 parks them at Cantinas)
+   * earns a quest captain a voice, adding one is a deliberate, visible change: the
+   * validator checks quest rows for well-formedness IF PRESENT and never for
+   * presence, and a test pins the current state of all eleven.
+   *
+   * NOTHING READS THIS YET — T-207 is the reader. Shipping content one task ahead
+   * of its reader is the `LIARS_DICE_UNLOCK_GAMES` precedent (`liarsDice.ts`).
+   */
+  tableTalk?: readonly string[];
+  /**
+   * T-205 · Combat barks. A captain the player has insulted can turn up as a NAMED
+   * INTERCEPTOR through the grudge weighting in
+   * `packages/engine/src/actions/travel.ts` (`chooseWeighted`), so a captain needs
+   * something to say entering a fight, during it, on a win and on a loss.
+   * Optional/absent on `QUEST_PROFILES` for the reason recorded on
+   * {@link NpcProfile.tableTalk} above. Reader: T-207's combat readout.
+   */
+  catchphrases?: BattleCatchphrases;
 }
 
 /**
@@ -84,7 +145,7 @@ export interface NpcProfile {
  * Risk trader**. Changing one of those three silently invalidates a recorded
  * worked example; change the ruling first.
  */
-export const NPC_PROFILES: NpcProfile[] = [
+export const NPC_PROFILES: NpcProfile[] = defineNpcProfiles([
   // The Original 20 (minus 8 extracted) = 12
   {
     id: 'npc-iron-vex',
@@ -97,6 +158,24 @@ export const NPC_PROFILES: NpcProfile[] = [
     flawDc: 14,
     tier: 3,
     archetype: 'fighter',
+    /** T-205 WORKED EXAMPLE 1 of 3 — the FIGHTER voice, read off this captain's own
+     *  line: Dominance, sworn to the Warlord Confed, Bloodthirsty at flawDc 14.
+     *  Note the loss slot especially: a bloodthirsty fighter loses ANGRY, which is
+     *  what makes it un-swappable with Cargo King's below. */
+    tableTalk: [
+      'I play the way I fight. Straight up the middle.',
+      'The Confed taught me to bid loud and mean it.',
+      'Sit. I would rather take your money than your hull.',
+    ],
+    catchphrases: {
+      enter: [
+        'Hammerfall, closing. Do not make this quick.',
+        'Good. I was getting bored out here.',
+      ],
+      duringBattle: ['Hold still. You are ruining my aim.', 'That one was for the Confed.'],
+      win: ['Strip the guns. Leave the rest for the rocks.'],
+      loss: ['Not finished. Just out of hull.'],
+    },
   },
   {
     id: 'npc-cargo-king',
@@ -109,6 +188,26 @@ export const NPC_PROFILES: NpcProfile[] = [
     flawDc: 13,
     tier: 3,
     archetype: 'trader',
+    /** T-205 WORKED EXAMPLE 2 of 3 — the TRADER voice: Wealth, an Astro League
+     *  contract man, GUNS 0 and Cowardly. Everything he says is a price, and the
+     *  fight slots are a negotiation he is losing. */
+    tableTalk: [
+      'Everything in this hall has a price, including the seat you are in.',
+      'I bid what the manifest says. The manifest has never lied to me.',
+      'League rates, League rules. I do not haggle after the deal is struck.',
+    ],
+    catchphrases: {
+      enter: [
+        'Whatever this is about, I can pay you more than the salvage is worth.',
+        'Careful. The Fat Profit is insured. I am not.',
+      ],
+      duringBattle: [
+        'Take the cargo! Take all of it!',
+        "This is coming out of somebody's margin, and it will not be mine.",
+      ],
+      win: ['I will invoice the League for the paintwork.'],
+      loss: ['Fine. Fine! Take the hold. Just leave me the ship.'],
+    },
   },
   {
     id: 'npc-admiral-stern',
@@ -477,10 +576,24 @@ export const NPC_PROFILES: NpcProfile[] = [
      *  the one of the three whose day is a bet rather than a discipline. Keeping all three as
      *  fighters made near-duplicate captains */
     archetype: 'gambler',
+    /** T-205 WORKED EXAMPLE 3 of 3 — the GAMBLER voice: Power, Rebel Alliance,
+     *  Arrogant at flawDc 13. Where Iron Vex threatens and Cargo King bargains,
+     *  this captain EXPLAINS, and keeps explaining after losing. */
+    tableTalk: [
+      'Look at my face all you like. It has never given anything away.',
+      'I only sit at tables I intend to leave richer than I arrived.',
+      'The Alliance calls this a gamble. I call it arithmetic.',
+    ],
+    catchphrases: {
+      enter: ['Sunspot, closing. This will take one pass.'],
+      duringBattle: ['Told you. One pass.', 'You fly like somebody who wants to be famous.'],
+      win: ['Never in doubt. Not for a moment.'],
+      loss: ['Luck. Nothing else. Say otherwise and I will come find you.'],
+    },
   },
-];
+]);
 
-export const QUEST_PROFILES: NpcProfile[] = [
+export const QUEST_PROFILES: NpcProfile[] = defineQuestProfiles([
   {
     id: 'npc-silk-dagger',
     name: 'Silk Dagger',
@@ -621,7 +734,7 @@ export const QUEST_PROFILES: NpcProfile[] = [
     tier: 1,
     archetype: 'trader',
   },
-];
+]);
 
 export const ALL_NPC_PROFILES: NpcProfile[] = [...NPC_PROFILES, ...QUEST_PROFILES];
 
