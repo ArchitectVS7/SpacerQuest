@@ -1099,6 +1099,47 @@ const UNCHANGED_POLICIES = [
 // moved for the re-phasing reason and are documented at their own sites:
 // `campaign-reach.test.ts`'s T-1307 port-purchase seed (8 -> 4, swept over seeds
 // 1..80 and WIDENED, not re-thresholded) and this task's own capstone re-extract.
+//
+// Entry 30 (T-173 — the capstone instrument learns to SEE HANGOUT AND DISPOSITION).
+// ALL SEVEN ROWS MOVE AND NOT ONE CAREER CHANGED. Entries 11 and 12's shape-only
+// form for the third time, and as there the claim is PROVEN below rather than
+// asserted.
+//
+// MECHANISM. `CampaignStatsReport` gained exactly ONE key — `disposition`
+// (`DispositionStats`: standing moves by reason, the dusk-sampled live-captain-day
+// figures, and the standing spans) — and `CombatEncounterRecord` gained FIVE:
+// `interceptorId`, `interceptorSource`, `interceptorDisposition`,
+// `namedPoolDispositions`, `namedPoolReconstructed`. No per-day key was added.
+// This fingerprint hashes the whole report JSON, shape included, so those keys
+// move every hash on their own — and `disposition` sits between `hangoutPlay` and
+// `tourOne`, so even the key ORDER of every report differs.
+//
+// THE PROOF, run locally over these exact 35 careers rather than claimed: with
+// `disposition` deleted from the report and the five new keys stripped from every
+// `combatEncounters` entry, each policy's hash is BYTE-IDENTICAL to its entry-29
+// value — all seven, no exceptions:
+//   trader   937f3a09339d5f5a -> stripped baf0ce4ea567da8e (= entry 29)
+//   fighter  a45b2209bd026fdb -> stripped acfa7bcc4800e969 (= entry 29)
+//   explorer 33c508ce7e9ab818 -> stripped 19c9bf4ab6ad2f94 (= entry 29)
+//   veteran  25293f6a22c22404 -> stripped f649dc33cd51a01e (= entry 29)
+//   smuggler edbb11a2cfd6a885 -> stripped d9b36d370ba59822 (= entry 29)
+//   gambler  6b5ca9f45514024c -> stripped 4e89e7dad776577d (= entry 29)
+//   greedy   d17a5e39f79918c6 -> stripped bad42225b0cc469f (= entry 29)
+// Two structural facts say why that had to hold: `rulesFingerprint` did not move
+// (T-173 touches ZERO lines under `packages/engine/src` and `packages/content/src`
+// — deliberately, since putting the pool or the standing onto `EncounterStarted`
+// would have moved it), and the new measurement draws NO rng — it is a filter over
+// the pre-action roster, a `.map` over dispositions and a dusk-state read — so no
+// seeded career can diverge.
+//
+// WHAT THIS TABLE CANNOT REACH, for the same reason entries 11 and 12 record: the
+// other half of T-173 is `MilestoneSample.npcDisposition`, and these runs are made
+// WITHOUT `milestoneDays`, so `milestones` is absent from every report hashed here
+// and the sampler change cannot touch these numbers. Its reader is
+// `campaign-disposition.test.ts`.
+//   * `greedy` moving is EXPECTED, and here for the SHAPE reason of entries 4, 11
+//     and 12 rather than a world-side one — no policy and no NPC behaviour changed
+//     at this step at all.
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
   // so the trader borrows and repays on the day it needs to rather than on the day
@@ -1112,7 +1153,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   // Entry 29 (T-199): re-derived — the shared pacifist-combat planner and the
   // trader's new anti-idle rim move (see the header).
-  trader: 'baf0ce4ea567da8e',
+  // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 30 for the strip proof against the value above).
+  trader: '937f3a09339d5f5a',
   // Entry 27 (T-159): re-derived — and the ONLY row that moves, which is the
   // cross-check that this was a fighter change and nothing else: `trader`,
   // `explorer`, `veteran`, `smuggler`, `gambler` and `greedy` all came back byte
@@ -1148,7 +1191,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // three fires inside seeds 1..5 x 40 days. It moves plainly at sweep scale (100
   // seeds x 120 days: median final credits 68,691 -> 79,494, debt-clear rate
   // 0.570 -> 0.580, worst zero-income streak 9 -> 1).
-  fighter: 'acfa7bcc4800e969',
+  // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 30 for the strip proof against the value above).
+  fighter: 'a45b2209bd026fdb',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
   // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4
@@ -1160,7 +1205,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   // Entry 29 (T-199): re-derived — the shared pacifist-combat planner ONLY; no
   // line inside `explorerPolicy` moved.
-  explorer: '19c9bf4ab6ad2f94',
+  // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 30 for the strip proof against the value above).
+  explorer: '33c508ce7e9ab818',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   //
   // Entry 29 (T-161): re-derived, and the ONLY row that moves — which is the
@@ -1194,14 +1241,18 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // calls the changed `planPacifistCombat` but never met its branch inside seeds
   // 1..5 x 40 days. Every veteran-specific edit in that task was reverted (see the
   // header's F-199-1 residual), so this row has no second reason to move.
-  veteran: 'f649dc33cd51a01e',
+  // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 30 for the strip proof against the value above).
+  veteran: '25293f6a22c22404',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
   // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
   // through the shorter hand on a band-3/4 board rather than through the payout.
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   // Entry 29 (T-199): re-derived — the shared planner, F-150-2's Explore recovery
   // guard, and the anti-idle rim move.
-  smuggler: 'd9b36d370ba59822',
+  // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 30 for the strip proof against the value above).
+  smuggler: 'edbb11a2cfd6a885',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sol-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
@@ -1278,9 +1329,13 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // calls the changed `planPacifistCombat` and was PREDICTED to move; it did not,
   // because it never met that planner's unaffordable-tribute branch inside seeds
   // 1..5 x 40 days. A wider window would be expected to move it.
-  gambler: '4e89e7dad776577d',
+  // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 30 for the strip proof against the value above).
+  gambler: '6b5ca9f45514024c',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
-  greedy: 'bad42225b0cc469f',
+  // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 30 for the strip proof against the value above).
+  greedy: 'd17a5e39f79918c6',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

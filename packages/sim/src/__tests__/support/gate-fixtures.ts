@@ -126,6 +126,15 @@ export function encounterRecord(
     encounterId: 'enc-t153',
     day: 2,
     interceptorTier: 1,
+    // T-173 · The interceptor-provenance fields. Well-formed defaults for an
+    // ANONYMOUS draw — the pool is empty, so there is no disposition to carry and
+    // nothing the reconstruction could have missed. A fixture that needs a named
+    // draw overrides all five together.
+    interceptorId: 'npc-t153',
+    interceptorSource: 'anonymous',
+    interceptorDisposition: null,
+    namedPoolDispositions: [],
+    namedPoolReconstructed: true,
     playerTier: 1,
     prepared: false,
     rounds: 1,

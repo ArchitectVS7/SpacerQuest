@@ -1668,7 +1668,7 @@ green.
 
 ## M11 — Harvested: the instrument and its blind spots
 
-### T-173 · The capstone instrument is blind to Hangout and disposition — add the fields, pay the re-pin — `status: TODO` · `coder: opus` · `after: —`
+### T-173 · The capstone instrument is blind to Hangout and disposition — add the fields, pay the re-pin — `status: DONE` · `coder: opus` · `after: —`
 
 The capstone instrument still cannot answer any Hangout/disposition question: `SeedRow` carries no
 hangout and no disposition field, `MilestoneSample` no `npcDisposition`, and
@@ -1686,6 +1686,54 @@ must still resolve cleanly on every shared key; the change lands as its own comm
 `balance:extract` re-extract and the four-site baseline re-pin done in it; `instrumentFingerprint`
 moves and `rulesFingerprint` does NOT; the `.scratch/` probe is retired or its §10.7 fence points at
 the shipped fields; gate green.
+
+**Delivered (2026-08-04).** A BR-10 instrument widening: additive fields on three measurement shapes, then a re-extract of `docs/balance/smoke/tiers.json` from the UNCHANGED baseline of record. **No capstone was taken and no `docs/balance/baseline-*.json` was added.**
+
+**The fields, all ADDITIVE — no existing key on any shape renamed, retyped or removed.** `packages/sim/src/index.ts`: `CombatEncounterRecord` gains `interceptorId`, `interceptorSource`, `interceptorDisposition`, `namedPoolDispositions` (the RAW pool, not a weight — `chooseWeighted`'s formula is deliberately not duplicated in the instrument) and `namedPoolReconstructed` (a field rather than a footnote, so `selectEncounterInterceptor`'s band-widening branch is COUNTED); `MilestoneSample` gains `npcDisposition`, produced in `sampleField`'s one traversal so it is index-aligned with the seven per-captain arrays beside it; `CampaignStatsReport` gains `disposition` (`DispositionStats`: `movesByReason` folded from `DispositionChanged` in `accumulateMetricEvents`, and `liveNpcDays` / `zeroDispositionNpcDays` / `absDispositionSum` / `peakAbsDisposition` / `standingSpanDays` / `standingsOpenAtHorizon` sampled once per day at dusk beside the two existing dusk-state folds); `BalanceSample` gains `npcs` (by reference, the pre-action roster `selectEncounterInterceptor` was handed). `packages/sim/src/balance/aggregate.ts`: `SeedRow` gains `hangout` and `disposition` (carried whole off the report, no re-derivation); `PolicyAggregate` gains `interceptor` (`InterceptorAggregate` — interceptions, namedShare, inertShare, chosenWrongedShare, the ANALYTIC uniformWrongedShare, reconstructionMisses); `MilestoneAggregate` gains `npcDisposition` and `npcNonzeroDispositionShare`, both `?? []`-guarded so `--merge` over a pre-T-173 shard cannot crash.
+
+**`git diff --stat` — ZERO lines under `packages/engine/src`, `packages/content/src` and `packages/ui/src`:** `docs/BALANCE-RIG-DECISIONS.md 14+`, `docs/EXPLORE_REDESIGN.md 4`, `docs/HANGOUT_REDESIGN.md 40`, `docs/LIARS-DICE-PROGRESSION_SPEC.md 5`, `docs/NPC_REDESIGN.md 28+`, `docs/balance/smoke/tiers.json 8`, `packages/sim/src/index.ts 264`, `packages/sim/src/balance/aggregate.ts 191`, `packages/sim/src/__tests__/{campaign-degraded,balance-sweep}.test.ts` + `support/gate-fixtures.ts`, and the new `packages/sim/src/__tests__/campaign-disposition.test.ts`. Putting the pool or the standing onto `EncounterStarted` would have moved `rulesFingerprint`, which the Accept criterion forbids — all measurement stays in `packages/sim`.
+
+**PREDICTED BEFORE THE RUN (BR-7), then observed — every line held:**
+
+| field | predicted | observed in the re-extracted `tiers.json` |
+| --- | --- | --- |
+| `rulesFingerprint` | UNMOVED `febc55edd3a94b3f` | UNMOVED `febc55edd3a94b3f` |
+| `instrumentFingerprint` | moves (`index.ts` + `aggregate.ts`) | `836f9e8804ea2637` → `b28fad2af6107f8a` |
+| `docsFingerprint` | moves (raw bytes of the same sources) | `f827fddcbb3fa446` → `e7b35fa4850f418d` |
+| `productVersion` | stays `0.5.3` | `0.5.3` |
+| `saveSchemaVersion` | stays 15 | 15 |
+| `provenance.gitCommit` / `extractedOn` | move | moved |
+| every checkpoint number | byte-identical | byte-identical (the whole `tiers.json` diff is 4 lines) |
+
+`CURRENT_SAVE_VERSION` is 15 and does not move: **no `GameState` field was added**, so no migration and no round-trip test is owed. Order followed: typecheck/lint/test → `npm run format` → `npm run balance:extract -- --aggregate docs/balance/baseline-t199-pacifist.json` (BR-11; `--aggregate` passed explicitly, so `spreadSource` stays `harvested` and F-146-0's silent fallback to `baseline-n1.json` cannot fire). `npm run format:check` is clean at HEAD, so nothing was re-formatted after the extract.
+
+**INERTNESS, proven twice.** (1) BR-9's own test: the `tiers.json` diff is the two fingerprints plus `provenance` only, every recorded checkpoint identical — machine-enforced by `smoke-reextraction.test.ts`, which re-runs the tiers at HEAD. (2) Cross-commit, at the aggregate level (the rows are not byte-comparable because the change is additive): a two-arm 40-seed × 120-day × 8-policy sweep (320 runs per arm, `--milestone-days 21,29,30,41,60,120`, both arms gate-green and exit 0), BEFORE run in a `git worktree` at the parent commit, merged with `--aggregate-out .scratch/` so nothing reached `docs/balance/`. `npm run balance:diff`, verbatim:
+
+```
+MOVED ROWS (8): fleet, explorer, fighter, gambler, greedy, smuggler, trader, veteran
+UNCHANGED ROWS: header
+
+NO MEASURED VALUE MOVED. Every difference below is a SHAPE difference:
+fields present on one side only. The rows above are listed because the
+aggregates differ, not because a number did.
+
+SHAPE CHANGES (528) — the two aggregates are not the
+same measurement. Paths present on one side only:
+  + fleet.interceptor.interceptions
+  ...
+```
+
+All 528 one-sided paths are the new fields; not one shared path moved, which is what the Accept criterion's "T-197's diff must still resolve cleanly on every shared key" asks for. The BEFORE worktree shared the root `node_modules` — normally the trap `docs/HANGOUT_REDESIGN.md` §10.1 names — and that is sound HERE and only here, because `diff -r` proves `packages/engine/src` and `packages/content/src` are byte-identical between the two arms and the sweep entry point imports its sim sources by relative path; the arms differ in `packages/sim` alone.
+
+**Two corrections to the task block's own framing, recorded rather than silently substituted.** (a) The block names `docs/balance/baseline-t182-reroll-fix.json` as the pre-existing baseline T-197 will diff against. That is STALE — it predates T-188/T-195/T-199. The current baseline of record is `docs/balance/baseline-t199-pacifist.json` (BR-14, `balance-targets.test.ts:BASELINE_OF_RECORD_PATH`), and it is what the re-extract aggregated from. The criterion's intent (additive-only, so the diff resolves on every shared key) is unchanged and is discharged above. (b) The block asks for a "four-site baseline re-pin". The sites have been FIVE since T-182, and more importantly **no re-pin is owed at all** — this is an instrument move, not a capstone, so the baseline of record does not move. The obligation discharged is that all five still agree, proven by `baseline-pointers.test.ts` green; `docs/NPC_REDESIGN.md`'s new block deliberately avoids the `BASELINE OF RECORD RE-PINNED AT T-` and `Baseline of record is` phrases so it cannot masquerade as a sixth pointer or a newer re-pin (173 < 199 would fail the banner-ordering check, and it would be a false claim).
+
+**Docs.** `docs/HANGOUT_REDESIGN.md` §10.7 opens with a **RETIRED AT T-173** note plus a counter → shipped-field table (the fenced probe source is kept verbatim as the historical record); §10.1's probe line and its "why the capstone aggregate cannot answer any of this" paragraph carry dated no-longer-true notes; `docs/LIARS-DICE-PROGRESSION_SPEC.md` and `docs/EXPLORE_REDESIGN.md` mark the `t137 → t148 → t150` probe lineage retired (no pointer phrases introduced into either); `docs/BALANCE-RIG-DECISIONS.md` BR-13 records the probe justification as **discharged** with the rule itself unchanged; `docs/NPC_REDESIGN.md`'s status banner carries the instrument-widening block. No figure in `docs/HANGOUT_REDESIGN.md` was changed (`uat-brief-figures.test.ts` green).
+
+**Test coverage.** New `packages/sim/src/__tests__/campaign-disposition.test.ts` (8 tests, in `__tests__` so it cannot move a fingerprint): roster alignment across all eight per-captain arrays and the [-10, 10] clamp; **day-1 neutrality**, promoting the T-125 probe's own gitignored `throw` guard into a shipped assertion; interceptor record shape over 8 careers (anonymous ⇒ empty pool AND null disposition, named ⇒ non-empty pool containing the chosen standing, both branches exercised); **reconstruction honesty** (`reconstructionMisses === 0`, with the sample size in the failure message and a comment saying a non-zero is a finding to FILE); the fold's policy sensitivity (`gambler.movesByReason.dare > 0` against the `explorer` control's exact 0, `decay > 0` on both, spans ≥ 1, peak ≤ 10); carried-not-re-derived deep equality; the JSON round trip the sweep writes to disk; and the aggregate identities. **One existing pin moved, under the file's own documented protocol:** `campaign-degraded.test.ts`'s seven whole-report hashes, as RE-PIN LOG entry 30 — the shape-only form of entries 11 (N11/T-022) and 12 (N12/T-030), with the proof run locally rather than asserted: with `disposition` deleted from the report and the five new keys stripped from every `combatEncounters` entry, all seven hashes come back byte-identical to their entry-29 values. No career changed.
+
+**Gate green:** `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run balance:smoke` and the full `npm test` (all workspaces) all pass; both inertness sweeps exited 0 with every gate rate identical across the arms.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only `.scratch/`, `docs/`, `packages/` present) · attempts=1/4.
 
 ### T-174 · F-151-9: the `fighter` sim policy is bit-for-bit flat under every stat change — fix or replace it — `status: TODO` · `coder: opus` · `after: T-198`
 

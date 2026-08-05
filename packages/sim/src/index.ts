@@ -3,6 +3,7 @@ import {
   EXPLORATION_FUEL_COST,
   FENCE_REP_FLAG,
   FLAWS,
+  NPC_PROFILES,
   SPECIAL_EQUIPMENT,
   STAR_SYSTEMS,
   Stat,
@@ -303,6 +304,62 @@ export interface HangoutPlayStats {
   dareGuardHits: number;
 }
 
+/** T-173 · The engine's own `DispositionChanged.reason` union, taken FROM the
+ *  event rather than restated, so the sim can never carry a reason the engine
+ *  does not emit (or miss one it does). */
+export type DispositionChangeReason = Extract<GameEvent, { type: 'DispositionChanged' }>['reason'];
+
+/**
+ * T-173 · STANDING, as the career actually moved it — the disposition half of the
+ * instrument gap BR-13 recorded and this task discharges. Every figure here was
+ * previously obtainable only from the gitignored `.scratch/t125-hangout.ts` probe
+ * (source fenced at `docs/HANGOUT_REDESIGN.md` §10.7), which is why four separate
+ * measurements (T-125, T-137, T-148, T-150) each had to re-derive it.
+ *
+ * TWO FOLDS, NOT ONE, and the split is the same one `SmugglingStats` makes:
+ *   * `movesByReason` is a pure EVENT fold (`accumulateMetricEvents`) — a move is
+ *     a beat, and `DispositionChanged` carries its own reason.
+ *   * the four state figures and the spans are sampled once per day AT DUSK over
+ *     `state.npcs`, because "the cast sits at exactly zero on N% of live
+ *     captain-days" is a CONDITION, not a beat, and no event can answer it. Dusk
+ *     is the moment decay runs (`day.ts` → `applyDisposition(..., 'decay')`), so a
+ *     dusk sample is the post-decay standing — exactly the state
+ *     `docs/HANGOUT_REDESIGN.md` §11.3's table reports.
+ *
+ * READERS (constraint 7): `packages/sim/src/__tests__/campaign-disposition.test.ts`,
+ * `SeedRow.disposition` in `balance/aggregate.ts`, and the CLI JSON that
+ * `reportToJson` emits for `npm run sim`.
+ */
+export interface DispositionStats {
+  /** `DispositionChanged` events by `reason`. EVERY reason is a key, 0 when it
+   *  never fired — a missing key and a zero must not be the same reading. */
+  movesByReason: Record<DispositionChangeReason, number>;
+  /** Live (non-dead) captain-records sampled at dusk, summed over the horizon —
+   *  THE denominator for the three figures below. All roster records, not just the
+   *  simulated field: a quest record is still a captain the player can hold a
+   *  standing with, and this is the sample §11.3's "live npc-days" reports. */
+  liveNpcDays: number;
+  /** ...of which sat at exactly 0. `zeroDispositionNpcDays / liveNpcDays` is the
+   *  inertness of the whole cast, the number behind the named pool's own. */
+  zeroDispositionNpcDays: number;
+  /** Σ |disposition| over the same sample — mean |disposition| is this over
+   *  `liveNpcDays`, computed by the reader rather than baked in here so an empty
+   *  sample cannot become a NaN on the row. */
+  absDispositionSum: number;
+  /** The largest |disposition| any captain reached at any dusk. The engine clamps
+   *  to [-10, 10], so a value above 10 is a clamp defect, not a balance number. */
+  peakAbsDisposition: number;
+  /** One entry per standing that both OPENED (0 → non-zero) and CLOSED (→ 0)
+   *  inside the horizon: the days it survived. Deliberately excludes standings
+   *  still open when the horizon ran out — see {@link standingsOpenAtHorizon} —
+   *  so the mean is not biased downward by truncation. */
+  standingSpanDays: number[];
+  /** Standings still open when the horizon ran out (including a captain who died
+   *  holding one), counted rather than dropped so the exclusion above is auditable
+   *  instead of invisible. */
+  standingsOpenAtHorizon: number;
+}
+
 // ---------------------------------------------------------------------------
 // T-1603a (four blocks) · Balance-baseline instrumentation. Same construction as
 // the T-1601a/T-1601b blocks above and for the same reason: these are DERIVED,
@@ -393,6 +450,49 @@ export interface CombatEncounterRecord {
   day: number;
   /** `EncounterStarted.encounter.interceptor.tier` (1..5). */
   interceptorTier: PowerTier;
+  /**
+   * T-173 · WHO answered the jump — `EncounterStarted.encounter.interceptor.id`.
+   * A named captain's roster id (`npc-…`) or an anonymous roster entry's id.
+   * ADDITIVE: nothing above or below this block changed shape.
+   */
+  interceptorId: string;
+  /** T-173 · `…interceptor.source`. The 0.25 named-pool gate in
+   *  `selectEncounterInterceptor` (`packages/engine/src/actions/travel.ts`) is a
+   *  measurable rate only if the instrument records which side of it each draw
+   *  landed on; before this field the four Hangout/disposition probes had to
+   *  reconstruct it out of a gitignored `.scratch/` script (BR-13). */
+  interceptorSource: 'named' | 'anonymous';
+  /** T-173 · The chosen captain's standing toward the PLAYER at the moment of the
+   *  draw, or null when the interceptor was anonymous (an anonymous candidate has
+   *  no disposition — `chooseWeighted` weights it exactly 1) or when the named
+   *  pool could not be reconstructed (see {@link namedPoolReconstructed}). */
+  interceptorDisposition: number | null;
+  /**
+   * T-173 · The dispositions of EVERY candidate the named pool held at the draw,
+   * in roster order — `[]` on an anonymous draw.
+   *
+   * RAW POOL, NOT A WEIGHT OR A LIFT, and deliberately so: the same "raw records,
+   * not pre-bucketed aggregates" argument the block comment above makes. From the
+   * raw pool, `balance/aggregate.ts` derives the inertness rate (every candidate at
+   * 0, so disposition changed nothing), the wronged share, and the ANALYTIC
+   * uniform counterfactual — and a future re-cut can derive a different weighting
+   * without re-running the sweep. Carrying a pre-computed weight instead would
+   * restate `chooseWeighted`'s rule inside the instrument, which is exactly the
+   * duplication that makes a before/after comparison unfalsifiable.
+   */
+  namedPoolDispositions: number[];
+  /**
+   * T-173 · False iff the chosen NAMED captain was not found in the pool this
+   * instrument rebuilt — i.e. the draw came from `selectEncounterInterceptor`'s
+   * THIRD, band-widening branch, which fires only when both pools are empty at the
+   * target tier and therefore reaches outside the single-tier pool rebuilt here.
+   *
+   * A FIELD RATHER THAN A FOOTNOTE so the case is COUNTED rather than assumed
+   * away: T-125 measured it at 0 of 11,566 named draws. A non-zero is a FINDING to
+   * file, never a number to widen a band around. True on every anonymous draw (no
+   * pool is claimed, so nothing can be missed).
+   */
+  namedPoolReconstructed: boolean;
   /** `state.player.tier` sampled at the encounter's open. Tier is STATE, not an
    *  event payload (`tier.ts` `syncPlayerTier` keeps it live at every chokepoint),
    *  so it can only be measured here — the same justification the T-1601a
@@ -561,6 +661,9 @@ export interface CampaignStatsReport {
   /** T-1601b policy-behavior metrics — see the interfaces above for readers. */
   smuggling: SmugglingStats;
   hangoutPlay: HangoutPlayStats;
+  /** T-173 · Standing as the career moved it — see {@link DispositionStats}. The
+   *  capstone instrument's disposition blind spot, closed. */
+  disposition: DispositionStats;
   /** T-1603a balance-baseline instrumentation — see the interfaces above for
    *  readers. `tourOne` is null when the horizon never reached day 30. */
   tourOne: TourOneOutcomeStats | null;
@@ -759,6 +862,15 @@ export interface MilestoneSample {
    *  R0a/R2a/N9/N4/N10 blind-spot class, closed ahead of the capstone rather than
    *  after it. */
   npcPortCount: number[];
+  /** T-173 · Every simulated captain's standing toward the player at this
+   *  milestone day, roster order — index-aligned with `npcCredits`,
+   *  `npcRenownRank` and `npcPortCount` above because all of them come out of the
+   *  ONE `sampleField` traversal. THE named deliverable of T-173's milestone limb:
+   *  the by-day disposition spread, which `SeedRow.disposition`'s run totals
+   *  cannot give (a run total cannot say whether the cast's standing had already
+   *  decayed away by day 30). Every entry is an integer in [-10, +10] — the
+   *  engine's clamp — and every entry is 0 at day 1 by construction. */
+  npcDisposition: number[];
 }
 
 /** N7 · Optional extras for `runCampaign`. All are absent on every ordinary
@@ -1082,6 +1194,15 @@ interface CampaignMetricAccumulator {
   equipmentUse: EquipmentUseStats;
   smuggling: SmugglingStats;
   hangoutPlay: HangoutPlayStats;
+  /** T-173 · Only the `movesByReason` half is folded from events here; the four
+   *  state figures and the spans are sampled at DUSK in `runCampaign`'s day loop,
+   *  for the reason {@link DispositionStats} states. */
+  disposition: DispositionStats;
+  /** T-173 · Open standings, npcId → the day the standing opened (0 → non-zero).
+   *  Held on the accumulator rather than in the day loop because a standing spans
+   *  days, exactly as an encounter does. An entry that never closes is counted as
+   *  `standingsOpenAtHorizon` after the loop, never as a truncated span. */
+  openStandingDays: Map<string, number>;
   /** T-1603a. `survival` is a plain counter fold like the blocks above.
    *  `tourOne` is a single-shot assignment (the event fires exactly once, at the
    *  dusk of day 30) rather than a counter, so it is a mutable member on the
@@ -1099,6 +1220,69 @@ interface CampaignMetricAccumulator {
    *  it belongs to no existing block: it is the machine READER for the new
    *  `SubsistenceIncome` event. Surfaced on the report as `subsistenceDays`. */
   subsistenceDays: number;
+}
+
+/**
+ * T-173 · A zeroed counter for every `DispositionChanged.reason` the engine can
+ * emit.
+ *
+ * WRITTEN OUT LONGHAND ON PURPOSE, in place of `Object.fromEntries` over a
+ * `const` list: the object literal is checked against
+ * `Record<DispositionChangeReason, number>`, so a reason ADDED to the engine's
+ * union is a compile error here (missing property) and a reason misspelled here is
+ * a compile error too (excess property). A derived list would need a cast, and a
+ * cast is exactly how a counter comes to be silently missing — the failure mode
+ * the `POLICY_NAMES` `satisfies` idiom below guards against for policy names.
+ */
+function zeroMovesByReason(): Record<DispositionChangeReason, number> {
+  return {
+    tribute: 0,
+    defeat: 0,
+    'player-fled': 0,
+    decay: 0,
+    storylet: 0,
+    'contract-sniped': 0,
+    dare: 0,
+    befriend: 0,
+    insult: 0,
+    meet: 0,
+    'loan-default': 0,
+    'contraband-caught': 0,
+  };
+}
+
+/**
+ * T-173 · The DUSK disposition sample — the half of {@link DispositionStats} no
+ * event can answer ("how much of the time does the cast sit at exactly zero?" is a
+ * condition, not a beat), folded exactly where `daysWithLoan` and
+ * `daysCarryingIllicit` are and for the same reason.
+ *
+ * Pure: reads the post-dusk state, draws no rng, mutates nothing but the
+ * accumulator. Cost is one pass over the 41 roster records per simulated day.
+ */
+function sampleDispositionAtDusk(state: GameState, metrics: CampaignMetricAccumulator): void {
+  const stats = metrics.disposition;
+  for (const npc of state.npcs) {
+    // A dead captain holds no live standing. Its open span (if any) is left in
+    // `openStandingDays` and lands in `standingsOpenAtHorizon` — a standing that
+    // ended with the captain rather than with decay is not a measured survival.
+    if (npc.dead) continue;
+    stats.liveNpcDays += 1;
+    const standing = npc.disposition;
+    const magnitude = Math.abs(standing);
+    if (standing === 0) stats.zeroDispositionNpcDays += 1;
+    stats.absDispositionSum += magnitude;
+    if (magnitude > stats.peakAbsDisposition) stats.peakAbsDisposition = magnitude;
+    const openedOn = metrics.openStandingDays.get(npc.id);
+    if (standing === 0) {
+      if (openedOn !== undefined) {
+        stats.standingSpanDays.push(state.day - openedOn);
+        metrics.openStandingDays.delete(npc.id);
+      }
+    } else if (openedOn === undefined) {
+      metrics.openStandingDays.set(npc.id, state.day);
+    }
+  }
 }
 
 /** T-1601a · Fold one day's events into the run-level behavior metrics. Kept as
@@ -1147,6 +1331,13 @@ function accumulateMetricEvents(
       // constraint 7). A run with `subsistenceDays > 0` is a run the world had to
       // catch; T-1605b's poverty-trap property test reads the same signal.
       metrics.subsistenceDays += 1;
+    } else if (event.type === 'DispositionChanged') {
+      // T-173 · One arm, one counter, every reason a key. `reason` is the
+      // engine's own union, so this cannot drift: `movesByReason` is typed
+      // `Record<DispositionChangeReason, number>` and a reason added to the engine
+      // is a compile error at `zeroMovesByReason` below rather than a beat that
+      // silently stops being counted.
+      metrics.disposition.movesByReason[event.reason] += 1;
     } else if (event.type === 'FragmentAcquired') {
       fragments.acquired += 1;
     } else if (event.type === 'FragmentDecoded') {
@@ -1228,6 +1419,20 @@ interface BalanceSample {
   fuelPrice: number;
   systemId: number;
   creditsAfter: number;
+  /**
+   * T-173 · The roster as it stood when the batch opened — the very array
+   * `selectEncounterInterceptor` was handed, since `EncounterStarted` has exactly
+   * one emitter (the player's own jump, `actions/travel.ts`) and this sample is
+   * taken on the PRE-action state. Read ONLY by the `EncounterStarted` branch of
+   * {@link ingestBalanceRecords}, to rebuild the named candidate pool the draw
+   * chose from.
+   *
+   * Carried BY REFERENCE, not copied: the engine clones state per step
+   * (`cloneState`), so the pre-action array is already a snapshot nothing will
+   * mutate, and copying 41 records per action would be a real cost on the sweep's
+   * hot path for no additional truth.
+   */
+  npcs: readonly NpcState[];
 }
 
 /** T-1603a · Mutable state for the encounter/route-leg folds. Both trackers span
@@ -1260,6 +1465,7 @@ function balanceSample(state: GameState, creditsAfter = state.player.credits): B
     fuelPrice: fuelPrice(state),
     systemId: state.player.currentSystemId,
     creditsAfter,
+    npcs: state.npcs,
   };
 }
 
@@ -1328,10 +1534,35 @@ function ingestBalanceRecords(
       // any event we will ever see, so it is closed as 'unresolved' rather than
       // overwritten (which would lose the record entirely).
       closeBalanceEncounter(tracker, 'unresolved', sample.creditsAfter);
+      // T-173 · The interceptor draw, recorded rather than reconstructed later.
+      // The named pool is rebuilt EXACTLY as `buildNamedCandidates`
+      // (`packages/engine/src/actions/travel.ts`) builds it — live captains whose
+      // content profile sits at the chosen tier — off the PRE-action roster, which
+      // is the same array `selectEncounterInterceptor` was handed. It draws no rng
+      // and mutates nothing; it is a read of the state that produced the event.
+      const chosen = event.encounter.interceptor;
+      const namedPool =
+        chosen.source === 'named'
+          ? sample.npcs.filter(
+              (npc) =>
+                !npc.dead &&
+                NPC_PROFILES.find((profile) => profile.id === npc.profileId)?.tier === chosen.tier,
+            )
+          : [];
+      const chosenIndex = namedPool.findIndex((npc) => npc.id === chosen.id);
       tracker.openEncounter = {
         encounterId: event.encounter.id,
         day: sample.day,
         interceptorTier: event.encounter.interceptor.tier,
+        interceptorId: chosen.id,
+        interceptorSource: chosen.source,
+        interceptorDisposition: chosenIndex >= 0 ? namedPool[chosenIndex].disposition : null,
+        namedPoolDispositions: namedPool.map((npc) => npc.disposition),
+        // True on every anonymous draw (no pool is claimed). On a named draw it is
+        // false only for `selectEncounterInterceptor`'s third, band-widening branch
+        // — measured at 0 of 11,566 named draws by T-125, and a non-zero is a
+        // finding to file rather than a number to accept.
+        namedPoolReconstructed: chosen.source !== 'named' || chosenIndex >= 0,
         playerTier: sample.tier,
         prepared: weaponVolleyDamage(sample.ship) > 1,
         rounds: 0,
@@ -5573,12 +5804,24 @@ export function runCampaign(
     lifeSupportScares: 0,
     successions: 0,
   };
+  // T-173 · standing instrumentation (see {@link DispositionStats}).
+  const disposition: DispositionStats = {
+    movesByReason: zeroMovesByReason(),
+    liveNpcDays: 0,
+    zeroDispositionNpcDays: 0,
+    absDispositionSum: 0,
+    peakAbsDisposition: 0,
+    standingSpanDays: [],
+    standingsOpenAtHorizon: 0,
+  };
   const metrics: CampaignMetricAccumulator = {
     loanUsage,
     fragments,
     equipmentUse,
     smuggling,
     hangoutPlay,
+    disposition,
+    openStandingDays: new Map<string, number>(),
     survival,
     tourOne: null,
     subsistenceDays: 0,
@@ -5742,6 +5985,11 @@ export function runCampaign(
     if (state.flags[FENCE_REP_FLAG] === true) {
       smuggling.fenceRepDays += 1;
     }
+    // T-173 · The third dusk-STATE fold, beside the two above and for the same
+    // reason: "the cast sits at exactly zero" is a condition no event reports.
+    // Taken AFTER the dusk, so the standing read is the post-decay one — decay is
+    // itself a dusk step (`day.ts` → `applyDisposition(..., 'decay')`).
+    sampleDispositionAtDusk(state, metrics);
 
     const counts = countDailyEvents(dayEvents);
     accumulateMetricEvents(dayEvents, metrics);
@@ -5795,6 +6043,10 @@ export function runCampaign(
   // T-1603a: the horizon ended mid-fight / mid-delivery. Both are flushed rather
   // than dropped so counts stay honest, and both are labelled so an aggregate can
   // exclude them (an unfinished leg has no payout to price).
+  // T-173 · Standings still open when the horizon ran out. COUNTED, never pushed
+  // into `standingSpanDays` as a truncated survival — a span that has not closed
+  // is not a span, and averaging it in would bias every survival figure downward.
+  disposition.standingsOpenAtHorizon = metrics.openStandingDays.size;
   closeBalanceEncounter(balance, 'unresolved', state.player.credits);
   if (balance.openLeg) {
     balance.legs.push({ ...balance.openLeg, outcome: 'open-at-end' });
@@ -5819,6 +6071,7 @@ export function runCampaign(
     equipmentUse,
     smuggling,
     hangoutPlay,
+    disposition,
     tourOne: metrics.tourOne,
     subsistenceDays: metrics.subsistenceDays,
     // N10 · Summed from the per-day series rather than kept as a second running
@@ -5876,8 +6129,9 @@ function npcPortCount(npc: NpcState & { readonly ports?: readonly PortStake[] })
   return npc.ports?.length ?? 0;
 }
 
-/** The seven per-captain arrays behind {@link MilestoneSample}, over the SIMULATED
- *  roster only. One traversal, one filter, so the seven arrays cannot fall out of
+/** The eight per-captain arrays behind {@link MilestoneSample} (seven until T-173
+ *  added `npcDisposition`), over the SIMULATED
+ *  roster only. One traversal, one filter, so the arrays cannot fall out of
  *  step with each other — index i is the same captain in all of them. That
  *  property is load-bearing rather than tidy since N11/T-022: `npcDeedCount[i]`
  *  and `npcRenownRank[i]` are only readable together (a rank is a step function of
@@ -5897,6 +6151,7 @@ function sampleField(
   | 'npcDeedCount'
   | 'npcRenownRank'
   | 'npcPortCount'
+  | 'npcDisposition'
 > {
   const field = state.npcs.filter((npc) => isSimulatedCaptain(npc.profileId));
   return {
@@ -5907,6 +6162,11 @@ function sampleField(
     npcDeedCount: field.map((npc) => npc.registry.earned.length),
     npcRenownRank: field.map((npc) => npc.registry.renownRank),
     npcPortCount: field.map((npc) => npcPortCount(npc)),
+    // T-173 · The eighth array, in the SAME traversal for the same reason: a
+    // captain's standing is only readable against the purse and the rank beside
+    // it, and a second `state.npcs.filter` would make that alignment a
+    // coincidence.
+    npcDisposition: field.map((npc) => npc.disposition),
   };
 }
 

@@ -1397,7 +1397,9 @@ control that says the movement is the Hangout and nothing else.
 
 ### 10.1 Method
 
-**The probe.** `.scratch/t125-hangout.ts` (gitignored; source fenced at §10.7). It plans,
+**The probe.** `.scratch/t125-hangout.ts` (gitignored; source fenced at §10.7 — **retired at
+T-173; the shipped instrument now carries these fields, see §10.7's retirement note and its
+counter → field table**). It plans,
 applies and reads the event stream, and adds nothing but counters — no action is added,
 removed or reordered, and no rng is drawn.
 
@@ -1455,6 +1457,15 @@ Adding those fields would move `instrumentFingerprint` and fill `balance:diff` w
 of phantom shape deltas **in the same commit that takes the capstone**. So the capstone is
 owed for the baseline/fixture obligation (§10.9) and the probe is what produces the result —
 exactly the split T-116 used.
+
+> **TRUE AS OF T-125; NO LONGER TRUE AS OF T-173 (2026-08-04).** All three shapes now carry
+> the fields — see §10.7's retirement note for the counter → field table. The paragraph above
+> is kept because it is the reasoning that produced four probes, and because the objection it
+> raises is still correct: the fields could not ride in on a capstone commit. T-173 therefore
+> added them in their OWN non-capstone commit (BR-10), with a `balance:extract` re-extract and
+> no baseline move — `rulesFingerprint` unmoved, every recorded checkpoint byte-identical, and
+> a two-arm 320-run sweep whose differ reported *"NO MEASURED VALUE MOVED"* on every shared
+> path.
 
 ### 10.2 Hangout usage per run (fleet, 960 runs per arm)
 
@@ -1772,6 +1783,33 @@ per 960 runs of rumour-mill prose naming a Hangout at a port where the player is
 none** (`npc.ts:1845`, `:1851` → `lastAction.details` → `hangoutRumors`, `hangout.ts:88`).
 
 ### 10.7 The probe source
+
+**RETIRED AT T-173 (2026-08-04). The shipped instrument now carries these fields, so the next
+Hangout/disposition measurement reads the sweep's own rows instead of descending from this
+file.** The fence below is kept **verbatim as the historical record** — it is what T-125,
+T-137, T-148 and T-150 actually ran, and §10.2–§10.6 / §11.3 are its output — but it is no
+longer the route to any of these numbers. Nothing in it may be re-derived to answer a new
+question; use the shipped fields.
+
+Every counter maps onto a committed field, one for one:
+
+| probe counter (below) | shipped field (T-173) |
+| --- | --- |
+| `chosen.source`, `bump(tierCounts, …)` | `CombatEncounterRecord.interceptorSource` (+ the existing `interceptorTier`) |
+| the chosen captain's id | `CombatEncounterRecord.interceptorId` |
+| `chosenDisposition` | `CombatEncounterRecord.interceptorDisposition` |
+| `namedInert` (`ds.every(d => d === 0)`) | derived from `CombatEncounterRecord.namedPoolDispositions` (every entry 0), rolled up as `PolicyAggregate.interceptor.inertShare` |
+| `pUniform`, `uniformWrongedExpectation` | derived from the same raw pool; rolled up as `PolicyAggregate.interceptor.uniformWrongedShare` (still ANALYTIC, still summed, never re-rolled) |
+| `chosenWronged` | `PolicyAggregate.interceptor.chosenWrongedShare` |
+| `reconstructMiss` | `CombatEncounterRecord.namedPoolReconstructed` (a field, so it is counted rather than assumed) — summed as `PolicyAggregate.interceptor.reconstructionMisses` |
+| M1's `HangoutEvent` fold | `SeedRow.hangout` (`CampaignStatsReport.hangoutPlay`, carried whole) |
+| M2's `DispositionChanged`-by-`reason` fold | `SeedRow.disposition.movesByReason` |
+| M2's dusk disposition sampling (sample point C) | `SeedRow.disposition` (`liveNpcDays`, `zeroDispositionNpcDays`, `absDispositionSum`, `peakAbsDisposition`, `standingSpanDays`, `standingsOpenAtHorizon`) and, per milestone day, `MilestoneSample.npcDisposition` → `MilestoneAggregate.npcDisposition` / `npcNonzeroDispositionShare` |
+| the day-0 all-neutral `throw` guard | asserted in `packages/sim/src/__tests__/campaign-disposition.test.ts` |
+
+The one thing NOT carried across, deliberately: `interceptWeight` — `chooseWeighted`'s own
+formula. The rows carry the RAW pool dispositions instead, so a future re-cut of the weighting
+reads them off the sweep rather than reading a number some instrument baked in.
 
 Fenced so the measurement is reproducible without the gitignored file (T-010 / T-116
 precedent). The console formatting is elided; every counter and every sample point is here.

@@ -24,6 +24,8 @@ import type {
   CampaignDayStats,
   CampaignStatsReport,
   CombatEncounterRecord,
+  DispositionStats,
+  HangoutPlayStats,
   MilestoneSample,
   RouteLegRecord,
   SimPolicyName,
@@ -280,6 +282,21 @@ export interface SeedRow {
   /** N12/T-030 · Port stakes the player holds at the horizon. Carried straight off
    *  the report; no re-derivation here. */
   portsOwned: number;
+  /**
+   * T-173 · `CampaignStatsReport.hangoutPlay`, carried WHOLE off the report — no
+   * re-derivation here, the same discipline as `contractClaims` and `portsOwned`
+   * above.
+   *
+   * WHY IT IS ON THE ROW AT ALL: until T-173 the sweep's rows could not answer a
+   * single Hangout question, so every Hangout measurement since T-125 descended
+   * from a gitignored `.scratch/` probe (BR-13). The block is carried whole rather
+   * than flattened into a handful of columns for the reason the file header gives:
+   * a row is raw material, and a later re-cut must not have to pay for another
+   * sweep.
+   */
+  hangout: HangoutPlayStats;
+  /** T-173 · `CampaignStatsReport.disposition`, same discipline, same reason. */
+  disposition: DispositionStats;
   /** N10 · The dawn board's DEPTH across the run — one entry per day, so the
    *  aggregate can report percentiles rather than a mean that hides a dark port. */
   boardDepths: number[];
@@ -316,6 +333,8 @@ export function summarizeReport(report: CampaignStatsReport): SeedRow {
     contractClaims: report.contractClaims,
     npcSpecialEquipmentPurchases: report.npcSpecialEquipmentPurchases,
     portsOwned: report.portsOwned,
+    hangout: report.hangoutPlay,
+    disposition: report.disposition,
     boardDepths: report.daily.map((day) => day.boardDepth),
     combat: report.combatEncounters,
     routes: report.routeLegs,
@@ -366,6 +385,56 @@ export interface SurvivalAggregate {
   deathsPer1000Days: number;
   /** Share of RUNS that lost at least one ship. */
   runsWithDeathRate: number;
+}
+
+/**
+ * T-173 · THE INTERCEPTOR DRAW, rolled up — the five columns
+ * `docs/HANGOUT_REDESIGN.md` §11.3's table reports, computed here from the raw
+ * fields `CombatEncounterRecord` now carries.
+ *
+ * WHY IT IS AN AGGREGATE AND NOT LEFT TO THE READER: the raw rows live only in a
+ * sweep's `--out` directory, which is gitignored; the AGGREGATE is the artefact
+ * that gets committed. Without these five numbers the next Hangout/disposition
+ * question would again have to be answered by a throwaway probe — which is the
+ * exact history this task closes (T-125, T-137, T-148, T-150, four probes).
+ *
+ * NOTHING HERE RESTATES A RULE. `chooseWeighted`'s grudge weight function is
+ * deliberately NOT duplicated: every figure below is arithmetic over the recorded
+ * pool, and a future re-cut of the weighting reads `namedPoolDispositions` off the
+ * rows rather than a number this module baked in.
+ */
+export interface InterceptorAggregate {
+  /** Every recorded encounter open, named and anonymous. Equals
+   *  `PolicyAggregate.encounters` — carried anyway so this block is readable on
+   *  its own and so a divergence between the two is visible rather than assumed
+   *  away. */
+  interceptions: number;
+  /** Named draws / interceptions. The engine's own gate is `rng.next() < 0.25`
+   *  applied only when the named pool is non-empty, so this is the 0.25 constant
+   *  MEASURED rather than asserted. */
+  namedShare: number;
+  /** Named draws whose every pool candidate sat at exactly 0 — draws where
+   *  disposition, however weighted, changed nothing. §11.3's "inertness". */
+  inertShare: number;
+  /** Named draws whose CHOSEN captain sat below 0: the player was hunted by
+   *  someone they had wronged. */
+  chosenWrongedShare: number;
+  /**
+   * The ANALYTIC uniform counterfactual for `chosenWrongedShare`: over named
+   * draws, the mean of (candidates below 0) / (pool size). It is the share a
+   * grudge-BLIND uniform pick would have produced from the very same pools, so
+   * `chosenWrongedShare / uniformWrongedShare` is the grudge lift.
+   *
+   * SUMMED, NEVER RE-ROLLED — the probe's own discipline, kept: a second rng pass
+   * would add sampling noise to a quantity that has a closed form.
+   */
+  uniformWrongedShare: number;
+  /** Named draws whose pool could not be reconstructed
+   *  (`namedPoolReconstructed === false`). **A NON-ZERO IS A FINDING TO FILE**, not
+   *  a number to widen a band around: it means the draw came from
+   *  `selectEncounterInterceptor`'s band-widening branch and the four shares above
+   *  are computed over a smaller sample than `namedShare` implies. */
+  reconstructionMisses: number;
 }
 
 export interface PolicyAggregate {
@@ -442,6 +511,9 @@ export interface PolicyAggregate {
   encountersPerRun: number;
   combatCells: CombatCell[];
   combatEvAll: Distribution;
+  /** T-173 · Who answered the jump, and what standing they held — see
+   *  {@link InterceptorAggregate}. */
+  interceptor: InterceptorAggregate;
   // --- Routes -------------------------------------------------------------
   routeLegs: number;
   routesDelivered: number;
@@ -515,6 +587,26 @@ export interface MilestoneAggregate {
    */
   npcPortCount: Distribution;
   /**
+   * T-173 · Standing per captain at this milestone day, pooled the same way:
+   * 30 × runs samples. The BY-DAY disposition spread — the thing the run-level
+   * `SeedRow.disposition` totals cannot say, because a total cannot distinguish
+   * "the cast never held a standing" from "every standing had decayed by day 30".
+   *
+   * Every entry is 0 at day 1 by construction, so a day-1 milestone doubles as the
+   * neutrality check the T-125 probe had to assert for itself.
+   */
+  npcDisposition: Distribution;
+  /**
+   * T-173 · Share of the same samples sitting at a NON-ZERO standing. The
+   * readable figure for this day, and the reason it sits beside the distribution
+   * rather than being left to a reader: standings are rare and short-lived
+   * (`docs/HANGOUT_REDESIGN.md` §11.3 measured the cast at exactly 0 on 96.52% of
+   * live captain-days), so `npcDisposition.median` is 0 for a day on which a
+   * quarter of the cast holds a grudge — the same argument
+   * `PolicyAggregate.portOwnershipRate` makes about stakes.
+   */
+  npcNonzeroDispositionShare: number;
+  /**
    * N11 · THE CAST'S RANK DISTRIBUTION at this milestone day — a HISTOGRAM, not a
    * `Distribution`, because a rank is categorical and a median over an eight-rung
    * ladder's indices would be a fiction dressed as a measurement.
@@ -541,29 +633,43 @@ function milestoneAggregatesFor(rows: readonly SeedRow[]): MilestoneAggregate[] 
   if (byDay.size === 0) return undefined;
   return [...byDay.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([day, samples]) => ({
-      day,
-      runs: samples.length,
-      playerCredits: distribution(samples.map((sample) => sample.player.credits)),
-      playerDebt: distribution(samples.map((sample) => sample.player.debt)),
-      playerFuel: distribution(samples.map((sample) => sample.player.fuel)),
-      playerTier: distribution(samples.map((sample) => sample.player.tier)),
-      playerDeedCount: distribution(samples.map((sample) => sample.player.deedCount)),
-      playerShipRating: distribution(samples.map((sample) => sample.player.shipRating)),
-      playerWeaponsStrength: distribution(samples.map((sample) => sample.player.weaponsStrength)),
-      playerHullStrength: distribution(samples.map((sample) => sample.player.hullStrength)),
-      playerShieldsStrength: distribution(samples.map((sample) => sample.player.shieldsStrength)),
-      playerDrivesStrength: distribution(samples.map((sample) => sample.player.drivesStrength)),
-      playerCargoPods: distribution(samples.map((sample) => sample.player.cargoPods)),
-      playerCrew: distribution(samples.map((sample) => sample.player.crew)),
-      playerPorts: distribution(samples.map((sample) => sample.player.ports)),
-      npcCredits: distribution(samples.flatMap((sample) => sample.npcCredits)),
-      npcHullStrength: distribution(samples.flatMap((sample) => sample.npcHullStrength)),
-      npcFuel: distribution(samples.flatMap((sample) => sample.npcFuel)),
-      npcDeedCount: distribution(samples.flatMap((sample) => sample.npcDeedCount)),
-      npcPortCount: distribution(samples.flatMap((sample) => sample.npcPortCount)),
-      npcRenownRanks: rankHistogram(samples.flatMap((sample) => sample.npcRenownRank)),
-    }));
+    .map(([day, samples]) => {
+      // T-173 · Pooled once and read twice (the distribution and the non-zero
+      // share are one measurement in two shapes). `?? []` for the same reason
+      // `interceptorAggregateFor` guards its reads: `--merge` folds row files off
+      // disk, and a shard written before T-173 carries milestone samples with no
+      // `npcDisposition` — an empty pool must aggregate to `n: 0`, never throw
+      // halfway through a merge.
+      const standings = samples.flatMap((sample) => sample.npcDisposition ?? []);
+      return {
+        day,
+        runs: samples.length,
+        playerCredits: distribution(samples.map((sample) => sample.player.credits)),
+        playerDebt: distribution(samples.map((sample) => sample.player.debt)),
+        playerFuel: distribution(samples.map((sample) => sample.player.fuel)),
+        playerTier: distribution(samples.map((sample) => sample.player.tier)),
+        playerDeedCount: distribution(samples.map((sample) => sample.player.deedCount)),
+        playerShipRating: distribution(samples.map((sample) => sample.player.shipRating)),
+        playerWeaponsStrength: distribution(samples.map((sample) => sample.player.weaponsStrength)),
+        playerHullStrength: distribution(samples.map((sample) => sample.player.hullStrength)),
+        playerShieldsStrength: distribution(samples.map((sample) => sample.player.shieldsStrength)),
+        playerDrivesStrength: distribution(samples.map((sample) => sample.player.drivesStrength)),
+        playerCargoPods: distribution(samples.map((sample) => sample.player.cargoPods)),
+        playerCrew: distribution(samples.map((sample) => sample.player.crew)),
+        playerPorts: distribution(samples.map((sample) => sample.player.ports)),
+        npcCredits: distribution(samples.flatMap((sample) => sample.npcCredits)),
+        npcHullStrength: distribution(samples.flatMap((sample) => sample.npcHullStrength)),
+        npcFuel: distribution(samples.flatMap((sample) => sample.npcFuel)),
+        npcDeedCount: distribution(samples.flatMap((sample) => sample.npcDeedCount)),
+        npcPortCount: distribution(samples.flatMap((sample) => sample.npcPortCount)),
+        npcDisposition: distribution(standings),
+        npcNonzeroDispositionShare: share(
+          standings.filter((standing) => standing !== 0).length,
+          standings.length,
+        ),
+        npcRenownRanks: rankHistogram(samples.flatMap((sample) => sample.npcRenownRank)),
+      };
+    });
 }
 
 /** N11 · Count ranks by name. Built the same way `aggregateRows` builds the
@@ -616,6 +722,44 @@ function combatCellsFor(records: readonly CombatEncounterRecord[]): CombatCell[]
     }
   }
   return cells;
+}
+
+/**
+ * T-173 · Fold the interceptor-provenance fields into {@link InterceptorAggregate}.
+ *
+ * DEFENSIVE ON LEGACY ROWS BY CONSTRUCTION, not by a cast: a row file written
+ * before T-173 carries none of the five fields, and `--merge` folds row files off
+ * disk. `record.interceptorSource === 'named'` is simply false when the key is
+ * absent, and `?? []` covers the pool, so an old shard aggregates to
+ * `interceptions > 0` with every share at 0 rather than throwing — visibly empty,
+ * which is the honest reading of a sweep that never measured it.
+ */
+function interceptorAggregateFor(records: readonly CombatEncounterRecord[]): InterceptorAggregate {
+  const named = records.filter((record) => record.interceptorSource === 'named');
+  let inert = 0;
+  let chosenWronged = 0;
+  let uniformWrongedExpectation = 0;
+  let reconstructionMisses = 0;
+  for (const record of named) {
+    if (record.namedPoolReconstructed === false) {
+      reconstructionMisses += 1;
+      continue;
+    }
+    const pool = record.namedPoolDispositions ?? [];
+    if (pool.length === 0) continue;
+    if (pool.every((standing) => standing === 0)) inert += 1;
+    if ((record.interceptorDisposition ?? 0) < 0) chosenWronged += 1;
+    // The closed form of "what a uniform pick would have done with THIS pool".
+    uniformWrongedExpectation += pool.filter((standing) => standing < 0).length / pool.length;
+  }
+  return {
+    interceptions: records.length,
+    namedShare: share(named.length, records.length),
+    inertShare: share(inert, named.length),
+    chosenWrongedShare: share(chosenWronged, named.length),
+    uniformWrongedShare: share(uniformWrongedExpectation, named.length),
+    reconstructionMisses,
+  };
 }
 
 function routeAggregatesFor(legs: readonly RouteLegRecord[]): RouteAggregate[] {
@@ -755,6 +899,7 @@ export function aggregateRows(policy: string, rows: readonly SeedRow[]): PolicyA
     encountersPerRun: rows.length === 0 ? 0 : combat.length / rows.length,
     combatCells: combatCellsFor(combat),
     combatEvAll: distribution(combat.map(combatEv)),
+    interceptor: interceptorAggregateFor(combat),
     routeLegs: legs.length,
     routesDelivered: delivered.length,
     routesLost: legs.filter((leg) => leg.outcome === 'lost').length,

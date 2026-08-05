@@ -61,6 +61,14 @@ function encounterRecord(overrides: Partial<CombatEncounterRecord> = {}): Combat
     encounterId: 'enc-fixture',
     day: 1,
     interceptorTier: 1,
+    // T-173 · The interceptor-provenance fields, defaulted to a WELL-FORMED
+    // anonymous draw: no named pool, so no disposition and nothing to
+    // reconstruct. Every fixture below overrides only what its own case is about.
+    interceptorId: 'anon-fixture',
+    interceptorSource: 'anonymous',
+    interceptorDisposition: null,
+    namedPoolDispositions: [],
+    namedPoolReconstructed: true,
     playerTier: 1,
     prepared: false,
     rounds: 1,

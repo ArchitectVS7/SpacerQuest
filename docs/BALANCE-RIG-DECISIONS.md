@@ -99,6 +99,20 @@ instead by a gitignored `.scratch/` two-arm probe (the T-116 split) — adding `
 same commit that takes the capstone, so the fixture would record numbers measured under a
 different instrument.
 
+**(T-173, 2026-08-04) The parenthetical above is DISCHARGED for the Hangout/disposition
+measurement; the rule itself is unchanged.** The objection was always about the COMMIT, never
+about the fields: four measurements (T-125, T-137, T-148, T-150) each descended from a
+gitignored probe because the fields could not ride in on a capstone. T-173 added them in their
+OWN non-capstone commit under BR-10 + BR-9 — `SeedRow.hangout` / `SeedRow.disposition`,
+`MilestoneSample.npcDisposition`, and five interceptor-provenance fields on
+`CombatEncounterRecord` — with the `balance:extract` re-extract in the same commit and NO
+baseline move. `rulesFingerprint` unmoved at `febc55edd3a94b3f` (zero lines under
+`packages/engine/src` and `packages/content/src`); `instrumentFingerprint` and `docsFingerprint`
+moved; every recorded checkpoint byte-identical; a two-arm 320-run sweep diffed at the aggregate
+level reported *"NO MEASURED VALUE MOVED"* on every shared path, with the new paths listed as
+one-sided. The next Hangout/disposition question is answered off the sweep's own rows, so a
+fifth probe in that lineage would be a step backwards.
+
 **BR-14 — Re-pinning the baseline of record moves ALL FIVE of its pointers in the same commit,
 and since T-165 a test says so.** (T-116, T-125; fifth pointer added T-182; machine-enforced
 T-165) Under standing amendment 1's "does the baseline describe HEAD?" rule the five sites are

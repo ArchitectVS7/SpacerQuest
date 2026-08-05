@@ -1547,7 +1547,10 @@ same benign kind — `byPolicy[gambler].renownRanks.GIGA_HERO` and two
 rose into a rank bucket that had zero occupants before (§12.7).
 
 **The probe.** `.scratch/t148-roster-ladder.ts` — gitignored, read-only, descended from
-`.scratch/t137-liars-dice.ts`, which descends from `.scratch/t125-hangout.ts`. The M5 interceptor
+`.scratch/t137-liars-dice.ts`, which descends from `.scratch/t125-hangout.ts` (**that lineage is
+RETIRED as of T-173: the interceptor/disposition fields ship on the instrument itself — see
+`docs/HANGOUT_REDESIGN.md` §10.7's retirement note; a new measurement reads the sweep's rows, it
+does not fork this file again**). The M5 interceptor
 block is kept **verbatim** through both generations, which is what makes §12.6 like-for-like
 against §16.6 rather than a new number off a new instrument. Its structural additions over T-137
 are four, all counters: a hand-open snapshot joined by `handId` (the pool and the resolved

@@ -1545,7 +1545,9 @@ model changed underneath the finding, so the honest thing is a fresh measurement
 current model, not a forward-carried number.
 
 **Method — a two-arm HEAD-vs-parent probe**, in the shape T-116 and T-125 used. `.scratch/t150-postfix.ts`
-(descended from `.scratch/t148-roster-ladder.ts`, M5 block carried verbatim) counts queued
+(descended from `.scratch/t148-roster-ladder.ts`, M5 block carried verbatim; **that probe lineage
+is RETIRED as of T-173 — the M5 interceptor/disposition counters ship as instrument fields, see
+`docs/HANGOUT_REDESIGN.md` §10.7's retirement note**) counts queued
 `Explore` actions and `ExplorationFailed{'recovery-in-progress'}` events, splitting refusals by
 whether the recovery was **already open at dawn** or was **opened mid-batch**. The BEFORE arm
 ran the identical probe inside a `git worktree` at the parent commit. Seeds 1..120 × 120 days.

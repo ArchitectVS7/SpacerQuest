@@ -103,6 +103,34 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
+> **INSTRUMENT WIDENED AND FIXTURE RE-EXTRACTED AT T-173 (2026-08-04) — no capstone, and the
+> baseline of record does NOT move.** Under BR-10 (an instrument-only fingerprint move does not
+> earn a capstone) and BR-9 (the remedy is a re-extract from the same aggregate), T-173 closed
+> the blind spot BR-13 recorded: three measurement shapes now carry the Hangout/disposition
+> fields that four separate probes (T-125, T-137, T-148, T-150) had to descend from a gitignored
+> `.scratch/` script to obtain. **`SeedRow`** gains `hangout` and `disposition` (both carried
+> whole off the report); **`MilestoneSample`** gains `npcDisposition` (through `sampleField`, so
+> it is index-aligned with the seven per-captain arrays beside it); **`CombatEncounterRecord`**
+> gains `interceptorId`, `interceptorSource`, `interceptorDisposition`, `namedPoolDispositions`
+> and `namedPoolReconstructed`; and `PolicyAggregate` / `MilestoneAggregate` gain the
+> `interceptor` block and `npcDisposition` / `npcNonzeroDispositionShare`. **ADDITIVE ONLY** —
+> no existing key on any shape was renamed, retyped or removed. Fingerprints, transcribed from
+> the re-extracted `docs/balance/smoke/tiers.json`: `rulesFingerprint` **UNMOVED** at
+> `febc55edd3a94b3f` (T-173 changed zero lines under `packages/engine/src` and
+> `packages/content/src` — putting the pool or the standing on `EncounterStarted` would have
+> moved it, which is why the measurement stays in `packages/sim`), while
+> `instrumentFingerprint` `836f9e8804ea2637` -> `b28fad2af6107f8a` and `docsFingerprint`
+> `f827fddcbb3fa446` -> `e7b35fa4850f418d`. `CURRENT_SAVE_VERSION` does NOT move (15): no
+> persisted shape changed, so no migration and no round-trip test is owed. **INERTNESS, proven
+> twice.** (1) The re-extract moved `productVersion`-class provenance and the two fingerprints
+> only — every recorded checkpoint number is byte-identical, which is BR-9's own test and is
+> machine-enforced by `smoke-reextraction.test.ts`. (2) A two-arm 40-seed × 120-day × 8-policy
+> sweep (320 runs per arm, BEFORE built in a `git worktree` at the parent commit) diffed at the
+> aggregate level: *"NO MEASURED VALUE MOVED. Every difference below is a SHAPE difference:
+> fields present on one side only."* — 528 one-sided paths, all of them the new fields, and not
+> one shared path moved. The `.scratch/t125-hangout.ts` lineage is retired
+> (`docs/HANGOUT_REDESIGN.md` §10.7 carries the counter → field map).
+>
 > **BASELINE OF RECORD RE-PINNED AT T-199 (2026-08-04)** to
 > `docs/balance/baseline-t199-pacifist.json` — the **F-150-2** capstone. The shared
 > `planPacifistCombat` no longer plays one stance against an unaffordable tribute, `smugglerPolicy`
