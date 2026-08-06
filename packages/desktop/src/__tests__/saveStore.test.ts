@@ -124,7 +124,8 @@ describe('T-1701a · createSaveStore — the path-traversal guard', () => {
       'sq.slot.2.meta',
       'sq.fx',
       'sq.text-size',
-      'sq.reduced-motion',
+      'sq.motion-tier', // T-252
+      'sq.reduced-motion', // T-252 · the retired binary; old installs still hold it
       'sq.onboarding.v1',
       'sq.vol.master',
       'sq.audio.muted',
@@ -132,7 +133,7 @@ describe('T-1701a · createSaveStore — the path-traversal guard', () => {
     ]) {
       expect(() => store.setItem(key, 'v')).not.toThrow();
     }
-    expect(store.keys()).toHaveLength(12);
+    expect(store.keys()).toHaveLength(13);
   });
 });
 

@@ -1836,7 +1836,7 @@ of the M17 dawn-hand arc and of R2/R3 — both are eligible now, not gated behin
 **Moved at the 2026-08-06 re-order:** T-251 (needs the owner's treatment pick before any build)
 and T-254 (an owner vocabulary ruling) now sit in the OWNER GATE section below.
 
-### T-252 · The third motion tier — SpacerQuest ships a binary motion model against a three-tier rule — `status: TODO` · `coder: opus` · `after: —`
+### T-252 · The third motion tier — SpacerQuest ships a binary motion model against a three-tier rule — `status: DONE` · `coder: opus` · `after: —`
 
 Q4 / §3.6 of `docs/design/T-201-dawn-hand-roll.md`: SpacerQuest ships a BINARY motion model
 (`reducedMotion` OR'd with the OS query at `App.tsx:931` driving `data-motion` at `:933`, with two CSS
@@ -1856,6 +1856,143 @@ reason recorded where a future UI task will read it; the retrofit list is proven
 the animation rails rather than by inspection; each tier is screenshotted/recorded per the
 `tabletop-ui` §7 loop; no beat is left cinematic-only; UI-only change, so no rule fingerprint moves —
 state that explicitly; gate green.
+
+**Delivered (2026-08-06).** **The FIRST branch of Accept was taken: the three tiers are implemented.**
+The "rule the divergence deliberate" branch was rejected on the merits — `tabletop-ui` §8 is an OWNER
+standing rule already set ("Never ship cinematic-only"), and §8's own corrections log records four
+separate times that offering a diluted alternative to a rule the owner has set is the wrong move
+(2026-07-19 (6) "Stop offering dilutions of rules the owner has already set"; (4) "never propose
+skipping an owner-eyes review step"). §8's own escape hatch made the cost small: "Presets read a
+global speed/intensity setting rather than hard-coding durations, so the tiers are one knob, not three
+implementations."
+
+**THE PINS IN THIS BLOCK WERE STALE** (they were written against an older commit). Corrected, verified
+against HEAD at task open — these are the PRE-change locations, and the retrofit has since moved them,
+which is why the durable pins below are named by symbol rather than by line:
+`systemPrefersReducedMotion()` `App.tsx:301` (not `:931`); the `data-motion` stamp
+`App.tsx:957–959` (not `:931`/`:933`); the `@media (prefers-reduced-motion: reduce)` rail
+`theme.css:3178–3205` (not `2567–2595`); the kill-switch `theme.css:3211–3217` (not `2601–2605`).
+`docs/design/T-201-dawn-hand-roll.md` §3.6 carried the same stale pins and has been rewritten to the
+shipped model rather than re-pinned.
+
+**THE KNOB.** `--motion-scale` (`1` / `0.4` / `0`), declared once per `data-motion` value at the head
+of `theme.css` under "THE MOTION CONTRACT", mirrored by `MOTION_SCALE` in the new
+`packages/ui/src/motion.ts` — the single source of the tier vocabulary (`MotionTier`, `MOTION_TIERS`,
+`MOTION_SCALE`, `resolveMotionTier`, `scaleMs`, `isInstant`, `motionTierFromStorage`). **22 `--dur-*` /
+`--del-*` tokens**, each `calc(<cinematic-ms> * var(--motion-scale))`; **21 declarations** rewritten
+onto them. JS: `scaleMs` at 3 sites (dawn scramble 55ms, Liar's Dice dealer beat 620ms, die-bloom clear
+750ms), `isInstant` at the 3 `.sweep` mounts + the dealer beat + the GSAP guard + `useDiceRoll`, and
+the whole Liar's Dice reveal timeline retrofitted by **one line** —
+`tl.timeScale(1 / MOTION_SCALE[tier])` — so not one of its five duration literals is a tier decision.
+Vocabulary flip: `data-motion` is `cinematic|snappy|instant`; `full`/`reduced` are gone and their
+absence is asserted.
+
+**THE RETROFIT IS PROVEN BY A SCAN, NOT AN INSPECTION** — which is what the Accept clause asked for,
+and it earned its keep immediately: the block's named list (`.sweep`, `om-*`, `ld-settle`, the Liar's
+Dice timeline, `.die.bloom`) is **5 beats; the scan found 17**. The eleven the list had missed are
+`comp-focus`, `mb-post`, `mb-stow`, `tp-tick`, `tp-charge`, `tp-post` (+2 stagger delays), `cb-reveal`,
+`cb-crit`, `ob-fade`, `ob-fade-center` and the `.d6` face turn. `packages/ui/src/__tests__/
+motion-tiers.test.ts` brace-walks `theme.css` (a line-regex mis-attributes wrapped multi-line values —
+the first draft did exactly that) and requires every animation/transition declaration to be `none`, a
+`--dur-*`/`--del-*` beat, or an explicitly allowlisted AMBIENT/RESPONSE exception with a written
+justification. **Negative control run:** appending `.t252-negative-control { animation: sweep 400ms }`
+to `theme.css` fails the suite with `UNCLASSIFIED MOTION DECLARATION at theme.css:5419` (restored).
+**No beat is left cinematic-only** follows mechanically from that scan ∪ the Instant kill-switch
+assertion.
+
+**THE CLASSIFICATION IS A DECISION, and it is asserted too.** BEAT scales; **AMBIENT** (the 5
+`infinite` loops — `flicker` 5.5s, `ring-pulse` 3.2s, `pulse` 1.6s, `tick` 40s, `wt-pulse` 1.6s) and
+**RESPONSE** (`.contract` 200ms, `.mb-toggle::after` 180ms, `.die` 180ms) do NOT — a 0.4× 40s news
+marquee is unreadable, and trimming hover feedback makes an interface feel broken rather than snappy.
+Both are killed outright at Instant, which is why the blanket kill-switch survives the knob. The e2e
+pins this by measuring `.ticker` IDENTICAL at Cinematic and Snappy and `none` at Instant.
+
+**ONE REAL REGRESSION FOUND AND FIXED DURING THE GATE, recorded because the lesson generalises.**
+Scaling the ship-diagram's `.comp-row.focused` window collapsed it to 0ms at Instant and
+`e2e/ship-diagram.spec.ts` (which runs on the Instant rail) went red. That class carries a plain
+`border-color` MARKING which bench row a hull click landed on as well as the `comp-focus` bloom —
+so scaling it deleted information, the §8 corrections-log failure "never regress information". Fixed
+by leaving the READ window at 700ms at every tier while the bloom inside it trims; **the e2e was not
+adjusted.** Rule recorded in UI-31: before scaling a timer, ask whether anything it gates is
+information rather than motion.
+
+**BEHAVIOUR-PRESERVING MOVE PROVEN INERT FIRST.** Step 2 (all 21 declarations onto `--dur-*` tokens
+with the vocabulary unchanged) ran the full unit battery + 29 e2e — including
+`port-ledger.spec.ts:239`, which asserts computed `animation-name` in BOTH directions, and
+`settings-saves.spec.ts`, which asserted `data-motion='full'` — with **ZERO test edits**. The tiers
+went on top of a proven-inert base.
+
+**§7 SCREENSHOT LOOP AND SELF-CRITIQUE** (9 shots, `packages/ui/test-results/T-252-<tier>-{cockpit,
+dock,settings}.png`, three tiers × three shots per UI-27; gitignored, no binary committed):
+- *Does the control read?* Yes. The Motion segmented control is structurally identical to the Text
+  size control directly below it (`set-seg` / `set-seg-btn` / `aria-pressed`), so it reads as part of
+  the same Display group rather than as a bolted-on row. Verified in all three settings shots.
+- *Does Snappy read as TRIMMED or as BROKEN?* **Measured, not eyeballed.** The full Snappy ladder is
+  80 / 88 / 88 / 88 / 128 / 136 / 184 / 208 / 220 / 240 / 248 / 248 / 280 / 280 / 280 / 360 / 440 ms.
+  Only 4 beats land under 100ms (`mb-stow` 80, `mb-post`/`ob-fade`/`ob-fade-center` 88) and all four
+  are "a panel appears" — the least dramatic beats in the product. **Every scene moment stays ≥ 240ms**
+  (`ld-settle`/`om-strike` 248, `bloom`/`comp-focus`/`tp-charge` 280, `om-bloom` 360, `sweep` 440).
+  **A per-beat `max()` floor was CONSIDERED AND REJECTED**: 80ms still reads as a quick snap-in rather
+  than a pop, and a per-beat floor is precisely the second knob §8's "one knob, not three
+  implementations" forbids. Recorded so a future task can disagree with the reasoning rather than
+  rediscover the numbers.
+- *Does Instant lose information?* No, and it is asserted rather than claimed. Every keyframe in the
+  file animates `opacity: 0 → 1` and **no beat's base rule sets `opacity: 0`**, so `animation: none`
+  renders the element naturally; the e2e drives the onboarding card to Instant and asserts
+  `animationName === 'none'`, computed `opacity === 1` and the copy still present. The `om-*` staged
+  read-in is covered by the same argument.
+- *Sound.* Untouched and confirmed: `grep` over `sound.ts` / `music.ts` finds **zero** motion or
+  reduced-motion references, so §8's "Instant… sound still plays" already held and still holds.
+- *Not self-approved.* This is not a designated owner gate, so screenshots + this written critique
+  discharge §7 here. Nothing read wrong enough to flag; the one judgement call worth an owner's eye is
+  the rejected 80ms floor, named above rather than shipped quietly.
+
+**NO FINGERPRINT MOVES — PROVEN, NOT ASSERTED.** `rulesFingerprint` hashes `packages/content/src`
+plus the engine's rule modules (`packages/sim/src/balance/rules-fingerprint.ts:622`, "the fingerprint:
+`packages/content/src` plus the engine's rule modules"). Every file this task touches is under
+`packages/ui/**`, `packages/desktop/src/**` (two key allowlists) or `docs/**`. `npm run balance:smoke`
+**124/124 green**, including `balance-smoke.test.ts`'s "the fixture describes the ruleset in the
+working tree · is not stale" assertion. Therefore: **no capstone sweep, no `balance:extract`, no
+baseline re-measure.** `computeDocsFingerprint` is also unmoved (it hashes engine/content/sim sources,
+not `docs/*.md`) and never fails a test in any case.
+
+**NO SAVE-SHAPE CHANGE AND NO MIGRATION IS OWED.** The tier is a `KeyValueStore` local preference
+(`sq.motion-tier`), never in the save envelope, exactly like `sq.fx` / `sq.text-size`.
+`CURRENT_SAVE_VERSION` re-read at delivery: **17** (`packages/engine/src/save.ts:627` — not the 15 the
+plan quoted, which is why it is re-read rather than copied). Untouched. The retired `sq.reduced-motion`
+binary is honoured read-only by `motionTierFromStorage` (`'on'` → Instant, so an opted-out player is
+never promoted back to cinematic by an upgrade) and deleted on the first deliberate tier choice; the
+legacy path is unit-tested and driven end-to-end through a seeded old install in the e2e.
+
+**TESTS.** New: `src/motion.ts` + `src/__tests__/motion.test.ts` (21 — scale factors pinned, the full
+6-row `resolveMotionTier` truth table, `scaleMs` per tier, the legacy-fallback precedence table);
+`src/__tests__/motion-tiers.test.ts` (74 — the scan); `e2e/motion-tiers.spec.ts` (13 — every tier
+chosen **by clicking the Settings segment, never by writing localStorage**, per the global test-intent
+rule; all 22 tokens resolved through a probe in the live document at each tier; Snappy asserted
+STRICTLY shorter than Cinematic as the negative control against a relabelled Cinematic; ambient
+unchanged; OS-override in both directions; persistence; legacy migration; the 9 screenshots). Updated:
+`e2e/settings-saves.spec.ts` and `e2e/port-ledger.spec.ts` for the vocabulary, and the two desktop key
+allowlists (`saveStore.test.ts` 12 → 13 keys, `cloud.test.ts`) so the shell accepts and correctly
+REFUSES to cloud-sync the new key. Every other spec needed **zero** edits.
+
+**GATE GREEN.** `npm run format` first, then: `npm test` **2,898 passed / 0 failed** across all six
+workspaces; `npx tsc -b` clean; `npm run lint` clean; `npm run format:check` clean;
+`npx playwright test` **207 passed**. One pre-existing FLAKE surfaced and was filed rather than
+absorbed: `e2e/visual-identity.spec.ts:269` (the T-217 wire-cap geometry read) fails ~1-in-4 repeats
+and passes on retry — **reproduced on a STASHED baseline (1 flaky in 6 repeats with this diff
+removed)**, so it is not this task's. Filed in `TODO.md` "Defects — filed, not fixed" with the
+measurement and the Bug-Discovery-Policy deferral analysis (out of scope; no debt roll-up).
+
+**DOCS.** `docs/UI-PRESENTATION-DECISIONS.md` §4 gains **UI-31** (the ruling: the tiers, the knob, the
+BEAT/AMBIENT/RESPONSE classification and why two of the three do not scale, the state-mark-vs-beat
+rule, the OS override, storage-not-saves, and that completeness is a scan) and **UI-23 is amended in
+place** so it no longer describes a binary. `docs/design/T-201-dawn-hand-roll.md` §3.6 rewritten to the
+shipped model with a warning that a new beat MUST add a `--dur-*` token or the scan fails, and **Q4
+marked RULED** at §7 (nine open questions → eight). `TODO.md`'s open-questions entry updated to eight
+and pointed at UI-31. `docs/LESSONS.md` L-061 and `docs/TEST-TIER-DECISIONS.md` TT-17 amended for the
+new vocabulary and the stale `App.tsx:934` pin.
+
+Orchestration: attempts=1/4.
 
 ### T-253 · F-204-1: `wireStories.ts`'s "VERBATIM PRD §6 sample" no longer matches the PRD — `status: TODO` · `coder: opus` · `after: —`
 

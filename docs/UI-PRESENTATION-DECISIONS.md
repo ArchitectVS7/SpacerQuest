@@ -256,14 +256,76 @@ inherit one only if the roll is asked to introduce a second hue.
 ## 4. Motion
 
 **UI-23 — Every new animation is railed behind `prefers-reduced-motion` and the reduced-motion
-path is INSTANT, never "animated then skipped".** (T-190, T-191.) Motions live inside
-`@media not (prefers-reduced-motion: reduce)` or carry an explicit reduced-motion
+path is INSTANT, never "animated then skipped".** (T-190, T-191; amended by T-252.) Motions live
+inside `@media not (prefers-reduced-motion: reduce)` or carry an explicit reduced-motion
 `transition: none`, the house rule `theme.css` already keeps. This is what keeps the e2e honest,
 since the whole suite runs under `page.emulateMedia({ reducedMotion: 'reduce' })`. The claim is
 asserted in BOTH directions off computed `animation-name`, never inferred from the CSS source —
 and any such assertion must toggle `emulateMedia` **and** `page.reload()`, because the cockpit
-reads the OS preference once per render and stamps `data-motion` on `<html>` as a blanket
-`animation: none !important` kill-switch.
+reads the OS preference once per render and stamps `data-motion` on `<html>`.
+**T-252 amendment: `data-motion` is no longer a binary.** Its vocabulary is
+`cinematic | snappy | instant` (`full` / `reduced` are retired and asserted absent), the blanket
+`animation: none !important` kill-switch is scoped to `instant` alone, and "railed behind
+`prefers-reduced-motion`" now means "carries a `--dur-*` token" — see UI-31, which is the rule a
+new beat has to satisfy. Everything above about asserting in both directions with a reload stands
+unchanged.
+
+**UI-31 — Motion intensity is a THREE-TIER player setting driven by ONE knob, and completeness is
+a scan, not an inspection.** (T-252, ruling Q4 of `docs/design/T-201-dawn-hand-roll.md` §3.6.)
+
+*The rule and why it is not negotiable.* `tabletop-ui` §8 (owner correction, 2026-07-18) makes
+**Cinematic / Snappy / Instant** a standing rule and says verbatim "Never ship cinematic-only."
+SpacerQuest shipped a binary until T-252. The divergence was **not** ruled deliberate: §8 is an
+owner rule already set, and §8's own corrections log records four times that offering a diluted
+alternative to a rule the owner has set is the wrong move.
+
+*The knob.* `--motion-scale` — `1` / `0.4` / `0`, declared once per `data-motion` value in
+`theme.css`, mirrored by `MOTION_SCALE` in `packages/ui/src/motion.ts`. Every beat duration is
+`calc(<cinematic-ms> * var(--motion-scale))` behind a `--dur-*` / `--del-*` token, and the token
+block is the ONLY place a beat's cinematic length is written. JS timers take the same knob through
+`scaleMs(ms, tier)`; the Liar's Dice GSAP timeline takes it as
+`tl.timeScale(1 / MOTION_SCALE[tier])`, so not one of its duration literals is a tier decision.
+§8's own words: "the tiers are one knob, not three implementations." **A per-beat tier table, or a
+per-beat perceptual floor, would be a second knob** — see the measurement note below.
+
+*What does NOT scale, and why that is a decision rather than an omission.* Three categories:
+**BEAT** (finite, event-triggered, dramatises a game event) scales; **AMBIENT** (the five
+`infinite` loops — `flicker`, `ring-pulse`, `pulse`, `tick`, `wt-pulse`) does not, because speeding
+ambience up is a bug and a 0.4× 40s news marquee is unreadable; **RESPONSE** (three sub-250 ms
+hover/state transitions) does not, because that is interface responsiveness, not cinema. Both
+non-scaling categories are killed outright at Instant by the `:root[data-motion='instant'] *`
+switch — which is why that switch survives the introduction of the knob.
+
+*A JS timer that holds a STATE MARK is not a beat, and must not take the knob.* Found the hard way
+during T-252's own gate: scaling the ship-diagram's `.comp-row.focused` window collapsed it to zero
+at Instant, and that class carries a plain `border-color` marking WHICH bench row a hull click
+landed on as well as the `comp-focus` bloom. `e2e/ship-diagram.spec.ts` (which runs on the Instant
+rail) caught it. The bloom inside the window is tokenised and trims; the window itself is 700 ms at
+every tier. The general form: **before scaling a timer, ask whether anything it gates is
+information rather than motion** — if so, scale the animation and leave the window alone.
+
+*Instant is the synchronous rail and loses no information.* Sound is deliberately untouched (§8:
+"Instant… sound still plays"; `sound.ts` / `music.ts` have never had motion gating). A 0 s beat
+with `forwards`/`both` still applies its END state, and no beat's base rule sets `opacity: 0`, so
+suppression cannot hide content — asserted on the live onboarding card at every tier.
+
+*The OS query outranks the setting.* `prefers-reduced-motion: reduce` forces Instant whatever the
+player chose (WCAG 2.3.3), which is also exactly the pre-T-252 `setting || media` semantics. The
+stored setting is untouched by the override, so clearing the OS preference restores the tier.
+
+*Completeness is mechanical.* `src/__tests__/motion-tiers.test.ts` brace-walks `theme.css` and
+requires every animation/transition declaration to be `none`, a `--dur-*`/`--del-*` beat, or an
+explicitly allowlisted AMBIENT/RESPONSE exception carrying a written justification — so **a new
+beat that hard-codes a duration fails the suite** rather than shipping as a cinematic-only beat.
+`e2e/motion-tiers.spec.ts` then resolves every token through the live browser at each tier (chosen
+by clicking the Settings segment, never by writing localStorage) and asserts Snappy is strictly
+shorter than Cinematic — the negative control against a relabelled Cinematic.
+
+*Storage, not saves.* The tier persists at `sq.motion-tier` via the `KeyValueStore` seam, exactly
+like `sq.fx` and `sq.text-size`. It is never in the save envelope: **`CURRENT_SAVE_VERSION` does
+not move and no migration is owed.** The retired `sq.reduced-motion` binary is honoured read-only
+(`'on'` → Instant, so an opted-out player is never promoted back to cinematic by an upgrade) and
+deleted the first time a tier is chosen.
 
 ---
 

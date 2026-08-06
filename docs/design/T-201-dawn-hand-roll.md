@@ -159,15 +159,39 @@ for that. Conversely, a ceremony that is **blocking and not on the reduced rail*
 design is therefore already the cheap one, and the cost only appears if the reduced rail is
 skipped — which `tabletop-ui` §2 forbids anyway.
 
-### 3.6 Motion tiers — SpacerQuest ships two, the house rule wants three
+### 3.6 Motion tiers — RESOLVED by T-252 (2026-08-06): SpacerQuest ships three
+
+**This section described a divergence that no longer exists.** It is kept, rewritten, because a
+dawn-hand beat still has to be authored against the model below.
 
 `tabletop-ui` §8 (owner correction, 2026-07-18) makes **Cinematic / Snappy / Instant** a standing
-rule: *"Never ship cinematic-only."* SpacerQuest currently ships a **binary**: the `reducedMotion`
-setting OR'd with the OS query at `App.tsx:931`, driving `data-motion` (`:933`), with two CSS rails
-— the `@media (prefers-reduced-motion: reduce)` block at `theme.css:2567–2595` and the blanket
-`:root[data-motion='reduced'] *` kill-switch at `theme.css:2601–2605`.
+rule: *"Never ship cinematic-only."* When this document was written SpacerQuest shipped a
+**binary** — a `reducedMotion` setting OR'd with the OS query, driving `data-motion` with the two
+values `full` / `reduced`. **T-252 implemented the third tier and retrofitted every existing beat.**
+The pins in the original text (`App.tsx:931`/`:933`, `theme.css:2567–2595`/`2601–2605`) were already
+stale when T-252 opened and are now gone entirely; the model as shipped is:
 
-That divergence exists today and is not T-201's to fix silently. It is named as **Q4**.
+- **One knob.** `--motion-scale` is `1` / `0.4` / `0` per `data-motion` value
+  (`packages/ui/src/theme.css`, the token block under "THE MOTION CONTRACT"), mirrored by
+  `MOTION_SCALE` in `packages/ui/src/motion.ts`. §8's own constraint: "the tiers are one knob, not
+  three implementations."
+- **Every beat duration is a token.** `animation: sweep var(--dur-sweep) …`, where
+  `--dur-sweep: calc(1100ms * var(--motion-scale))`. **A NEW BEAT MUST ADD ITS `--dur-*` TOKEN TO
+  THAT BLOCK** — `src/__tests__/motion-tiers.test.ts` brace-walks the stylesheet and fails on any
+  animation/transition carrying a literal time that is not an explicitly allowlisted ambient loop or
+  hover response. A dawn-hand ceremony that hard-codes `620ms` will not reach the gate.
+- **JS timing takes the same knob**: `scaleMs(ms, tier)` for timers,
+  `tl.timeScale(1 / MOTION_SCALE[tier])` for a GSAP timeline, `isInstant(tier)` for the
+  synchronous rail (never create the timeline; never start the interval).
+- **`data-motion` reads `cinematic | snappy | instant`.** `full` / `reduced` are retired and their
+  absence is asserted. The blanket `animation: none !important` kill-switch is scoped to `instant`.
+- **The OS query forces Instant** regardless of the setting (WCAG 2.3.3) — the same semantics the
+  old `setting || media` had.
+- **Ambient loops and sub-250 ms hover responses deliberately do NOT scale**; they are killed at
+  Instant only. Classify a new dawn-hand motion as BEAT unless it is genuinely one of those.
+
+The ruling and its reasoning are recorded as **UI-31** in `docs/UI-PRESENTATION-DECISIONS.md` §4,
+which is where a future UI task will read it. **Q4 is RULED**; see §7.
 
 ### 3.7 "Five dice" is not a constant
 
@@ -419,7 +443,8 @@ make the first two expensive for no gain, and the third would break the e2e's `d
 
 ## 7 · Open questions — named, not decided
 
-These are the author's to rule on. None of them is resolved above.
+These are the author's to rule on. **Eight of the nine remain open; Q4 was ruled by T-252
+(2026-08-06) and is marked as such below rather than deleted, so the reasoning stays readable.**
 
 - **Q1 · Day-1 ordering.** Opening marker, dawn roll, walkthrough card and (soon) T-194's coach all
   want the first thirty seconds of a career. Marker → roll → walkthrough is proposed, not decided.
@@ -431,10 +456,15 @@ These are the author's to rule on. None of them is resolved above.
 - **Q3 · The stand-down set.** Proposed: `succession` or `combatAftermath`. Should a folded Liar's
   Dice hand, or a `patrolScan`, join it? And is stand-down right at all, versus letting the
   successor's first hand *be* the beat that says the career continues?
-- **Q4 · Cinematic / Snappy / Instant.** SpacerQuest ships a binary (§3.6). Does the third tier land
-  in T-201's implementation task, or as its own task that retrofits every existing beat
-  (`.sweep`, `om-*`, `ld-settle`, the Liar's Dice timeline, `.die.bloom`)? Recommending the latter,
-  but it is the owner's call and T-201 should not ship a cinematic-only beat while it is unanswered.
+- **Q4 · Cinematic / Snappy / Instant — RULED (T-252, 2026-08-06). No longer open.** The answer was
+  the recommended one: **its own task, retrofitting every existing beat.** T-252 shipped the three
+  tiers (setting, `data-motion` vocabulary, CSS rails, OS-query mapping) and retrofitted all of
+  `.sweep`, `om-*`, `ld-settle`, the Liar's Dice GSAP timeline and `.die.bloom` — plus the eleven
+  other beats a mechanical scan turned up that this list had missed, which is precisely why the
+  accept clause demanded a scan rather than an inspection. Ruling and reasoning: **UI-31** in
+  `docs/UI-PRESENTATION-DECISIONS.md` §4; the shipped model is restated at §3.6 above. The warning
+  this bullet carried — "T-201 should not ship a cinematic-only beat while it is unanswered" — is
+  discharged: T-251 is sequenced after T-252 and now has a Snappy rail to build against.
 - **Q5 · Do the floor and the re-roll charges get their own beat?** A die visibly landing below the
   floor and being *lifted* is the best game-feel idea in this document and the biggest scope risk in
   it. `rollDawnHand` applies the floor inside the engine (`day.ts:188`), so the pre-floor face is

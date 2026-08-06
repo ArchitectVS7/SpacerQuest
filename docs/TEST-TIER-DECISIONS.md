@@ -199,8 +199,9 @@ real `pointerdown` that `sound.ts`'s capture-phase listener credits as the obser
 **TT-17 — Explicitly rejected for the dawn beat, with the cost MEASURED rather than guessed.**
 (T-201.) A blocking beat; a beat that skips the reduced rail; duplicating the dice into throwaway
 DOM. `grep -rl "end-day" packages/ui/e2e` is 21 files / 56 occurrences, but 18 already call
-`page.emulateMedia({ reducedMotion: 'reduce' })` — so a beat gated on the same `reduced` predicate
-as the existing scramble and `.sweep` costs only 8 presses across `smoke.spec.ts`,
+`page.emulateMedia({ reducedMotion: 'reduce' })` — so a beat gated on the same predicate as the
+existing scramble and `.sweep` (T-252 renamed it: `isInstant(tier)`, which the OS preference still
+forces) costs only 8 presses across `smoke.spec.ts`,
 `sound-audible.spec.ts` and `long-haul-invariants.spec.ts`, well inside
 `TEST_TIMEOUT_MS = 60_000`. The off-rail version would cost `duration × 30` per long-haul seed,
 need all 21 files rewritten, and break the e2e `die` locators.

@@ -16,10 +16,12 @@ import {
 // can only fake with hand-tuned per-element delays. Everything static — the cubes,
 // the pips, the glow, the shroud — stays CSS.
 //
-// THE INSTANT RAIL IS LOAD-BEARING: under reduced motion the timeline is NEVER
+// THE INSTANT RAIL IS LOAD-BEARING: at the Instant tier the timeline is NEVER
 // CREATED (not "created and skipped"), so the settled DOM exists on the very next
 // render. That is what keeps the e2e honest and the tabletop-ui skill's
 // "every animation must also run in a synchronous instant mode" satisfied.
+// T-252 · SNAPPY rides the same timeline at `timeScale(1 / MOTION_SCALE[tier])`,
+// so the third tier costs one line rather than a second implementation.
 import { gsap } from 'gsap';
 import {
   CARGO_TYPES,
@@ -87,7 +89,7 @@ import {
   deleteSlot,
   exportCareer,
   importCareer,
-  setReducedMotion,
+  setMotionTier,
   setTextSize,
   // T-141 · The opt-in playtest log's player-facing controls (spec §3/§5).
   setPlaytestLogging,
@@ -278,6 +280,18 @@ import { BUILD_VERSION } from './version';
 // which is the only place a player can read them — and a licence notice that
 // never reaches the player is not an attribution that shipped.
 import { CREDITS, creditDetail, creditLine } from './credits';
+// T-252 · The three motion tiers (`tabletop-ui` §8). The vocabulary, the one
+// knob and the OS-query mapping all live in `motion.ts` — this file never
+// writes a tier string or a scale factor of its own.
+import {
+  MOTION_SCALE,
+  MOTION_TIERS,
+  MOTION_TIER_LABELS,
+  isInstant,
+  resolveMotionTier,
+  scaleMs,
+  type MotionTier,
+} from './motion';
 // T-141 · The two settled strings the Playtest row must show. Imported rather
 // than re-typed: `docs/PLAYTEST-TELEMETRY_SPEC.md` §3 settles the disclosure
 // wording, and a golden test pins it — a literal copy here could drift from the
@@ -296,8 +310,11 @@ function useCockpit(): CockpitState {
   return useSyncExternalStore(subscribe, getSnapshot);
 }
 
-// The OS-level preference only. The user setting is layered on top of this in
-// App() (`reduced = setting || media`); either one suppresses motion.
+// The OS-level preference only. T-252 · it is no longer OR'd with a boolean —
+// it feeds `resolveMotionTier(setting, os)`, which FORCES the Instant tier when
+// the OS asks for reduced motion (WCAG 2.3.3) and otherwise lets the player's
+// tier stand. That preserves the old `setting || media` semantics exactly:
+// the pre-T-252 "reduced" IS the new Instant.
 const systemPrefersReducedMotion = (): boolean =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -397,16 +414,25 @@ function SettingsPanel({ state, onClose }: { state: CockpitState; onClose: () =>
             {state.fx ? 'On' : 'Off'}
           </button>
         </div>
+        {/* T-252 · `tabletop-ui` §8 — animation intensity is a THREE-tier player
+            menu option, never a cinematic-only build. Structurally the same
+            segmented control as Text size below it. The OS reduced-motion
+            preference still overrides whatever is chosen here. */}
         <div className="set-row">
-          <span className="set-label">Reduced motion</span>
-          <button
-            className={state.reducedMotion ? 'set-toggle on' : 'set-toggle'}
-            data-testid="set-reduced-motion"
-            aria-pressed={state.reducedMotion}
-            onClick={() => setReducedMotion(!state.reducedMotion)}
-          >
-            {state.reducedMotion ? 'On' : 'Off'}
-          </button>
+          <span className="set-label">Motion</span>
+          <div className="set-seg" data-testid="set-motion">
+            {MOTION_TIERS.map((tier) => (
+              <button
+                key={tier}
+                className={state.motionTier === tier ? 'set-seg-btn on' : 'set-seg-btn'}
+                data-testid={`set-motion-${tier}`}
+                aria-pressed={state.motionTier === tier}
+                onClick={() => setMotionTier(tier)}
+              >
+                {MOTION_TIER_LABELS[tier]}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="set-row">
           <span className="set-label">Text size</span>
@@ -951,13 +977,16 @@ export function App() {
     document.documentElement.setAttribute('data-fx', s.fx ? 'on' : 'off');
   }, [s.fx]);
 
-  // Reduced motion is the user setting OR the OS preference — either suppresses
-  // motion. The attribute drives the CSS kill-switch; the JS scramble/sweep are
-  // gated on `reduced` directly (below / in useDiceRoll).
-  const reduced = s.reducedMotion || systemPrefersReducedMotion();
+  // T-252 · The ACTIVE tier: the player's setting unless the OS asks for reduced
+  // motion, which forces Instant. The attribute drives `--motion-scale` (every
+  // CSS beat duration is a `calc()` off it) and, at Instant only, the blanket
+  // kill-switch that also reaches the deliberately-unscaled ambient loops and
+  // hover transitions. The JS scramble/sweep/timers are gated on `isInstant`
+  // and scaled by `scaleMs` (below / in `useDiceRoll` / in `LiarsDiceScene`).
+  const tier = resolveMotionTier(s.motionTier, systemPrefersReducedMotion());
   useEffect(() => {
-    document.documentElement.setAttribute('data-motion', reduced ? 'reduced' : 'full');
-  }, [reduced]);
+    document.documentElement.setAttribute('data-motion', tier);
+  }, [tier]);
   useEffect(() => {
     document.documentElement.setAttribute('data-text-size', s.textSize);
   }, [s.textSize]);
@@ -1011,7 +1040,7 @@ export function App() {
     return (
       <div className="tube">
         <EffectsLayer />
-        {!reduced && <div className="sweep" key={s.bootKey} aria-hidden="true" />}
+        {!isInstant(tier) && <div className="sweep" key={s.bootKey} aria-hidden="true" />}
         <div className="screen">
           <DemoEndCard view={demoEnd} seed={s.seed} notice={s.notice} />
         </div>
@@ -1027,7 +1056,7 @@ export function App() {
     return (
       <div className="tube">
         <EffectsLayer />
-        {!reduced && <div className="sweep" key={s.bootKey} aria-hidden="true" />}
+        {!isInstant(tier) && <div className="sweep" key={s.bootKey} aria-hidden="true" />}
         <div className="screen">
           <EndingScreen view={ending} seed={s.seed} />
         </div>
@@ -1038,7 +1067,7 @@ export function App() {
   return (
     <div className="tube">
       <EffectsLayer />
-      {!reduced && <div className="sweep" key={s.bootKey} aria-hidden="true" />}
+      {!isInstant(tier) && <div className="sweep" key={s.bootKey} aria-hidden="true" />}
 
       <div className="screen">
         {/* T-1605a · The corrupt-save notice, first child of the screen so it is
@@ -2564,7 +2593,7 @@ function HangoutPanel({
             beats={state.dareBeats}
             armed={armed}
             peekPreview={peekCheckPreview(game, state.selectedDie)}
-            reduced={state.reducedMotion || systemPrefersReducedMotion()}
+            tier={resolveMotionTier(state.motionTier, systemPrefersReducedMotion())}
             lastCheck={state.lastCheck}
             lastCheckKey={state.lastCheckKey}
           />
@@ -2854,7 +2883,7 @@ function LiarsDiceScene({
   beats,
   armed,
   peekPreview,
-  reduced,
+  tier,
   lastCheck,
   lastCheckKey,
 }: {
@@ -2867,7 +2896,8 @@ function LiarsDiceScene({
   /** T-194 · The GUILE-vs-peek-DC read for the armed die, resolved by the panel
    *  above (which holds `game`) so this scene keeps its store-free shape. */
   peekPreview: CheckPreview;
-  reduced: boolean;
+  /** T-252 · The ACTIVE motion tier (already resolved against the OS query). */
+  tier: MotionTier;
   lastCheck: CockpitState['lastCheck'];
   lastCheckKey: number;
 }) {
@@ -2924,19 +2954,22 @@ function LiarsDiceScene({
   const beatKey = beats.map((b) => b.type).join('|') + `:${beats.length}`;
   useEffect(() => {
     const dealerAnswered = beats.some((b) => b.type === 'DareBidPlaced' && b.actor === 'dealer');
-    if (!dealerAnswered || reduced) {
+    if (!dealerAnswered || isInstant(tier)) {
       // THE INSTANT RAIL: nothing is staged, the queue drains on this very render.
       setDealerBeat(false);
       clearDareBeats();
       return;
     }
     setDealerBeat(true);
-    const t = setTimeout(() => {
-      setDealerBeat(false);
-      clearDareBeats();
-    }, 620);
+    const t = setTimeout(
+      () => {
+        setDealerBeat(false);
+        clearDareBeats();
+      },
+      scaleMs(620, tier),
+    );
     return () => clearTimeout(t);
-  }, [beatKey, reduced]);
+  }, [beatKey, tier]);
 
   // The Hangout pane is a long scroll and the reveal is its dramatic moment; a
   // verdict that lands below the fold is a verdict the player does not see. Bring
@@ -2947,15 +2980,20 @@ function LiarsDiceScene({
   }, [reveal, view === null]);
 
   // ---- the reveal timeline (the one job the animation library has) ----
-  // Cinematic: dim the table, lift the four shrouds in stagger, land the verdict.
-  // Reduced: THE TIMELINE IS NEVER CREATED, so the settled DOM is final on this
+  // CINEMATIC: dim the table, lift the four shrouds in stagger, land the verdict.
+  // SNAPPY: the identical staging at `1 / MOTION_SCALE` speed — T-252's one-knob
+  // retrofit of the whole timeline, so not one duration literal below is a tier
+  // decision. `timeScale` is the GSAP equivalent of `--motion-scale`.
+  // INSTANT: THE TIMELINE IS NEVER CREATED, so the settled DOM is final on this
   // render — which is what makes the e2e non-flaky and the UI never input-blocked.
+  // (Never a `timeScale(Infinity)`: a zero-duration timeline still costs a frame.)
   useLayoutEffect(() => {
     const root = sceneRef.current;
-    if (!root || !reveal || reduced) return;
+    if (!root || !reveal || isInstant(tier)) return;
     const cubes = root.querySelectorAll('.ld-dealer .d6-mount');
     const verdict = root.querySelector('.ld-verdict');
     const tl = gsap.timeline();
+    tl.timeScale(1 / MOTION_SCALE[tier]);
     timelineRef.current = tl;
     tl.fromTo(root, { '--ld-dim': 0 }, { '--ld-dim': 1, duration: 0.28, ease: 'power2.out' });
     tl.from(
@@ -2969,7 +3007,7 @@ function LiarsDiceScene({
       tl.kill();
       timelineRef.current = null;
     };
-  }, [reveal, reduced]);
+  }, [reveal, tier]);
 
   const canMove = (m: DareMoveKind) => legal.includes(m);
   // T-146 · the engine's lattice, asked with the HAND's frozen ceiling. Still no
@@ -3068,7 +3106,7 @@ function LiarsDiceScene({
                 {...(shown === null ? { 'data-hidden': '1' } : { 'data-face': String(shown) })}
                 {...(peeked ? { 'data-peeked': '1' } : {})}
               >
-                {shown === null ? <DealerShroud /> : <D6 value={shown} spin={!reduced} />}
+                {shown === null ? <DealerShroud /> : <D6 value={shown} spin={!isInstant(tier)} />}
               </span>
             );
           })}
@@ -3121,7 +3159,7 @@ function LiarsDiceScene({
               data-face={String(v)}
               aria-label={`your die ${i + 1}, showing ${v}`}
             >
-              <D6 value={v} spin={!reduced} />
+              <D6 value={v} spin={!isInstant(tier)} />
             </span>
           ))}
         </div>
@@ -4527,7 +4565,20 @@ function ShipPane({ state }: { state: CockpitState }) {
   // T-189 · The diagram is the readout and the bench below is the controls, so a
   // click on a hull region has to LAND somewhere: it scrolls that system's bench
   // row into view and flashes it. Pure presentation — no engine call, no state
-  // shape, and the flash is gated behind `prefers-reduced-motion` in CSS.
+  // shape.
+  //
+  // T-252 · THIS TIMER DELIBERATELY DOES NOT TAKE THE MOTION KNOB, and the
+  // distinction is the whole BEAT-vs-state point. `.comp-row.focused` carries TWO
+  // things: the `comp-focus` bloom (a BEAT — tokenised as `--dur-comp-focus`, and
+  // dropped entirely at Instant) and a plain `border-color: var(--ember)` that
+  // MARKS which row the click landed on. The mark is information, not decoration
+  // — theme.css says so in as many words ("still marks the row, only the bloom is
+  // dropped") — so scaling this window would delete the answer to "where did I
+  // just land?" at Snappy and delete it outright at Instant. That is the
+  // `tabletop-ui` §8 corrections-log failure "never regress information", and it
+  // was caught by `e2e/ship-diagram.spec.ts` (which runs on the Instant rail)
+  // rather than argued about. The READ window is 700ms at every tier; only the
+  // bloom inside it trims.
   const [focusedComponent, setFocusedComponent] = useState<ShipComponentId | null>(null);
   const benchRef = useRef<HTMLDivElement | null>(null);
   const podsBlockRef = useRef<HTMLDivElement | null>(null);
@@ -6086,16 +6137,19 @@ function HandDock({ state }: { state: CockpitState }) {
   // engine dealt (5 base, up to 7 with a First Officer aboard).
   const mods = dawnHandModifiers(state.game);
   const canReroll = mods.rerollsRemaining > 0;
-  // The dawn scramble is JS-driven, so gate it on the setting OR the OS media
-  // query (the CSS kill-switch only reaches CSS animations).
-  const reduced = state.reducedMotion || systemPrefersReducedMotion();
-  const display = useDiceRoll(dice, state.bootKey, reduced);
+  // The dawn scramble is JS-driven, so it resolves the tier itself (the CSS
+  // `--motion-scale` knob only reaches CSS animations).
+  const tier = resolveMotionTier(state.motionTier, systemPrefersReducedMotion());
+  const display = useDiceRoll(dice, state.bootKey, tier);
 
+  // The `.die.bloom` beat is `--dur-bloom` (700ms) in CSS; this timer only strips
+  // the class afterwards, so it scales on the SAME knob and lands one tick later
+  // at Instant — where the CSS animation is 0s and the class is already inert.
   useEffect(() => {
     if (state.bloomDie === null) return;
-    const t = setTimeout(clearBloom, 750);
+    const t = setTimeout(clearBloom, scaleMs(750, tier));
     return () => clearTimeout(t);
-  }, [state.bloomDie]);
+  }, [state.bloomDie, tier]);
 
   const handSpent = dice.length > 0 && remaining === 0;
   // T-136 · A live hand of Liar's Dice outranks every other hint: `endDay`'s dusk
@@ -6207,12 +6261,17 @@ function HandDock({ state }: { state: CockpitState }) {
   );
 }
 
-// Dawn roll: numbers scramble briefly, then settle. Reduced motion → settle now.
-function useDiceRoll(finalDice: number[], bootKey: number, reduced: boolean): number[] {
+// Dawn roll: numbers scramble briefly, then settle.
+// T-252 · ONE KNOB, not two. The tick BUDGET (`ticks < 8 + i * 3`, `ticks > 20`)
+// is the beat's SHAPE — the stagger that makes the dice settle left-to-right —
+// and scaling it as well would be a second knob and would collapse the stagger at
+// Snappy. Only the interval scales, so Snappy is ~0.4x the wall clock with the
+// identical choreography. Instant → settle now, synchronously, no interval.
+function useDiceRoll(finalDice: number[], bootKey: number, tier: MotionTier): number[] {
   const [display, setDisplay] = useState<number[]>(finalDice);
   const seedRef = useRef(0);
   useEffect(() => {
-    if (reduced) {
+    if (isInstant(tier)) {
       setDisplay(finalDice);
       return;
     }
@@ -6222,14 +6281,17 @@ function useDiceRoll(finalDice: number[], bootKey: number, reduced: boolean): nu
       seedRef.current = (seedRef.current * 1664525 + 1013904223) & 0x7fffffff;
       return 1 + (seedRef.current % 20);
     };
-    const id = setInterval(() => {
-      ticks++;
-      setDisplay(finalDice.map((f, i) => (ticks < 8 + i * 3 ? scramble() : f)));
-      if (ticks > 20) {
-        clearInterval(id);
-        setDisplay(finalDice);
-      }
-    }, 55);
+    const id = setInterval(
+      () => {
+        ticks++;
+        setDisplay(finalDice.map((f, i) => (ticks < 8 + i * 3 ? scramble() : f)));
+        if (ticks > 20) {
+          clearInterval(id);
+          setDisplay(finalDice);
+        }
+      },
+      scaleMs(55, tier),
+    );
     return () => clearInterval(id);
     // Intentionally keyed on bootKey only: a new day re-runs the roll; changing
     // dice values mid-day (spent flags) must not restart the scramble.

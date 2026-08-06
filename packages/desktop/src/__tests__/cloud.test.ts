@@ -160,7 +160,8 @@ describe('T-1702b · isCloudCarried — the allowlist, and the exclusions that m
       'sq.fx',
       'sq.vol.master',
       'sq.audio.muted',
-      'sq.reduced-motion',
+      'sq.motion-tier', // T-252 · the three-tier motion setting
+      'sq.reduced-motion', // T-252 · its retired predecessor, still never carried
       'sq.text-size',
       'sq.onboarding.v1',
       'sq.slot.4.v1', // there are three slots

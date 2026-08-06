@@ -88,6 +88,7 @@ import {
   serializeOpeningMarker,
   type OpeningMarkerRecord,
 } from './opening';
+import { motionTierFromStorage, type MotionTier } from './motion';
 
 /**
  * React to an action's emitted event stream — the store's ONE presentation-side
@@ -193,7 +194,11 @@ const SLOT_META_KEY = (n: number): string => `sq.slot.${n}.meta`; // display JSO
 // crash screen's escape hatch (`quarantineAndClearAutosave`), so a save that
 // faults on every boot can be set aside without being destroyed.
 const CORRUPT_SAVE_KEY = `${SAVE_KEY}.corrupt`; // 'sq.save.v1.corrupt'
+// T-252 · LEGACY, READ-ONLY. The pre-three-tier binary. `readMotionTier` still
+// honours it so a player who set "Reduced motion: On" boots into Instant, and
+// `setMotionTier` DELETES it so it can never later contradict the new key.
 const REDUCED_MOTION_KEY = 'sq.reduced-motion'; // 'on' | 'off'
+const MOTION_TIER_KEY = 'sq.motion-tier'; // 'cinematic' | 'snappy' | 'instant'
 const TEXT_SIZE_KEY = 'sq.text-size'; // 'small' | 'normal' | 'large'
 const SLOTS = [1, 2, 3] as const;
 
@@ -413,9 +418,12 @@ export interface CockpitState {
    * seed rides the envelope, not the pure engine state.
    */
   seed: number;
-  /** User reduced-motion override (persisted). Layered ON TOP of the media
-   *  query — either the setting OR the OS preference suppresses motion. */
-  reducedMotion: boolean;
+  /** T-252 · The player's animation-intensity tier (persisted, `tabletop-ui` §8).
+   *  Layered UNDER the OS media query: `resolveMotionTier` in `motion.ts` forces
+   *  Instant whenever `prefers-reduced-motion: reduce` is set, so this chooses
+   *  among the tiers only when the OS has expressed no preference. Client
+   *  presentation state, NOT `GameState` — no save version moves. */
+  motionTier: MotionTier;
   /** User text-size preference (persisted). Drives a zoom on `.tube` in CSS. */
   textSize: TextSize;
   /** Cached slot summaries so React re-renders when a slot is written/deleted. */
@@ -488,7 +496,7 @@ export interface CockpitState {
    * T-141 · Whether the opt-in playtest log is capturing (spec §3).
    *
    * OFF BY DEFAULT, persisted under `sq.playtest.logging` through the SAME
-   * `storage.ts` `KeyValueStore` `fx` / `reducedMotion` / `textSize` use. Like
+   * `storage.ts` `KeyValueStore` `fx` / `motionTier` / `textSize` use. Like
    * every one of those, this is CLIENT presentation state, NOT `GameState`: a
    * JSON round-trip of game state is unaffected, `CURRENT_SAVE_VERSION` does not
    * move and NO save migration is owed. Spec §3 requires exactly that — the
@@ -557,7 +565,7 @@ const listeners = new Set<() => void>();
 // T-1605a · `init()` runs at MODULE SCOPE, outside React, so an error boundary
 // could never catch a throw from here — the guard has to live in the readers. It
 // deliberately has no top-level try/catch: every storage read it performs
-// (`readFx` / `readSaveResult` / `readOnboarding` / `readReducedMotion` /
+// (`readFx` / `readSaveResult` / `readOnboarding` / `readMotionTier` /
 // `readTextSize` / `readSlots`) is individually guarded and total over any input,
 // so module init cannot throw on any save. Considered and closed, not forgotten.
 function init(): CockpitState {
@@ -621,7 +629,7 @@ function init(): CockpitState {
     walkthrough,
     openingMarker,
     seed,
-    reducedMotion: readReducedMotion(),
+    motionTier: readMotionTier(),
     textSize: readTextSize(),
     saves: readSlots(),
     recovery,
@@ -1070,11 +1078,20 @@ function readAutosaveSeed(): number {
     return DEFAULT_SEED;
   }
 }
-function readReducedMotion(): boolean {
+/**
+ * T-252 · Total over any input, like every reader in this block. The three-step
+ * precedence (new key > legacy binary > Cinematic) is `motion.ts`'s
+ * {@link motionTierFromStorage} — a RULE, stated once, unit-tested there — so
+ * this reader only performs the two guarded reads.
+ */
+function readMotionTier(): MotionTier {
   try {
-    return storage.getItem(REDUCED_MOTION_KEY) === 'on';
+    return motionTierFromStorage(
+      storage.getItem(MOTION_TIER_KEY),
+      storage.getItem(REDUCED_MOTION_KEY),
+    );
   } catch {
-    return false;
+    return 'cinematic';
   }
 }
 function readTextSize(): TextSize {
@@ -2664,14 +2681,21 @@ export function deleteSlot(n: number): void {
   set({ saves: readSlots(), notice: `Slot ${n} deleted.` });
 }
 
-/** User reduced-motion override (persisted). Layered over the OS media query. */
-export function setReducedMotion(v: boolean): void {
+/**
+ * T-252 · The player's animation-intensity tier (persisted). Layered under the OS
+ * media query — see `motion.ts` `resolveMotionTier`. The legacy binary key is
+ * REMOVED in the same try: leaving it would let a stale `sq.reduced-motion: on`
+ * outlive a later "Cinematic" choice in `readMotionTier`'s fallback chain if the
+ * new key were ever cleared independently.
+ */
+export function setMotionTier(tier: MotionTier): void {
   try {
-    storage.setItem(REDUCED_MOTION_KEY, v ? 'on' : 'off');
+    storage.setItem(MOTION_TIER_KEY, tier);
+    storage.removeItem(REDUCED_MOTION_KEY);
   } catch {
     /* ignore */
   }
-  set({ reducedMotion: v });
+  set({ motionTier: tier });
 }
 
 /** User text-size preference (persisted). */

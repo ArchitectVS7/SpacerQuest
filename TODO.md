@@ -15,6 +15,27 @@ item, put it in the section where comparable work already lives.
 
 ## Defects — filed, not fixed
 
+- **FLAKE · `e2e/visual-identity.spec.ts:269` ("the wire cap reserves its own space and never
+  overlaps the ticker") fails intermittently on the FIRST geometry assertion**
+  (`capBox.x + capBox.width <= trackBox.x + 1`, spec line 285). Measured by T-252 (2026-08-06):
+  **1 failure in 4 repeats on the working tree, and 1 flaky in 6 repeats on a STASHED baseline**
+  — i.e. it reproduces with T-252's diff removed, so it is pre-existing and motion-unrelated. It
+  passes on Playwright's retry every time, so the suite reports it as `flaky`, not `failed`, and a
+  normal `npx playwright test` run stays green (207 passed, 1 flaky). Signature: the two
+  `boundingBox()` reads are taken immediately after `expect(cap).toBeVisible()`, with no wait for
+  the wire's own layout to settle after the ticker text mounts — a measurement race, not a
+  geometry regression (the same assertion is deterministic once the row has laid out). Likely fix:
+  await a stable box (`toHaveBoundingBox`-style poll, or wait for `.wire-track` to report non-zero
+  width twice in a row) before measuring, rather than widening the `+ 1` tolerance — **never widen
+  the tolerance, that is the assertion**.
+  *Deferral analysis (Bug Discovery Policy rule 3):* (a) OUT OF SCOPE for T-252 — it is a
+  measurement race in the T-217 wire-cap geometry spec, proven to reproduce without T-252's diff,
+  and T-252 touches neither the wire nor any layout rule (`.ticker`'s only motion is the AMBIENT
+  `tick` loop, deliberately unscaled and identical at every tier). (b) NO DEBT ROLL-UP — nothing in
+  T-252 or T-251 builds on or routes around wire geometry, and no test was adjusted to accommodate
+  it; the fix is local to one spec's measurement discipline and will not get harder for having
+  waited. [found: T-252 gate run]
+
 - **Three NPC/Hangout defects ride the still-unruled cast question**, all re-measured at T-150
   (2026-08-01) and all three still open: (1) the `executeSocialize` faucet mints
   **+3.44cr/captain-day = 0.22%** of terminal NPC wealth against no counterparty — deferred by
@@ -595,16 +616,20 @@ item, put it in the section where comparable work already lives.
   failing precedent is run 31011441324, commit `aeadf5b7`) and quote the run verbatim.
   [harvested: T-200/t200-packaged-ci-evidence]
 
-- **Nine open questions are named-not-decided in `docs/design/T-201-dawn-hand-roll.md` §7** and must
+- **Eight open questions are named-not-decided in `docs/design/T-201-dawn-hand-roll.md` §7** and must
   be ruled before or inside the implementation task: **Q1** day-1 ordering (marker → roll →
   walkthrough vs. suppress the roll on day 1); **Q2** whether the beat fires on save-load and career
   import (`bootKey` is bumped by `newGame` `store.ts:1287`, `endDay` `:2389`, `loadSlot` `:2502`,
   career import `:2634`); **Q3** the stand-down set (`succession` / `combatAftermath`, and whether a
-  folded Liar's Dice hand or a `patrolScan` joins it); **Q4** the third motion tier; **Q5** the
+  folded Liar's Dice hand or a `patrolScan` joins it); **Q5** the
   floor/re-roll beat; **Q6** whether the `.sweep` boot wipe survives the day turn; **Q7** the "DAWN
   HAND" label copy (owner placeholder, explicitly TBD — the dock already reads `Dawn Hand … DAY n`
   at `App.tsx:5691–5704`); **Q8** whether sound is in scope (`sound.play('dawn')` fires unstaged
   after the state commit, `store.ts:2404`); **Q9** whether the hex tiles tumble in 3D.
+  **Q4 (the third motion tier) was RULED and SHIPPED by T-252 (2026-08-06)** — Cinematic / Snappy /
+  Instant on one `--motion-scale` knob, every existing beat retrofitted, completeness enforced by a
+  scan test. Reasoning: **UI-31** in `docs/UI-PRESENTATION-DECISIONS.md` §4. A dawn-hand beat MUST
+  take a `--dur-*` token off that knob or `packages/ui/src/__tests__/motion-tiers.test.ts` fails.
   [harvested: T-201/dawn-roll-open-questions]
 
 - **The pre-floor die face is not observable by the UI (Q5 / §7).** The crew floor is applied INSIDE

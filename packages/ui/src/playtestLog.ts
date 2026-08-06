@@ -163,8 +163,9 @@ export function playtestSessionId(): string {
  *
  * TOTAL over a blocked or unreadable store: a private-mode browser that throws
  * on `getItem` reads as OFF, which is the safe answer for a consent flag. This
- * mirrors `store.ts`'s `readReducedMotion` exactly — a settings read must never
- * cost a player their turn.
+ * mirrors `store.ts`'s `readMotionTier` exactly (T-252 renamed it from
+ * `readReducedMotion` when the binary became three tiers) — a settings read must
+ * never cost a player their turn.
  *
  * The default is spec §3's OFF and it is discharged by the READ: only an
  * explicit `'on'` enables capture, so an absent key — a virgin profile — is off

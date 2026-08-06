@@ -248,14 +248,15 @@ test('motion is railed in BOTH directions, not merely declared', async ({ page }
 
   // Without the preference the same elements carry real keyframes. A RELOAD is
   // required, not just `emulateMedia`: the cockpit reads the OS preference once
-  // per render and stamps `data-motion` on `<html>` (App.tsx, T-312), and that
-  // attribute is a blanket `animation: none !important` kill-switch. Asserting
+  // per render and stamps `data-motion` on `<html>` (App.tsx, T-312; T-252 made
+  // it a three-value tier), and at `instant` that attribute is a blanket
+  // `animation: none !important` kill-switch. Asserting
   // without the reload would be asserting against a stale kill-switch, not
   // against the media query — so the reload is part of the claim.
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.reload();
   await expect(page.getByTestId('trade-pane')).toBeVisible();
-  await expect(page.locator('html')).toHaveAttribute('data-motion', 'full');
+  await expect(page.locator('html')).toHaveAttribute('data-motion', 'cinematic');
   expect((await styles(sweep)).animationName).toBe('tp-charge');
   expect((await styles(page.getByTestId('fuel-hold'))).animationName).toBe('tp-tick');
   expect(

@@ -571,12 +571,17 @@ collapsible container, and a test stows the container and re-asserts the readout
 ### L-061 · A reduced-motion assertion without a reload checks a stale kill-switch
 T-190 and T-191 both wired animations behind `@media not (prefers-reduced-motion: reduce)`. The
 reduced-motion e2e initially proved nothing: the cockpit reads the OS preference ONCE per render
-and stamps `data-motion` on `<html>` (`packages/ui/src/App.tsx:934`), which is a blanket
-`animation: none !important` kill-switch — so toggling `page.emulateMedia({ reducedMotion: ... })`
-mid-test asserts against the stale attribute rather than against the media query. Getting this
-right is what keeps the whole suite honest, since it runs under `reducedMotion: 'reduce'`, and it
-is why the reduced path must be INSTANT rather than "animated then skipped".
-**Enforced by:** `packages/ui/e2e/port-ledger.spec.ts` (and its `styles()` helper)
+and stamps `data-motion` on `<html>` (`packages/ui/src/App.tsx`, the `resolveMotionTier` effect),
+which at the Instant tier is a blanket `animation: none !important` kill-switch — so toggling
+`page.emulateMedia({ reducedMotion: ... })` mid-test asserts against the stale attribute rather than
+against the media query. Getting this right is what keeps the whole suite honest, since it runs
+under `reducedMotion: 'reduce'`, and it is why the reduced path must be INSTANT rather than
+"animated then skipped".
+**T-252 amendment:** `data-motion` now carries three values (`cinematic|snappy|instant`, UI-31) and
+the OS query FORCES `instant`, so the reload rule below is unchanged but the attribute to check is
+the tier, not `full`/`reduced`.
+**Enforced by:** `packages/ui/e2e/port-ledger.spec.ts` (and its `styles()` helper) +
+`packages/ui/e2e/motion-tiers.spec.ts` (all three tiers, chosen through the Settings segment)
 **Rule:** Every new animation is railed behind `prefers-reduced-motion` AND asserted in BOTH
 directions via computed `animation-name`, with `emulateMedia` followed by `page.reload()` and
 `html[data-motion]` checked to flip — never asserted in prose or inferred from the CSS source.

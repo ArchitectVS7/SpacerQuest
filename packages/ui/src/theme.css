@@ -86,6 +86,84 @@
   --recess: inset 0 2px 5px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
+/* =========================================================================
+   T-252 · THE MOTION CONTRACT — one knob, three tiers.
+
+   `tabletop-ui` §8 (owner rule, 2026-07-18): animation intensity is a player
+   menu option — Cinematic / Snappy / Instant — and "Presets read a global
+   speed/intensity setting rather than hard-coding durations, so the tiers are
+   one knob, not three implementations." That knob is `--motion-scale`, and the
+   `--dur-*` / `--del-*` tokens below are the ONLY place a beat's cinematic
+   length is written in this file. Vocabulary and factors live in
+   `src/motion.ts`; the completeness of this block is proved mechanically by
+   `src/__tests__/motion-tiers.test.ts`, never by inspection.
+
+   THREE CATEGORIES, and only one of them scales:
+
+     BEAT     finite, event-triggered, dramatises a game event. SCALES — every
+              one has a token below and NO literal time in its declaration.
+     AMBIENT  the five `infinite` loops (`flicker`, `ring-pulse`, `pulse`,
+              `tick`, `wt-pulse`). Does NOT scale: speeding ambience up is a
+              bug, not a tier. Killed outright at Instant by the kill-switch.
+     RESPONSE sub-250ms hover/state transitions (`.contract`, `.mb-toggle`,
+              `.die`). Does NOT scale: that is UI responsiveness, not cinema.
+              Killed outright at Instant by the kill-switch.
+
+   ADDING A BEAT? Add its `--dur-*` token here and reference it. A new
+   `animation:` / `transition:` carrying a literal time fails the scan test
+   unless it is on one of the two allowlists.
+
+   AT INSTANT the scale is 0. `animation-duration: 0s` with `forwards`/`both`
+   STILL APPLIES THE END STATE, so a zeroed beat is instant-AND-correct rather
+   than "animated then skipped" (UI-23) — no information is lost.
+   ========================================================================= */
+:root {
+  --motion-scale: 1;
+}
+:root[data-motion='cinematic'] {
+  --motion-scale: 1;
+}
+:root[data-motion='snappy'] {
+  --motion-scale: 0.4;
+}
+:root[data-motion='instant'] {
+  --motion-scale: 0;
+}
+/* THE PRE-HYDRATION FRAME. React stamps `data-motion` in an effect, so the very
+   first paint carries no attribute at all. Honour the OS preference until it
+   lands, or a reduced-motion user sees one cinematic frame on every boot. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion]) {
+    --motion-scale: 0;
+  }
+}
+:root {
+  /* --- BEAT durations. Authored at Cinematic; the knob does the rest. --- */
+  --dur-sweep: calc(1100ms * var(--motion-scale));
+  --dur-comp-focus: calc(700ms * var(--motion-scale));
+  --dur-mb-post: calc(220ms * var(--motion-scale));
+  --dur-mb-stow: calc(200ms * var(--motion-scale));
+  --dur-tp-tick: calc(460ms * var(--motion-scale));
+  --dur-tp-charge: calc(700ms * var(--motion-scale));
+  --dur-tp-post: calc(340ms * var(--motion-scale));
+  --dur-cb-reveal: calc(320ms * var(--motion-scale));
+  --dur-cb-crit: calc(600ms * var(--motion-scale));
+  --dur-bloom: calc(700ms * var(--motion-scale));
+  --dur-ob-fade: calc(220ms * var(--motion-scale));
+  --dur-ob-fade-center: calc(220ms * var(--motion-scale));
+  --dur-ld-settle: calc(620ms * var(--motion-scale));
+  --dur-d6-turn: calc(550ms * var(--motion-scale));
+  --dur-om-strike: calc(620ms * var(--motion-scale));
+  --dur-om-bloom: calc(900ms * var(--motion-scale));
+  --dur-om-read-in: calc(520ms * var(--motion-scale));
+  /* --- BEAT delays. Stagger is scene staging, so it trims with the beat. --- */
+  --del-tp-post-2: calc(60ms * var(--motion-scale));
+  --del-tp-post-3: calc(120ms * var(--motion-scale));
+  --del-om-read-1: calc(380ms * var(--motion-scale));
+  --del-om-read-2: calc(620ms * var(--motion-scale));
+  --del-om-read-3: calc(860ms * var(--motion-scale));
+}
+
 * {
   box-sizing: border-box;
 }
@@ -183,7 +261,7 @@ body {
   z-index: 95;
   pointer-events: none;
   background: linear-gradient(180deg, rgba(255, 176, 0, 0.16), transparent);
-  animation: sweep 1100ms ease-out 1 forwards;
+  animation: sweep var(--dur-sweep) ease-out 1 forwards;
 }
 @keyframes sweep {
   0% {
@@ -1088,7 +1166,7 @@ body {
 }
 @media not (prefers-reduced-motion: reduce) {
   .comp-row.focused {
-    animation: comp-focus 0.7s ease-out 1;
+    animation: comp-focus var(--dur-comp-focus) ease-out 1;
   }
 }
 @keyframes comp-focus {
@@ -1674,7 +1752,7 @@ body {
      this fires on a genuinely new sheet and on every un-stow, and never on an
      ordinary re-render. */
   .mb-sheet {
-    animation: mb-post 220ms ease-out both;
+    animation: mb-post var(--dur-mb-post) ease-out both;
     transform-origin: top center;
   }
   @keyframes mb-post {
@@ -1689,7 +1767,7 @@ body {
   }
   /* The close beat: the paper comes off, the stub settles onto the empty board. */
   .mb-stowed-line {
-    animation: mb-stow 200ms ease-out both;
+    animation: mb-stow var(--dur-mb-stow) ease-out both;
   }
   @keyframes mb-stow {
     from {
@@ -1950,21 +2028,21 @@ body {
      never on anything containing `fuel-amount` / `debt-amount`, because
      remounting an input destroys the typed value and the caret. */
   .ledger-block .lb-tick {
-    animation: tp-tick 460ms ease-out 1;
+    animation: tp-tick var(--dur-tp-tick) ease-out 1;
   }
   /* 2 · a charge runs across the plate whose value changed. */
   .ledger-block .lb-sweep {
-    animation: tp-charge 700ms ease-out 1;
+    animation: tp-charge var(--dur-tp-charge) ease-out 1;
   }
   /* 3 · dispatches post themselves when the live offer set changes. */
   .lb-posts > * {
-    animation: tp-post 340ms ease-out both;
+    animation: tp-post var(--dur-tp-post) ease-out both;
   }
   .lb-posts > *:nth-child(2) {
-    animation-delay: 60ms;
+    animation-delay: var(--del-tp-post-2);
   }
   .lb-posts > *:nth-child(3) {
-    animation-delay: 120ms;
+    animation-delay: var(--del-tp-post-3);
   }
 }
 @keyframes tp-tick {
@@ -2248,10 +2326,10 @@ body {
 
 @media not (prefers-reduced-motion: reduce) {
   .check-breakdown {
-    animation: cb-reveal 0.32s ease-out 1;
+    animation: cb-reveal var(--dur-cb-reveal) ease-out 1;
   }
   .nat-juice.crit {
-    animation: cb-crit 0.6s ease-out 1;
+    animation: cb-crit var(--dur-cb-crit) ease-out 1;
   }
 }
 @keyframes cb-reveal {
@@ -2711,7 +2789,7 @@ body {
     0 0 14px rgba(255, 225, 166, 0.5);
 }
 .die.bloom {
-  animation: bloom 0.7s ease-out 1;
+  animation: bloom var(--dur-bloom) ease-out 1;
 }
 @keyframes bloom {
   0% {
@@ -3175,6 +3253,13 @@ body {
   }
 }
 
+/* T-252 · BELT AND BRACES, and the PRE-HYDRATION frame. `resolveMotionTier`
+   already forces the Instant tier whenever this query matches, so by the time
+   React has stamped `data-motion='instant'` the kill-switch below covers all of
+   this. What this block still buys: the very first paint, before the effect
+   runs, when no `data-motion` attribute exists at all. It also states the
+   per-element intent (e.g. `.ticker` regains its padding when the marquee stops)
+   that a blanket `animation: none !important` cannot. */
 @media (prefers-reduced-motion: reduce) {
   .fx::after {
     animation: none;
@@ -3205,13 +3290,19 @@ body {
   }
 }
 
-/* ---- T-312 user reduced-motion override ---- */
-/* The setting path mirrors the OS media query: a blanket kill-switch so the
-   user toggle suppresses every CSS animation/transition regardless of the OS
-   preference. The JS scramble/sweep are gated on `reduced` in App.tsx. */
-:root[data-motion='reduced'] *,
-:root[data-motion='reduced'] *::before,
-:root[data-motion='reduced'] *::after {
+/* ---- T-312 user motion override, re-ruled to three tiers by T-252 ---- */
+/* THE INSTANT RAIL. Every BEAT is already 0s here (`--motion-scale: 0`), and a
+   0s beat with `forwards`/`both` still applies its END STATE — so no information
+   is lost, which is what "instant, never animated-then-skipped" (UI-23) means.
+   This blanket switch exists for the two categories that deliberately keep their
+   literal times and therefore do NOT ride the knob: the five AMBIENT `infinite`
+   loops and the three sub-250ms RESPONSE transitions. It is scoped to Instant on
+   purpose — at Snappy those two categories are meant to be untouched. The JS half
+   (scramble, sweep mount, the GSAP timeline) is gated on `isInstant(tier)` in
+   App.tsx. */
+:root[data-motion='instant'] *,
+:root[data-motion='instant'] *::before,
+:root[data-motion='instant'] *::after {
   animation: none !important;
   transition: none !important;
 }
@@ -4037,7 +4128,7 @@ body {
 }
 @media not (prefers-reduced-motion: reduce) {
   .onboarding {
-    animation: ob-fade 220ms ease-out both;
+    animation: ob-fade var(--dur-ob-fade) ease-out both;
   }
 }
 @keyframes ob-fade {
@@ -4093,7 +4184,7 @@ body {
 }
 @media not (prefers-reduced-motion: reduce) {
   .onboarding[data-onboarding-anchor='hand'] {
-    animation: ob-fade-center 220ms ease-out both;
+    animation: ob-fade-center var(--dur-ob-fade-center) ease-out both;
   }
 }
 @keyframes ob-fade-center {
@@ -4952,7 +5043,7 @@ body {
   filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.75)) drop-shadow(0 0 7px rgba(255, 176, 0, 0.3));
 }
 .d6-spin.settling {
-  animation: ld-settle 0.62s cubic-bezier(0.18, 0.86, 0.24, 1) 1;
+  animation: ld-settle var(--dur-ld-settle) cubic-bezier(0.18, 0.86, 0.24, 1) 1;
 }
 @keyframes ld-settle {
   0% {
@@ -4971,7 +5062,7 @@ body {
   /* default = face 1 toward the viewer, with a small tilt so two edges read */
   --d6-rot: rotateY(0deg);
   transform: rotateX(-14deg) rotateY(-18deg) var(--d6-rot);
-  transition: transform 0.55s cubic-bezier(0.2, 0.9, 0.2, 1);
+  transition: transform var(--dur-d6-turn) cubic-bezier(0.2, 0.9, 0.2, 1);
 }
 .d6[data-face='2'] {
   --d6-rot: rotateY(-90deg);
@@ -5851,21 +5942,21 @@ body {
 @media not (prefers-reduced-motion: reduce) {
   /* The frame arrives the way a phosphor does: struck bright, then settling. */
   .om-frame {
-    animation: om-strike 620ms ease-out 1 both;
+    animation: om-strike var(--dur-om-strike) ease-out 1 both;
   }
   .om-owed {
-    animation: om-bloom 900ms ease-out 1 both;
+    animation: om-bloom var(--dur-om-bloom) ease-out 1 both;
   }
   /* The body reads in, line by line, so the FIGURE lands before the reasons for
      it do. Staggered by position, no JS, no timer, no component state. */
   .om-prose p:nth-child(1) {
-    animation: om-read-in 520ms ease-out 380ms both;
+    animation: om-read-in var(--dur-om-read-in) ease-out var(--del-om-read-1) both;
   }
   .om-prose p:nth-child(2) {
-    animation: om-read-in 520ms ease-out 620ms both;
+    animation: om-read-in var(--dur-om-read-in) ease-out var(--del-om-read-2) both;
   }
   .om-signoff {
-    animation: om-read-in 520ms ease-out 860ms both;
+    animation: om-read-in var(--dur-om-read-in) ease-out var(--del-om-read-3) both;
   }
   @keyframes om-strike {
     0% {

@@ -160,7 +160,7 @@ export interface CloudSession {
  *   * `sq.migrated.from-localstorage.v1` — MACHINE-LOCAL state. Syncing it DOWN
  *     would make a fresh machine skip its own localStorage import, so this one
  *     marker crossing the cloud is a CAREER-LOSS BUG, not untidiness.
- *   * `sq.fx`, `sq.vol.*`, `sq.audio.muted`, `sq.reduced-motion`, `sq.text-size`,
+ *   * `sq.fx`, `sq.vol.*`, `sq.audio.muted`, `sq.motion-tier`, `sq.text-size`,
  *     `sq.onboarding.v1`, `sq.save.seed` — display and machine settings, not
  *     careers. The Accept scopes this task to the envelope, and a player who
  *     turns the CRT off on a laptop has not asked for it off on their desktop.

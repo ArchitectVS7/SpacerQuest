@@ -188,9 +188,9 @@ test.describe('T-312 settings, saves & new-game UX', () => {
     expect(await page.evaluate(() => window.localStorage.getItem('sq.slot.1.v1'))).toBeNull();
   });
 
-  test('settings (reduced motion, text size, CRT) persist across reload', async ({ page }) => {
+  test('settings (motion tier, text size, CRT) persist across reload', async ({ page }) => {
     // NB: no reducedMotion media emulation here — the OS preference would force
-    // data-motion='reduced' regardless, masking whether the SETTING drives it.
+    // data-motion='instant' regardless, masking whether the SETTING drives it.
     await page.addInitScript(() => {
       if (!window.sessionStorage.getItem('sq.test.cleared')) {
         window.localStorage.clear();
@@ -204,14 +204,19 @@ test.describe('T-312 settings, saves & new-game UX', () => {
     await page.goto('/');
 
     const root = page.locator(':root');
-    await expect(root).toHaveAttribute('data-motion', 'full');
+    // T-252 · Cinematic is the default tier (`tabletop-ui` §8).
+    await expect(root).toHaveAttribute('data-motion', 'cinematic');
 
     await openSettings(page);
 
-    // Reduced motion.
-    await page.getByTestId('set-reduced-motion').click();
-    await expect(root).toHaveAttribute('data-motion', 'reduced');
-    expect(await page.evaluate(() => window.localStorage.getItem('sq.reduced-motion'))).toBe('on');
+    // Motion tier. `e2e/motion-tiers.spec.ts` proves all three drive real
+    // durations; this one only proves the setting PERSISTS alongside its
+    // neighbours, so it takes the far end of the range.
+    await page.getByTestId('set-motion-instant').click();
+    await expect(root).toHaveAttribute('data-motion', 'instant');
+    expect(await page.evaluate(() => window.localStorage.getItem('sq.motion-tier'))).toBe(
+      'instant',
+    );
 
     // Text size.
     await page.getByTestId('set-text-size-large').click();
@@ -224,7 +229,7 @@ test.describe('T-312 settings, saves & new-game UX', () => {
 
     // A hard reload keeps every setting applied.
     await page.reload();
-    await expect(root).toHaveAttribute('data-motion', 'reduced');
+    await expect(root).toHaveAttribute('data-motion', 'instant');
     await expect(root).toHaveAttribute('data-text-size', 'large');
     await expect(root).toHaveAttribute('data-fx', 'off');
   });
