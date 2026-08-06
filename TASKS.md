@@ -3123,7 +3123,7 @@ actually buys what the roster sells, and RULED**. The ruling is **LD-30** in
 
 Orchestration: attempts=1/4.
 
-### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: IN-PROGRESS` · `coder: opus` · `after: T-222`
+### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: TODO` · `coder: opus` · `after: T-222`
 
 **Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4b / §21.7,
 `docs/LIARS-DICE-DECISIONS.md` LD-29, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3d.** `headroomFor`
