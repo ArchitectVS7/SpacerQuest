@@ -2822,7 +2822,7 @@ specs run explicitly (10 passed).
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root. · attempts=1/4.
 
-### T-222 · F-219-1: the house's raise evidence bar is set by the PLAYER's own stake — `status: TODO` · `coder: opus` · `after: T-219`
+### T-222 · F-219-1: the house's raise evidence bar is set by the PLAYER's own stake — `status: DONE` · `coder: opus` · `after: T-219`
 
 **Filed at T-219 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §19.10 / `docs/LIARS-DICE-DECISIONS.md`
 LD-27.** T-219 derived `optimal`'s raise rule in closed form: because `probClaimTrue` is a point
@@ -2857,6 +2857,113 @@ re-invert; `liarsDiceArchetypes.test.ts`'s `T-219 · F-176-1` describe is update
 than relaxed to pass; `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3c and `docs/LIARS-DICE_REDESIGN.md`
 §19.10 gain the outcome; if `packages/engine/src` or `packages/content/src` moves semantically the
 task takes its own capstone with the moved rows predicted first; gate green.
+
+**Delivered (2026-08-06).** F-219-1 **CLOSED — measured, baked off and RULED, with its reading
+inverted and two larger things found underneath it.** The ruling is **LD-29**
+(`docs/LIARS-DICE-DECISIONS.md`); the measurement is `docs/LIARS-DICE_REDESIGN.md` **§21**. **No rule
+moved: no band, threshold, fraction or golden was edited in either direction, and the only source
+file touched anywhere is a test.**
+
+- **PHASE 0 — five corrections to the finding's own framing, made in writing before anything ran**
+  (§21.0). (1) `ante / (2·seedWager + ante)` is the gate at the FIRST decision only — `placeBid`
+  grows both pots (`packages/engine/src/actions/dare.ts:326-333`), so the finding's formula is the
+  **tightest** bar the house ever faces, and a cell whose opening gate is `k ≤ 4` was measured
+  emitting `k = 5` raises on 16.79% of its raises. (2) `seedWager` is clamped by **both** purses
+  (`actions/hangout.ts:471-478`). (3) T-219 enumerated **tier 0 only**, and the coupling is not
+  tier-invariant — `anteFor` and `effectiveWagerBand` both take the tier. (4) `dareCells` cannot cut
+  by stake and this task **refuses to add that cut** (`packages/sim/src` is in
+  `SIM_INSTRUMENT_DIRECTORIES`; moving `instrumentFingerprint` inside a measurement task is the
+  shape §19/§20 both refused). (5) **The plan's own reachability probe is not a faithful arm and is
+  reported as a failed instrument**: `resolvePolicy` gives a raw `SimPolicy` `dawnBlind: true` while
+  `'gambler'` resolves `dawnBlind: false`, and the wrapper arm's mean seated stake is **102.3**
+  against the shipped arm's **2,631.6**. Its histogram is discarded, not used.
+- **THE ENUMERATION, RE-RUN ON HEAD over bands × ALL SIX TIERS** (§21.3, `.scratch/t222-bands.ts`).
+  §19.10 reproduces **exactly** at tier 0 — **40/40** bands widen, transitions `{0→3, 1→3, 2→3}`.
+  New: the step boundaries in **closed form** (`s > c(1−p)/(2p)`), per band per tier; tier 4 tightens
+  the bar 3× at a fixed stake and leaves the ceiling gate unchanged; **tier 5 removes the ceiling and
+  freezes the ante**, so the gate keeps opening. Every bounded tier stops at `k ≤ 3`, and that is
+  **one number for all forty ports**: at the ceiling the ratio is `f / (2 + f)` and the band cancels
+  out.
+- **THE PLAY EFFECT, `n` ON EVERY CELL** (§21.4, `.scratch/t222-stake.ts` — derived from
+  `.scratch/t219-bakeoff.ts`, changing only the per-cell ante/stake and modelling headroom
+  faithfully). **260 cells × n = 40,000 = 10,400,000 hands**, identical seeds
+  (`SeededRng(20_260_806 + u)`) across every stake cell, scored on **realised** house credits off
+  the engine's own showdown rule. Control proven, not assumed: `.scratch/t222-fidelity.ts`
+  cross-checks the rig's `optimal` against `archetypeMove({archetype:'optimal'})` over **1,200,000**
+  states at **every shipped ante** (20 values, 6…270) and pots/headroom across 0…9,000 — **zero
+  mismatches**, move mix reported.
+- **THE RESULT INVERTS THE FINDING'S READING.** The stake-free quantities are a function of the
+  **gate step alone**, and **a looser gate is BETTER for the house, monotonically**: house net/seed
+  **−0.04 → +0.11 → +0.45 → +0.63** (4 dice) and **−0.39 → −0.29 → +0.09 → +0.37** (6 dice), with
+  the player's win rate falling **51.77% → 18.55%** and **65.28% → 31.35%**. `c / (pot + c)` is
+  **pot odds**, not an accident. Three controls separate the mechanism: holding the **ratio** fixed
+  and scaling stake+ante ×10 gives net/seed **0.6316 at every rung**; varying the ante *within* a
+  gate step changes **nothing**; headroom matters only in the last three antes of the band.
+- **THE BAKEOFF, run even though nothing changed** (§21.4a). Controls A and B prove
+  `DARE_ANTE_BAND_FRACTION` and the bands **cannot** dissolve the coupling. The one lever that can —
+  **referencing the ante to the player's own stake** — was run over the same 260 cells on identical
+  seeds and does dissolve it (flat `k ≤ 3`, flat 31.35% player win at six dice, no inversion below
+  the ceiling). **DECLINED** because it moves the table against the player at **every** measured
+  cell while **LD-28 promoted "pooled player EV/hand > 0" to a standing invariant one task ago**
+  (+190.1 cr measured) and scoring that needs a full capstone; because it **fixes neither** measured
+  pathology; and because it would owe its own capstone to decide admissibility. Recorded as the
+  shape a fix to F-222-2 should start from.
+- **THE REPRODUCTION ARM** (`--label t222-rescore --seeds 1600 --days 120 --policies gambler
+  --milestone-days 21,29,30,41,60,120 --shard i/4`, **1-indexed**, scored with the unchanged
+  `.scratch/t176-bakeoff.mjs`) reproduces §18.6 / §19.9 / §20.3 to **every published decimal**:
+  **1,600 rows · 279,857 dares · 52.90% · +190.1 cr/hand · `roster|optimal` 39.83% (n = 95,580) ·
+  `bad − optimal` +15.79 pp SE 0.44 z 35.93 · 0 disagreements · `invariants: 0 violations`** on all
+  four shards. **Shards-only and deliberately so** — no `--merge`, no `--aggregate`, no capstone: the
+  standing 8,000-row constraint governs the *capstone* sweep, owed when `rulesFingerprint` moves,
+  which it does not (§20.0 correction 3 is the precedent, restated in §21.0/§21.5 so a reviewer does
+  not read a skipped step). The `combat-win-share` FAIL is the known gambler-only-arm artefact.
+- **THE RULING (LD-29):** the coupling is **ACCEPTABLE at every bounded tier (0–4)** on the pot-odds
+  derivation and the monotone measurement. **A2 passes** where it was pre-committed (+15.79 pp on
+  the instrument) and **A4 passes** (dissolution needs ≥ 419,896 credits against a measured maximum
+  seated stake of 32,510). **A1 FAILS at tier 5 only, and is FILED rather than folded in.**
+- **THREE FINDINGS FILED THE MOMENT THEY WERE CONFIRMED**, each with its own backlog row: **F-222-1
+  → T-224** (the top `DARE_ANTE_BAND_FRACTION` of every bounded band is a **dead zone** where no
+  raise is legal for either side, so the Dare collapses to a single claim at `probAtLeast(1, u)` —
+  **+962 cr/hand to the player at the default band at tier 4 against −842 one quarter-band lower**);
+  **F-222-2 → T-225** (tier 5 caps nothing; past `k ≤ 3` the gate misprices, house net/seed +0.373 →
+  +0.223 → −0.139 and the ordering re-inverts at −4.95 pp, reachable from 1,026 credits);
+  **F-222-3 → T-226** (the archetype ordering is **stake-conditional**, −21.15 pp at floors to
+  +20.61 pp mid-band).
+- **A PRE-COMMITTED PREDICTION WAS WRONG AND IS RECORDED AS WRONG** (§21.6, prediction 3): "A1 holds
+  at every band and tier". It holds at every **bounded** tier and fails at tier 5. It was the
+  prediction most convenient to a clean "rule it acceptable" outcome; the ruling was **scoped** and
+  the finding **filed** rather than the prediction being restated to match.
+- **TESTS.** T-219's describe `T-219 · F-176-1 …` keeps **every expectation it shipped** —
+  `widened === 40` and `['0->3','1->3','2->3']` are untouched; only its closing comment is redirected
+  from "T-222 must be re-read" to LD-29 / §21. A new describe
+  **`T-222 · F-219-1 — the stake/ante coupling, ruled`** in
+  `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` adds five assertions, **all computed
+  from `probAtLeast` / `anteFor` / `effectiveWagerBand` / `legalMovesFrom` / `DARE_ANTE_BAND_FRACTION`
+  with no literal threshold in any mechanism**: monotone loosening over 40 ports × 6 tiers (3,120
+  cells); the closed-form step boundary against the brute-force gate at every `(port, tier, k)`; the
+  pot-growth correction; the bounded cap at `f / (2 + f)` **and** tier 5's removal of it; and the
+  one-ante dead zone. *(The closed-form assertion caught a real error in this task's own first draft
+  — the inequality is strict, so `k = 0` starts at seed **1**, not 0. Corrected in the doc and the
+  probe rather than papered over.)*
+- **FINGERPRINTS, CAPSTONE AND SAVE SHAPE, measured rather than asserted.** `git diff` touches
+  `docs/**`, `packages/engine/src/__tests__/**`, `.scratch/**` and `TASKS.md` **only** — nothing
+  under `packages/engine/src` outside `__tests__`, and nothing under `packages/content/src`. Read
+  live before and after with `.scratch/t219-fp.mjs`: **`rulesFingerprint cabd2112ccf4cefb`**,
+  **`instrumentFingerprint 2d6d1990eaf13031`**, **`docsFingerprint 265aea1d09f0d485`** — **all three
+  UNMOVED** and identical to §20.5's. `__tests__` is in `HASHED_ROOT_IGNORED_DIRECTORIES` and is not
+  in `SIM_INSTRUMENT_DIRECTORIES` (`['', 'balance']`), and `computeDocsFingerprint` hashes rule and
+  instrument **sources**, not `docs/**`. **No capstone, no re-extract, no baseline re-pin owed.**
+  **`CURRENT_SAVE_VERSION` UNMOVED at 17**, re-read live at `packages/engine/src/save.ts:627` — no
+  save shape moved, so no migration and no round-trip test is owed.
+- **Deliberate scope boundary:** this task ships **no rule change**, with the reason written down
+  **per lever** (§21.5). It does not re-open LD-25/LD-26/LD-27/LD-28, does not touch `headroomFor`
+  or §4.3's exposure ceiling (that is T-224's), does not touch `effectiveWagerBand` or §4.8 (T-225's),
+  and does not add the `dareCells` stake dimension that would name the exact dead-zone share —
+  §21.4c bounds it at ≤ 49.6% from `bids/hand = 1.504` and hands the exact figure to T-224.
+- **Gate green**: `npm run format`, `npm test`, `npx tsc -b`, `npm run lint`, `npm run
+  format:check`.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
 
 ### T-223 · F-220-1: the ROSTER pool is a net credit SINK, and nothing names or bounds the price — `status: TODO` · `coder: opus` · `after: T-220`
 
@@ -2899,6 +3006,129 @@ re-scored alongside; whichever branch is taken, the UI question is answered expl
 player know the roster seat is the expensive one? — `docs/HANGOUT_REDESIGN.md` §7); if any rule
 moves the task takes its own capstone with the moved rows predicted first; §20.7 gains the outcome;
 gate green.
+
+### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: TODO` · `coder: opus` · `after: T-222`
+
+**Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4b / §21.7,
+`docs/LIARS-DICE-DECISIONS.md` LD-29, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3d.** `headroomFor`
+is `max(0, bandMax − pot)` and **the seed counts against it** (§4.3: `band.max` is a whole-hand
+exposure ceiling, not a seed ceiling). So a seed within **one ante** of the ceiling leaves **both**
+sides unable to cover a raise: `legalMovesFrom` offers only `challenge` and `fold`, and the hand is
+**one claim long by construction**. The zone is exactly one ante wide — i.e. exactly
+`DARE_ANTE_BAND_FRACTION` (3%) of the ceiling, because that is what the ante *is*.
+
+**The consequence is a dominant player strategy that skips the mechanic.** The hand resolves at
+`probAtLeast(1, u)`, which is **in the player's favour at every width**, at **the largest stake the
+port allows**. Measured on identical seeds, n = 40,000 per cell:
+
+| dice | stake | house net / seed | player win | `probAtLeast(1, u)` |
+| --- | --- | --- | --- | --- |
+| 4 | 75% of band | **+0.445** | 28.02% | — |
+| 4 | **the exact ceiling** | **−0.045** | **52.27%** | 51.77% |
+| 6 | 75% of band | **+0.373** | 31.35% | — |
+| 6 | **the exact ceiling** | **−0.321** | **66.04%** | 66.51% |
+
+At the default band at tier 4 that is **+962 cr/hand to the player against −842** one quarter-band
+lower — a **1,804 cr/hand swing, and a sign flip, from a 25%-of-band change in stake**. This is
+F-134-1's band clamp **priced for the first time**: §16.5 measured it firing on the house at 53.12%
+with the gambler's median stake-to-band ratio at **100.00%**, and §17.7 re-measured the rate but
+never the price. It also mechanically corroborates LD-28's ply-1 derivation from an angle §20 could
+not see. **T-222 could not fix it**: the lever is §4.3's whole-hand exposure ruling, not the ante —
+§21.4a proves the one ante-side alternative leaves the zone byte-identical — and re-opening §4.3
+inside a measurement task is §16.2's banned third shape. [filed: T-222/F-222-1]
+
+**Accept:** the share of shipped hands actually seated **inside** the dead zone is measured rather
+than bounded — §21.4c bounds it at ≤ 49.6% from `bids/hand = 1.504` and says the exact figure needs
+a `dareCells` stake/headroom cut, so **this task owns that instrument change** and takes its
+`instrumentFingerprint` move deliberately, with the moved rows predicted first; the player's gain
+from seating there is re-priced on HEAD with `n` on every cell; the owner then either **rules the
+zone intended** — in which case §4.3's "whole-hand exposure ceiling" ruling is restated in
+`docs/LIARS-DICE-DECISIONS.md` with the derivation of why a one-claim maximum-stake hand is a
+feature, and a standing invariant bounds the player's edge there — or **rules it a defect**, in
+which case the fix is **bakeoff'd against at least one named alternative on identical seeds** (e.g.
+a seed ceiling separate from the exposure ceiling, or an exposure ceiling that reserves at least one
+ante), LD-27's `k`-gate derivation is re-run against the new numbers, the archetype ordering
+(`bad − optimal` = +15.79 pp, z = 35.93) is re-scored and must not re-invert, and **LD-28's two
+standing invariants are re-scored alongside** because the fix moves the player's EV directly; §21.4b
+and §21.7 gain the outcome; if any rule moves the task takes its own capstone with the moved rows
+predicted first; gate green.
+
+### T-225 · F-222-2: at tier 5 nothing caps the pot/ante ratio, and past `k ≤ 3` the house's own gate misprices — `status: TODO` · `coder: opus` · `after: T-222`
+
+**Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4 / §21.7,
+`docs/LIARS-DICE-DECISIONS.md` LD-29, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3d.** Every **bounded**
+tier stops at `k ≤ 3` for a structural reason: `anteFor` makes the ante a fixed fraction `f` of the
+same ceiling the stake is capped at, so the ceiling ratio is `f / (2 + f)` and the band cancels out.
+**Tier 5 removes the ceiling** (`effectiveWagerBand → {min: 0, max: null}`, §4.8 / T-146) while the
+ante stays **frozen at the tier-4 reference**, so the ratio → 0 as the stake grows and the gate keeps
+opening.
+
+**Past `k ≤ 3` the direction reverses**, measured on identical seeds at n = 40,000 per cell:
+
+| stake (multiples of the ante) | gate | house net / seed | player win | `bad − optimal` |
+| --- | --- | --- | --- | --- |
+| 57× — 1,026 cr at the 5–200 port, 5,127 at the default band | `k ≤ 4` | **+0.220** | 38.67% | +13.29 pp |
+| 752× | `k ≤ 4` opening, `k = 5` reached mid-hand | **−0.139** | 56.91% | **−4.95 pp** |
+| 2,000× | `k ≤ 5` | **−0.119** | 55.95% | **−3.98 pp** |
+| 23,328× | `k = u`, fully dissolved | **−0.244** | 62.21% | **−10.25 pp** |
+
+against **+0.373 / 31.35% / +20.61 pp** at `k ≤ 3`. Both `k = 4` boundaries sit **inside** the
+**32,510** largest stake measured over 1,600 careers, so this is reachable rather than theoretical;
+full dissolution needs ≥ 419,896 and is **not** reached. The mechanism is LD-27's own — the
+immediate-challenge premise is a *conservative* error at tight gates and an *expensive* one once the
+pot/ante ratio admits raises whose truth probability is under 1%. **T-222 predicted this would not
+happen and was wrong** (§21.6, prediction 3), which is why LD-29 is scoped to bounded tiers.
+**T-222 could not fix it**: the lever is §4.8's removed ceiling, not the ante, and §21.4a shows the
+ante's reference cannot be moved to reach it without changing every other tier as well.
+[filed: T-222/F-222-2]
+
+**Accept:** the tier-5 stake distribution is measured on the shipped instrument with `n` on every
+cell (how many hands actually sit past the `k ≤ 4` boundary, and at which ports); the owner either
+**rules the uncapped ratio intended** — in which case §4.8's "unlimited betting" ruling is restated
+in `docs/LIARS-DICE-DECISIONS.md` with the derivation of why a veteran table should price raises
+this way, and a standing invariant bounds the house's loss there — or **rules it a defect**, in
+which case the fix is **bakeoff'd against at least one named alternative on identical seeds** (§21.4a
+records the strongest candidate: reference the ante to `seedWager`, which caps the ratio at
+`f / (2 + f)` without capping the stake — and **its LD-28 exposure must be scored on a full capstone
+rather than argued**, since it moves the table against the player at every measured cell), LD-27's
+`k`-gate derivation is re-run against the new numbers rather than re-sampled, the archetype ordering
+(+15.79 pp, z = 35.93) is re-scored and must not re-invert, and LD-28's two standing invariants are
+re-scored alongside; §21.4 and §21.7 gain the outcome; if any rule moves the task takes its own
+capstone with the moved rows predicted first; gate green.
+
+### T-226 · F-222-3: the archetype ordering is STAKE-CONDITIONAL, and no test covers it off the stakes the sweep happens to play — `status: TODO` · `coder: opus` · `after: T-222`
+
+**Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4 / §21.7,
+`docs/LIARS-DICE-DECISIONS.md` LD-29.** LD-25 publishes `bad − optimal > 0` as a property of the
+**archetypes**, and every task since (T-148 F-148-1, T-160 F-160-1, T-175, T-176, T-219 K2, T-220 C6)
+has scored it on one arm at one stake distribution. Measured across the stake axis it is a property
+of the archetypes **at a stake**:
+
+| regime | `bad − optimal` |
+| --- | --- |
+| band floor, 4 dice (`k ≤ 0` / `k ≤ 1`) | **−21.15 / −15.69 pp** |
+| band floor, 6 dice | **−13.32 / −9.47 pp** |
+| mid-band (`k ≤ 2` / `k ≤ 3`) | +2.61 … **+20.61 pp** |
+| the ceiling dead zone | **0.00 pp** — both arms can only challenge |
+| deep tier 5 (`k ≥ 5`) | **−4.95 / −3.98 / −10.25 pp** |
+
+`bad` reads **no pot at all** (`BAD_CREDULITY` is a count rule), so the entire stake-dependence is
+`optimal`'s. The shipped arm sits at +15.79 pp (z = 35.93) because the gambler's stakes sit
+mid-band-and-above — per-career mean seated stake p10/p50/p90 = **1,537 / 2,477 / 3,876** — and
+**"unexercised by today's gambler policy" is not "unreachable by a player"**: a human may stake the
+band floor at any time. The bar has never been stated with the stake range it holds over, and no
+test would notice if a retune moved that range. [filed: T-222/F-222-3]
+
+**Accept:** the ordering is re-measured across the stake axis with `n` on every cell and the range
+over which `bad − optimal > 0` holds is stated explicitly per dice width; the owner either **rules
+the ordering a mid-band property** — in which case LD-25 is amended in place (kept verbatim,
+superseded) to name the stake range, and the enforcing test asserts the bar **over that range**
+rather than at one point, computed from `probAtLeast` and the accessors with no literal stake — or
+**rules the inversion a defect**, in which case the fix is bakeoff'd rather than tuned against at
+least one named alternative on identical seeds and LD-28's invariants are re-scored alongside;
+either way `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` gains an assertion that goes
+RED if the range moves; §21.7 gains the outcome; if any rule moves the task takes its own capstone
+with the moved rows predicted first; gate green.
 
 ---
 

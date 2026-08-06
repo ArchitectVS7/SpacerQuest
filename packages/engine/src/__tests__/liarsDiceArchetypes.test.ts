@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { LIARS_DICE_OPPONENTS, type LiarsDiceMix } from '@spacerquest/content';
+import {
+  DARE_ANTE_BAND_FRACTION,
+  LIARS_DICE_OPPONENTS,
+  type LiarsDiceMix,
+} from '@spacerquest/content';
 import { SeededRng } from '../rng.js';
 import {
   BAD_CREDULITY,
@@ -8,6 +12,7 @@ import {
   anteFor,
   archetypeMove,
   dicePerSideForTier,
+  effectiveWagerBand,
   legalMovesFrom,
   maxQuantityForDice,
   probAtLeast,
@@ -1040,8 +1045,230 @@ describe("T-219 · F-176-1 — the immediate-challenge assumption IS optimal's r
     // floor runs from `k <= 0` (three bands — `optimal` will only raise a claim it
     // already HOLDS) to `k <= 2`, against `k <= 3` at every ceiling. If a band or
     // `DARE_ANTE_BAND_FRACTION` is retuned so that this stops being true, F-219-1's
-    // premise has changed and T-222 must be re-read rather than silently voided.
+    // premise has changed and **LD-29 / `docs/LIARS-DICE_REDESIGN.md` §21 must be
+    // re-read** rather than silently voided. (T-222 re-ran this enumeration on HEAD
+    // and reproduced it exactly — §21.3 — then RULED the coupling: LD-29.)
     expect(widened).toBe(40);
     expect([...observed].sort()).toEqual(['0->3', '1->3', '2->3']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-222 · THE STAKE/ANTE COUPLING, RULED (`docs/LIARS-DICE-DECISIONS.md` LD-29,
+// `docs/LIARS-DICE_REDESIGN.md` §21).
+//
+// The describe above pins F-219-1 AS FILED — tier 0, band floor against band
+// ceiling. This one pins what T-222 measured and what LD-29 actually rules, which
+// is a strictly larger object:
+//
+//   * the gate over BANDS × ALL SIX TIERS, not tier 0 alone — `anteFor` and
+//     `effectiveWagerBand` both take the tier and the coupling is NOT tier-invariant;
+//   * the POT-GROWTH correction (§21.0 item 1): `ante / (2·seedWager + ante)` is the
+//     TIGHTEST bar the house ever faces in a hand, not the whole story;
+//   * the fact that a BOUNDED band caps the gate by construction and tier 5's
+//     `{min: 0, max: null}` removes that cap — the one place LD-29 declines to rule
+//     and files instead (F-222-2 / `TASKS.md` T-225);
+//   * the DEAD ZONE at the top of every bounded band, exactly one ante wide, where
+//     the loosest gate is unreachable because no raise is legal at all
+//     (F-222-1 / `TASKS.md` T-224).
+//
+// NO LITERAL THRESHOLD APPEARS IN ANY MECHANISM BELOW. Every number is computed
+// from `probAtLeast`, `anteFor`, `effectiveWagerBand`, `legalMovesFrom` and content's
+// own `DARE_ANTE_BAND_FRACTION`, so a later retune of a band or the fraction goes RED
+// and RE-OPENS LD-29 rather than silently voiding it — the LD-26 / LD-27 / LD-28
+// precedent.
+// ---------------------------------------------------------------------------
+
+describe('T-222 · F-219-1 — the stake/ante coupling, ruled', () => {
+  const TIERS = [0, 1, 2, 3, 4, 5] as const;
+  const SYSTEM_IDS = Array.from({ length: 40 }, (_, i) => i + 1);
+
+  /** The gate itself: the largest `k` `optimal` will raise on, at pots `p` each. */
+  const maxAdmissibleK = (potPlayer: number, potDealer: number, ante: number, u: number) => {
+    let best = -1;
+    for (let k = 0; k <= u; k += 1) {
+      if (probAtLeast(k, u) * (potPlayer + potDealer + ante) > ante) best = k;
+    }
+    return best;
+  };
+
+  it('the gate is MONOTONE NON-DECREASING in the seed at every band and every tier — it can only loosen', () => {
+    // F-219-1's core claim, generalised off tier 0. `probAtLeast` is fixed in `k`
+    // and the threshold `ante / (2s + ante)` is strictly decreasing in `s`, so the
+    // admissible set can only grow. Asserted over a ladder rather than at two
+    // points, so a non-monotone retune cannot slip between the ends.
+    let checked = 0;
+    let sawWidening = 0;
+    for (const tier of TIERS) {
+      const u = dicePerSideForTier(tier);
+      for (const systemId of SYSTEM_IDS) {
+        const ante = anteFor(systemId, tier);
+        const band = effectiveWagerBand(systemId, tier);
+        // Tier 5 has no ceiling; walk to a multiple of the ante instead, which is
+        // the only reference the tier itself supplies (`anteFor`'s own note).
+        const top = band.max ?? 1000 * ante;
+        const ladder = [band.min];
+        for (let i = 1; i <= 12; i += 1)
+          ladder.push(Math.round(band.min + (i / 12) * (top - band.min)));
+        let previous = -2;
+        for (const seed of ladder) {
+          const gate = maxAdmissibleK(seed, seed, ante, u);
+          expect(
+            gate,
+            `system ${systemId} tier ${tier} seed ${seed} ante ${ante}`,
+          ).toBeGreaterThanOrEqual(previous);
+          if (gate > previous && previous > -2) sawWidening += 1;
+          previous = gate;
+          checked += 1;
+        }
+      }
+    }
+    // NON-VACUITY: the ladder must actually contain steps, or "monotone" is the
+    // trivial "constant". Counted before it was written down: 240 rows, 3,120 cells.
+    expect(checked).toBe(TIERS.length * SYSTEM_IDS.length * 13);
+    expect(sawWidening).toBeGreaterThan(200);
+  });
+
+  it('the closed form for each step boundary agrees with the gate, exactly (§21.3)', () => {
+    // `s > ante(1 - p) / (2p)` is the seed at which evidence `k` becomes admissible,
+    // with `p = probAtLeast(k, u)`. §21.3's whole table is that one expression, so
+    // it is asserted against the brute-force gate rather than trusted.
+    for (const tier of TIERS) {
+      const u = dicePerSideForTier(tier);
+      for (const systemId of SYSTEM_IDS) {
+        const ante = anteFor(systemId, tier);
+        for (let k = 0; k <= u; k += 1) {
+          const p = probAtLeast(k, u);
+          if (p <= 0) continue;
+          // Note the `+ 1`: the inequality is STRICT, so even at `p = 1` (k <= 0)
+          // a ZERO stake admits nothing — `1 * (0 + 0 + ante) > ante` is false. A
+          // free hand has no raising game at all, which is the far end of the same
+          // coupling and is stated in §21.3 rather than rounded away.
+          const minSeed = Math.floor((ante * (1 - p)) / (2 * p)) + 1;
+          const context = `system ${systemId} tier ${tier} k ${k} ante ${ante} minSeed ${minSeed}`;
+          expect(maxAdmissibleK(minSeed, minSeed, ante, u), context).toBeGreaterThanOrEqual(k);
+          if (minSeed > 0) {
+            expect(maxAdmissibleK(minSeed - 1, minSeed - 1, ante, u), context).toBeLessThan(k);
+          }
+        }
+      }
+    }
+  });
+
+  it('§21.0 · the seeded pots are the TIGHTEST bar in the hand — every ante paid loosens it further', () => {
+    // The correction T-222 made to F-219-1's own framing before anything ran:
+    // `placeBid` does `hand.potPlayer += antePaid` (`packages/engine/src/actions/dare.ts`),
+    // so `2·seedWager` is a LOWER bound on the pots and the gate is non-shrinking
+    // as the hand runs. The finding's formula is therefore the house's WORST bar,
+    // which strengthens it rather than weakening it.
+    for (const tier of TIERS) {
+      const u = dicePerSideForTier(tier);
+      for (const systemId of [1, 5, 7, 11, 12]) {
+        const ante = anteFor(systemId, tier);
+        const band = effectiveWagerBand(systemId, tier);
+        const seed = Math.max(1, band.min);
+        let potPlayer = seed;
+        let potDealer = seed;
+        let previous = maxAdmissibleK(potPlayer, potDealer, ante, u);
+        for (let ply = 0; ply < 12; ply += 1) {
+          // One ante on each side, the lattice's own cheapest exchange.
+          potPlayer += ante;
+          potDealer += ante;
+          const gate = maxAdmissibleK(potPlayer, potDealer, ante, u);
+          expect(gate, `system ${systemId} tier ${tier} ply ${ply}`).toBeGreaterThanOrEqual(
+            previous,
+          );
+          previous = gate;
+        }
+      }
+    }
+  });
+
+  it('a BOUNDED band caps the gate at ONE value shared by every port — and tier 5 removes the cap', () => {
+    // At the ceiling the ratio is `ante / (2·band.max + ante)`, and `anteFor` makes
+    // `ante` a fixed FRACTION of that same ceiling — so the ratio is
+    // `f / (2 + f)` for EVERY port and EVERY bounded tier, with the band cancelling
+    // out. That is why §19.10 found `k <= 3` at all 40 ceilings: it is one number,
+    // not forty. Derived from content's own fraction; no literal `3` anywhere.
+    const ceilingGates = new Set<number>();
+    for (const tier of [0, 1, 2, 3, 4] as const) {
+      const u = dicePerSideForTier(tier);
+      for (const systemId of SYSTEM_IDS) {
+        const band = effectiveWagerBand(systemId, tier);
+        expect(band.max, `tier ${tier} is a BOUNDED tier`).not.toBeNull();
+        const ante = anteFor(systemId, tier);
+        const gate = maxAdmissibleK(band.max!, band.max!, ante, u);
+        ceilingGates.add(gate);
+        // NO DISSOLUTION at any bounded tier: the house never raises on every k.
+        expect(gate, `system ${systemId} tier ${tier}`).toBeLessThan(u);
+        // …and the gate is exactly the one the CONTENT FRACTION predicts.
+        const ratio = DARE_ANTE_BAND_FRACTION / (2 + DARE_ANTE_BAND_FRACTION);
+        let fromFraction = -1;
+        for (let k = 0; k <= u; k += 1) if (probAtLeast(k, u) > ratio) fromFraction = k;
+        expect(gate, `system ${systemId} tier ${tier} ratio ${ratio}`).toBe(fromFraction);
+      }
+    }
+    // Two dice widths are in play across tiers 0-4 (4 at tier 0, 5 at tier 1, 6
+    // above), so the shared ceiling gate is a small set, not forty values.
+    expect(ceilingGates.size).toBeLessThanOrEqual(2);
+
+    // TIER 5 IS THE EXCEPTION AND IT IS PINNED AS ONE (F-222-2, `TASKS.md` T-225).
+    // `{min: 0, max: null}` removes the ceiling while `anteFor` freezes the ante at
+    // the TIER-4 reference, so the ratio -> 0 as the stake grows and there is a
+    // finite stake admitting EVERY k. Asserted as the derived property it is.
+    const u5 = dicePerSideForTier(5);
+    for (const systemId of SYSTEM_IDS) {
+      expect(effectiveWagerBand(systemId, 5).max).toBeNull();
+      const ante = anteFor(systemId, 5);
+      const p = probAtLeast(u5, u5);
+      const dissolves = Math.floor((ante * (1 - p)) / (2 * p)) + 1;
+      expect(Number.isFinite(dissolves)).toBe(true);
+      expect(maxAdmissibleK(dissolves, dissolves, ante, u5), `system ${systemId}`).toBe(u5);
+      // …and it takes a stake FAR above anything a bounded tier could seat, which
+      // is why §21.4's measurement finds the dissolution unreached rather than
+      // reachable. The reference is the tier-4 ceiling, read, never restated.
+      expect(dissolves).toBeGreaterThan(effectiveWagerBand(systemId, 4).max!);
+    }
+  });
+
+  it('F-222-1 · the top `DARE_ANTE_BAND_FRACTION` of every bounded band is a DEAD ZONE — no raise is legal there at all', () => {
+    // The measurement that inverts F-219-1's reading (§21.4b): `headroomFor` is
+    // `band.max - pot`, and the seed counts against it, so a seed within one ante
+    // of the ceiling leaves the house UNABLE to raise — the loosest gate in the
+    // band is exactly where the gate never fires. The zone's width is one ante,
+    // i.e. `DARE_ANTE_BAND_FRACTION` of the ceiling, by construction.
+    const bid: DareBid = { quantity: 3, face: 3 };
+    const rich = 10_000_000;
+    for (const tier of [0, 1, 2, 3, 4] as const) {
+      const u = dicePerSideForTier(tier);
+      const maxQuantity = maxQuantityForDice(u);
+      for (const systemId of SYSTEM_IDS) {
+        const band = effectiveWagerBand(systemId, tier);
+        const ante = anteFor(systemId, tier);
+        const context = `system ${systemId} tier ${tier} band ${band.min}-${band.max} ante ${ante}`;
+        // Seated at the ceiling: headroom 0 on both sides, so the only moves left
+        // are the two free ones. The hand is one claim long by construction.
+        expect(
+          legalMovesFrom(bid, ante, Math.max(0, band.max! - band.max!), rich, true, maxQuantity),
+          context,
+        ).toEqual(['challenge', 'fold']);
+        // One ante below the ceiling: exactly one single raise fits and the double
+        // does not. That boundary IS the dead zone's width.
+        expect(
+          legalMovesFrom(
+            bid,
+            ante,
+            Math.max(0, band.max! - (band.max! - ante)),
+            rich,
+            true,
+            maxQuantity,
+          ),
+          context,
+        ).toEqual(['raise-face', 'raise-quantity', 'challenge', 'fold']);
+        // …and the zone is `DARE_ANTE_BAND_FRACTION` of the band, read off content
+        // rather than asserted as a width in credits.
+        expect(ante / band.max!).toBeCloseTo(DARE_ANTE_BAND_FRACTION, 2);
+      }
+    }
   });
 });

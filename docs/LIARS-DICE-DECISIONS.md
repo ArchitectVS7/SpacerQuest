@@ -672,6 +672,14 @@ every band ceiling and `k ≤ 2`, `k ≤ 1` or — at the 15–1200, 25–2000 a
 at the floor, where `optimal` will only raise a claim it already holds. Every band widens; three
 span four steps of `k`. That is a wager-band/ante ruling, not a measurement task's to take.
 
+> **CLOSED AT T-222 — LD-29.** F-219-1 is measured over every band × all six tiers, baked off
+> against the one alternative that dissolves it, and **ruled acceptable at every bounded tier**: the
+> threshold is **pot odds**, and a player who stakes more moves the bar and **loses** by it
+> (`docs/LIARS-DICE_REDESIGN.md` §21). LD-27's own numbers are untouched. Two things the sentence
+> above did not know are filed rather than absorbed: the loosest gate in every band sits inside a
+> **one-ante dead zone where no raise is legal at all** (F-222-1 / `T-224`), and **tier 5 caps
+> nothing**, so past `k ≤ 3` the gate misprices and the ordering re-inverts (F-222-2 / `T-225`).
+
 **What enforces this ruling.** `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts`, describe
 **`T-219 · F-176-1 — the immediate-challenge assumption IS optimal's raise evidence gate`**. Every
 assertion is computed from `probAtLeast`, `probClaimTrue` and the imported constants, with no
@@ -794,3 +802,126 @@ burden is computed from the engine's own `probAtLeast` against the binomial writ
 and is monotone in `d`, so a change to the dice model goes RED and re-opens LD-28 rather than
 silently voiding its anchor; and the per-pool rollup is lossless against `dares` / `daresWon` /
 `netCredits`.
+
+---
+
+**LD-29 — THE HOUSE'S RAISE EVIDENCE BAR IS POT ODDS, AND THE PLAYER MOVING IT BY STAKING MORE IS
+THE BAR WORKING RATHER THAN AN ACCIDENT. RULED ACCEPTABLE AT EVERY BOUNDED TIER; TIER 5 AND THE
+BAND-CEILING DEAD ZONE ARE FILED, NOT FOLDED IN.** (T-222, ruling on **F-219-1**; filed at T-219
+§19.10 / LD-27, which derived the gate but was forbidden from ruling on the band or the ante.)
+**The shape taken is: NOTHING CHANGES IN ANY RULE — no band, threshold, fraction or golden is edited
+in either direction.** `packages/engine/src` and `packages/content/src` are **not touched at all**
+(the only source edited anywhere is a test file, and `__tests__` is in
+`HASHED_ROOT_IGNORED_DIRECTORIES`); `rulesFingerprint` was read before and after at
+**`cabd2112ccf4cefb`**, `instrumentFingerprint` at **`2d6d1990eaf13031`** and `docsFingerprint` at
+**`265aea1d09f0d485`** — **all three unmoved**, so no capstone is owed. `CURRENT_SAVE_VERSION`
+unmoved at 17 (`packages/engine/src/save.ts:627`), re-read live.
+
+**THE FINDING WAS RIGHT ABOUT THE FACT AND THE OMISSION, AND WRONG ABOUT WHAT IT MEANT.** The
+enumeration reproduces on HEAD exactly — at tier 0, **40/40** bands widen with transitions
+`{0→3, 1→3, 2→3}` — and nothing named or tested the coupling before T-219. What T-219 could not
+know, because it measured the gate and not the play, is the sign.
+
+**THE DERIVATION, NOT A PREFERENCE.** LD-27 established that every `optimal` raise happens at
+`pTrue = 1`, where `challenge` and `fold` both score `−potDealer`, so the branch rearranges exactly
+to `probAtLeast(k, u) · (potPlayer + potDealer + c) > c`, i.e.
+
+```
+optimal raises  <=>  probAtLeast(k, u)  >  c / (pot + c)
+```
+
+**`c / (pot + c)` is pot odds** — the break-even probability of a wager that costs `c` and wins
+`pot + c`. A larger pot offers the house better odds on the same raise, and a bar that *did not*
+move with the pot would be the mispriced one. Three consequences, each measured rather than argued
+(`.scratch/t222-stake.ts`, 260 cells × **n = 40,000 hands**, identical seeds
+`SeededRng(20_260_806 + u)` across every stake cell, scored on **realised** house credits off the
+engine's own showdown rule; the rig's `optimal` proven byte-equal to
+`archetypeMove({archetype:'optimal'})` over **1,200,000** states at every shipped ante and pot range
+by `.scratch/t222-fidelity.ts`, zero mismatches):
+
+1. **The play is a function of the RATIO alone.** Holding `c / (2s + c)` fixed and scaling stake and
+   ante together ×1 / ×2 / ×4 / ×10 gives net/seed **0.6316 at every rung**, with byte-identical
+   histograms. Holding the stake and varying the ante *within* a gate step changes nothing.
+2. **A looser gate is BETTER for the house, monotonically, at every bounded tier.** Stake-normalised
+   house net by gate step: **−0.04 → +0.11 → +0.45 → +0.63** (4 dice) and **−0.39 → −0.29 → +0.09 →
+   +0.37** (6 dice); the player's win rate falls **51.77% → 18.55%** and **65.28% → 31.35%** as the
+   bar opens. **There is no player-side exploit in the coupling to price.**
+3. **The bounded ceiling gate is ONE number for all forty ports.** `anteFor` makes the ante a fixed
+   fraction of the same ceiling the stake is capped at, so the ceiling ratio is
+   `f / (2 + f)` with `f = DARE_ANTE_BAND_FRACTION` and **the band cancels out**. §19.10's `k ≤ 3`
+   at all 40 ceilings is a property of the fraction, not a coincidence across ports.
+
+**WHERE THE MEASURED GAME ACTUALLY SITS** (the shipped instrument's own seated quantities,
+n = 279,857 hands over 1,600 gambler careers × 120 days): mean seated stake **2,631.6**, per-career
+mean p10/p50/p90 **1,537 / 2,477 / 3,876**, max **32,510**, **64.13%** of hands seated **above the
+port's authored ceiling**. The floor end of the coupling — where the house loses and the ordering
+inverts — is **essentially unexercised**; the game lives at and beyond the ceiling end.
+
+**THE ALTERNATIVE WAS BAKED OFF, NOT WAVED OFF.** Of the three levers the finding named, Controls A
+and B show `DARE_ANTE_BAND_FRACTION` and the bands **cannot** dissolve the coupling — they move
+where the step boundaries fall and nothing else. Only **the ante's reference** can: `ante =
+max(1, round(seedWager × f))` makes the ratio `f / (2 + f)` **constant in the stake**. Run over the
+same 260 cells on identical seeds, it does exactly that — a flat `k ≤ 3` gate, a flat 31.35% player
+win rate at six dice, no ordering inversion below the ceiling. **It is DECLINED**, for reasons in
+order of weight: (i) it moves the table **against the player at every measured cell**, and **LD-28
+promoted "pooled player EV per hand > 0" to a standing invariant one task ago** at a measured
++190.1 cr — whether that survives cannot be known without a full 8,000-row capstone, which is not a
+measurement task's to spend on speculation; (ii) it **fixes neither** of the two things measured to
+be broken (it leaves the dead zone byte-identical, because at the ceiling `s = band.max` and the two
+rules produce the same ante); (iii) it is an engine change that would owe its own capstone to decide
+whether it is admissible at all. Recorded for the future: **ALT is the shape a fix to F-222-2 should
+start from**, because a stake-referenced ante caps the ratio without capping the stake.
+
+**THE ORDERING, RE-SCORED ON THE SHIPPED INSTRUMENT** as Accept requires (`dareCells`, the 1,600-seed
+gambler × 120-day arm, the same one §18.4 / §19.9 / §20.3 used): `bad − optimal` = **+15.79 pp,
+SE 0.44, z 35.93**; player win rate **52.90%** at n = 279,857; EV **+190.1 cr/hand**;
+`roster|optimal` **39.83%** at n = 95,580; **0 tier and 0 challenge disagreements**;
+`invariants: 0 violations` on all four shards. Every published decimal reproduced, which is what an
+unmoved rule owes. *(The `combat-win-share` gate FAIL on all four shards is the known
+gambler-only-arm artefact §19.9 and §20.0 record, not a regression.)*
+
+**THE RULING.**
+
+1. **ACCEPTABLE — the stake/ante coupling at every BOUNDED tier (0–4)**, on the pot-odds derivation
+   and the monotone measurement above. Nothing moves.
+2. **FILED, NOT ABSORBED — F-222-1 (`TASKS.md` T-224): the top `DARE_ANTE_BAND_FRACTION` of every
+   bounded band is a DEAD ZONE.** `headroomFor` counts the seed against `band.max`, so a seed within
+   one ante of the ceiling leaves **both** sides unable to cover a raise: the loosest gate in the
+   band never fires, and the hand collapses to a single opening claim resolved at
+   `probAtLeast(1, u)` — **in the player's favour at every width**. Measured house net/seed
+   **−0.045** (4 dice) / **−0.321** (6 dice) against **+0.445 / +0.373** one quarter-band lower;
+   at the default band at tier 4 that is **+962 cr/hand to the player against −842**. §16.5 already
+   measured the gambler's median stake-to-band ratio at **100.00%**. The lever is §4.3's whole-hand
+   exposure ruling, not the ante.
+3. **FILED, NOT ABSORBED — F-222-2 (`TASKS.md` T-225): tier 5 caps nothing.**
+   `effectiveWagerBand → {min: 0, max: null}` removes the ceiling while `anteFor` freezes the ante at
+   the tier-4 reference, so the ratio → 0 as the stake grows. Past `k ≤ 3` the direction **reverses**:
+   +0.373 → **+0.223** at `k ≤ 4` → **−0.139** deeper, with the ordering **re-inverting at −4.95 pp**.
+   `k = 4` is admitted from **1,026 cr** (5–200 port) and **5,127** (default band), both inside the
+   **32,510** maximum stake measured over 1,600 careers. **T-222 predicted this would not happen and
+   was wrong** (§21.6, prediction 3); the ruling above is scoped to bounded tiers in consequence
+   rather than being restated to match.
+4. **FILED, NOT ABSORBED — F-222-3 (`TASKS.md` T-226): the archetype ordering is stake-conditional.**
+   `bad − optimal` runs **−21.15 pp** at band floors to **+20.61 pp** mid-band to **0.00** in the dead
+   zone. `bad` reads no pot at all, so the whole dependence is `optimal`'s. LD-25 states the ordering
+   without a stake range and no test covers it off the stakes the sweep happens to play.
+
+**WHAT THIS RULING DOES NOT DO.** It does not move `DARE_ANTE_BAND_FRACTION`, the ante's reference,
+any wager band, `headroomFor`, `effectiveWagerBand`, `anteFor`, `probClaimTrue`, `BAD_CREDULITY`,
+`DARE_AI_CHALLENGE_MARGIN`, `SIM_DARE_CHALLENGE_MARGIN` or the sim's `planDareMove` — moving the last
+of those to make an engine measurement come out right is §16.2's banned third shape. It does not
+re-open **LD-25** (the ordering bar stands; F-222-3 asks for its *range*, not its sign), **LD-26**
+(`pTrue` is still a point read), **LD-27** (the raise valuation is untouched and this ruling is built
+on its derivation) or **LD-28** (whose EV invariant is, on the contrary, the reason ALT is declined).
+
+**WHAT ENFORCES THIS RULING.** `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts`, describe
+**`T-222 · F-219-1 — the stake/ante coupling, ruled`**. Five assertions, every one computed from
+`probAtLeast`, `anteFor`, `effectiveWagerBand`, `legalMovesFrom` and content's own
+`DARE_ANTE_BAND_FRACTION`, **with no literal threshold in any mechanism**, so a retune of a band or
+the fraction goes RED and **re-opens LD-29** rather than silently voiding it: the gate is monotone
+non-decreasing in the seed over all 40 ports × 6 tiers (3,120 cells); the closed-form step boundary
+`⌊c(1−p)/(2p)⌋ + 1` agrees with the brute-force gate at every `(port, tier, k)`; the seeded pots are
+the **tightest** bar in the hand, so every ante paid only loosens it; a bounded band caps the gate at
+exactly the value `f / (2 + f)` predicts while **tier 5 removes that cap**; and the dead zone at the
+top of every bounded band is exactly one ante wide. T-219's own describe keeps **every** expectation
+it shipped — only its closing comment is redirected here.

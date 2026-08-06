@@ -538,6 +538,53 @@ accident of the ante/pot ratio rather than a design; it is now pinned by a named
 `probAtLeast` and the imported constants (`liarsDiceArchetypes.test.ts`, describe **`T-219 · F-176-1
 — the immediate-challenge assumption IS optimal's raise evidence gate`**) rather than left to prose.
 
+> **RULED AT T-222 (2026-08-06) — `docs/LIARS-DICE-DECISIONS.md` LD-29; the measurement is
+> `docs/LIARS-DICE_REDESIGN.md` §21.** The enumeration above **reproduces on HEAD unchanged**
+> (40/40 bands widen at tier 0, transitions `{0→3, 1→3, 2→3}`). **"An accident of the ante/pot ratio
+> rather than a design" is retired as the reading, and the text stands as the statement of fact it
+> is.** `c / (pot + c)` is **pot odds** — the break-even probability of a raise costing `c` into a
+> pot of `pot` — and the play measurement says the house's stake-normalised return is **monotone
+> non-decreasing** in the gate step at every bounded tier (−0.04 → +0.11 → +0.45 → +0.63 at four
+> dice; −0.39 → −0.29 → +0.09 → +0.37 at six, n = 40,000 per cell). **A player who stakes more moves
+> the bar and loses 6–33 points of win rate by it.** The `k ≤ 3` at all forty ceilings is one number
+> rather than forty: at the ceiling the ratio is `f / (2 + f)` with `f = DARE_ANTE_BAND_FRACTION`
+> and the band cancels out. Three residuals are **filed rather than folded into the ruling** —
+> F-222-1 / `T-224` (the ceiling dead zone, §3.3d), F-222-2 / `T-225` (tier 5), F-222-3 / `T-226`
+> (the ordering is stake-conditional). Enforced by a second named describe,
+> **`T-222 · F-219-1 — the stake/ante coupling, ruled`**; T-219's describe keeps every expectation
+> it shipped.
+
+#### 3.3d AMENDMENT (T-222, 2026-08-06) — the TIER, and the dead zone at the top of every band
+
+§3.3c is kept verbatim above and superseded in place here, following §3.3a / §3.3b's own form. Two
+things it could not say, because it enumerated **tier 0 only** and modelled headroom as unlimited:
+
+**(1) THE COUPLING IS NOT TIER-INVARIANT.** `anteFor(systemId, tier)` scales by
+`LIARS_DICE_RAISED_CEILING_MULT` at `tier >= 4` (§4.7) and `effectiveWagerBand` returns
+`band.max × MULT` at tier 4 and **`{min: 0, max: null}` at tier 5** (§4.8). So at **tier 4** the ante
+and the ceiling scale together — the ceiling gate is unchanged at `k ≤ 3`, and the bar at a *fixed*
+stake **tightens 3×** — while at **tier 5** the ceiling is removed and the ante stays frozen at the
+tier-4 reference, so **nothing caps the pot/ante ratio**. Measured, that is where the gate stops
+being priced correctly: past `k ≤ 3` the house's stake-normalised return **reverses** (+0.373 at
+`k ≤ 3` → **+0.223** at `k ≤ 4` → **−0.139** deeper) and the archetype ordering **re-inverts**
+(`bad − optimal` −4.95 pp). `k = 4` is admitted from **1,026 credits** at the 5–200 port and
+**5,127** at the default band, both inside the **32,510** largest stake measured over 1,600 careers.
+Full dissolution (`k = u`) needs **≥ 419,896** and is **not** reached. **F-222-2 / `TASKS.md` T-225**
+— a §4.8 ruling, not an ante one.
+
+**(2) THE LOOSEST GATE IN EVERY BOUNDED BAND IS UNREACHABLE.** `headroomFor` is
+`max(0, bandMax − pot)` and the **seed counts against it** (§4.3), so a seed within one ante of the
+ceiling leaves **both** sides unable to cover a raise: `legalMovesFrom` offers only `challenge` and
+`fold`, and the hand is **one claim long by construction**. The zone is exactly one ante wide — i.e.
+exactly `DARE_ANTE_BAND_FRACTION` of the ceiling, because that is what the ante is. So "a
+maximum-stake hand faces one that will raise on `k = 3`" is **false in play**: at that stake the
+dealer cannot raise at all, and the hand resolves at `probAtLeast(1, u)` — **in the player's
+favour** (measured player win **52.27%** at four dice against `probAtLeast(1,4) = 51.77%`, and
+**66.04%** at six against **66.51%**). Priced: house net/seed **−0.045 / −0.321** at the ceiling
+against **+0.445 / +0.373** one quarter-band lower, i.e. **+962 cr/hand to the player against −842**
+at the default band at tier 4. **F-222-1 / `TASKS.md` T-224** — the lever is §4.3's whole-hand
+exposure ceiling, not the ante.
+
 ### 3.4 BAD — a specified leak, not "worse random"
 
 `bad` plays as though the other side of the table were blank — it reasons only from its own dice
