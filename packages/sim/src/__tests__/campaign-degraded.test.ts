@@ -1477,6 +1477,41 @@ const UNCHANGED_POLICIES = [
 // So the number below attributes to the RULE alone, and the wiring's effect is
 // visible only at capstone scale.
 //
+// ENTRY 38 (T-176 — THE CHALLENGER-WON SPLIT INSTRUMENT, F-160-2). ALL SEVEN ROWS
+// MOVE, AND ALL SEVEN MOVE FOR A REPORT-SHAPE REASON ONLY — entries 11, 12, 23, 30,
+// 35 and 36's form for the seventh time. THE CLAIM HERE IS STRONGER THAN ENTRY 36'S:
+// entry 36 added three OPTIONAL ENGINE EVENT FIELDS and had to prove those inert by
+// rows; this entry touches NO engine or content source at all. `rulesFingerprint`
+// is PREDICTED UNMOVED and the only lines under `packages/engine/src` are a comment
+// retarget, which `hashSemantic` strips before hashing (N7-FP).
+//
+// THE CAUSE, STATED BEFORE THE NUMBERS. F-160-2's re-derived criterion (C3',
+// `docs/LIARS-DICE_REDESIGN.md` §18) compares the two challenger rows AT MATCHED
+// EVIDENCE, which needs settled CHALLENGE hands cut by
+// `pool × challenger × dicePerSide × k`. None of that rode any counter:
+// `HangoutPlayStats` gains `dareChallengeCells` (108 zero-filled cells),
+// `dareChallengeSplit` (16), and `dareChallengeDisagreements`. This fingerprint
+// hashes the whole report JSON, shape included, so three new keys move every hash
+// on their own.
+//
+// THE STRIP PROOF, RUN LOCALLY over these exact 35 careers rather than claimed.
+// Deleting the three new keys from the hashed `hangoutPlay` reproduces the entry-37
+// pin BYTE FOR BYTE on ALL SEVEN — including `gambler`, the one row that actually
+// sits at a table and therefore the only row a challenge counter can even reach:
+//   trader   19589e0d6205df26 -> stripped 9ec397b9c42bffd7 (= entry 37)
+//   fighter  2a5311c8f715659c -> stripped 895057933d261134 (= entry 37)
+//   explorer 2eb09d1ba5f0dd09 -> stripped 523aaca0e611dbfb (= entry 37)
+//   veteran  a606099314d8f6d8 -> stripped 4759d8528de00678 (= entry 37)
+//   smuggler 0259248059be5eaf -> stripped a6b263d9a730db48 (= entry 37)
+//   gambler  d1d0c11b6c0d6a49 -> stripped 34553710b65b777a (= entry 37)
+//   greedy   99e6a7d50b02558e -> stripped ab18b51b762e4367 (= entry 37)
+// Zero careers changed. A COUNTER CANNOT CHANGE BEHAVIOUR — `planDareMove`'s inputs
+// did not move by one byte, and the instrument reads the HIDDEN dice off the
+// settlement event, which the planner never sees.
+//
+// NO BAND, THRESHOLD, GOLDEN OR CONSTANT WAS EDITED. `instrumentFingerprint` moves
+// (`sim/index.ts`); `rulesFingerprint` does NOT.
+//
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
   // so the trader borrows and repays on the day it needs to rather than on the day
@@ -1501,7 +1536,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // the header's entry 35 for the strip proof against the value above).
   // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 36 for the strip proof against the value above).
-  trader: '9ec397b9c42bffd7',
+  // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 38 for the strip proof against the value above).
+  trader: '19589e0d6205df26',
   // Entry 27 (T-159): re-derived — and the ONLY row that moves, which is the
   // cross-check that this was a fighter change and nothing else: `trader`,
   // `explorer`, `veteran`, `smuggler`, `gambler` and `greedy` all came back byte
@@ -1550,7 +1587,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // the header's entry 35 for the strip proof against the value above).
   // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 36 for the strip proof against the value above).
-  fighter: '895057933d261134',
+  // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 38 for the strip proof against the value above).
+  fighter: '2a5311c8f715659c',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
   // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4
@@ -1604,7 +1643,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // the header's entry 35 for the strip proof against the value above).
   // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 36 for the strip proof against the value above).
-  explorer: '523aaca0e611dbfb',
+  // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 38 for the strip proof against the value above).
+  explorer: '2eb09d1ba5f0dd09',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   //
   // Entry 29 (T-161): re-derived, and the ONLY row that moves — which is the
@@ -1652,7 +1693,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // the header's entry 35 for the strip proof against the value above).
   // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 36 for the strip proof against the value above).
-  veteran: '4759d8528de00678',
+  // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 38 for the strip proof against the value above).
+  veteran: 'a606099314d8f6d8',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
   // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
   // through the shorter hand on a band-3/4 board rather than through the payout.
@@ -1694,7 +1737,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // the header's entry 35 for the strip proof against the value above).
   // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 36 for the strip proof against the value above).
-  smuggler: 'a6b263d9a730db48',
+  // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 38 for the strip proof against the value above).
+  smuggler: '0259248059be5eaf',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sol-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
@@ -1807,7 +1852,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // ENTRY 37 (T-175): re-derived — THE ONE REAL MOVE. `optimal` reads the standing
   // claim instead of ignoring it, so the only policy that sits at a table plays a
   // different game (see the header's entry 37 for the six-figure before/after).
-  gambler: '34553710b65b777a',
+  // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 38 for the strip proof against the value above).
+  gambler: 'd1d0c11b6c0d6a49',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).
@@ -1824,7 +1871,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // (see the header's entry 35 for the strip proof against the value above).
   // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 36 for the strip proof against the value above).
-  greedy: 'ab18b51b762e4367',
+  // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 38 for the strip proof against the value above).
+  greedy: '99e6a7d50b02558e',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

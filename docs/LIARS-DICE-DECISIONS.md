@@ -152,6 +152,15 @@ to `dealerMove`, i.e. pool B, so it left the 57% of hands that are pool A untouc
 dead:** it is an independent lever that remains available on top of the shipped (b) — see F-160-2
 — and would need its own bakeoff.
 
+> **SUPERSEDED AT T-176 (2026-08-06): (a) IS NOW DEAD.** It got the bakeoff this paragraph reserved
+> for it — on top of the shipped (b), identical seeds, 1,600 gambler careers × 120 days — and **lost
+> on the same criterion, C2, in the opposite direction**: player win rate **39.64%** against the
+> 55–70% band (T-160's (a) measured 73.04%, above it), EV/hand **−314.9 cr**, and the only invariant
+> violation in 3,200 careers. It is also unnecessary: the re-derived split criterion C3′ passes
+> **without** it. See LD-22's T-176 block and `docs/LIARS-DICE_REDESIGN.md` §18.6. The sentence
+> above is left verbatim — it was true when written, and what changed is the evidence, not the
+> record.
+
 *Explicitly NOT a candidate, at T-137's own ruling and still:* §16.2's third shape, teaching
 `planDareMove` to open above its own count. It moves the measurement without moving the game. The
 planner DOES now open one higher, but because the RULE moved under it — `isLatticeMove` refuses
@@ -163,6 +172,58 @@ reported as a miss rather than softened.** (T-160) Shipped: dealer-as-challenger
 player-as-challenger 82.43%, 41.7 pp apart (T-137: 5.32% vs 94.92%). The residual has a named
 cause the criterion did not price — the player's planner challenges selectively while the dealer
 challenges by default — so a gap is expected. **No threshold was edited.** Filed as F-160-2.
+
+> **T-176 (2026-08-06) RE-DERIVED THE CRITERION AND RAN SHAPE (a) ANYWAY. F-160-2 IS CLOSED, AND
+> (a) IS NOW DEAD RATHER THAN DORMANT.** (`docs/LIARS-DICE_REDESIGN.md` §18.)
+>
+> **THE RE-DERIVED CRITERION, C3′, WRITTEN BEFORE THE ARM RAN.** C3 compared two rates over two
+> DIFFERENT challenge populations. C3′ holds the evidence fixed at
+> `k = bid.quantity − own(bid.face)` — the sufficient statistic BOTH sides' margins are written in,
+> since each tests `surplus = k − dicePerSide/6` against `1.5`. Three limbs: **(a)** direct
+> standardisation onto a common `(k, dicePerSide)` distribution, **still at T-160's own 20 pp, which
+> was NOT edited**; **(b)** a Kitagawa decomposition of the raw gap into composition and rate, with
+> composition required to carry ≥ 50% — the falsifiable form of "the selectivity is the cause";
+> **(c)** an absolute floor, `p_backed > 50%` per side per pool, derived from the two margins' own
+> docblocks ("more likely false than true") rather than picked. The obvious floor —
+> "realised ≥ `1 − probAtLeast(k, d)`" — was **rejected in writing before the run** because it
+> prices the claimant as non-strategic, which is the exact assumption T-175's `probClaimTrue`
+> disproved in this codebase; measured afterwards, every single cell falls below it, on both sides.
+>
+> **MEASURED, PER POOL, ON THE SHIPPED INSTRUMENT** (`HangoutPlayStats.dareChallengeCells`,
+> 1,600 gambler careers × 120 days, **n = 279,857 hands**, `dareChallengeDisagreements` 0):
+>
+> | pool | dealer-as-challenger | player-as-challenger | raw gap | standardised gap | composition share |
+> | --- | --- | --- | --- | --- | --- |
+> | B (roaming) | 43.24% (n=146,360) | 90.03% (n=9,847) | 46.79 pp | **19.29 pp** PASS | **70.4%** |
+> | A (roster) | 65.81% (n=97,681) | 92.30% (n=19,852) | 26.49 pp | **10.09 pp** PASS | **70.3%** |
+>
+> **THE GAP IS ~70% COMPOSITION, AND THE COMPOSITION IS STRUCTURAL.** The shipped planner played
+> **ZERO** evidence-unbacked challenges in 29,699 (branch (c4) needs *no legal raise to exist*,
+> which never happened in 279,857 hands); the dealer is 42.5% / 22.9% unbacked and wins 5.92% /
+> 11.43% there. All four `p_backed` clear the floor (70.8% / 90.0% / 82.0% / 92.3%). **F-160-2's
+> named mechanism is confirmed and quantified rather than asserted.**
+>
+> **SHAPE (a) WAS RUN BECAUSE THE CRITERION SAID IN ADVANCE IT WOULD BE, AND IT LOST ON C2 AGAIN.**
+> C3′ pre-committed a routing trigger (dealer unbacked share above 20% with `p_unbacked` under 50%); it
+> fired on both pools, so (a) — `dealerMove`'s terminal fallback becomes the cheapest legal raise —
+> was implemented on top of the shipped (b) and run on identical seeds (1,600 × 120 days, 282,060
+> hands). It does narrow the roaming raw gap 46.79 → 20.41 pp. It also takes the **player win rate
+> 52.90% → 39.64%** (C2's band is 55–70%), **EV/hand +190.1 → −314.9 cr**, gambler `finalCredits`
+> median 64,622 → 20,330, and produces the **only invariant violation in 3,200 careers** across both
+> arms (seed 128, 77 consecutive zero-income days). C1 is structurally unmoved (it never touched the
+> CLAIM), C4 survives both (lift 2.942× → 2.810×), C6 holds both. It also MISSES C3′(b) on roaming
+> (composition share 45.5%), which is expected — it removes the composition the criterion
+> decomposes. **LD-21's "(a) is not dead" is superseded: (a) is dead.** It lost the first bakeoff on
+> C2 at 73.04% (above the band) and the second on C2 at 39.64% (far below it), and C3′ passes
+> without it. The engine file was reverted; `git diff` on `packages/engine/src/liarsDiceRules.ts` is
+> comment-only.
+>
+> **NO THRESHOLD, BAND OR GOLDEN WAS EDITED IN EITHER DIRECTION.** C3 itself is left VERBATIM in
+> §17.2 and is still reported as a miss; C3′ is a second criterion beside it, not a replacement for
+> its number. Two findings were filed rather than absorbed: **F-176-1** (`optimal`'s raise valuation
+> prices a counterparty that does not exist — `TASKS.md` T-219) and **F-176-2** (the shipped player
+> win rate is 52.90%, 2.1 pp below C2's own floor, moved there by T-175 and never re-scored —
+> `TASKS.md` T-220).
 
 ---
 

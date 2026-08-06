@@ -195,12 +195,15 @@ describe('T-1601b smuggler & gambler policies', () => {
       for (const value of Object.values(report.smuggling)) {
         expect(typeof value).toBe('number');
       }
-      // T-175 · `dareCells` is the one NON-scalar member of `hangoutPlay` (the
-      // pool × archetype × tier split, F-160-1), so it is destructured out and
-      // checked on its own shape rather than weakening the scalar sweep over the
-      // rest. Named explicitly — a blanket `typeof value === 'object' && continue`
-      // would let a future non-scalar in unnoticed.
-      const { dareCells, ...hangoutScalars } = report.hangoutPlay;
+      // T-175 / T-176 · `dareCells`, `dareChallengeCells` and `dareChallengeSplit`
+      // are the NON-scalar members of `hangoutPlay` (the pool × archetype × tier
+      // split, F-160-1; the challenger split at matched evidence, F-160-2), so they
+      // are destructured out and checked on their own shape rather than weakening
+      // the scalar sweep over the rest. Named explicitly — a blanket
+      // `typeof value === 'object' && continue` would let a future non-scalar in
+      // unnoticed.
+      const { dareCells, dareChallengeCells, dareChallengeSplit, ...hangoutScalars } =
+        report.hangoutPlay;
       for (const value of Object.values(hangoutScalars)) {
         expect(typeof value).toBe('number');
       }
@@ -212,6 +215,17 @@ describe('T-1601b smuggler & gambler policies', () => {
         expect(typeof cell.playerWon).toBe('number');
         expect(typeof cell.netCredits).toBe('number');
         expect(typeof cell.bids).toBe('number');
+      }
+      // T-176 · 2 pools × 2 challengers × 3 arities × 9 k-buckets, and 2 pools ×
+      // 4 archetype slots × 2 challengers. Same zero-fill property.
+      expect(Object.keys(dareChallengeCells)).toHaveLength(108);
+      expect(Object.keys(dareChallengeSplit)).toHaveLength(16);
+      for (const cell of [
+        ...Object.values(dareChallengeCells),
+        ...Object.values(dareChallengeSplit),
+      ]) {
+        expect(typeof cell.challenges).toBe('number');
+        expect(typeof cell.won).toBe('number');
       }
       expect(Number.isFinite(report.hangoutPlay.expectedValuePerDare)).toBe(true);
 

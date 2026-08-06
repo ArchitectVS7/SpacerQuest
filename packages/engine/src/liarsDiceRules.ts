@@ -1157,9 +1157,18 @@ export function archetypeMove(input: {
   // OPPONENT CHALLENGES IT IMMEDIATELY. This is a conservative, model-free
   // valuation — it needs no belief about how the player plays, which is exactly
   // why "optimal" here means "optimal against the information it has" and not
-  // "solves the game". T-176 (F-160-2) owns whether that assumption should price
-  // the shipped planner's SELECTIVITY instead; T-175 deliberately left it alone,
-  // and the measurement below is why (see `probClaimTrue`).
+  // "solves the game".
+  //
+  // T-176 · THE OWNER OF THAT ASSUMPTION IS NOW **F-176-1**, NOT A TASK. T-175 left
+  // this valuation alone and pointed at T-176; T-176 read the pointer and DECLINED
+  // it, in writing (`docs/LIARS-DICE_REDESIGN.md` §18.0 correction 4, §18.7): it is
+  // outside both branches of T-176's own Accept criterion, it would re-open the
+  // archetype ordering T-175 shipped one task earlier, and it is the same class of
+  // move as §16.2's banned third shape. The defect is REAL and MEASURED — T-175
+  // sized it at a modelled +52.62 credits per raise against a realised −53.26 at
+  // six dice — so it is filed as its own backlog row rather than left pointing at a
+  // task that refused it (backlog row `T-219` in `TASKS.md`). Do not "improve"
+  // this line without that finding's owner.
   //
   // T-175 · WHAT MOVED, AND IT IS ONE LINE (F-160-1, §3.3a). The sentence this
   // block used to end on — "it will not over-challenge a claim `probAtLeast` says

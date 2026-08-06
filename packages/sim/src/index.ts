@@ -62,6 +62,11 @@ import {
   // T-175 · The tier→dice mapping, read through the engine's own accessor so the
   // cell split's tier cross-check never restates it (see `derivedDareTier`).
   dicePerSideForTier,
+  // T-176 · The ONE evidence bar the challenge instrument classifies BOTH sides
+  // with (F-160-2, §18 criterion C3'(b)). Imported, never restated, and never
+  // combined with either policy's own relaxations — see
+  // `isEvidenceBackedChallenge`.
+  DARE_AI_CHALLENGE_MARGIN,
   legalDareMoves,
   minOpeningQuantity,
   applyPlayerAction,
@@ -364,6 +369,53 @@ export interface HangoutPlayStats {
    * non-zero is a finding to file, and a sweep that dies mid-run reports nothing.
    */
   dareTierDisagreements: number;
+  /**
+   * T-176 · **THE CHALLENGER-WON SPLIT AT MATCHED EVIDENCE** (F-160-2) — hands
+   * settled by a CHALLENGE, cut by `pool × challenger × dicePerSide × k`, keyed by
+   * {@link DareChallengeCellKey}.
+   *
+   * `k = bid.quantity - own(bid.face)` off the CHALLENGER's own hand: the number of
+   * the claimed face the challenger still needs from the other side's `dicePerSide`
+   * dice, and the sufficient statistic both sides' challenge rules are written in.
+   * `docs/LIARS-DICE_REDESIGN.md` §18 derives criterion C3' over these cells; the
+   * raw per-pool split T-160's C3 reported is the `k`-marginal of the same table.
+   *
+   * ONLY THE CHALLENGE POPULATION LANDS HERE, by construction rather than by
+   * filter: `DareHandResolved.dealerDice` and `actualCount` ride the event on the
+   * two challenge outcomes ONLY (a fold never reveals, §6.1), which is precisely the
+   * population the criterion is about.
+   *
+   * RAW COUNTS, NOT RATES, and every derived quantity §18 reports — the raw split,
+   * the standardised split, `w`, `p_backed`, `p_unbacked`, the analytic null — is
+   * arithmetic over these 108 cells plus the engine's `probAtLeast`.
+   */
+  dareChallengeCells: Record<DareChallengeCellKey, DareChallengeCellStats>;
+  /**
+   * T-176 · The same challenges rolled up by `pool × archetype × challenger`
+   * ({@link DareChallengeSplitKey}), 16 zero-filled cells. NOT derivable from
+   * {@link dareChallengeCells}, which drops the archetype to keep the `k` axis
+   * bounded — and since T-175 `optimal` is a materially different challenger from
+   * `bad`, dropping it would send the next reader back for another sweep.
+   */
+  dareChallengeSplit: Record<DareChallengeSplitKey, DareChallengeCellStats>;
+  /**
+   * T-176 · Settled CHALLENGE hands that failed one of three structural checks.
+   * **MUST BE 0**, and `campaign-dare-challenges.test.ts` asserts it on every seed.
+   * A counter rather than a `throw`, for the same reason
+   * {@link dareTierDisagreements} is one.
+   *
+   * The three channels, all impossible if the stream is well-formed:
+   *   1. **THE TWO-DERIVATION IDENTITY.** `challengerWon` is derived from
+   *      `outcome` + the challenger's identity; `claimFalse` from
+   *      `actualCount < bid.quantity`. `resolveChallenge` makes these the same
+   *      fact, so a disagreement means the join or the identity is wrong.
+   *   2. **THE JOIN.** A challenge outcome must carry a standing `bid`, an
+   *      `actualCount`, a revealed `dealerDice`, and a parked last-bidder for its
+   *      `handId`. A miss on any of them is a lost hand, not a rounding error.
+   *   3. **THE ARITY.** Both revealed hands must hold the same number of dice, and
+   *      that number must be one the ladder can produce (4, 5 or 6).
+   */
+  dareChallengeDisagreements: number;
 }
 
 /**
@@ -469,6 +521,244 @@ export function derivedDareTier(settledBefore: number): 0 | 1 | 2 | 3 | 4 | 5 {
  */
 export function dicePerSideAgreesWithTier(dicePerSide: number, tier: number): boolean {
   return dicePerSide === dicePerSideForTier(tier);
+}
+
+// ---------------------------------------------------------------------------
+// T-176 · THE CHALLENGER-WON SPLIT (F-160-2) — `docs/LIARS-DICE_REDESIGN.md` §18.
+//
+// WHAT THIS MEASURES, AND WHY IT IS NOT THE RAW SPLIT. T-160's criterion C3 asked
+// the two challenger rows to sit within 20 pp of each other and neither shape met
+// it. §18 re-derives the criterion as C3', which compares the two sides AT MATCHED
+// EVIDENCE — the sufficient statistic both sides' challenge rules are written in,
+// `k = bid.quantity - own(bid.face)` counted off the CHALLENGER's own hand, against
+// the `dicePerSide` unknown dice on the other side. `probAtLeast(k, dicePerSide)`
+// is the engine's own analytic prior for that statistic and is IMPORTED, never
+// restated here.
+//
+// THE INSTRUMENT MIRRORS NO POLICY. It stores raw `(challenges, won)` counts per
+// `pool × challenger × dicePerSide × k`; every rate, the evidence-backed split, the
+// standardisation and the mixture identity are arithmetic over those counts (see
+// `isEvidenceBackedChallenge`, which applies ONE engine-exported constant
+// identically to both sides). Copying `dealerMove`'s or `planDareMove`'s if-chain
+// into the sim is the drift failure this repo keeps naming, and it is not done.
+// ---------------------------------------------------------------------------
+
+/** T-176 · Which side played CALL. Derived from the actor of the LAST
+ *  `DareBidPlaced` on the hand — the challenger is by construction the other one
+ *  (`packages/engine/src/actions/dare.ts`, both challenge arms). */
+export type DareChallenger = 'player' | 'dealer';
+
+/** T-176 · The hand's dice-per-side. The ladder produces exactly 4, 5 or 6
+ *  (`dicePerSideForTier`), so the cell axis is closed at three values. */
+export type DareDiceArity = 4 | 5 | 6;
+
+/**
+ * T-176 · The `k` axis, BUCKETED and totally enumerable.
+ *
+ * `0` collects `k <= 0` — the claim is already true off the challenger's own dice
+ * alone, which is exactly the input `probAtLeast` answers `1` for, so collapsing
+ * them loses nothing. `8` collects `k >= 8`: `k > dicePerSide` makes the claim
+ * impossible for every legal arity, so every bucket at or above 7 carries the same
+ * analytic null of 1.
+ */
+export type DareKBucket = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
+/** T-176 · `pool|challenger|dN|kM`. A template-literal type, so a typo is a compile
+ *  error and the 2 × 2 × 3 × 9 = 108 cells are enumerable at the type level. */
+export type DareChallengeCellKey =
+  `${DarePool}|${DareChallenger}|d${DareDiceArity}|k${DareKBucket}`;
+
+/** T-176 · `pool|archetype|challenger` — the small rollup. Post-T-175 `optimal` is
+ *  a materially different challenger from `bad`, so a reader asking "who is
+ *  challenging well" needs the archetype cut and would otherwise have to re-run. */
+export type DareChallengeSplitKey = `${DarePool}|${DareArchetypeSlot}|${DareChallenger}`;
+
+/** T-176 · One challenge cell. RAW COUNTS ONLY — `aggregate.ts`'s own philosophy,
+ *  and the reason a later re-cut needs no new sweep. */
+export interface DareChallengeCellStats {
+  /** Hands settled by a CHALLENGE played by this side, at this evidence. */
+  challenges: number;
+  /** ...of which the CHALLENGER took the pot. */
+  won: number;
+}
+
+const DARE_CHALLENGERS: readonly DareChallenger[] = ['player', 'dealer'];
+const DARE_DICE_ARITIES: readonly DareDiceArity[] = [4, 5, 6];
+const DARE_K_BUCKETS: readonly DareKBucket[] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+
+/** T-176 · The one place a challenge-cell key is spelled. */
+export function dareChallengeCellKey(
+  pool: DarePool,
+  challenger: DareChallenger,
+  dicePerSide: DareDiceArity,
+  bucket: DareKBucket,
+): DareChallengeCellKey {
+  return `${pool}|${challenger}|d${dicePerSide}|k${bucket}`;
+}
+
+/** T-176 · ...and of a rollup key. */
+export function dareChallengeSplitKey(
+  pool: DarePool,
+  archetype: DareArchetypeSlot,
+  challenger: DareChallenger,
+): DareChallengeSplitKey {
+  return `${pool}|${archetype}|${challenger}`;
+}
+
+/** T-176 · `k` clamped onto the bucket axis. Both clamps are EXPLICIT rather than
+ *  implied by an index, because a silent clamp is how a tail quietly stops being
+ *  measured. */
+export function dareKBucket(k: number): DareKBucket {
+  if (k <= 0) return 0;
+  if (k >= 8) return 8;
+  return k as DareKBucket;
+}
+
+/**
+ * T-176 · THE POLICY-AGNOSTIC EVIDENCE CLASSIFIER (§18, criterion C3'(b)).
+ *
+ * A challenge is EVIDENCE-BACKED iff the claim outruns what the challenger's own
+ * dice plus the unknown half's EXPECTATION support by more than the engine's
+ * margin: `surplus = k - dicePerSide/6 > DARE_AI_CHALLENGE_MARGIN`.
+ *
+ * ONE CONSTANT, IMPORTED, APPLIED IDENTICALLY TO BOTH SIDES. It is deliberately
+ * NOT a mirror of either policy's if-chain: `dealerMove` branch 1 relaxes the same
+ * margin by `dealerGuile * DARE_AI_GUILE_PATIENCE` and `planDareMove` (c2) does
+ * not, so neither side's own test would classify the other's population. What is
+ * shared between them — and what `SIM_DARE_CHALLENGE_MARGIN`'s docblock says it
+ * mirrors "so the two sides fold on comparable evidence" — is exactly this bar.
+ *
+ * NOTE FOR THE READER OF THE CELLS: this predicate is a FUNCTION OF THE CELL KEY
+ * alone, and it lands on `k >= 3` at all three arities (`1.5 + 4/6 = 2.167`,
+ * `1.5 + 5/6 = 2.333`, `1.5 + 6/6 = 2.5`). That is why `w`, `p_backed` and
+ * `p_unbacked` are pure summation over `dareChallengeCells` and are not stored.
+ */
+export function isEvidenceBackedChallenge(k: number, dicePerSide: number): boolean {
+  return k - dicePerSide / 6 > DARE_AI_CHALLENGE_MARGIN;
+}
+
+/**
+ * T-176 · WHAT ONE SETTLED HAND SAYS ABOUT THE CHALLENGE, or why it says nothing.
+ *
+ *   * `not-a-challenge` — the hand folded (or timed out). `dealerDice`/`actualCount`
+ *     do not ride those outcomes (§6.1: a fold NEVER reveals), so there is nothing
+ *     to read and nothing wrong. The common case; not a disagreement.
+ *   * `join-miss` — a CHALLENGE outcome missing one of the four things it must
+ *     carry. Structurally impossible; counted, never dropped.
+ *   * `challenge` — the reading.
+ */
+export type DareChallengeReading =
+  | { kind: 'not-a-challenge' }
+  | { kind: 'join-miss' }
+  | {
+      kind: 'challenge';
+      /** The side that played CALL — the actor of the last `DareBidPlaced` is by
+       *  construction the other one. */
+      challenger: DareChallenger;
+      /** DERIVATION ONE — the engine's `outcome`, read through who called.
+       *  `challenge-win`/`challenge-loss` are the PLAYER's view of the pot. */
+      challengerWon: boolean;
+      /** DERIVATION TWO — the showdown arithmetic. `resolveChallenge` makes the
+       *  bidder win iff the claim holds, so these two are the SAME FACT and a
+       *  disagreement is a bug. Kept as a separate field rather than collapsed, so
+       *  the identity is asserted rather than assumed. */
+      claimFalse: boolean;
+      /** The UNKNOWN half's size — read off the OTHER side's revealed hand, which
+       *  is what `probAtLeast`'s second argument means. */
+      dicePerSide: DareDiceArity;
+      /** `bid.quantity − own(bid.face)` off the CHALLENGER's own hand. RAW: may be
+       *  ≤ 0 (the challenger already holds the claim) and is bucketed separately. */
+      k: number;
+      /** False iff the two derivations disagree, or the two revealed hands hold
+       *  different (or impossible) numbers of dice. MUST be true on every hand. */
+      wellFormed: boolean;
+    };
+
+/**
+ * T-176 · THE ONE PLACE A SETTLED HAND BECOMES A CHALLENGE READING (§18).
+ *
+ * Pure, and exported so `campaign-dare-challenges.test.ts` can drive REAL hands
+ * through the engine, read `state.eventLog`, and check this against a reference
+ * derivation written independently of it — rather than checking the fold against
+ * itself. {@link accumulateMetricEvents}'s `DareHandResolved` arm is its only
+ * production caller.
+ *
+ * IT MIRRORS NO POLICY. The only rule knowledge here is the pairing the engine
+ * states at both of its challenge arms (`packages/engine/src/actions/dare.ts`): the
+ * challenger is whoever did NOT place the standing bid, and the bidder wins iff the
+ * claim holds.
+ */
+export function readDareChallenge(
+  event: Extract<GameEvent, { type: 'DareHandResolved' }>,
+  lastBidder: DareChallenger | undefined,
+): DareChallengeReading {
+  if (event.outcome !== 'challenge-win' && event.outcome !== 'challenge-loss') {
+    return { kind: 'not-a-challenge' };
+  }
+  if (
+    event.bid === null ||
+    lastBidder === undefined ||
+    event.actualCount === undefined ||
+    event.dealerDice === undefined
+  ) {
+    return { kind: 'join-miss' };
+  }
+  const standing = event.bid;
+  const challenger: DareChallenger = lastBidder === 'player' ? 'dealer' : 'player';
+  const challengerWon =
+    challenger === 'player'
+      ? event.outcome === 'challenge-win'
+      : event.outcome === 'challenge-loss';
+  const claimFalse = event.actualCount < standing.quantity;
+  const ownDice = challenger === 'player' ? event.playerDice : event.dealerDice;
+  const otherDice = challenger === 'player' ? event.dealerDice : event.playerDice;
+  const arity = otherDice.length;
+  const wellFormed =
+    challengerWon === claimFalse && arity === ownDice.length && arity >= 4 && arity <= 6;
+  return {
+    kind: 'challenge',
+    challenger,
+    challengerWon,
+    claimFalse,
+    dicePerSide: Math.min(6, Math.max(4, arity)) as DareDiceArity,
+    k: standing.quantity - ownDice.filter((die) => die === standing.face).length,
+    wellFormed,
+  };
+}
+
+/** T-176 · All 108 cells, zero-filled (T-173's `movesByReason` rule: a missing key
+ *  and a zero must not be the same reading). */
+export function zeroDareChallengeCells(): Record<DareChallengeCellKey, DareChallengeCellStats> {
+  const cells = {} as Record<DareChallengeCellKey, DareChallengeCellStats>;
+  for (const pool of DARE_POOLS) {
+    for (const challenger of DARE_CHALLENGERS) {
+      for (const dicePerSide of DARE_DICE_ARITIES) {
+        for (const bucket of DARE_K_BUCKETS) {
+          cells[dareChallengeCellKey(pool, challenger, dicePerSide, bucket)] = {
+            challenges: 0,
+            won: 0,
+          };
+        }
+      }
+    }
+  }
+  return cells;
+}
+
+/** T-176 · All 16 rollup cells, zero-filled. The full cross product is enumerated
+ *  — including the eight structurally unreachable `roaming|optimal|*`-shaped pairs
+ *  — for the same reason `zeroDareCells`'s 48 include them: the key set is a
+ *  property of the axes, not of what a particular run happened to reach. */
+export function zeroDareChallengeSplit(): Record<DareChallengeSplitKey, DareChallengeCellStats> {
+  const cells = {} as Record<DareChallengeSplitKey, DareChallengeCellStats>;
+  for (const pool of DARE_POOLS) {
+    for (const archetype of DARE_ARCHETYPE_SLOTS) {
+      for (const challenger of DARE_CHALLENGERS) {
+        cells[dareChallengeSplitKey(pool, archetype, challenger)] = { challenges: 0, won: 0 };
+      }
+    }
+  }
+  return cells;
 }
 
 /** T-173 · The engine's own `DispositionChanged.reason` union, taken FROM the
@@ -1402,6 +1692,16 @@ interface CampaignMetricAccumulator {
    * that ends mid-hand leaves at most one live key.
    */
   openDareBids: Map<string, number>;
+  /**
+   * T-176 · Open hands, `handId` → the actor of the LAST `DareBidPlaced` seen.
+   * Parked the same way `openDareBids` is and for the same reason — a hand spans
+   * event batches — and read once at settlement, where the CHALLENGER is by
+   * construction the other actor (`packages/engine/src/actions/dare.ts`: the
+   * player's challenge arm resolves against `hand.bidder`, and the dealer's arm
+   * notes "the PLAYER owns the standing bid by construction"). The entry is deleted
+   * at settlement, so a career that ends mid-hand leaves at most one live key.
+   */
+  openDareLastBidder: Map<string, DareChallenger>;
 }
 
 /**
@@ -1603,6 +1903,10 @@ function accumulateMetricEvents(
       // and joined there. `bid` and every `raise-*` land here alike; that is what
       // "bids per hand" has always meant in §12's tables.
       metrics.openDareBids.set(event.handId, (metrics.openDareBids.get(event.handId) ?? 0) + 1);
+      // T-176 · ...and WHO placed it. The last writer wins, which is exactly the
+      // semantics `hand.bidder` has in the engine: the standing claim belongs to
+      // whoever made the most recent one.
+      metrics.openDareLastBidder.set(event.handId, event.actor);
     } else if (event.type === 'DareHandResolved') {
       // T-175 · THE ARCHETYPE-ORDERING SPLIT (F-160-1). Folded off
       // `DareHandResolved` and NOT off `HangoutEvent`, because the pool, the
@@ -1632,6 +1936,36 @@ function accumulateMetricEvents(
       cell.netCredits += event.creditsDelta;
       cell.bids += metrics.openDareBids.get(event.handId) ?? 0;
       metrics.openDareBids.delete(event.handId);
+
+      // T-176 · THE CHALLENGER-WON SPLIT AT MATCHED EVIDENCE (F-160-2, §18). Only
+      // the two CHALLENGE outcomes reach the body below, and they are the only ones
+      // that could: a fold reveals nothing (§6.1), so `dealerDice`/`actualCount` are
+      // absent on the other three by design.
+      const reading = readDareChallenge(event, metrics.openDareLastBidder.get(event.handId));
+      metrics.openDareLastBidder.delete(event.handId);
+      if (reading.kind === 'join-miss') {
+        hangoutPlay.dareChallengeDisagreements += 1;
+      } else if (reading.kind === 'challenge') {
+        if (!reading.wellFormed) hangoutPlay.dareChallengeDisagreements += 1;
+        const challengeCell =
+          hangoutPlay.dareChallengeCells[
+            dareChallengeCellKey(
+              pool,
+              reading.challenger,
+              reading.dicePerSide,
+              dareKBucket(reading.k),
+            )
+          ];
+        challengeCell.challenges += 1;
+        if (reading.challengerWon) challengeCell.won += 1;
+
+        const splitCell =
+          hangoutPlay.dareChallengeSplit[
+            dareChallengeSplitKey(pool, archetype, reading.challenger)
+          ];
+        splitCell.challenges += 1;
+        if (reading.challengerWon) splitCell.won += 1;
+      }
       metrics.settledDareHands += 1;
     }
   }
@@ -6292,6 +6626,9 @@ export function runCampaign(
     // T-175 · all 48 cells present and zero-filled (F-160-1's split).
     dareCells: zeroDareCells(),
     dareTierDisagreements: 0,
+    dareChallengeCells: zeroDareChallengeCells(),
+    dareChallengeSplit: zeroDareChallengeSplit(),
+    dareChallengeDisagreements: 0,
   };
   // T-1603a balance-baseline instrumentation (see the interface doc comments).
   const survival: SurvivalStats = {
@@ -6325,6 +6662,7 @@ export function runCampaign(
     // T-175 · the cell split's two running fields (F-160-1).
     settledDareHands: 0,
     openDareBids: new Map<string, number>(),
+    openDareLastBidder: new Map<string, DareChallenger>(),
   };
   const balance = newBalanceRecordTracker();
 

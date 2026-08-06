@@ -1862,6 +1862,29 @@ counts, not rates, so a later re-cut needs no new sweep. T-175's own headline or
 off these fields; only its PER-DECISION counters (the calibration table) needed a temporary probe,
 and that probe was not committed.
 
+**EXTENDED AGAIN AT T-176 (2026-08-06) — the CHALLENGE half, and this one needed no engine change
+at all.** F-160-2's re-derived criterion (C3′, `docs/LIARS-DICE_REDESIGN.md` §18) compares the two
+challenger rows at MATCHED EVIDENCE, which needs the challenger's identity, the evidence level and
+the outcome per settled challenge. All three were already in the stream and none of them was
+reachable from `hangoutPlay`. Three more counters close it, **sim-only**:
+
+| what a probe would have had to reconstruct | shipped field (T-176) |
+| --- | --- |
+| who played CALL | derived from the actor of the LAST `DareBidPlaced` on the hand, parked against `handId` exactly as `dareCells.bids` is — the challenger is by construction the other actor |
+| the evidence the challenge was played at | `k = bid.quantity − own(bid.face)` off the CHALLENGER's own revealed hand, against the other side's `dicePerSide`; both hands ride `DareHandResolved` on the two challenge outcomes and on nothing else |
+| the whole pool × challenger × dicePerSide × k cut | `HangoutPlayStats.dareChallengeCells` — 108 zero-filled cells of `{challenges, won}` |
+| ...and by archetype, since post-T-175 `optimal` is a different challenger | `HangoutPlayStats.dareChallengeSplit` — 16 zero-filled cells, same shape |
+| "did the two derivations of who won agree?" | `HangoutPlayStats.dareChallengeDisagreements`, asserted zero in `packages/sim/src/__tests__/campaign-dare-challenges.test.ts` |
+
+Same three disciplines as T-175's row above: raw counts rather than rates (`w`, `p_backed`,
+`p_unbacked`, the standardised rates and the mixture decomposition are all summation over these
+cells); every key present and zero-filled; and **no `aggregate.ts` edit**, because `SeedRow.hangout`
+carries the block whole. The evidence classifier (`isEvidenceBackedChallenge`) applies **one
+engine-exported constant** — `DARE_AI_CHALLENGE_MARGIN` — identically to both sides rather than
+mirroring either policy's if-chain, which is the drift failure this file's own retirement note
+exists to prevent. `packages/engine/src` was touched by a comment only, and `rulesFingerprint`
+stayed at `cabd2112ccf4cefb` across the change.
+
 Fenced so the measurement is reproducible without the gitignored file (T-010 / T-116
 precedent). The console formatting is elided; every counter and every sample point is here.
 

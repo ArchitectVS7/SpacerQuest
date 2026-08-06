@@ -2116,7 +2116,7 @@ scoped to measure.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
 
-### T-176 · F-160-2: the challenger-won split is still 41.7 pp apart — price the planner's selectivity or re-derive the criterion — `status: TODO` · `coder: opus` · `after: T-160, T-198`
+### T-176 · F-160-2: the challenger-won split is still 41.7 pp apart — price the planner's selectivity or re-derive the criterion — `status: DONE` · `coder: opus` · `after: T-160, T-198`
 
 **Filed at T-160 (2026-08-02), `docs/LIARS-DICE_REDESIGN.md` §17.8.** T-160 pre-committed a ≤20 pp
 criterion for the challenger-won split (against T-137's 5.32% vs 94.92%) and **neither sanctioned
@@ -2137,6 +2137,174 @@ defensible expected gap, argued from the two policies rather than picked), or sh
 bakeoff'd on top of shipped (b) and shipped if it passes; the split is re-measured per pool with
 `n` on every cell; `docs/LIARS-DICE-DECISIONS.md` LD-22 updated; if `packages/engine/src` is
 touched the task takes its own capstone with the moved rows predicted first; gate green.
+
+**Delivered (2026-08-06).** F-160-2 is **CLOSED**, and it closes on the FIRST Accept branch —
+**the criterion was the defect** — with the SECOND branch run anyway because the re-derived
+criterion pre-committed a trigger that fired. **Shape (a) is now dead rather than dormant.** Full
+working: `docs/LIARS-DICE_REDESIGN.md` **§18**.
+
+**FOUR CORRECTIONS TO THE BLOCK'S OWN FRAMING, made before anything ran** (§17.0's precedent,
+§18.0). (1) **The block's headline numbers are pre-T-175 and were not argued from.** T-175 shipped
+`probClaimTrue` between the filing and this task; under it `optimal` challenges only from a ZERO
+count of the claimed face, which is the most selective challenge rule in the game, so 40.73% /
+82.43% / 41.7 pp describes a game that no longer exists. Everything below is re-measured on HEAD.
+(2) **The planner is NOT "never-bluffing", and the framing that said so is wrong about its raises.**
+`planDareMove` opens truthfully at the engine's floor but branch (c3) takes any legal, affordable
+`raise-quantity` **with no evidence test at all**, while `dealerMove`'s raises ARE evidence-gated
+outside its explicit bluff roll. That reverses the sign of the "counterparty" half of the expected
+gap. (3) **`probAtLeast` is not a usable absolute floor** — a criterion of the shape "realised ≥
+`1 − probAtLeast(k, d)`" prices the claimant as non-strategic, which is precisely the assumption
+T-175's `probClaimTrue` disproved in this codebase; **rejected in writing before the run**, and
+measured afterwards every single cell falls below it, on both sides and both pools. (4) **One
+available lever was refused on purpose** — see F-176-1 below.
+
+**THE RE-DERIVATION, AUTHORED BEFORE THE ARM RAN (§18.1–§18.3), so it could be scored rather than
+rationalised.** C3 compared two rates over two DIFFERENT challenge populations. **C3′ holds the
+evidence fixed** at `k = bid.quantity − own(bid.face)` counted off the CHALLENGER's own hand — the
+sufficient statistic BOTH sides' margins are written in, since each tests
+`surplus = k − dicePerSide/6` against **the same 1.5** (`SIM_DARE_CHALLENGE_MARGIN`'s own docblock
+says it mirrors `DARE_AI_CHALLENGE_MARGIN` "so the two sides fold on comparable evidence"). Four
+limbs, all pre-committed with their pass conditions and their `n` bars: **(a)** direct
+standardisation onto a common `(k, dicePerSide)` distribution — **at T-160's own 20 pp, which was
+NOT edited**; **(b)** a Kitagawa decomposition requiring composition to carry ≥ 50% of the raw gap,
+which is the falsifiable form of "the selectivity is the cause"; **(c)** an absolute floor
+`p_backed > 50%` per side per pool, DERIVED from the two margins' own docblocks ("more likely false
+than true" — at an evidence-backed cell the shared model puts the claim's falsity at ≥ 93.77%);
+**(d)** a routing diagnostic with a pre-committed trigger for the shape-(a) bakeoff.
+
+**THE ANSWER, PER POOL, `n` ON EVERY CELL, off the SHIPPED INSTRUMENT** — `gambler` seeds 1..1,600
+× 120 days, four 1-indexed shards, **279,857 settled hands**, `invariants: 0 violations` on all
+four, `dareChallengeDisagreements` **0**. The arm is **NOT adopted as the baseline of record** and
+its aggregate is written to `.scratch/`, not `docs/balance/`:
+
+| pool | dealer-as-challenger | player-as-challenger | raw gap | **standardised** | composition share |
+| --- | --- | --- | --- | --- | --- |
+| B (roaming) | **43.24%** (n=146,360) | **90.03%** (n=9,847) | 46.79 pp | **19.29 pp** PASS | **70.4%** |
+| A (roster) | **65.81%** (n=97,681) | **92.30%** (n=19,852) | 26.49 pp | **10.09 pp** PASS | **70.3%** |
+
+**C3′(a) PASS on both pools, C3′(b) PASS on both, C3′(c) PASS on all four sides** (70.8% / 90.0% /
+82.0% / 92.3%). **The single number that answers F-160-2:** the shipped planner played **ZERO
+evidence-unbacked challenges in 29,699** — branch (c4) is reachable only when the lattice offers no
+legal raise, and over 279,857 hands that never happened — while the dealer is **42.5% / 22.9%**
+unbacked and wins **5.92% / 11.43%** there. The planner is not "more selective than" the dealer; it
+is **perfectly selective by construction**, so a wide raw gap was structurally guaranteed rather
+than merely expected. Post-T-175 `optimal` is now the best challenger at the table (**71.12%**,
+n = 78,523), which is where the whole of pool A's rise comes from.
+
+**THE SHAPE-(a) BAKEOFF WAS RUN, BECAUSE THE CRITERION SAID IN ADVANCE IT WOULD BE — AND (a) LOST
+ON C2 AGAIN, IN THE OPPOSITE DIRECTION.** C3′(d)'s trigger (dealer unbacked share above 20% with
+`p_unbacked` under 50%) fired on both pools. (a) — `dealerMove`'s terminal fallback becomes the
+cheapest legal raise — was implemented on top of the shipped (b) and run on **identical seeds**
+(1,600 × 120 days, 282,060 hands). It does what it was proposed to do: roaming raw gap 46.79 →
+**20.41 pp**. It also takes the **player win rate 52.90% → 39.64%** against C2's 55–70% band,
+**EV/hand +190.1 → −314.9 cr** (the player now loses money at the table), gambler `finalCredits`
+median 64,622 → **20,330**, and produces the **only invariant violation in 3,200 careers** across
+both arms (seed 128, **77** consecutive zero-income days — a career bankrupted into a strand). C1 is
+structurally unmoved (it never touched the CLAIM, only the ANSWER — T-160's own words), C4 survives
+both (wronged-share lift 2.942× → 2.810×), C6 holds both (`bad − optimal` +15.79 → +13.94 pp), and
+(a) **MISSES C3′(b)** on roaming (composition share 45.5%). **NOT SHIPPED.** It is also not needed:
+C3′ passes without it. LD-21's "(a) is not dead" is superseded in place — it lost the first bakeoff
+at 73.04% (above the band) and the second at 39.64% (far below it).
+
+**THE BAKEOFF RIG, AND THE ONE DEVIATION FROM §17.3 RECORDED RATHER THAN GLOSSED.** §17.3 used git
+worktrees. **Not usable here:** the arm is measured with an instrument that is not yet committed
+(this task is forbidden from committing) and a worktree checks out a commit, so a worktree arm would
+have measured a tree with no `dareChallengeCells` in it. Single-variableness is instead guaranteed
+three checkable ways: identical seeds on both arms; the (a) diff was **exactly one hunk** in
+`dealerMove` branch 4 with `git diff` verified clean of anything else before and after; and the
+control arm was **already complete** before shape (a) existed on disk. The stamps confirm it —
+control `rules cabd2112ccf4cefb`, arm (a) `rules 0f91771293da7990`, **identical
+`instrument 2d6d1990eaf13031` on both**, so every difference attributes to the rule.
+
+**THE INSTRUMENT — SIM-ONLY, ADDITIVE, AND PROVEN INERT BY ROWS BEFORE ANYTHING WAS CONCLUDED.**
+`packages/sim/src/index.ts`: `HangoutPlayStats` gains `dareChallengeCells` (108 zero-filled
+`pool|challenger|dN|kM` cells of `{challenges, won}`), `dareChallengeSplit` (16 zero-filled
+`pool|archetype|challenger` cells) and `dareChallengeDisagreements`; `readDareChallenge` is the ONE
+place a settled hand becomes a challenge reading (exported so the tests can check it against real
+engine streams rather than against itself), `isEvidenceBackedChallenge` the ONE place the shared
+margin is applied, and `MetricAccumulator` gains `openDareLastBidder` parked against `handId` the
+way `openDareBids` already is. **No `aggregate.ts` edit** — verified, not assumed: `SeedRow.hangout`
+carries the block whole. **`packages/engine/src` is touched by a COMMENT ONLY.**
+`campaign-degraded.test.ts` **entry 38**: with the three new keys stripped from the hashed report,
+**all seven** policy fingerprints come back byte-identical to their entry-37 values — `gambler`
+included, the only row that sits at a table. Zero careers changed.
+
+**FINGERPRINTS, predicted in writing first and then observed.** `rulesFingerprint` **UNMOVED at
+`cabd2112ccf4cefb`** — predicted, because `hashSemantic` strips comments before hashing (N7-FP), and
+confirmed independently by the sweep's own stamp rather than by re-reading the prediction.
+`instrumentFingerprint` `e84d8e074fde0b98` → **`2d6d1990eaf13031`**. `docsFingerprint` moves.
+`productVersion` 0.5.3 unmoved. **`CURRENT_SAVE_VERSION` UNMOVED at 17**, re-read live at
+`packages/engine/src/save.ts:627` (re-read, not copied). No persisted shape changed — three keys on
+a DERIVED REPORT are not a save shape — so **no migration and no round-trip test is owed**, stated
+rather than left unaddressed. **NO CAPSTONE IS OWED**: the Accept criterion conditions it on
+`packages/engine/src` being touched, and the only engine lines in this change set are comment lines
+that provably cannot move `rulesFingerprint`. T-173's cheap path was taken instead — `npm run
+format` **BEFORE** extraction, then
+`npm run balance:extract -- --aggregate docs/balance/baseline-t175-archetype-ordering.json` (the
+current baseline of record, re-read live from `balance-targets.test.ts`'s `BASELINE_OF_RECORD_PATH`
+rather than copied) to clear the instrument-fingerprint staleness on `docs/balance/smoke/tiers.json`.
+**The baseline of record was NOT re-pinned** — no measured number moved, so there is nothing to
+re-pin.
+
+**TESTS.** New `packages/sim/src/__tests__/campaign-dare-challenges.test.ts` (20 tests). The
+headline one drives **220 real hands through the real engine loop** with the shipped planner and
+checks `readDareChallenge` against a **reference derivation written from the DICE** — it recounts
+the claimed face across both revealed hands and never reads `outcome` — on challenger identity,
+winner, `k`, arity and well-formedness, in **both** challenge directions; a third channel asserts the
+engine's own `actualCount` against the same recount. Plus: folds classify as `not-a-challenge` rather
+than as join misses; an unknown last bidder reports a join miss instead of guessing; the `k` clamps
+at both boundaries; **`isEvidenceBackedChallenge` lands on `k ≥ 3` at every arity, executed rather
+than asserted in prose**, and against the imported constant either side of the boundary; the 108/16
+key totality and zero-fill; policy sensitivity against an `explorer` control; zero disagreements on
+every gambler seed; and **C3′(c) as a live regression detector** with both rates, both `n` and the SE
+in the failure message. That detector's vacuity guard was short at eight seeds (n = 136 on the
+player's cell), so **the sample was WIDENED to 24 seeds** — the guard was never lowered (N4/N10,
+T-175's third arm the precedent). `campaign-smuggler-gambler.test.ts`'s scalar sweep destructures
+the two new non-scalars out by name rather than being weakened.
+
+**TWO FINDINGS FILED THE MOMENT THEY WERE CONFIRMED, each as its own backlog row.**
+**F-176-1 → `T-219`**: `optimal`'s RAISE valuation prices a counterparty that does not exist. T-175
+measured it (modelled +52.62/raise vs realised −53.26 at six dice) and pointed at T-176; **T-176 read
+the pointer and DECLINED it in writing** — outside both Accept branches, it would re-open the
+ordering T-175 shipped one task earlier, and it is the same class of move as §16.2's banned third
+shape. The engine comment that said "T-176 owns this" is retargeted at the finding (comment-only;
+`rulesFingerprint` confirmed unmoved across it). §18.5 adds the mechanism to T-175's magnitude.
+**F-176-2 → `T-220`**: the table's player win rate has fallen through T-160's own C2 band
+(**55–70%**) unremarked — this arm measures **52.90%** at n = 279,857, 2.1 pp below the floor,
+moved there by T-175 which scored the ORDERING and never re-scored the band. The trend is monotone:
+T-137 94.66% → T-148 80.07% → T-160 61.07% → HEAD 52.90%. **Nothing was tuned in response and no
+band was edited** — C2 was a bakeoff arbitration criterion, not a standing invariant, so it is an
+owner call rather than a gate failure.
+
+**DOCS.** `docs/LIARS-DICE_REDESIGN.md` gains **§18** (the four framing corrections, the derivation
+from the two policies' source, C3′ with its four limbs and its `n` bars, six scored predictions, the
+per-pool and per-cell tables, the shape-(a) bakeoff scorecard, the instrument, the two findings and
+a summary scorecard); §17.8's F-160-2 paragraph is left **verbatim** and gains a dated
+`RESOLVED / RE-DERIVED AT T-176` blockquote beneath it (T-175's F-160-1 closure the exact
+precedent); §17.2's **C3 row is left verbatim with its 20 pp untouched** and gains a dated pointer,
+and its **C2 row** gains F-176-2's re-score. `docs/LIARS-DICE-DECISIONS.md` **LD-22** gains a dated
+T-176 block with the re-derived criterion, the measured split per pool with `n`, the standardisation
+and the full disposition of shape (a); **LD-21**'s "(a) is not dead" sentence is left verbatim and
+superseded in place. `docs/HANGOUT_REDESIGN.md` §10.7's counter → shipped-field map is extended with
+the challenge fields. No new source file, so `rules-fingerprint.ts` needs no new classification.
+
+**Prediction 4 was WRONG (half) and is scored as wrong** in §18.3 and §18.5: the composition term
+carries the majority in both pools as predicted, but at **70.4% and 70.3%** — indistinguishable,
+where the prediction said pool A would be materially smaller. The reasoning is dissected at the
+table rather than dropped.
+
+**Delivered (2026-08-06):** F-160-2 closes RE-DERIVED-AND-PRICED. T-160's C3 was not measuring what
+it was about: held at matched evidence, on the shipped instrument at n = 279,857 hands, the two
+challenger rows sit **19.29 pp** and **10.09 pp** apart — inside T-160's own 20 pp with the bar
+untouched — and **~70% of the raw gap decomposes onto composition**, because the shipped planner
+challenges from an evidence-backed position **100%** of the time and the dealer **57.5% / 77.1%** of
+the time. The lever that would remove that composition was bakeoff'd anyway, on identical seeds,
+because the criterion pre-committed the trigger, and it lost on C2 for the second time. Deliberately
+out of scope and left untouched: `optimal`'s raise valuation (F-176-1 / T-219), the C2 band itself
+(F-176-2 / T-220), `SIM_DARE_CHALLENGE_MARGIN` and `DARE_AI_CHALLENGE_MARGIN` (tuning either would
+be tuning the instrument to hit a threshold), and FOLD (T-177).
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
 
 ### T-177 · F-160-3: FOLD is still never the better credit play — an owner design call — `status: TODO` · `coder: opus` · `after: T-160, T-198`
 
@@ -2175,6 +2343,59 @@ FOLD's economics); if anything ships, the dominance derivation is re-run against
 rather than re-sampled, and the fold rate is re-measured at n ≥ 10,000 decision points;
 `docs/LIARS-DICE_REDESIGN.md` §16.3 and §17.7 updated with the outcome; if `packages/engine/src` is
 touched the task takes its own capstone with the moved rows predicted first; gate green.
+
+### T-219 · F-176-1: `optimal`'s RAISE valuation prices a counterparty that does not exist — `status: TODO` · `coder: opus` · `after: T-175, T-176`
+
+**Filed at T-176 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §18.0 correction 4 / §18.7.** This
+finding exists because a *task* was named as an owner and that task, reading its own Accept
+criterion, **declined it in writing** — so the pointer is refiled as a finding rather than left
+aimed at a task that refused it. `packages/engine/src/liarsDiceRules.ts`'s `archetypeMove` /
+`optimal` branch values every candidate raise **as if the opponent challenged it immediately**
+(`ev = pOurs · potPlayer − (1 − pOurs) · (potDealer + cost)`). That model is stated at the site and
+is deliberately opponent-free — but it is **wrong about the shipped counterparty**, and T-175
+measured the size of the error rather than asserting it: **a modelled +52.62 credits per raise
+against a realised −53.26 at six dice**, a ~106-credit gap per raise in the band where the decision
+is made. T-176 then measured *why* the model is wrong: the shipped `planDareMove` challenges only
+from an evidence-backed position and **never** unbacked (0 of 29,699 challenges across 279,857
+hands, §18.4), so "the opponent challenges immediately" is close to true at high `k` and close to
+FALSE everywhere else. **Not fixed at T-175** (it was out of that task's scope and would have
+confounded the ordering it was closing) and **not fixed at T-176** (it is outside both branches of
+that task's Accept, it would re-open the ordering T-175 shipped one task earlier, and it is the
+same class of move as §16.2's banned third shape — an engine rule changed inside a measurement
+task). [filed: T-176/F-176-1]
+
+**Accept:** the raise valuation's error is re-measured on HEAD at n ≥ 10,000 raises per tier before
+anything changes (T-175's own discipline); any replacement is derived from a named source rather
+than tuned, and is bakeoff'd against at least one alternative on identical seeds with `n` on every
+cell; **the archetype ordering (`bad − optimal`, currently +15.79 pp at z = 35.93, §18.4) is
+re-scored and must not re-invert**, and the player win rate is re-scored against F-176-2's finding;
+`docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3 and `docs/LIARS-DICE-DECISIONS.md` LD-25 updated;
+`packages/engine/src` is touched so the task takes its own capstone with the moved rows predicted
+first; gate green.
+
+### T-220 · F-176-2: the table's player win rate has fallen through T-160's 55–70% band, unremarked — `status: TODO` · `coder: opus` · `after: T-175, T-176`
+
+**Filed at T-176 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §18.6.** T-160 pre-committed criterion
+**C2** — "**55–70%** player win rate, EV/hand well under +558 cr" — and shipped shape (b) at
+**61.07%**, inside it. T-175 then shipped `probClaimTrue` (LD-25), which was scored against the
+archetype ORDERING and against the sweep's own rows, but **C2 was never re-scored**: T-175's
+Delivered note records the fall only on the five-seed × 40-day degraded window (63.21% → 51.58%)
+and reads it as "the tables stop being a money printer", which it is. T-176's arm measures the
+shipped rate at capstone scale for the first time: **52.90% player win rate over n = 279,857 hands**
+(1,600 gambler careers × 120 days), EV **+190.1 cr/hand**, gambler `finalCredits` median 64,622.
+**That is 2.1 pp below C2's floor.** Nothing was tuned in response and no band was edited — C2 was
+an *arbitration* criterion for a bakeoff, not a standing invariant, so this is an observation and an
+owner call, not a gate failure. But it is the second consecutive task to move this number without
+anyone re-scoring the band it was chosen against, and the direction is monotone. **The trend is what
+makes it worth a row:** T-137 94.66% → T-148 80.07% → T-160 61.07% → HEAD 52.90%.
+[filed: T-176/F-176-2]
+
+**Accept:** the owner either re-derives C2's band against the shipped game (with the anchors §17.3
+used — §1.3's discarded opposed-d20 Dare at 57.3% is one — argued rather than picked) or rules that
+the band was a bakeoff instrument and retires it explicitly in `docs/LIARS-DICE-DECISIONS.md`; if
+any rule moves in response, it is bakeoff'd rather than tuned and the archetype ordering is
+re-scored alongside; the rate is re-measured at n ≥ 10,000 hands per pool with `n` on every cell;
+`docs/LIARS-DICE_REDESIGN.md` §17.2's C2 row gains the outcome; gate green.
 
 ---
 
