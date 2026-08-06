@@ -30,6 +30,16 @@ every shipped root, by a test.** The carrier identifiers are forbidden under `pa
 and `packages/desktop` by a source-scan test, not by a grep someone has to remember to run.
 (T-140)
 
+**DT-29 — T-140's absence from the client is a RULED LIMITATION, not a gap.** (T-158) No NPC
+trace sink is wired into `packages/ui` or `packages/desktop`, and **no bug was filed**, because
+T-140's own Accept criterion required exactly that a grep for the trace-sink parameter under
+those packages return nothing — DT-3 is the requirement, and this is the consequence of having
+met it. The consequence is stated here rather than left to be re-derived by whoever next reads a
+UAT bundle: **a human UAT session produces a T-141 export and NO NPC decision trace.** Enforced by
+`packages/ui/src/__tests__/npc-trace-absent.test.ts`. `docs/TESTING-STRATEGY.md` Part G item 5
+carries the same correction: its sentence is true of the *pair* of instruments, not of one human
+session.
+
 ---
 
 ## 2. Playtest telemetry
@@ -190,4 +200,39 @@ test possible in the first place.
 `/Users/vs7/Dev/Games/_UGT Universal Game Tester/AFTER-ACTION-REPORT.md` § Addendum. A green
 deterministic pilot run is evidence the driver is sound; it is never evidence about the cockpit.
 The browser/DOM tier is a separate mechanism (shipped by T-162, shape (b)), and a pilot result
-may not be quoted in its place.
+may not be quoted in its place. **(T-155 — the substitution ban runs in BOTH directions and is
+load-bearing for milestone closure: T-155's run says nothing about `packages/ui`, so **M7 does
+not close on T-155 while T-162 is still TODO**. Ruled as TT-1 in
+`docs/TEST-TIER-DECISIONS.md`.)**
+
+**DT-30 — Full pilot JSONL trails are deliberately NOT committed; the DIGESTS are.** (T-155,
+applying the T-1604a precedent that withheld its 11,646-line trail.) What gets committed is the
+per-run summary artefact plus **both** digest classes — the raw-file sha256 and the normalised
+action-sequence sha256 — in `docs/playtests/results/T-155-pilot-runs.json` and
+`T-155-run-console.txt`, so a re-run can be PROVED to match without carrying the trail;
+`test-results/` is already gitignored. A digest that only covers the raw bytes would be useless
+across processes (see DT-31's `runId`), and one that only covers the normalised sequence would
+hide a malformed file, so neither alone is sufficient.
+
+**DT-31 — The pilot volume leg runs on the seeded `randomBrain`, not `first-legal`.** (T-155)
+`first-legal` reaches only **5 distinct verbs** over 5 seeds × 30 days — three at seed 1, where it
+signs and abandons a contract 75 times each for a month, with a flat, seed-independent
+`stepsApplied: 150`. A clean counter sheet off that brain is `docs/TESTING-STRATEGY.md` Part A's
+green-but-hollow failure one level up: all-zero counters proving nothing about the 87 `specType`s
+the engine actually offers. `randomBrain` reaches **87 distinct `specType`s** at the same ~2s
+cost, so breadth here is free and there is no argument for the narrower driver. Enforcement:
+L-016's breadth floor, pinned in `packages/sim/src/__tests__/pilot.test.ts`.
+
+**DT-32 — No substitute brain may ever stand in for the live `--brain anthropic` leg.** (T-155) A
+report over three deterministic brains asserting "the LLM pilot is trustworthy" is precisely the
+lucky-match pass T-155 exists to forbid — the deterministic brains validate the DRIVER, and only
+the live leg validates the claim about the model. Credentials are likewise not to be sourced
+sideways: a Claude Code OAuth token exists in the macOS keychain and was deliberately not
+touched. An un-run leg is filed as a finding (BR-45's standard), never covered by a stand-in.
+
+**DT-33 — `--compare <a.jsonl> <b.jsonl>` is a MODE, not a flag.** (T-155,
+`packages/sim/src/pilot-cli.ts`) It throws if a run flag rides along, applying the existing
+`--brain` precedent from DT-25 — an unrecognised or incompatible flag is a hard error, never
+silently ignored. Future CLI additions of this kind follow the same mode-vs-flag rule, because a
+silently-ignored `--days` on a compare invocation produces a result the operator believes is
+something else.

@@ -74,7 +74,30 @@ owes no capstone.** (T-154) `pilot.ts`, `pilot-anthropic.ts` and `pilot-cli.ts` 
 with their reasons written down on BR-5's terms — **never called by `runCampaign`, never exported
 by `index.ts`** — so no sweep, gate or smoke number can descend from them. An instance of BR-5,
 recorded here because the pilot is the largest non-instrument surface in `packages/sim` and the
-temptation to let it grow into the measured path is correspondingly larger.
+temptation to let it grow into the measured path is correspondingly larger. **(T-155, 2026-08-03
+— the exemption carries a PROVISO, stated because a pilot task is exactly where it would be
+forgotten: all three files stay non-instrument, and a pilot-only change owes no `rulesFingerprint`
+move and no capstone sweep, ONLY while no new file is added under `packages/sim/src/` and no
+gameplay constant, content instance, balance band, threshold, golden, fingerprint or persisted
+save shape is touched. A new file under the hashed root re-opens BR-5, not this ruling.)**
+
+**BR-69 — UI-only work owes NO capstone and NO fingerprint move, because `packages/ui` is not
+hashed at all.** (T-162) `packages/sim/src/balance/rules-fingerprint.ts` hashes `packages/engine`
+plus `packages/content` (rules) and `packages/sim/src` (instrument); `packages/ui` appears in
+neither set. A task confined to `packages/ui/**`, `docs/**` and `.github/**` therefore closes
+without a balance capstone. This is a statement about what the hash reads, not a licence: the
+moment such a task reaches into `packages/engine` to fix what the cockpit revealed, BR-61 applies
+in full.
+
+**BR-70 — A brief's pinned-figure table lives INSIDE its test file, never in a new module under a
+hashed root.** (T-158) The T-158 pre-UAT figure pins sit in
+`packages/sim/src/__tests__/uat-brief-figures.test.ts` itself. Any new non-test module under
+`packages/sim/src` would owe a `SIM_NON_INSTRUMENT_SOURCES` entry (BR-5) and would move
+`instrumentFingerprint`, staling every committed smoke fixture over a table of prose citations;
+`__tests__` is listed in `HASHED_ROOT_IGNORED_DIRECTORIES`
+(`packages/sim/src/balance/rules-fingerprint.ts:250-254`) and can move no fingerprint. Where a
+helper is genuinely shared, it earns its module and its classification — a single brief's pin
+table does not.
 
 ---
 
@@ -346,6 +369,27 @@ the same scope shape T-159 used when it left F-159-1 to T-161. A fix is not free
 number it was aimed at moved; the price is whatever it did to the rig's other instruments, and
 that price is measured before the fix is graded.
 
+**BR-71 — A brief's figure pin resolves its value by plain IN-SECTION substring, deliberately not
+by `coverage.ts`'s last-column table resolver.** (T-158) The pin reads from the heading line to
+the next same-or-shallower heading, so `####` subsections stay in scope. The table resolver was
+tried and rejected on a demonstrated miss: against `docs/HANGOUT_REDESIGN.md` §11.3's decay table
+it returns the `explorer only` figure **96.47%** instead of the fleet's **96.52%** — the wrong
+cell, silently, where the substring resolver fails LOUDLY on a reword. A resolver that can return
+a plausible wrong number is worse than one that cannot find the number at all; this is the pin
+half of L-035's rule.
+
+**BR-72 — A named repro case that no longer reproduces is REPORTED, never claimed as fixed.**
+(T-199) `docs/EXPLORE_REDESIGN.md` §10.3's seed-3 / Sirius-16 / days-45-49 stall stopped
+reproducing once T-195's travel-die easing re-seeded every stream — seed 3 now runs 120 days at a
+longest zero-income streak of 1. T-199 discharged that Accept clause by SAYING SO and pinning
+seed 3 as a 120-day regression bar in
+`packages/sim/src/__tests__/campaign-smuggler-gambler.test.ts`, rather than writing the clause up
+as closed by its own change. A stream re-phase and a fix are different events and the record must
+be able to tell them apart. (Provenance note: T-199's own re-pin to
+`docs/balance/baseline-t199-pacifist.json` has since been SUPERSEDED — `BASELINE_OF_RECORD_PATH`
+in `packages/sim/src/__tests__/balance-targets.test.ts:218` names
+`docs/balance/baseline-t175-archetype-ordering.json`, per BR-62.)
+
 ---
 
 ## Part D — Fixtures and goldens
@@ -375,7 +419,13 @@ rows (52 seeds × trader/fighter × 35 days = 3,640 sim-days), all eight bands i
 **BR-36 — Extraction before addition, proved inert.** (T-153) Making `runGate`/`reportGate`
 public was `export` plus a readers note and nothing else, with all three fingerprints
 measured byte-identical before and after and the suite green with the export applied and no
-new test present.
+new test present. **(T-175 and T-199 extend this from exports to shared BEHAVIOUR helpers, which
+is the harder case because the extraction moves code a policy already runs. `planHomewardBurn`
+was lifted out of `fighterPolicy` and shown to return the `fighter` fingerprint byte-identical to
+its pin — and the 200 × 35 strand scan to report the SAME two offenders — with only the
+extraction applied; only then was it wired into `traderPolicy` and `smugglerPolicy`. T-175 used
+the same two-step for `gamblerPolicy`. A helper extracted and wired in one commit makes every
+subsequent number unattributable.)**
 
 ---
 
@@ -464,6 +514,16 @@ directions**, and the doc is never edited to match the code. `Reroll`'s exclusio
 STRUCTURAL rather than conventional: the NPC virtual hand is dealt with `rerolls: 0`, so there
 is no charge for a captain to spend.
 
+**BR-73 — The three not-observable UGT predicates stay `not-observable`, even though a different
+tier has now MEASURED all three at zero.** (T-155, qualifying BR-34's honesty rule and L-034)
+`docs/TESTING-STRATEGY.md` Part D's `inv_blocked_from_legal_non_increasing`,
+`inv_protocol_errors_non_increasing` and `inv_dice_bounds` keep
+`disposition: 'not-observable'` in `SWEEP_INVARIANT_DISPOSITIONS` with `coveredBy: null`, because
+the disposition claim is about **the sweep**, which still cannot see them. The Tier-2 pilot
+measured all three at zero across 300 days; that is a real result and it belongs in the pilot's
+own report, but a second tier measuring an invariant does not turn the sweep's row green. A
+coverage table describes the mechanism it names, never the union of every mechanism in the repo.
+
 ---
 
 ## Part F — Archetype and policy norms
@@ -502,6 +562,46 @@ WRONG way, 18 → 19, so it was reverted. Only the T-1104 full-tank `signableWit
 relaxation landed — the same shape the other five gated policies carry. A fallback branch that
 helps the tail and hurts the population is not a fallback.
 
+**BR-74 — `planPacifistCombat` queues the GETAWAY first and the plea behind it on the next die;
+the day is no longer capped at exactly one combat stance.** (T-199) Plea-first was implemented
+and MEASURED, then rejected: it moved `balance-combat-survival.test.ts`'s "preparation pays off
+when outgunned" band from **0.5333 → 0.4542** against a bar of 0.50, and the move was causal
+rather than noise (0.4340 at a 3× widened 360-seed sample). The band was **not** moved to fit the
+ordering; the ordering was moved to respect the band. BR-16's line applies to plan ordering as
+much as to constants.
+
+**BR-75 — `planStrandedExplore` (`packages/sim/src/index.ts:3068`) must be queued LAST in any
+plan.** (T-199) A band-3/4 find charges `apCost` extra dice at claim, which crashed
+`veteranPolicy` on seed 194 during development when the rung sat higher. Its ordering against
+`planHomewardBurn` needs no coordination: the burn is the better out, and if the burn queued a
+Travel then `actions.some(isIncomeAction)` is already true, so the stranded-Explore rung returns
+null on its own first guard.
+
+**BR-76 — F-199-3: the rim-strand class is fixed STRUCTURALLY, never seed by seed, because any
+change to a shared planner re-seeds every policy's stream and moves WHICH seeds strand.** (T-199)
+A fix verified only on the seeds that were named is not verified. Evidence: a prototype of the
+T-199 fix took smuggler's 200-seed worst streak **5 → 1** while waking a **dormant 27-day fighter
+strand on seed 35** — the exact seed T-159's commit message reports as fixed. The corresponding
+enforcement obligation is L-041: every offending seed is pinned as a test at the CI sweep's own
+35-day horizon.
+
+**BR-77 — A fix that could satisfy an invariant by RECLASSIFICATION is cross-checked with a
+variant that changes no classification.** (T-199) A `talk` anywhere in a plan makes that day
+income-classified, so after T-199 `assertNoIncomeStall` can no longer fire from a carried
+encounter for the five `planPacifistCombat` policies — the invariant could have gone green
+without a single strand actually ending. The strand was proved genuinely gone, not merely
+relabelled, by a **discarded variant** — a second `run` instead of the plea — which also cleared
+every offending seed (200 × 35, worst streak 3, zero offenders). Where a fix touches what an
+invariant COUNTS as well as what the policy does, the control arm changes only the behaviour.
+
+**BR-78 — Do NOT add `yardCost` to `fighterPolicy`'s `planDebtPayment` call.** (T-199,
+re-affirmed T-196b so it cannot be re-made under cover of another task.) Measured over 100 seeds
+× 120 days it takes median final credits **79,494 → 5,877** and the debt-clear rate
+**0.580 → 0.510**; an 8,000-row capstone diff puts `fighter.finalCredits.median` at **-93.5%**
+with `tourOneClearRate` **-9.2%**. Mechanism: a smaller payment leaves the COMPOUNDING Guild
+marker open longer while `kitAllowed` withholds special equipment at `debt > 0`. A change that
+reads as prudence in the planner is a compounding-interest change in the economy.
+
 ---
 
 ## Part G — Standing owner-gated knobs
@@ -511,7 +611,23 @@ reports; no task changes them without a recorded owner ruling.
 
 **BR-50 — The 0.25 named-pool interceptor gate (`travel.ts`) and
 `DISPOSITION_DECAY_INTERVAL_DAYS = 3`.** (T-125, re-affirmed T-150.) Measured twice, changed
-neither time.
+neither time. **Ruled again 2026-08-03 as F-150-1 — DEFER; see BR-79.**
+
+**BR-79 — Owner ruling, 2026-08-03 (at T-158): R1 (Combat's chosen `executeCombat` branch) —
+DEFER. R2 (F-150-1) — DEFER.** Both are **deferrals**, not fixes and not accept-as-final: the
+owner prioritised UI/visual-design iteration (T-186, T-188, T-189, T-190, T-191) first, and will
+revisit both afterwards. Recorded here because a deferral with no stated reason decays into an
+accepted state. The ruling is transcribed to five places that must stay in sync:
+`ACKNOWLEDGED_COVERAGE_GAPS.fighter.owner` in `packages/sim/src/balance/coverage.ts`, the
+`| Combat |` PARITY LEDGER row in `docs/NPC_REDESIGN.md`, the "Deliberately deferred" bullet in
+`TASKS.md`, and both the STATUS line and the F-150-1 findings row in
+`docs/HANGOUT_REDESIGN.md` §11.3.
+
+**If F-150-1 is ever ruled "fix", it lands as a NEW TASK BLOCK — never as a constant edited
+inline.** (T-158) Either constant BR-50 names — the `rng.next() < 0.25` named-pool gate in
+`packages/engine/src/actions/travel.ts`, or `DISPOSITION_DECAY_INTERVAL_DAYS = 3` in
+`packages/content/src/disposition.ts` — moves every disposition-reading system at once, and
+therefore owes its own capstone. See TP-32.
 
 **BR-51 — `RENOWN_DEED_THRESHOLDS.CONQUEROR = 38` must not be rescaled off a 120-day
 capstone.** (T-148) It was sized off a 300-day measurement against a 44-deed slate and is

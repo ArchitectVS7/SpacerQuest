@@ -102,6 +102,11 @@ item, put it in the section where comparable work already lives.
   (zero-line fix — the file merges as-is). Re-check when `redesign/explore-hangout` merges: the
   first `schedule`-event run in `gh run list --workflow=sweep-gate.yml` closes it.
   [harvested: T-153/F-153-1]
+  **T-163 annotation — F-153-1 must NOT be assumed closed by T-163.** T-163 confirms the `deep`
+  job's nightly `cron:` in `.github/workflows/sweep-gate.yml` is UNCHANGED and is not fixable by a
+  trigger widening: `cron:` fires only on the default branch regardless of `push.branches: ['**']`.
+  Recorded as an accepted cost in `docs/TESTING-STRATEGY.md` Part H. No new backlog entry is owed —
+  only this correction. [harvested: T-163/f-153-1-cron]
 
 - **F-157-2's upstream remainder is STILL LIVE at HEAD and its named repair can no longer fire.**
   `docs/NPC_REDESIGN.md`'s PARITY LEDGER `| VisitHangout |` row still reads "Three defects found
@@ -122,8 +127,12 @@ item, put it in the section where comparable work already lives.
   problem**. OWNER-GATED — needs an `ANTHROPIC_API_KEY`: re-run
   `npm run pilot -- --brain anthropic --seed 1 --days 30`, then a second run at the same seed to
   characterise divergence, and confirm `cache_read_input_tokens` goes non-zero from ~step 2. Still
-  live per `packages/sim/PILOT.md` §8 and as finding **F-155-1**.
-  [harvested: T-154/f-155-1-live-anthropic-leg]
+  live per `packages/sim/PILOT.md` §8 and as finding **F-155-1**. T-155 re-filed it unchanged and
+  adds: the file has NO test coverage BY DESIGN (`packages/sim/src/__tests__/pilot.test.ts` states
+  it deliberately does not import it), the second run must be at the SAME seed so divergence is
+  characterised honestly, and if `cache_read_input_tokens` stays zero the caching claim in that
+  file's header is FALSE and that is a SECOND finding. Single filing — do not double-file.
+  [harvested: T-154/f-155-1-live-anthropic-leg] [harvested: T-155/F-155-1]
 
 - **T-160's `quantity.max` fix is asserted only at the one tier where the fix is invisible.**
   `packages/sim/src/protocol.ts:611` now advertises the dare `quantity.max` as `hand.maxQuantity`
@@ -361,6 +370,55 @@ item, put it in the section where comparable work already lives.
   (`[harvested: T-152/protocol-seam-invariants-unowned]`) closed or re-pointed at the same time.
   [harvested: T-154/sweep-invariant-ownership-pointer]
 
+- **No check catches a sequencing gate that is stated only in prose.** T-155's `after:` field read
+  `after: T-154` alone, while the T-158 human-UAT gate existed ONLY as prose in T-154's
+  resequencing note. `/orchestrate` selects on the `after:` field and never reads prose, so the
+  owner's "the pilot's first real run waits for UAT" ruling was never machine-enforced — it was
+  masked only by T-158 happening to halt the run first. Nothing like this exists today: `scripts/`
+  holds only `check-signoff.mjs`, `prose-scan.mjs`, `tag-rc.mjs` and `verify-clean-clone.mjs`, and
+  neither `scripts/` nor `.github/workflows/` parses `TASKS.md` `after:` fields at all. Write the
+  check: flag any block whose prose names a blocking task id that is absent from its own `after:`
+  field. [harvested: T-155/after-field-gate-check]
+
+- **The labels F-199-1 and F-199-2 carry TWO different meanings, and the code comments use the
+  SWAPPED assignment** — so whoever picks these up must keep the ids verbatim AND reconcile the
+  swap rather than assume one reading. In the T-199 planner table, F-199-1 = the trader rim strand
+  and F-199-2 = the fighter strand (both CLOSED by T-199); in the OPEN findings, F-199-1 = the
+  veteran anti-idle wiring and F-199-2 = the fighter marker netting. But
+  `packages/sim/src/index.ts:6434` labels the netting hole "F-199-1", and
+  `packages/sim/src/index.ts:5623` says "F-199-1 stays filed" about the netting backout. Sites that
+  point at `TASKS.md` for these definitions and will DANGLE once the T-199 block is deleted:
+  `packages/sim/src/index.ts:2971`, `:5615`, `:6439`;
+  `packages/sim/src/__tests__/campaign-smuggler-gambler.test.ts:741`;
+  `packages/sim/src/__tests__/campaign-degraded.test.ts:1097`; `docs/EXPLORE_REDESIGN.md:1739`.
+  [harvested: T-199/f199-id-collision]
+
+- **T-199's remote Sweep-gate green is UNCONFIRMED.** Its Accept criterion — "the Sweep gate CI
+  check on `redesign/explore-hangout` is confirmed green after this lands" — is discharged only by
+  a LOCAL re-run of the exact CI invocation (`--label ci-gate --seeds 60 --days 35`, both shards +
+  merge, 3 × exit 0, 420 rows, 0 violations). No remote run id is recorded for the green; the only
+  recorded run id is the FAILING one, 30935230550 (`assertNoIncomeStall · smuggler · seed 20`,
+  shard 2/2). Same class as this file's "No fresh CI run was ever captured on the post-T-159 tree"
+  entry: confirm the remote `.github/workflows/sweep-gate.yml` run on the branch HEAD.
+  [harvested: T-199/t199-remote-sweep-gate-unconfirmed]
+
+- **Nine of the long-haul move table's verbs never fired on the committed wide run.** The committed
+  run (`LONGHAUL_SEEDS=1,2,3,4,5 LONGHAUL_DAYS=35`) exercised **36 distinct verbs**, and the report
+  NAMES the nine unfired verbs rather than implying coverage it does not have. Open remainder:
+  either widen seeds/days until each unfired verb is exercised, or record per verb why it is
+  unreachable under the driver's move table (`packages/ui/e2e/support/longhaul.ts`). Artifacts:
+  `docs/playtests/results/T-162-longhaul-runs.json` and `T-162-run-console.txt`.
+  [harvested: T-162/longhaul-unfired-verbs]
+
+- **CI evidence for T-163 is still OWED after the push**, per `docs/ENGINEERING-POLICY.md` §3 (the
+  CI-evidence rule). The T-163 block explicitly states no run has happened yet — acceptance was
+  satisfied LOCALLY, by the parsed-workflow assertions in
+  `packages/ui/src/__tests__/ci-workflow.test.ts` plus its negative control. Confirm with
+  `gh run list --branch redesign/explore-hangout --workflow ci.yml`, then
+  `gh run view <id> --log | grep -n 'Run e2e'`, and quote it verbatim. Nothing elsewhere in
+  `TASKS.md` or this file records this evidence, so it is lost if the block is pruned.
+  [harvested: T-163/t163-ci-evidence]
+
 ---
 
 ## Notes — bounded limitations, deferrals and standing pointers
@@ -596,6 +654,15 @@ item, put it in the section where comparable work already lives.
   DISCHARGED (T-160, T-175, T-177); §16.8 items 3 and 4 and F-148-3 are NOT. Re-point or retire
   those four entries when the T-160 block goes.
   [harvested: T-160/todo-md-t160-anchors-go-stale-on-prune]
+
+- **Write the check that `path:line` references in `TASKS.md` / `TODO.md` still resolve.** T-199's
+  own block named the F-150-2 tripwire at
+  `packages/sim/src/__tests__/campaign-policies.test.ts:492` when it was actually at `:505`, and the
+  coder had to correct it mid-task. No lint or test catches a stale line reference today —
+  `scripts/` holds only `check-signoff.mjs`, `prose-scan.mjs`, `tag-rc.mjs` and
+  `verify-clean-clone.mjs`. Precedent for this class of doc-pointer test already exists at
+  `packages/sim/src/__tests__/baseline-pointers.test.ts`.
+  [harvested: T-199/write-tasks-line-ref-check]
 
 ---
 

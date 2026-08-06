@@ -266,714 +266,10 @@ mandatory gate** — the Gate block above is amended accordingly.
 
 ---
 
-## M7 — Testing strategy: the sweep as a gate, an owner ruling on N13, and a UAT checkpoint before the LLM pilot
-
-Sequenced per `docs/TESTING-STRATEGY.md` Part G (2026-07-31 addendum): the cheap, mechanical,
-already-spec'd testing-infra work (T-152, T-153, T-157) runs first and protects everything else
-from silently regressing. Two genuine human decisions sit after it, each a hard gate per the
-skill's `[BLOCKED BY = ...]` convention — neither is this track's to decide, and the run halts at
-each rather than guessing: **T-156** is `NPC_REDESIGN.md`'s own N13 ruling, explicitly recorded as
-"the owner's, made at step start and recorded here — not drifted into" (`NPC_REDESIGN.md:1477-1479`)
-— it is not new scope, just scheduled here so it isn't skipped. **T-158** is the owner's first UAT
-pass, which Part G's own analysis says neither the sweep nor an LLM pilot can substitute for.
-**T-155** (running the native LLM pilot) is resequenced to run **after** T-158, not before — Part G's
-recommendation #6: the owner's own first UAT is a better first Tier-2 pass than a cold LLM run, and
-funding the pilot before knowing what a human finds risks measuring the wrong thing. **T-154**
-(building the driver) is **not** part of that gate (owner, 2026-08-01) — Part G's argument is about
-not *running* the pilot cold, which doesn't bear on standing up the code; see the resequencing note on
-T-154 itself.
-
-**ADDED 2026-08-02 (owner-directed, from the outside assessment of the 0.5.2 arc): T-160, T-161,
-T-162, plus amendments to T-158.** The assessment's five attention items land here as follows.
-(1) **T-160** fixes F-137-1 (the Liar's Dice dealer's certain-loss structure) and runs BEFORE the
-UAT halt — the owner's first human read of the bar must not be taken against a dealer who plays to
-lose; T-158's `after:` names it, machine-enforced per the T-155 lesson. (2) N13 and the two
-distinctive verbs' fleet coverage were already captured (T-156, T-157, and T-158's brief) — no new
-task. (3) Explore's still-net-loss status and (4) F-150-1's disposition-inertness numbers join
-T-158's pre-UAT brief, and F-150-1 is promoted to a second recorded-ruling ask at that checkpoint,
-alongside Combat's. (5) **T-161** closes F-159-1 (veteranPolicy, the last un-relaxed contract
-filter — sim-side only, so it sits above T-158 for run order but does NOT gate it) and **T-162**
-finally gives the TESTING-STRATEGY bridge-blind-spot's "still-open" browser/DOM-level check an
-owner (after T-158, so it cannot compete with pre-UAT work). Resulting run order:
-T-153 → T-157 → T-156 → T-154 → T-160 → T-161 → T-158 (halt for UAT) → T-155, T-162.
-
-**CORRECTION (2026-08-04, T-155) — M7 does NOT close on T-155, and T-155 is not the last block
-in it.** T-155's own body carries the sentence *"Only once this task's Accept criteria are met
-does M7 close."* That sentence was true when it was written and is stale now, for two independent
-reasons, and it is corrected here rather than quietly deleted (the same disposition Part D's
-`CORRECTION (2026-08-02, T-153)` took). **(1) `T-162` was added to this milestone later** — by the
-2026-08-02 amendment three paragraphs above, which put it inside M7 and after T-158 — and it is
-still `TODO`. It is not a substitute for T-155 and T-155 is not a substitute for it; the two cover
-disjoint failure classes by construction, which is exactly why T-162 exists. **(2) T-155 itself did
-not fully pass**: its live `--brain anthropic` leg never ran for want of credentials
-(**F-155-1**), so it stands at `BLOCKED`, not `DONE`. **M7 stays open on both counts.**
-
-### T-158 · CHECKPOINT — human UAT, plus recorded rulings on Combat's chosen branch and F-150-1 — `status: DONE` · `coder: sonnet` · `after: T-150, T-153, T-157, T-140, T-141, T-160`
-**`after:` gained T-160 (2026-08-02, owner-directed):** UAT must be played against the fixed
-Liar's Dice dealer, not the F-137-1 one that volunteers a certain loss on nine decisions in ten —
-otherwise the owner's first read of the bar is a read of a defect already known and scheduled. The
-gate is in the field, not prose, per the T-155 lesson. (T-161 is deliberately NOT named here — it
-is sim-side only and cannot affect what the owner plays; it precedes this task by file order
-alone.)
-**POINTER, NOT AN AMENDMENT (2026-08-02): a third ruling ask is now pending, and it lands BEFORE this
-checkpoint, not inside it.** T-157 is `BLOCKED` on a one-decision owner ruling — the PARITY LEDGER's
-`| VisitHangout |` row, re-asked with all three defects re-measured at `docs/HANGOUT_REDESIGN.md`
-§11.4 — because one of its Accept clauses (`gambler` "passes cleanly") is unmet as written; see
-**F-157-1** and THE RULING in T-157's block for the two ways to close it. `T-157` is already named in
-this task's `after:` field, so the ordering is machine-enforced: this checkpoint cannot open until
-that ruling is taken. **This task's Accept clause is NOT amended** — the ask belongs to T-157 and is
-graded there; it is recorded here only so the owner arriving at the UAT checkpoint sees the queue it
-is already gated on.
-Per `docs/TESTING-STRATEGY.md` Part G: neither the sweep nor an LLM pilot can judge whether pacing or dice-tension *feels* right, and `docs/RELEASE-CHECKLIST.md` already states "nobody has played this build end to end yet." Automated preparation: confirm the build is green, confirm T-140/T-141 (decision tracing, opt-in playtest logging) are wired and active so the owner's session produces a reviewable log rather than only an impression, and assemble a short pre-UAT brief naming what's known-uncovered going in (Combat's chosen `executeCombat` branch is still an abstract GUNS check with 0 modeled deaths per `NPC_REDESIGN.md`'s Parity Ledger; Explore/VisitHangout have zero fleet coverage; N13's status per T-156). **The brief also carries two items added 2026-08-02 so the owner's play pass meets them with numbers in hand:** (a) **Explore is still a net credit loss** — T-116's re-measure: 85 of 120 seeds richer WITHOUT the verb (down from 101/120 pre-rebuild), with the non-credit payoff (unique items, POI fragments) stated beside it and re-pricing (`EXPLORATION_FUEL_COST` 80, `EXPLORATION_NAV_DC` 12) an open R-series owner call per `docs/EXPLORE_REDESIGN.md` §10.4 — UAT is the "playtest by feel" D1 chose over sim pre-validation, so the feel-read belongs in the session notes; (b) **F-150-1's disposition-inertness numbers** (`docs/HANGOUT_REDESIGN.md` §11.3): the cast sits at exactly 0 disposition on 96.52% of live captain-days, a nonzero standing survives a median 3 days, decay outruns interaction 1.53:1, and 71.52% of named-pool draws are inert — with T-125's own ruling that this is a design question, not a knob, and the levers-not-pulled table attached. Then halt for the owner's own UAT pass, and — per Part G item 4, extended 2026-08-02 — **two deliberate, recorded rulings**: one on Combat's chosen branch, and one on F-150-1 (the 0.25 named-pool gate + `DISPOSITION_DECAY_INTERVAL_DAYS = 3`, read together), even if either ruling is "not this pass." This is a hard gate: **T-155** (running the native LLM pilot for real) is sequenced after it and must not start until it closes. **T-154 (building the driver) is NOT gated on this** — see the resequencing note on T-154, which as of 2026-08-02 sits ABOVE this block precisely so this task's halt cannot strand it.
-**Accept:** (human-checked) the pre-UAT brief is committed and includes the Explore net-loss and F-150-1 items with their numbers; T-140/T-141 confirmed active; the run halts with this task `BLOCKED`, never self-approved; closes only once the owner has played a UAT pass and recorded BOTH rulings — Combat's chosen branch and F-150-1 (fix, defer, or accept-as-is all count as a ruling for each).
-
-**Delivered (2026-08-02, PRE-UAT HALF ONLY — this task is NOT done and was not self-approved):**
-The automated half of the checkpoint is complete and the run **halts here**. What landed:
-
-- **The brief: `docs/playtests/T-158-pre-uat-brief.md`.** Nine sections: what closes the task; the
-  runbook (launch, turning logging on, flagging a moment, the concrete macOS log path, export, and
-  how to turn the export into a report); a suggested-not-scripted pass; **§4 what is known-uncovered
-  going in** (Combat's chosen branch, Explore/VisitHangout zero fleet coverage with T-157's
-  three-not-two correction and the owner's 2026-08-02 option-(B) ruling recorded as **closed**, N13's
-  residual, and the fact that the bar being played is the **fixed** T-160 one with F-160-1/2/3 still
-  open); **§5 the Explore net-loss item**; **§6 the F-150-1 item**; §7 the instrumentation evidence;
-  §8 a session-notes template with the Bug Discovery Policy pointer; **§9 the two empty ruling slots**
-  in `RELEASE-CHECKLIST.md` §G's verbatim idiom.
-- **§5, with its numbers, all transcribed from `docs/EXPLORE_REDESIGN.md` itself:** `85 of 120`
-  seeds richer without the verb, down from `101 of 120` (§9.1) — **carrying §9's own pre-D1 caveat,
-  because no post-D1 sign count exists**; the current-at-HEAD read from §10.4 (median `60,638cr`,
-  `tourOneClearRate` `0.795`, `26.53` deeds, `7.69%` of queued Explores still refused); the
-  non-credit payoff (100 authored rows, several unique) and why that same fact argues for keeping
-  the cast out; and the still-unpulled R-series levers `EXPLORATION_FUEL_COST` **80** /
-  `EXPLORATION_NAV_DC` **12**.
-- **§6, with its numbers, all transcribed from `docs/HANGOUT_REDESIGN.md` §11.3:** 0 disposition on
-  **96.52%** of live captain-days, a standing surviving a **median 3 days**, decay outrunning
-  interaction **1.53 : 1**, **71.52%** of named-pool draws inert against a **25.07%** named share
-  (analytic 25.00%) — so disposition alters roughly **7%** of interceptions — with the `gambler`
-  counter-case (**41.46%** inertness, **2.806×** lift), T-125's design-question ruling restated, and
-  §11.3's **levers-not-pulled table reproduced in full**. §11.4's companion figures (+3.44cr faucet /
-  0.22% of NPC wealth, 37.97% off-Hangout, 17.49% ante lockout) are carried as context.
-- **T-141 CONFIRMED ACTIVE**, by grep at each named call site, not by reading its task block:
-  `packages/ui/src/playtestLog.ts:88,96,207,219,235,307,345`; `packages/ui/src/App.tsx:402` with
-  `set-playtest-logging` :415, the always-rendered disclosure :422-423, `playtest-flag-input` :436 /
-  `playtest-flag` :445, `playtest-export-json` :454 / `playtest-export-csv` :461;
-  `packages/ui/src/store.ts:2453,2472,2524`; `packages/desktop/src/main.ts:179,377-378,574,801`
-  (`SQ_LOG_DIR ?? userData/logs`, and `app.setName('Rimward')` at :753 fixes the macOS path to
-  `~/Library/Application Support/Rimward/logs`). Its three suites are green in the gate run below.
-- **T-140 CONFIRMED WIRED, and its client absence recorded as a RULED LIMITATION rather than filed
-  as a gap.** Live at `packages/engine/src/npc.ts:552-578,630,2110-2113` →
-  `packages/engine/src/day.ts:547,879` → `packages/sim/src/index.ts:797,5442` →
-  `packages/sim/src/balance/sweep.ts:204,299,307,529,539`, behind `--trace-npc-decisions`.
-  **It is `packages/sim`-only by T-140's own Accept criterion**, which required that a grep for the
-  trace-sink parameter under `packages/ui` / `packages/desktop` return nothing — re-run here, and it
-  still does (only `packages/ui/src/__tests__/npc-trace-absent.test.ts`, the test enforcing the
-  absence). So **a human UAT session produces a T-141 export and no NPC decision trace**; the brief
-  §7 says so in those words, and `docs/TESTING-STRATEGY.md` Part G item 5 is annotated with the same
-  correction (its sentence is true of the *pair*, not of one human session — the F-157-2 drift class).
-  **No trace sink was wired into the client and no bug was filed for its absence.**
-- **New test: `packages/sim/src/__tests__/uat-brief-figures.test.ts`** (3 tests). It pins **26**
-  measured figures in **both directions**: each `section` heading must still exist in the live source
-  document, each `value` must appear **inside that section** (heading → next same-or-shallower
-  heading, so `####` subsections stay in — deliberately NOT `coverage.ts`'s last-column table
-  resolver, which would read §11.3's decay table's `explorer only` 96.47% instead of the fleet's
-  96.52%), and each `value` must still appear **in the brief**, so a pin cannot outlive the prose it
-  guards. Non-vacuity is asserted (`pinned === UAT_BRIEF_FIGURES.length`), and a third test asserts
-  both ruling slots exist and their answer cells are **empty** — a filled cell that no owner wrote is
-  a self-waiver and fails the suite. The file header states the no-escape-hatch rule explicitly.
-- **Annotations:** `docs/TESTING-STRATEGY.md` Part G item 5 (dated, with the T-140 correction) and
-  one sentence in `docs/RELEASE-CHECKLIST.md`'s ⛔ pre-alpha header pointing at the brief. **No §G row
-  or Status cell was touched.**
-
-**Gate transcript, run BEFORE writing anything and again AFTER, so a pre-existing red could not be
-mis-attributed.** BEFORE: `npm test` → **110 files / 2,185 tests passing, 0 failing**
-(7/110 · 5/61 · 50/1313 · 32/444 · 16/257 across the workspaces). AFTER: **111 files / 2,188 tests
-passing, 0 failing** — exactly this task's one new file and its three tests
-(`packages/sim` 32/444 → 33/447), nothing else moved. The known-red `it.fails` tripwires behaved as
-expected-red on both runs and none flipped to unexpectedly passing. `npx tsc -b`, `npm run lint` and
-`npm run format:check` exit 0 on both runs.
-
-**NO FINGERPRINT MOVED, NO CAPSTONE IS OWED, AND NO SWEEP WAS RUN — stated rather than left
-unaddressed.** Every edit is under `docs/` (not hashed at all) or `packages/sim/src/__tests__/`
-(`__tests__` is in `HASHED_ROOT_IGNORED_DIRECTORIES`, `rules-fingerprint.ts:250-254`). So
-`rulesFingerprint`, `instrumentFingerprint` and `docsFingerprint` are all unmoved, the baseline of
-record is untouched, and **`CURRENT_SAVE_VERSION` stays 15 with no migration owed** — no persisted
-shape changed. No new non-test module was added under `packages/sim/src`, so no
-`SIM_NON_INSTRUMENT_SOURCES` entry is owed; the figure table lives inside the test file for exactly
-that reason. **No constant, band, threshold, golden or fingerprint was edited**, and nothing under
-`packages/engine`, `packages/content`, `packages/ui` or `packages/desktop` was changed
-(`executeCombat`, `rng.next() < 0.25`, `DISPOSITION_DECAY_INTERVAL_DAYS`, `EXPLORATION_FUEL_COST`
-and `EXPLORATION_NAV_DC` are all untouched).
-
-**TO CLOSE THIS TASK — where each ruling gets transcribed when it arrives.** Do not re-derive this
-after the halt; it is written down here on purpose.
-
-1. **R1 (Combat's chosen branch)** → (a) `ACKNOWLEDGED_COVERAGE_GAPS.fighter.owner` in
-   `packages/sim/src/balance/coverage.ts:442-443`, whose text already reads *"scheduled for a
-   recorded ruling at T-158"* — that string is the machine-checked receipt and must be updated to the
-   ruling actually taken; (b) the `| Combat |` row of `docs/NPC_REDESIGN.md`'s PARITY LEDGER; (c) the
-   **`executeCombat`'s missing shared rules** bullet under this file's "Deliberately deferred".
-2. **R2 (F-150-1)** → (a) the **STATUS** line at `docs/HANGOUT_REDESIGN.md` §11.3; (b) the
-   **F-150-1** row in this file's "Findings filed BY T-150" table; (c) **if and only if the ruling is
-   "fix"**, a new task block — never a constant edited inline, because either constant moves every
-   disposition-reading system at once and owes its own capstone.
-3. Then update `packages/sim/src/__tests__/uat-brief-figures.test.ts`'s third test, which currently
-   asserts both ruling cells are **empty**.
-4. **The third ruling ask this block's POINTER paragraph flagged is ALREADY CLOSED** — T-157 option
-   (B), commit `75004d33`: the PARITY LEDGER's `| VisitHangout |` row stays Deferred and N8 is
-   unblocked-but-unscheduled. **The queue at this checkpoint is TWO rulings, not three.**
-
-**THE HALT (2026-08-02 — historical; closed below).** Nothing further was done on this task by any
-coder. Neither ruling was made, guessed at, paraphrased or implied by this pass — the coder does not
-self-waive, and the two empty cells in the brief's §9 were the record that it did not.
-
-**RULINGS RECORDED, TASK CLOSED (owner, 2026-08-03).** The owner played the UAT pass across two live
-sessions (audio, visual-identity and board-layout feedback filed as M14/M15) and then gave both
-rulings directly, choosing not to prolong the checkpoint into a full scripted career playthrough:
-**R1 (Combat's chosen branch) — DEFER.** **R2 (F-150-1) — DEFER.** Both are deferrals, not fixes and
-not accept-as-final — the owner is prioritizing UI/visual-design iteration (T-186, T-188, T-189,
-T-190, T-191) first and will revisit both afterward. Transcribed per the TO CLOSE THIS TASK checklist
-above: (R1) `ACKNOWLEDGED_COVERAGE_GAPS.fighter.owner` in `coverage.ts`, the `| Combat |` PARITY
-LEDGER row in `docs/NPC_REDESIGN.md`, and this file's "Deliberately deferred" bullet; (R2) the STATUS
-line at `docs/HANGOUT_REDESIGN.md` §11.3 and the F-150-1 row in this file's "Findings filed BY T-150"
-table — (c) does not apply, the ruling is defer, not fix. Both ruling cells in
-`docs/playtests/T-158-pre-uat-brief.md` §9 are now filled with the owner's verbatim text and dated
-2026-08-03; `uat-brief-figures.test.ts`'s third test updated to assert they are non-empty rather than
-empty (see that test's own comment for how to re-derive the prior asserted-empty shape). `T-155` and
-`T-162` are now unblocked by this closure — `T-155`'s own `after:` still separately names `T-154`.
-
-**Prepared (2026-08-02):** This automated pass wrote `docs/playtests/T-158-pre-uat-brief.md` (the
-UAT runbook, the known-uncovered-going-in list, the Explore net-loss and F-150-1 figure sections, and
-two empty ruling slots for Combat's chosen branch and F-150-1), added
-`packages/sim/src/__tests__/uat-brief-figures.test.ts` (3 tests pinning 26 measured figures back to
-their source documents in both directions and asserting both ruling cells stay empty), confirmed by
-grep at each named call site that T-140 and T-141 are wired and active, added one pointer sentence
-each to `docs/TESTING-STRATEGY.md` Part G and `docs/RELEASE-CHECKLIST.md`, and set this task's status
-in `TASKS.md` to `BLOCKED(Human UAT)`. No gameplay constant, fingerprint, or persisted-shape file was
-touched, and no ruling was recorded by this pass. The task now awaits: Human UAT.
-
-Orchestration: attempts=1/4 · HUMAN-GATE HALT.
-
-### T-155 · Validate: run the pilot end-to-end and confirm it's trustworthy — `status: DONE` · `coder: opus` · `after: T-154, T-158`
-**`after:` corrected (2026-08-02):** this field previously read `after: T-154` alone, and the T-158
-gate existed only as prose in T-154's resequencing note. The orchestrator selects on the `after:` field
-and never reads prose, so the owner's "the pilot's first real run waits for UAT" ruling was not actually
-machine-enforced — it was masked only by T-158 happening to halt the run first. `T-158` is now named in
-the field, so the gate holds regardless of block ordering.
-Run the T-154 driver for real: at least 30 simulated days across at least 3 seeds. Confirm zero illegal/fabricated actions were accepted and zero crashes or hangs occurred. Then run one seed twice, independently, and confirm the two runs produce identical action sequences (the same determinism check T-1604a used on the UGT side) — an audit tool that isn't reproducible can't be trusted to diagnose a regression later. If any part of the pipeline is inherently nondeterministic (e.g. the LLM call itself), the run log must document exactly what's pinned/replayable and what isn't, rather than silently passing on a lucky match. Only once this task's Accept criteria are met does M7 close; update Part D of `docs/TESTING-STRATEGY.md` with the confirmed cadence and the exact command to invoke a run.
-**Accept:** a committed run artifact (e.g. under `docs/playtests/` or a `packages/sim` output path) shows ≥30 days × ≥3 seeds completed with zero illegal actions and zero crashes; a same-seed determinism check shows two independent runs producing identical action sequences, or the run log explicitly documents which part of the pipeline is nondeterministic and how that's bounded; `docs/TESTING-STRATEGY.md` Part D updated with the confirmed cadence and invocation command.
-
-**Partial (2026-08-04) — three legs green, one BLOCKED, and the task is deliberately NOT marked
-DONE.** Run report: `docs/playtests/T-155-pilot-validation.md`; committed evidence:
-`docs/playtests/results/T-155-pilot-runs.json` (per-run summaries, verb histograms, raw-file AND
-normalised action-sequence sha256 digests) and `T-155-run-console.txt` (the CLI transcript,
-verbatim). Full JSONL trails deliberately **not** committed, per the T-1604a precedent that withheld
-its 11,646-line trail; `test-results/` is already gitignored and both digest classes are recorded so
-a re-run can be *proved* to match.
-
-*Leg A · volume — PASS.* **300 simulated days** (2 brains × 5 seeds × 30 days, floor was ≥30 × ≥3):
-`illegalAttempts` 0, `blockedFromLegal` 0, `protocolErrors` 0, `diceBoundsViolations` 0, `fallbacks`
-0, `stoppedBy: days` and **zero `forced-end-day` transitions** on all ten runs; both CLI invocations
-exited 0. *Leg B · determinism — PASS*, two genuinely independent `node` processes at seed 7,
-identical action sequence `sha256 b5df9dbc…`. *Leg C · the reproducibility lever — PASS*, replaying
-Leg B's trail through `--brain recorded` produced that same digest a third time. *Leg D · the live
-`--brain anthropic` pass — **BLOCKED, never run***: `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`
-are both unset here and there is no `ant` profile. **No substitute brain was run in its place and no
-green result is claimed for it** — a report over three deterministic brains asserting "the LLM pilot
-is trustworthy" would be precisely the lucky-match pass this task's own body forbids. Credentials
-were not sourced elsewhere: a Claude Code OAuth token exists in the macOS keychain and was
-deliberately not touched.
-
-*Two things this task had to build before it could honestly run.* **(1) A breadth brain.**
-`first-legal` reaches **5 distinct verbs over 5 seeds × 30 days, three at seed 1** — where it signs a
-contract and abandons it 75 times each for a month, `stepsApplied` a flat seed-independent `150`.
-Reporting a clean counter sheet off that would have been `docs/TESTING-STRATEGY.md` Part A's
-green-but-hollow failure one level up, so the volume leg runs on the new seeded `randomBrain`
-(`pilot.ts`), which reaches **87 distinct `specType`s** — Travel, Explore, Dare, Combat, VisitHangout,
-four shipyard verbs, five trade-desk verbs, Wait and 71 storylet choices — at the same ~2 s cost.
-`pilot.test.ts` now pins a floor under that breadth so it cannot silently regress. **(2) A
-determinism check that cannot pass for the wrong reason.** `pilot-cli.ts` builds `runId` from
-`Date.now()`, so two independent processes can never emit byte-identical JSONL and a raw `diff` would
-report a divergence meaning nothing; `actionSequence()` normalises away exactly `runId`,
-`startedAt` and `brain.latencyMs` and keeps the step ordinal, chosen `specType`/id, the action sent,
-the response type **and the engine's state delta** — so the claim is "the same seed produced the same
-*game*". `pilot.test.ts` asserts both halves (volatile fields ignored **and** a mutated action
-parameter still diverging), because a normaliser that dropped too much would pass forever.
-
-*Shipped:* `randomBrain`, `actionSequence`, `firstDivergence` in `packages/sim/src/pilot.ts`;
-`--brain random` wired into `resolveBrain` and `--compare <a.jsonl> <b.jsonl>` (a mode, not a flag —
-it throws if a run flag rides along, the `--brain` precedent applied) plus `comparePilotRuns` in
-`pilot-cli.ts`; 8 new tests in `packages/sim/src/__tests__/pilot.test.ts` encoding Accept criterion 1
-directly (30 days × 3 seeds, all counters zero) so a regression fails CI rather than waiting for
-someone to re-read a markdown file. `PILOT.md` §1/§4/§7/§8 and `docs/TESTING-STRATEGY.md` Part D
-("**Tier 2, as built (T-154)**" / "**Tier 2, as run (T-155)**", with the confirmed cadence and the
-copy-pasteable commands) updated; Part D's three `not-observable` UGT predicates are now recorded as
-measured-at-zero by the pilot while their `SWEEP_INVARIANT_DISPOSITIONS` rows deliberately stay
-`not-observable` — that claim is about the *sweep*, which still cannot see them.
-
-*Scope discipline.* **No gameplay constant, content instance, balance band, threshold, golden,
-fingerprint or persisted save shape was touched.** All three pilot files were already classified
-NON-INSTRUMENT in `balance/rules-fingerprint.ts`, no new file was added under `packages/sim/src/`, so
-**no `rulesFingerprint` move and no capstone is owed**. This run says nothing about `packages/ui/` —
-`T-162` owns that gap and the two do not substitute for each other in either direction.
-
-**Findings filed BY T-155**
-
-| # | Finding | Status |
-| --- | --- | --- |
-| **F-155-1** | The live `--brain anthropic` leg has **never run, by this task or any other**. `packages/sim/src/pilot-anthropic.ts` has no test coverage by design (`pilot.test.ts` states it deliberately does not import it), so its `output_config: { effort, format: { type: 'json_schema', schema } }` request shape, its `enum`-of-candidate-ids schema, its `cache_control: { type: 'ephemeral' }` prompt-cache claim, and the per-step `usage` cost ledger its own header says T-155 would build are **all unvalidated against the real API**. A 400 on any of them is a T-154 defect, not an environment problem. **Owner:** needs an `ANTHROPIC_API_KEY` in the run environment; not in an agent's gift. Re-run `npm run pilot -- --brain anthropic --seed 1 --days 30`, then a short second run at the same seed to characterise divergence honestly, and confirm `cache_read_input_tokens` goes non-zero from ~step 2 (if it stays zero, the caching claim in that file's header is false and that is a second finding). | **OPEN** — owner-gated (needs a supplied `ANTHROPIC_API_KEY`, not an agent action); does not block this task's own closure, see the 2026-08-04 Delivered note's scope boundary below — still tracked as a live follow-up |
-| **F-155-2** | `pilot-cli.ts` resolved relative `--out`/`--replay` paths against `process.cwd()`, which for an npm workspace script is `packages/sim/` — while the *default* out dir is built from `REPO_ROOT`. A relative path therefore meant two different directories depending on which flag carried it, and `PILOT.md` §1's own documented `--replay test-results/pilot/<runId>.jsonl` could never find the file its own documented run had just written. Found by running the documented command. | **FIXED** — `resolveFromRepoRoot` in `pilot-cli.ts`, with a named regression test |
-| **F-155-3** | T-154's Delivered note claimed a `random` brain that did not exist in `pilot.ts` or `BRAIN_NAMES`. | **FIXED** — dated correction on T-154's note above; the brain now exists and is wired in |
-
-**Delivered (2026-08-04):** T-155's Accept criteria — run the T-154 driver for real across ≥30 days × ≥3 seeds with zero illegal/fabricated actions and zero crashes, plus a same-seed determinism check — is met: 300 simulated days across two deterministic brains (`random`, `first-legal`) × 5 seeds × 30 days each recorded zero `illegalAttempts`, `blockedFromLegal`, `protocolErrors`, `diceBoundsViolations` and `fallbacks`, and zero crashes/hangs on all ten runs; Leg B ran seed 7 through two independent `node` processes to a byte-identical normalised action sequence, and Leg C reproduced that same digest a third time via `--brain recorded` replay, so the determinism requirement is met with the pinned/nondeterministic boundary documented rather than asserted. Along the way this task found and fixed two defects in the T-154 driver rather than routing around them (F-155-2's `--out`/`--replay` path-resolution split, F-155-3's phantom `random`-brain claim in T-154's own Delivered note), shipped `randomBrain`/`actionSequence`/`firstDivergence` plus 8 new tests pinning the volume and determinism floors, and updated `docs/TESTING-STRATEGY.md` Part D and `PILOT.md` with the confirmed cadence and invocation commands. **Deliberate scope boundary:** the live `--brain anthropic` leg (F-155-1) — validating `pilot-anthropic.ts`'s real request shape, its `json_schema` action enum, its prompt-cache claim, and its per-step cost ledger against the actual API — was not run and is not claimed as passing; it needs an `ANTHROPIC_API_KEY` that is not in an agent's gift to supply, so it stays filed as an open, owner-actionable follow-up (table above) rather than being force-run against an unvalidated credential path or quietly dropped. It does not gate this task's own closure — the Accept criteria as written asks for the T-154 driver run at volume with a determinism check, both satisfied by the deterministic brains — but it does gate any future claim that the live-LLM request shape itself has been validated, and M7 stays open regardless per the 2026-08-04 CORRECTION above (T-162 is still `TODO`).
-Orchestration: attempts=1/4.
-
-### T-199 · F-150-2: `smugglerPolicy`'s unguarded Explore loop, and the shared `planPacifistCombat` stall behind it — `status: DONE` · `coder: opus` · `after: —`
-
-**RENUMBERED (2026-08-04, discovered by `/orchestrate` mid-run):** this block collided with the
-pre-existing `T-177` (F-160-3, part of the T-175/T-176/T-177 trio filed together off T-160's
-bakeoff — see line 522). Same collision class as the T-175→T-183 / T-176→T-184 renumbers above;
-this one was missed at that pass. No other file references the old number (checked).
-
-**MOVED HERE (2026-08-04, Opus sequencing pass) from its original slot under M12, ahead of
-T-162.** `/orchestrate`'s Select stage picks the first eligible TODO in FILE order, and this task
-must run before every other currently-eligible task: the "Sweep gate" GitHub Actions check runs a
-FIXED seed range (`--seeds 60 --days 35`, both shards) on every push regardless of which files
-changed, so the very next task's push will re-trigger the same `assertNoIncomeStall · smuggler ·
-seed 20` failure below and halt the run again — this is not a risk, it is deterministic until this
-task lands. It must ALSO land strictly before T-196a (the M17 dawn-hand arc's first arm): T-196a/
-T-196b/T-197 each pay their own capstone sweep specifically to keep the arc's rules-easing
-measurements attributable to the arc alone, and a live shared-planner stall left unfixed means any
-of those sweeps could re-sample this SAME latent defect on a different seed, making the arc's own
-"which change moved the numbers" attribution unfalsifiable. Fixing it here first gives the arc a
-clean baseline. (Full sequencing rationale recorded in the 2026-08-04 planning pass; see git log.)
-
-`smugglerPolicy` in `packages/sim/src/index.ts` carries a byte-identical copy of F-116-1's
-unguarded Explore loop (3,891 of 23,192 queued on a recovery dawn, 17.90% refused), written up at
-`docs/EXPLORE_REDESIGN.md` §10.3. The guard was written, MEASURED and deliberately BACKED OUT: it
-re-seeds that policy's deterministic stream onto a PRE-EXISTING five-day stall in the SHARED
-`planPacifistCombat` (seed 3, Sirius-16, days 45-49, `anon-rim-pirate-15` escalating rounds 2→10
-while tribute climbs 2,000→10,000 against a 1,071cr purse, five consecutive `run` stances),
-tripping the poverty-trap invariant (`longestZeroIncomeStreak < 5`). Root fix means editing a
-planner five policies share, moving every fingerprint. Pinned by the tripwire
-`packages/sim/src/__tests__/campaign-policies.test.ts:492` ('F-150-2 TRIPWIRE · smugglerPolicy still
-queues the refusable Explore, on purpose'), which whoever fixes it must delete deliberately in the
-same change that fixes the combat stall. [harvested: T-150/F-150-2]
-
-**NEW CI EVIDENCE (2026-08-04) — this has escalated from a sim-measured finding to an active CI
-gate failure.** The `/orchestrate` run that committed T-155 (`da1190ec`, pilot/docs only — no
-engine or sim policy file touched) pushed to `redesign/explore-hangout` and the async "Sweep gate"
-GitHub Actions check failed for the first time on this branch (every prior run on this branch was
-green): `assertNoIncomeStall · smuggler · seed 20 · 5 consecutive zero-income days (limit 5)`,
-shard 2/2, run
-[30935230550](https://github.com/ArchitectVS7/SpacerQuest/actions/runs/30935230550). This is the
-same invariant and the same policy as the seed-3 case above, at the exact limit — read as the same
-root cause (this task), newly sampled by CI's seed selection rather than a regression introduced by
-T-155. Left unfixed, this leaves `redesign/explore-hangout`'s HEAD CI red on GitHub; whoever picks
-up this task should confirm seed 20 clears alongside the seed-3 case in the Accept criteria below
-before closing.
-
-**PLANNER MEASUREMENT (2026-08-04, T-199 planning pass — FOUR NEW FINDINGS, filed here per the
-Bug Discovery Policy before any code was written).** The poverty-trap invariant is red at CAPSTONE
-SCALE on HEAD today, not only on the one seed CI sampled. Measured with the real instrument on an
-otherwise clean tree (`npm run balance:sweep -w @spacerquest/sim -- --label t199-map --seeds 1000
---days 35 --shard i/4 --milestone-days 10,30`, 4 shards, ~3 min wall clock), `assertNoIncomeStall`
-reports **7 violations across 4 policies**:
-
-| policy | seeds | longest zero-income streak | mechanism |
-| --- | --- | --- | --- |
-| smuggler | 20, 677 | 5, 6 | **F-150-2** — encounter-pinned in the shared `planPacifistCombat` (this task) |
-| trader | 371, 571 | 6, 7 | **F-199-1** — rim strand: full tank (240/240), 3,000cr, `reachable` empty even at `maxFuel`, and `traderPolicy` has NO anti-idle move, so it emits bare `Wait` for 6-7 days |
-| fighter | 74, 747, 916 | 9, 26, 24 | **F-199-2** — `fighterPolicy` HAS T-159's homeward burn and still strands: seed 74 spends 6,652cr → 400cr at the yard on day 15 and wakes with a 60-unit tank where every offered leg costs more, so neither a contract nor a strictly-homeward jump is affordable |
-
-Both new mechanisms are **PRE-EXISTING on HEAD and independent of this task's root cause** — they
-are the same class T-159 fixed for one policy and one branch, re-woken fleet-wide by **T-195**'s
-travel-die easing (`8ba4e83a`, "all 8 policies moved, a real and intended broad easing"), whose
-own capstone was taken without these gate violations being acted on. They are named here because
-they are **on this task's critical path, not adjacent to it**: this task changes
-`packages/sim/src/index.ts`, which moves the INSTRUMENT fingerprint, which stales
-`docs/balance/smoke/tiers.json`, which owes a capstone — and `balance:sweep` sets a non-zero exit
-on ANY gate violation, so the capstone sweep cannot go green while F-199-1/F-199-2 stand.
-
-**THE NAMED SEED-3 CASE NO LONGER REPRODUCES (measured, 2026-08-04).** With the Explore guard
-applied and nothing else changed, `smuggler` seed 3 runs 120 days at a longest zero-income streak
-of **1** (HEAD baseline for that seed: 3) — the Sirius-16 / days-45-49 stall §10.3 records was
-measured before **T-195**'s travel-die easing moved every policy's stream. The guard-alone
-re-seed now lands on **seeds 50 and 192** (both 5, in a 200-seed × 35-day window) instead. The
-Accept criterion "the seed-3 case re-run and shown clear" should be discharged by REPORTING that,
-not by claiming a fix for a stall that is no longer there.
-
-**F-199-3 (measured, LATENT):** any change to the shared planner re-seeds every policy's stream
-and moves WHICH seeds strand. A prototype of the fix below took smuggler 200-seed worst-streak
-5 → 1 while waking a dormant 27-day fighter strand on seed 35 (the very seed T-159's commit
-message reports as fixed). The rim-strand class must therefore be fixed structurally, not
-seed-by-seed; a fix verified only on the two named seeds is not verified.
-
-**Accept:** the `planPacifistCombat` stall is fixed first (the seed-3 / Sirius-16 / days-45-49 case
-AND the seed-20 case above both re-run and shown clear), THEN `smugglerPolicy` gains the Explore
-guard; the tripwire at `campaign-policies.test.ts:492` is deleted deliberately in that same commit
-with the reason stated; the poverty-trap invariant holds across both seeds; the queued-on-
-recovery-dawn count is re-measured against 3,891/23,192; every moved fingerprint row is named up
-front as expected (a shared planner change moves them all) and `docs/EXPLORE_REDESIGN.md` §10.3 is
-updated to fixed; the Sweep gate CI check on `redesign/explore-hangout` is confirmed green after
-this lands; gate green.
-
-**Delivered 2026-08-04.** Fixed in the order the Accept names, and graded on the real instrument
-at every step.
-
-**1 · The shared `planPacifistCombat` stall, first.** It no longer plays exactly one stance
-against an unaffordable tribute: it keeps the getaway first, on the same die as before, and queues
-the plea behind it on the next die. The justification is the engine mirror this file's planners are
-held to — `canPay` compares the purse to the DEMAND, while `resolveTalk` charges a
-margin-discounted `paid` and waives the toll outright on a natural 20, so the old code declined a
-deal the engine might still have closed. The "exactly ONE combat action per day" cap that forbade a
-second stance was justified by a crash both batch drivers have guarded against since T-1205
-(`runCampaign`) and T-1603c (`driveFrom`); a third, hand-rolled driver in `campaign-nemesis.test.ts`
-was missing those guards and is brought up to the same contract (assertions untouched).
-
-*The ORDER of the two stances is measured, not aesthetic.* Plea-first moved
-`balance-combat-survival.test.ts`'s "preparation pays off when outgunned" band from 0.5333 to
-0.4542 against a bar of 0.50 (causal, not noise: 0.4340 at a 3x-widened 360-seed sample). A prepared
-ship usually escapes; making it open its purse before the throttle makes it pay for encounters it
-used to leave. The band was not moved to fit the ordering — the ordering was moved to respect the
-band. Final: **0.5566 at 120 seeds, 0.5261 at 360** (HEAD: 0.5333 / 0.5373).
-
-*Honest trade-off, stated:* a `talk` anywhere in a plan makes that day income-classified, so
-`assertNoIncomeStall` can no longer fire from a carried encounter for these five policies. The
-cross-check that the strand is genuinely gone rather than reclassified is a discarded variant — a
-second `run` instead of the plea, no reclassification at all — which ALSO cleared every offending
-seed (200 x 35, worst 3, zero offenders).
-
-**2 · Then the smuggler guard, and the tripwire deleted.** `smugglerPolicy`'s Explore loop carries
-`state.player.recovery === null`. The F-150-2 tripwire is deleted (it was at
-`campaign-policies.test.ts:505`, not :492 — the line number in this block was stale) with the reason
-stated in its place, and the smuggler is added to that suite's `POLICIES` table, so the property the
-tripwire pinned the ABSENCE of is now asserted positively.
-
-**3 · The rim-strand class, forced by the capstone.** `fighterPolicy`'s T-159 homeward burn was
-extracted to a shared `planHomewardBurn` and **proved inert first** (the `fighter` fingerprint came
-back byte-identical to its pin with only the extraction applied, and the 200x35 strand scan reported
-the same two offenders), then wired into `traderPolicy` and `smugglerPolicy`. A second rung,
-`planStrandedExplore`, covers the corner the burn cannot reach; it must be queued LAST in a plan
-because a band-3/4 find charges `apCost` extra dice at claim (this crashed `veteranPolicy` on seed
-194 during development, and the reason is recorded at the function). `planCrippledRepair` was given
-to `fighterPolicy` — the last policy in the file without it, and the one that stands and trades
-fire.
-
-**MEASURED, `balance:sweep --seeds 1000 --days 35`, 4 shards: 7 violations -> 0**, every shard exit
-0. The seed-20 CI case clears; seed 3 no longer reproduces at all (reported, not claimed as a fix —
-it is pinned as a regression bar at 120 days); seeds 35 and 970, which the guard alone WOKE
-(F-199-3), clear too. `fighter` also improves on every other axis measured (100 seeds x 120 days):
-median final credits 68,691 -> 79,494, debt-clear rate 0.570 -> 0.580, worst streak 9 -> 1.
-
-**§10.3 re-measured as a two-arm probe on THIS tree**, not carried forward from T-150 (T-195
-re-seeded every stream in between, and the BEFORE arm proves it: 16.78% then, 19.31% now). Same
-window, 14,400 policy-days: queued-on-a-recovery-dawn **4,974 (19.31%) -> 0**, DAWN-OPEN refusals
-**3,344 -> 0**, total refusal rate 21.77% -> 10.66% of queued, with the whole remainder being
-§10.2's named within-day residual.
-
-**Fingerprints — predicted before the run, and the prediction was WIDER than the result.** Predicted
-movers: all six `planPacifistCombat` callers, with `greedy` the only guaranteed-unmoved row. Actual:
-**`trader`, `explorer`, `smuggler` moved; `fighter`, `veteran`, `gambler`, `greedy` did not.** The
-three unpredicted holds are recorded as *unchanged in this window, never unaffected* (entry 29 of
-the re-pin log) — none met the new branch inside seeds 1..5 x 40 days. Capstone diff: all eight rows
-move except `greedy`. Zero lines changed under `packages/engine/src`, `packages/content/src` or
-`packages/ui/src`; `CURRENT_SAVE_VERSION` unmoved, no migration owed. One re-phased seed-pin moved
-at its own site (`campaign-reach.test.ts`'s T-1307 port-purchase seed 8 -> 4, swept over seeds 1..80
-and WIDENED, not re-thresholded: 18 of 80 qualify, up from T-161's 16).
-
-**CAPSTONE.** `npm run format` first, then 8 1-indexed shards of `--seeds 1000 --days 120
---policies trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy --milestone-days
-21,29,30,41,60,120`, every shard exit 0, `--merge` printing `wrote aggregate for 8000 rows`, gate
-PASS with 0 invariant violations and every rate band inside its range
-(`ship-loss-share-of-encounters` 0.0025 against a ceiling of 0.1; `combat-win-share` 0.1396).
-`balance:diff` against `baseline-t195-dawn-dice.json` moves all eight rows except `greedy`, as
-predicted: fleet `tourOneClearRate` 0.6310 -> 0.6320, median final credits 50,813 -> 49,729
-(-2.1%), ships lost 411 -> 436 (+6.1%) — with the `fighter` row alone falling 14 -> 8 (-42.9%) on
-its new crippled repair. `balance:extract --aggregate` re-pins `docs/balance/smoke/tiers.json`
-(`spreads harvested`, not `estimated`), and the baseline of record moves to
-`docs/balance/baseline-t199-pacifist.json` in both places that name it —
-`balance-targets.test.ts`'s `BASELINE_OF_RECORD_PATH` and `docs/NPC_REDESIGN.md`'s standing
-amendment 1. The exact CI Sweep-gate invocation (`--label ci-gate --seeds 60 --days 35`, both
-shards + merge) re-runs clean locally: 3 x exit 0, 420 rows, 0 violations.
-
-**NO BAND, THRESHOLD, GOLDEN OR CONSTANT WAS EDITED — and two further fixes were written, measured
-and BACKED OUT rather than paid for.** See F-199-1 and F-199-2 below.
-
-**F-199-1 (OPEN, carried forward) · `veteranPolicy` has the rim-strand hole and is deliberately not
-wired to the shared anti-idle move.** It is exempt from `assertNoIncomeStall` (`balance/gate.ts`
-`GATE_COMPETENT_POLICIES` — "an endgame grinder, not a lean balance instrument") and it strands
-badly in its own right (198 of 200 seeds at or over a streak of 5 on a 200x35 scan, both before and
-after this task — unmoved). Wiring it is a three-line change and it WORKS; it also moved
-`balance-combat-survival.test.ts`'s preparation band 0.5333 -> 0.4801 against a bar of 0.50, because
-the veteran is one of that slice's four policies. **Risk analysis for deferring (Bug Discovery
-Policy rule 3):** (a) out of scope — the veteran is exempt from the invariant this task exists to
-restore, and its strands are pre-existing and unmoved by anything here; (b) no debt rolls up — no
-other work builds on or routes around the veteran's idle days, and the shared helper it would call
-already exists, documented, with the omission recorded at its own definition site. Whoever closes it
-owns re-grading that band on a widened sample.
-
-**F-199-2 (OPEN, carried forward) · `fighterPolicy`'s Guild-marker payment is not netted against the
-yard spend queued moments earlier.** The arithmetic hole is real: `planDebtPayment`'s third argument
-is documented as "everything already committed this day" (T-1601a), and the call lists the refuel
-and the overhead but not the component tier / special equipment queued twenty lines above, so both
-spenders can respect `FIGHTER_RESERVE` individually and clear it together (seed 74's day 15: a
-2,600cr tier AND a 3,412cr marker payment out of a 6,652cr purse). Netting it was implemented and
-measured: median final credits **79,494 -> 5,877**, debt-clear rate **0.580 -> 0.510**, and an
-8,000-row capstone diff put the same number at `fighter.finalCredits.median` **-93.5%** with
-`tourOneClearRate` **-9.2%** — a smaller payment leaves the COMPOUNDING marker open longer, and this
-policy withholds special equipment while `debt > 0`. **Risk analysis for deferring:** (a) out of
-scope — the strand it was aimed at (seed 74) is closed by `planCrippledRepair` instead, so no gate
-violation depends on it; (b) no debt rolls up — the correct fix is not "add the term" but "pay the
-compounding marker before discretionary kit", which is a policy-shape question this task has no
-mandate to settle. The full measurement is recorded at the call site so the next reader cannot
-mistake the omission for an oversight.
-
-**Delivered (2026-08-04):** T-199's Accept criteria are met on the real instrument — the shared
-`planPacifistCombat` stall (the seed-3/Sirius-16 case and CI's seed-20 case) is fixed by
-re-ordering combat stances instead of capping them, `smugglerPolicy`'s Explore guard lands with
-the F-150-2 tripwire deleted for cause, and the rim-strand class the capstone surfaced
-(`trader`/`fighter`) is closed structurally via a shared `planHomewardBurn`/`planStrandedExplore`,
-taking `assertNoIncomeStall` from 7 violations to 0 across an 8,000-row capstone with gate PASS,
-`docs/EXPLORE_REDESIGN.md` §10.3 re-measured to 0% refusal, and the baseline of record re-pinned
-to `docs/balance/baseline-t199-pacifist.json`. **Deliberate scope boundary:** two further fixes
-(F-199-1, wiring `veteranPolicy` into the shared anti-idle move; F-199-2, netting
-`fighterPolicy`'s Guild-marker payment against queued yard spend) were implemented, measured, and
-deliberately backed out rather than paid for — both moved balance bands out of range for
-policies/costs outside this task's own gate violations — and are carried forward as OPEN findings
-with their risk-of-deferral analysis recorded above rather than being silently dropped.
-Orchestration: attempts=1/4.
-
-### T-162 · Build: the browser/DOM-level long-horizon check — the bridge blind spot gets an owner — `status: DONE` · `coder: opus` · `after: T-158`
-
-**Scheduled 2026-08-02 (owner-directed): until now, no task owned this.**
-`docs/TESTING-STRATEGY.md`'s bridge-blind-spot warning calls "a real browser/DOM-level check" a
-"distinct, still-open need — do not fold it into Tier 2 by assumption," citing the worldbreaker
-precedent where a protocol-level tier missed a client-crashing type error that only a real-browser
-audit caught — yet the item appeared in no task's Accept criteria anywhere in this file. It is
-sequenced after T-158 so it cannot compete with pre-UAT work, and it **complements T-155, never
-substitutes for it** (nor the reverse — the two cover disjoint failure classes by construction).
-
-**Scope it honestly against what already exists.** The repo already has 111 real-Chromium
-Playwright specs including a scripted 30-day `tour-one-career.spec.ts` and a 20-run flake gate —
-so the still-open need is NOT "any browser test." It is the class those specs cannot catch:
-scripted scenarios assert only what they were written to see, while the blind-spot bug class is
-the *unanticipated* client-side crash deep into a career. Build the long-horizon counterpart:
-either (a) drive the T-154 pilot's action choices through the real DOM instead of the protocol
-seam, or (b) a long-horizon invariant sweep in Playwright — randomized-but-legal play over ≥30
-in-game days holding blanket invariants (zero console errors, zero uncaught exceptions/crashes,
-no dead affordance: every enabled control dispatches, every blocked action shows its reason, per
-the existing `action-blocked-parity` pattern). Pick whichever is cheaper to make reliable and say
-why; log the other as the not-chosen shape. Any bug it finds is filed per the Bug Discovery
-Policy before the run continues. Then update the TESTING-STRATEGY blind-spot paragraph from
-"still-open need" to a pointer at this task and its shipped mechanism.
-
-**Accept:** a committed run artifact shows ≥30 in-game days driven through the real DOM with the
-invariant set named and green (or any violation filed as a finding, not skipped past); the
-invocation and its cadence (CI, nightly, or manual — stated which, with the reason) are
-documented; `docs/TESTING-STRATEGY.md`'s bridge-blind-spot paragraph points at this task instead
-of calling the need still-open; the not-chosen shape is logged; gate green.
-
-**Findings — filed 2026-08-04 by the first 30-day run of the mechanism this task built, before the
-run continued (Bug Discovery Policy rule 1), plus F-162-5 filed by this task's own gate run.
-F-162-1…4 are UI-only; F-162-5 is confined to `packages/sim`'s test layer. **Nothing here touches
-`packages/engine` or `packages/content`, so no fingerprint moves and no capstone is owed.**
-
-| ID | Finding | Status |
-| --- | --- | --- |
-| **F-162-1** | **An unaffordable fuel purchase left the whole cockpit falsely "armed", turning every die-gated control into a dead click.** `resolveTrade`'s `buy-fuel` branch spends the die BEFORE the affordability gate (`packages/engine/src/actions/trade.ts:23`), so a "Not enough credits" refusal still burns it — but `store.ts`'s `buyFuel` inferred the spend from the refusal (`selectedDie: notice ? die : null`, with the comment "On refusal the engine spent no die"). The selection therefore stayed pointing at a die the engine had already consumed, and `armed` is `state.selectedDie !== null` at all six of its definitions in `App.tsx` — so one unaffordable fill left the manifest's SIGN/HAGGLE rows, the shipyard's repair/upgrade/pods/equipment buttons, the crew bench, the port desk, the Hangout's lend desk and social venues, `explore-sweep` and `confirm-jump` ALL rendering enabled, and every one of those clicks threw the raw engine string `Die already spent` (`packages/engine/src/dice.ts:241`) into the notice bar. Nine sibling handlers (`explore`, `shipyard`, `crew`, `port`, `hangout`, `loan`, …) already read the authoritative `next.player.dawnHand.spent[die]`; `buyFuel` was the one that did not. **Found by:** `inv_no_dead_affordance`, 8 of 12 hits on the first seed-1 30-day run, all reading `notice … "Die already spent"`. | **FIXED** — `buyFuel` now reads the authoritative spent flag, and `signContract` / `abandonContract` were hardened to the same read so the assumption is removed rather than restated. Regression: `packages/ui/e2e/dead-affordance.spec.ts` |
-| **F-162-2** | **A repeated identical refusal changed nothing on screen at all.** The notice banner rendered `{state.notice}` with no identity, so a second refusal whose words matched the first ("Not enough credits to make that payment." twice, "Debt payment failed: no credits to send." twice) produced a byte-identical DOM — the player pressed the control, the engine refused, and the cockpit looked inert rather than refusing again. **Found by:** `inv_no_dead_affordance`, the remaining hits on the same run, which is also why the invariant could not tell "no feedback" from "the same feedback twice" until this was fixed. | **FIXED** — `CockpitState.noticeKey` is bumped at the store's single `set()` choke point whenever a notice is RAISED (the same device and the same argument as the existing `lastCheckKey`), and the banner carries it as its React `key` (so the reveal replays) and as `data-notice-key` (so it is assertable). Regression: `packages/ui/e2e/dead-affordance.spec.ts` |
-| **F-162-3** | **Six e2e specs sat RED on this branch before T-162 started, and nothing had noticed.** Baselined by stashing this task's own `packages/ui/src` changes and re-running: the same six fail without them, so they are **not** caused by this task. Root cause is **T-195** (`8ba4e83a`, "travel die matters again"), which shipped `navDieFuelDiscount` (0–15% off a jump's fuel for the armed die) and `navDieEvasionFactor` (up to 20% off the encounter chance) into `resolveTravel` / `generateEncounter` without re-running `npm run test:e2e`. Three classes: (a) three specs pinned a literal post-jump tank (`fuel-hold` "240") that the discount moved to 241 — `manifest-trade.spec.ts`, `port-ledger.spec.ts` ×2; (b) two specs pinned a literal drain point — `combat.spec.ts`'s `B_OFFLINE_FUEL = 30` (actual 45) and `starmap.spec.ts`'s "five 60-fuel jumps drain 300 → 0" loop, which now strands with ~23 fuel: a non-zero ring the loop cannot spend, so the next click lands on an `aria-disabled` node and the test hangs to timeout; (c) `tour-one-death.spec.ts`'s succession fixture jumps on the HIGHEST die — i.e. at maximum evasion — so seed 192 stopped drawing an interception at all and the test waited forever for an overlay that would never mount. **This is exactly the gap `T-163` describes** (`ci.yml` pushes only on `[main, rimward-redesign]` and skips same-repo PRs, so a rule change on a working branch gets no e2e at all) and exactly the failure mode that left 7 of 95 specs red from 2026-07-28 until T-112 tripped over them. | **FIXED (all six)** — and by the repo's own rules, never by lowering a gate: **(a)+(b1)** the literals are gone, replaced by reads of the live readout, because the tank after a discounted jump is a rules-owned number those tests never claimed to own (their claims — "a real purchase moves the readout and the key", "the band names the shortfall" — are asserted more strongly than before); **(b2)+(c)** the two genuinely seed-dependent fixtures were **RE-HUNTED offline against the built engine**, replaying each test's exact decision rule: `starmap.spec.ts` seed 9 → **70** (five clean jumps, 300→244→186→127→68→8, ring 0, no encounter), `tour-one-death.spec.ts` seed 192 → **12** ("Zero Risk" takes the ship on round 3, hand still in hand). Sweep scripts and provenance are recorded in each spec's header comment. |
-| **F-162-4** | **The route preview shows a fuel bill the resolver will not charge.** `travelPreview(state, destination, die?)` documents its no-die default as the UNDISCOUNTED ceiling ("never an understatement"), and `App.tsx:3500` calls `routePreview(game, target)` with **no die** — while `resolveTravel` applies `navDieFuelDiscount` for the armed die. So the cockpit previews 60 fuel and charges 59. It is safe-direction and deliberate at the engine boundary, but it makes T-195's headline feature invisible: a player who commits a better die is never shown the cheaper jump they are buying. The UI *does* know the armed die (`dieArmed`/`state.selectedDie` is in the same component). | **OPEN — deferred, with the written risk analysis the Bug Discovery Policy requires.** (a) **Out of scope:** this is a T-195/M17 feature-visibility question about how the nav die is surfaced, not a Tier-3 testing question, and the engine explicitly documents the omitted-die preview as an intentional conservative default — changing it is an owner call on `docs/DAWN-HAND-REDESIGN.md`'s action-economy rewrite, not an incidental edit. (b) **Deferring does not compound:** nothing builds on the previewed figure. The three specs that did pin it no longer do (F-162-3), the long-haul sweep reads the depot readout rather than the preview, and `travelPreview`'s contract guarantees the preview is never an *under*statement — so no downstream work can route around it or inherit a wrong number. **Owner action:** decide whether the starmap preview should pass the armed die (making the discount visible) or stay a ceiling, and say which in `DAWN-HAND-REDESIGN.md`. |
-| **F-162-5** | **The sweep gate's own negative-path fixtures printed production-shaped `[gate] … FAIL` text into the shared `npm test` log — and it was believed.** `reportGate` (`packages/sim/src/balance/sweep.ts:502`) writes `formatGateReport(...)` to stderr unconditionally, and `sweep-gate.test.ts` deliberately drives it with seeded-bad reports (`report.daily[3].credits = -40`) to prove the gate CATCHES things. So every green `npm test` emitted `[gate] t153-invariant · shard 1/1 · 104 rows · FAIL` / `assertNoNegativeResources · trader · 1` / `seed 1 day 5 · credits -40`, and a second `[gate] t153-bad · merged · 104 rows · FAIL`, out of a suite in which all 37 of that file's tests PASSED and the process exited 0. Nothing marked the text as a fixture: the label prefix `t153` is the only tell, and it reads as a sweep label, not a fixture flag. **This is not hypothetical noise** — T-162's fix-round-1 gate reported `npm test` as FAILED with "trader archetype went to -40 credits at seed 1, day 5" and stopped before `tsc -b`, `lint` and `format:check` ran, on the strength of these lines alone. The repo's own CI evidence step for the gate is a `grep '\[gate\]'` (see the "keeps a failure GREP-ABLE" test), so a fixture that prints in the production format into the shared log is a false alarm aimed squarely at the one reader designed to trust it. | **FIXED** — never by weakening a gate or deleting an assertion: the four `withTempDir` legs that route through `reportGate`/`main()` now **capture** stderr and hand it to the test as `gateOutput()`, and each leg **asserts the printed table** it used to merely emit (the FAIL header, the offending rate id, the `assertNoNegativeResources · trader · 1` row and its `credits -40` example; the two clean legs assert `PASS` and `not.toContain('· FAIL')`). That is strictly MORE coverage than the leak bought — the CLI legs previously asserted only the JSON report, never the human-readable text. The capture is bounded by the same `finally` that already restored `process.exitCode`, and **replays its buffer to the real stderr if the run throws**, so it can never swallow a genuine crash; both halves are pinned by a new test, "the stderr capture is bounded, and a real break still gets its output". `archetype-coverage.test.ts`'s own `withTempDir` is deliberately left alone: its leg is a PASS case, so its output cannot be misread as a failure. |
-
-**Delivered (2026-08-04):** Tier 3 exists and has an owner. **Shape (b) was chosen** — a long-horizon
-invariant sweep in Playwright — and **shape (a) (driving the T-154 pilot's choices through the DOM)
-is logged as not-chosen** in `docs/playtests/T-162-dom-longhaul.md` §5 and in the new
-`docs/TESTING-STRATEGY.md` "Tier 3, as built" block, with the four reasons: it needs a
-hand-maintained protocol-action → cockpit-control map that nothing forces anyone to update (the
-drift surface Part B warns against); its only interesting brain is still unvalidated against the
-real API (**F-155-1**), paid per step and non-reproducible; blanket invariants fit the
-unanticipated-crash bug class better than judged play does; and shape (b) reuses a harness that
-already works. What (a) would have bought — *judged* play deep into a career — stays available at
-the protocol seam via `npm run pilot`.
-
-**Shipped:** `packages/ui/e2e/support/longhaul-invariants.ts` (the battery: eight named claims as
-pure functions, no Playwright import, so it is testable without a browser) ·
-`packages/ui/e2e/long-haul-invariants.spec.ts` (one seeded-bad fixture **per** invariant, each a
-single named mutation off a clean baseline, asserting that invariant fires, that every violation
-carries its own name, and that exactly one fires — plus a totality guard, the T-153 discipline) ·
-`packages/ui/e2e/support/longhaul.ts` (the driver: one `page.evaluate()` snapshot, a
-parameterized move table, a modal resolver, overlay scoping, the once-per-day hittability sweep,
-the artifact writer and the non-vacuity guards) · `packages/ui/e2e/long-haul.spec.ts` ·
-`packages/ui/e2e/dead-affordance.spec.ts` (the two findings, encoded) ·
-`test:e2e:longhaul` in `packages/ui/package.json` · a `long-haul-run-report` upload step in the
-existing `e2e` job of `.github/workflows/ci.yml` (no new job, no new trigger).
-
-**Measured — the committed wide run** (`LONGHAUL_SEEDS=1,2,3,4,5 LONGHAUL_DAYS=35 npm run
-test:e2e:longhaul -w @spacerquest/ui`, artifacts `docs/playtests/results/T-162-longhaul-runs.json`
-+ `T-162-run-console.txt`): **176 in-game days** across 5 seeds (35/35/35/35/36), **2,826 steps
-dispatched**, **22,608 invariant checks** (`steps × 8`, asserted not narrated), **36 distinct verbs**,
-**0 violations**, **0 hittability failures**, **0 idle-digest instability**, 244.8 s total wall
-clock (~48 s a seed, 53 s for the whole sweep at five workers). Nine of the table's verbs did not
-fire on these seeds and the report says so by name rather than implying coverage it does not have.
-
-**Cadence, with the reason:** per-push CI = **one seed × 30 days** inside the existing `e2e` job,
-because the failure class is a *regression* class — a client crash introduced today should fail
-today's build, not tomorrow's cron (and per **F-153-1** a `cron:` job would not fire off a
-non-default branch anyway). Seed **breadth** is bought on demand instead, which is where a
-randomized sweep actually finds the unanticipated. **Stated gap, not claimed coverage:**
-`ci.yml` triggers `push` only on `[main, rimward-redesign]` and skips same-repo PRs, so on
-`redesign/explore-hangout` the `e2e` job does not run at all — this spec inherits that gap exactly
-as the other 111 specs do, and it is cited as **T-163** rather than re-discovered.
-
-**Two defects found and fixed** (F-162-1, F-162-2), both filed before the run continued and both
-proven by a regression test that was confirmed to FAIL against the pre-fix code and pass after —
-not by assertion. Both are UI-only.
-
-**Six pre-existing red e2e specs found and repaired** (F-162-3), baselined as *not* this task's
-(stashing this task's `packages/ui/src` changes reproduces all six) and traced to T-195's nav-die
-fuel discount and evasion factor shipping without an e2e run — the T-163 gap, live. Four had
-pinned a rules-owned literal they never claimed to own and now read the live value; the two
-genuinely seed-dependent fixtures were re-hunted offline against the built engine rather than
-having their assertions loosened. One further observation (F-162-4, the route preview showing a
-fuel bill the resolver will not charge) is deferred to the M17 owner **with** the written
-out-of-scope / does-not-compound analysis the Bug Discovery Policy requires for a deferral.
-
-**No fingerprint moves and no capstone is owed.** `packages/sim/src/balance/rules-fingerprint.ts`
-hashes `packages/engine` + `packages/content` (rules) and `packages/sim/src` (instrument);
-**`packages/ui` is not hashed at all**, and this task touched only `packages/ui/**`, `docs/**` and
-`.github/workflows/ci.yml`. **No CHANGELOG edit is needed either:** the 0.5.3 entry already reads
-"*a browser-level long-haul check watches for the crashes scripted tests can't anticipate*"
-(`CHANGELOG.md:12-13`) — it anticipated this task, so a second line would be a duplicate.
-
-**Gate:** `npm test`, `npx tsc -b`, `npm run lint`, `npm run format:check` and the **full**
-`npm run test:e2e -w @spacerquest/ui` all green.
-Orchestration: attempts=2/4.
-
----
-
 ## M8 — Harvested: testing, CI and gate coverage
 
 Transplanted 2026-08-02 out of completed blocks before they were pruned. Each body carries its
 `harvested:` provenance marker verbatim — do not reword the markers.
-
-### T-163 · Working branches never run e2e before merge — widen the CI trigger or gate rule-deleting changes — `status: DONE` · `coder: opus` · `after: —`
-
-Write the check that would have caught F-112-D. Nothing runs the e2e suite on the branch that
-breaks it: `.github/workflows/ci.yml` triggers on `push` only for `branches: [main, rimward-redesign]`,
-and both the `ci` and `e2e` jobs carry
-`if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository`,
-which skips every same-repo PR — so a `redesign/*` branch gets no `npm run test:e2e` at all.
-`docs/ENGINEERING-POLICY.md` §2 only requires `npm run test:e2e -w @spacerquest/ui` locally for
-changes "touching the cockpit", which is why T-1605 (a rule change, not a cockpit change) could
-leave `starmap.spec.ts` asserting a deleted travel PILOT check and 7 of 95 specs sat red on
-`main@74403ab4` from 2026-07-28 until T-112 tripped over them. Either widen the CI push/PR trigger
-to cover working branches or make the gate require e2e for rule-deleting changes. Respect the
-standing `ci-no-duplicate-runs` norm — concurrency-cancel and no double runs on the same commit.
-[harvested: T-112/e2e-never-runs-before-merge]
-
-**Accept:** a rule-deleting change on a `redesign/*` branch provably runs `npm run test:e2e` in CI
-(the workflow trigger widened, or `docs/ENGINEERING-POLICY.md` §2's local requirement replaced by
-an enforced gate step); no duplicate runs are introduced on an already-tested commit; the chosen
-shape and the not-chosen one are recorded; gate green.
-
-**Delivered (2026-08-04):** the trigger is widened, and the widening is a **test**, not a habit.
-
-**Chosen shape — `branches: ['**']` on all three workflows, with every job-level `if:` byte-identical.**
-`ci.yml`, `sweep-gate.yml` and `e2e-flake.yml` now fire on every branch. `**` and not `*`, because a
-bare `*` does not match a `/` and would still have excluded `redesign/explore-hangout` — the exact
-branch this task is about; under `push.branches` it still excludes tags. `e2e-flake.yml` **keeps its
-`paths:` filter verbatim** — that is the cost argument and it survives; only its branch list goes.
-
-**The load-bearing argument, because "widened trigger" reads as "more runs":** widening does not
-weaken the `ci-no-duplicate-runs` norm — it is what makes it TRUE for the first time. The
-same-repo-PR skip (`github.event_name == 'push' || …head.repo.full_name != github.repository`) is
-unchanged on all four `ci.yml` jobs and on `sweep-gate.yml`'s `gate`. Its premise is *"the push run
-of this same commit already tested it"*; on an unlisted branch that premise was **false**, so a
-`redesign/*` → `main` PR was skipped AND had no push run — zero coverage on the commit about to
-merge. A same-repo PR still runs exactly once, on the push; fork PRs still run, because they
-produce no push run here; `ci.yml`'s `concurrency: cancel-in-progress` still collapses superseded
-runs to the branch tip. Zero bytes changed in any `if:`, any `concurrency` block, any timeout or
-any step.
-
-**Shapes NOT chosen, all four recorded** in `docs/TESTING-STRATEGY.md` **Part H** (the primary
-record): (1) adding `npm run test:e2e` to `ENGINEERING-POLICY.md` §2's mandatory local block — 95
-specs on every commit and still a human remembering, against this repo's own line *"a stability
-gate that only runs when somebody thinks to run it is not a gate"* (L-020); (2) the task's own
-alternative, requiring e2e only for "rule-deleting changes" — it asks the author to classify their
-own change, which is precisely the judgment T-1605 ("a rule change, not a cockpit change") and
-T-195 both got wrong; (3) extending the allowlist to `[main, rimward-redesign, 'redesign/**']` —
-the same enumeration one iteration later, and `sweep-gate.yml`'s hand-added
-`redesign/explore-hangout` entry is the proof of how that ends; (4) keeping the expensive
-mac/win `package` matrix scoped to `main` — declined because the repo is public (free runners), an
-asymmetric per-job `if:` is a second condition to keep in sync, and four-jobs-one-condition is what
-makes the no-duplicate rule auditable at a glance.
-
-**The rule this encodes, stated once for the next person to edit a trigger:** narrow a workflow by
-`paths` (a COST argument — it re-opens itself when the measured thing changes), never by branch
-name (a COVERAGE argument that rots one branch at a time).
-
-**Shipped:** `.github/workflows/ci.yml`, `sweep-gate.yml`, `e2e-flake.yml` (`branches: ['**']` +
-the reasoning in each header) · **`packages/ui/src/__tests__/ci-workflow.test.ts`** (new, 18 tests)
-— it **parses** every file in `.github/workflows/` with `js-yaml` rather than string-matching, and
-asserts: `on.push.branches` deep-equals `['**']` (the WHOLE array, so re-adding an allowlist beside
-`**` also goes red); the two-state `DECLARED_BRANCH_NARROWINGS` escape hatch with totality in both
-directions (**empty today** — the `ACKNOWLEDGED_COVERAGE_GAPS`/`SIM_NON_INSTRUMENT_SOURCES`
-discipline, no silent third state); the `e2e` job's `npm run test:e2e` step at
-`working-directory: packages/ui`; all four `ci.yml` jobs carrying the identical skip string;
-`concurrency.cancel-in-progress === true` with both `pull_request.number` and `github.ref` in the
-group; `e2e-flake.yml`'s surviving `paths` entries; and `sweep-gate.yml`'s standing sweep shape
-(1-INDEXED `--shard 1/2`, `--shard 2/2`, then `--merge`, with `--milestone-days` and both
-`--out`/`--aggregate-out` under `$RUNNER_TEMP`). Devdep: `js-yaml` + `@types/js-yaml` on
-`@spacerquest/ui` — `js-yaml@4.3.0` was already resolved in the tree transitively via eslint, so
-only the types package is genuinely new; `version.test.ts` (L-029, "exactly one workspace declares
-a version") was re-run and is green, asserted rather than assumed.
-
-**NEGATIVE CONTROL, run not asserted (L-018 — every assertion here would also pass against a
-no-op).** The same `coversBranch` helper the live assertions use is run over an inline fixture of
-the PRE-FIX `on:` block: it must fail to cover `redesign/explore-hangout` while the live file
-covers it, and it is table-tested against `main`, `rimward-redesign`, `redesign/explore-hangout`,
-`fix/jump-always-arrives`, `claude/whatever-abc` plus `*` vs `**` vs `redesign/**` vs `?` vs `!`.
-**Then the real file was reverted to `branches: [main, rimward-redesign]` and the suite re-run:
-exactly two tests went RED** ('ci.yml triggers `push` on `**`, or is a declared narrowing' and
-'NEGATIVE CONTROL: the pre-fix trigger fails the same check the live one passes'), 16 passed. The
-file was restored and all 18 pass.
-
-**Docs:** `docs/TESTING-STRATEGY.md` — new **Part H** (the before/after table of all three
-workflows, the chosen shape, the four declined ones, the `paths`-not-branches rule, and the two
-accepted costs: a working-branch e2e-path push now fires the 20-run flake matrix, and F-153-1's
-default-branch-only `cron:` is unchanged and unfixable by a trigger widening); its line 123 caveat
-**rewritten in place** because this commit falsifies it (TP-18), as was
-`docs/playtests/T-162-dom-longhaul.md` §4's identical present-tense claim. `ENGINEERING-POLICY.md`
-§2 widened from "touching the cockpit" to **"the cockpit, or the rules the cockpit asserts
-against"** (naming the deleted-check / renamed-outcome / moved-rules-owned-number class), plus a
-paragraph stating the local requirement is now backstopped rather than relied on; §1's numbering
-untouched, since other documents cite it. `BALANCE-RIG-DECISIONS.md` **BR-40 amended in place**
-(TP-16) — it claimed a `gate` job on "every push/PR", which was false for unlisted branches and is
-now literally true; no new BR-n, because the numbering is strictly sequential across Parts A–G.
-`LESSONS.md` **L-036** + its Standards bullet.
-
-**No fingerprint moves, no capstone owed, no save-version change, no CHANGELOG entry.**
-`packages/sim/src/balance/rules-fingerprint.ts` hashes `packages/engine` + `packages/content`
-(rules) and `packages/sim/src` (instrument); **`packages/ui` is not hashed at all**, and this task
-touched only `.github/**`, `docs/**`, `packages/ui/src/__tests__/**`, `packages/ui/package.json`,
-`package-lock.json` and this file. Nothing in `GameState` changed, so `CURRENT_SAVE_VERSION` is
-UNMOVED — it reads **15** in `packages/engine/src/save.ts:509`, not the 12 the track intro records;
-it moved earlier in the track (T-145, `59833a40`), not here, and either way no migration is owed.
-No player-visible behaviour changed, so there is nothing for `CHANGELOG.md` to say.
-
-**Gate:** `npm run format` (before the checks, per the standing rule — prettier owns the workflow
-YAML and canonicalised `["**"]` to `['**']`; every prose reference was normalised to match), then
-`npx tsc -b`, `npm run lint`, `npm run format:check`, `npm test` (**33 + 24 files, 470 + 382
-tests, all green**) and the **full** `npm run test:e2e -w @spacerquest/ui` (**162 passed, 46.4 s**)
-— which this task of all tasks could not skip without refuting itself.
-
-**CI evidence is owed AFTER the push** (§3, the CI-evidence rule): confirm with
-`gh run list --branch redesign/explore-hangout --workflow ci.yml`, then
-`gh run view <id> --log | grep -n 'Run e2e'`, and quote it verbatim. Nothing above claims a run
-that has not happened — the acceptance criterion is satisfied *locally* by the parsed-workflow
-assertions plus the negative control, which is exactly what §3 asks for before the push.
-Orchestration: attempts=2/4.
 
 ### T-164 · `packages/content` has no test runner — stand one up, or record engine-suite hosting as permanent — `status: DONE` · `coder: opus` · `after: —`
 
@@ -3330,6 +2626,55 @@ errand's idle-day requirement adjusted and the change justified (`liars_dice_gra
 its own finding if it survives; `docs/BALANCE-POLICY.md` D.2a updated; fingerprint discipline
 stated; gate green.
 
+### T-235 · F-199-1: `veteranPolicy`'s rim-strand hole is deliberately not wired to the shared anti-idle rungs — `status: TODO` · `coder: opus` · `after: —`
+
+**F-199-1 (OPEN, carried forward from T-199).** `veteranPolicy` in `packages/sim/src/index.ts` has
+the rim-strand hole and is deliberately NOT wired to the shared anti-idle rungs. VERIFIED STILL OPEN
+ON HEAD: `veteranPolicy` calls `planCrippledRepair` (`packages/sim/src/index.ts:6253`) but calls
+NEITHER `planHomewardBurn` NOR `planStrandedExplore`, unlike `traderPolicy`, `smugglerPolicy`,
+`fighterPolicy` and `gamblerPolicy`. It is exempt from `assertNoIncomeStall` via
+`GATE_COMPETENT_POLICIES` in `packages/sim/src/balance/gate.ts` ("an endgame grinder, not a lean
+balance instrument") and strands badly in its own right — 198 of 200 seeds at or over a streak of 5
+on a 200 × 35 scan, both before and after T-199, unmoved. Wiring it is a THREE-LINE change and it
+WORKS, but it moved `balance-combat-survival.test.ts`'s preparation band **0.5333 → 0.4801** against
+a bar of 0.50, so whoever closes it OWNS re-grading that band on a widened sample. **Note the id
+collision recorded in `TODO.md`:** in T-199's planner table F-199-1 meant the trader rim strand
+(CLOSED), and `packages/sim/src/index.ts:6434` uses the label for the netting hole — this task is
+the veteran anti-idle reading. [harvested: T-199/F-199-1]
+
+**Accept:** `veteranPolicy` either gains the `planHomewardBurn` / `planStrandedExplore` rungs the
+other four policies carry, or the asymmetry is ruled deliberate with a recorded reason; the 200 × 35
+scan is re-run and the ≥ 5-streak seed count stated against the 198/200 baseline;
+`balance-combat-survival.test.ts`'s preparation band is RE-GRADED on a widened sample rather than
+absorbed — the 0.5333 → 0.4801 move against the 0.50 bar is explained and the band either held or
+re-pinned with justification; `GATE_COMPETENT_POLICIES`' exemption note in
+`packages/sim/src/balance/gate.ts` is re-justified against the new measurement; fingerprint
+discipline stated; gate green.
+
+### T-236 · F-199-2: the fighter's Guild-marker payment is not netted against the yard spend queued moments earlier — `status: TODO` · `coder: opus` · `after: —`
+
+**F-199-2 (OPEN, carried forward from T-199).** `fighterPolicy`'s Guild-marker payment is not netted
+against the yard spend queued moments earlier. `planDebtPayment`'s third argument is documented as
+"everything already committed this day" (T-1601a), but the fighter's call
+(`packages/sim/src/index.ts` ~5626) passes only `(refuel?.cost ?? 0) + overhead.cost`, omitting the
+component tier / special equipment queued twenty lines above — so both spenders respect
+`FIGHTER_RESERVE` individually and clear it together (seed 74, day 15: a 2,600cr tier AND a 3,412cr
+marker payment out of a 6,652cr purse). The same unnetted hole exists in `veteranPolicy`
+(`packages/sim/src/index.ts:6434`). The correct fix is NOT "add the `yardCost` term" — that was
+MEASURED and REJECTED, see the recorded decision on that backout — but "pay the compounding marker
+BEFORE discretionary kit", which is a policy-shape question T-199 had no mandate to settle. **Note
+the id collision recorded in `TODO.md`:** the code comments at `packages/sim/src/index.ts:6434` and
+`:5623` label this hole "F-199-1"; this task is the netting reading.
+[harvested: T-199/F-199-2]
+
+**Accept:** the policy-shape question is settled explicitly — either the marker is paid before
+discretionary kit in `fighterPolicy` (and the same ordering applied or explicitly declined in
+`veteranPolicy`), or the current shape is ruled deliberate with the reason recorded; the rejected
+`yardCost`-term fix is named as rejected so it is not re-attempted; seed 74 day 15 is re-run as the
+regression fixture and the combined spend is shown to respect `FIGHTER_RESERVE`; the swapped
+F-199-1/F-199-2 labels at `packages/sim/src/index.ts:5623` and `:6434` are corrected or explicitly
+pinned to a single definition; fingerprint discipline stated; gate green.
+
 ---
 
 ## M13 — Harvested: owner rulings and unscheduled builds
@@ -3409,6 +2754,60 @@ not across archetypes; the measurement states what the spread moved and what it 
 `npcCredits.p10` floor named explicitly, since it has been flat for four steps);
 `docs/NPC_REDESIGN.md`'s STATUS BOARD N5 row and its §"N5 — NPC proficiency spread" lever list are
 updated with the outcome; fingerprint discipline stated and any baseline re-pin paid; gate green.
+
+### T-232 · The R1/R2 revisit the owner deferred behind the UI iteration is now DUE — `status: TODO` · `coder: opus` · `after: —`
+
+The owner's 2026-08-03 rulings on **R1 (Combat's chosen `executeCombat` branch)** and **R2 (F-150-1
+— the 0.25 named-pool interceptor gate in `packages/engine/src/actions/travel.ts`, read together
+with `DISPOSITION_DECAY_INTERVAL_DAYS = 3` in `packages/engine/src/content/disposition.ts`)** were
+both DEFER-and-revisit-after-UI-iteration, naming **T-186, T-188, T-189, T-190 and T-191** as the
+work they were deferred behind. All five are now `status: DONE`, so the revisit is DUE — and
+neither ruling has been re-asked. The deferral text lives in `TASKS.md`'s "Deliberately deferred"
+`executeCombat` bullet and in the **F-150-1** row of the "Findings filed BY T-150" table, and is
+mirrored at `packages/sim/src/balance/coverage.ts`'s `ACKNOWLEDGED_COVERAGE_GAPS.fighter.owner`, in
+`docs/NPC_REDESIGN.md`'s `| Combat |` PARITY LEDGER row, and in `docs/HANGOUT_REDESIGN.md` §11.3's
+STATUS line. [harvested: T-158/r1-r2-revisit-now-due]
+
+**Accept:** (human-gated) both R1 and R2 are re-asked against the post-UI tree and carry a fresh
+dated owner ruling — "unchanged" counts as a ruling for each — recorded in
+`docs/HANGOUT_REDESIGN.md` §11.3 and `docs/NPC_REDESIGN.md`'s PARITY LEDGER; the deferral text in
+`TASKS.md`'s "Deliberately deferred" section, `ACKNOWLEDGED_COVERAGE_GAPS.fighter.owner` and
+§11.3's STATUS line are updated so none of them still names the completed T-186/T-188/T-189/T-190/
+T-191 gate as pending; any constant the ruling moves is paid with its capstone; the task halts
+`BLOCKED` for the owner and is never self-approved.
+
+### T-233 · The pre-alpha stage record was never reconciled after T-158's UAT closed — `status: TODO` · `coder: opus` · `after: —`
+
+The pre-alpha stage record was never reconciled after T-158's UAT closed (the owner played two live
+sessions on 2026-08-03). `docs/RELEASE-CHECKLIST.md:8` still reads "nobody has played this build end
+to end yet", and its lines 11-13 still say "`TASKS.md` T-158 can close"; `docs/VERSIONING.md:136`'s
+stage table still marks **pre-alpha** as "we are here"; and `TASKS.md`'s "Deliberately deferred"
+manifest-version bullet still says the first (`alpha`) tag "waits on T-158's own UAT pass per
+`docs/VERSIONING.md`'s stage table" — a pointer that DANGLES the moment the T-158 block is deleted.
+Either advance the stage and cut the tag, or record why pre-alpha still stands.
+[harvested: T-158/post-uat-stage-docs-stale]
+
+**Accept:** `docs/RELEASE-CHECKLIST.md:8` and its lines 11-13, `docs/VERSIONING.md:136`'s stage
+table, and `TASKS.md`'s "Deliberately deferred" manifest-version bullet all agree with reality — no
+site still claims the build is unplayed or that T-158 is pending, and no site points at a deleted
+block; EITHER the stage advances and the `alpha` tag is cut per `docs/VERSIONING.md`'s own criteria,
+OR a dated statement records why pre-alpha still stands (and what would end it); gate green.
+
+### T-234 · No start-to-finish career UAT pass exists — schedule it or rule the two feel-level sessions sufficient — `status: TODO` · `coder: opus` · `after: T-233`
+
+T-158 closed with the owner giving both rulings directly and "choosing not to prolong the checkpoint
+into a full scripted career playthrough", so NO start-to-finish career pass exists.
+`docs/VERSIONING.md:137`'s alpha criterion is "the owner's own UAT passes — played start to finish,
+holds together", which the two feel-level sessions (feedback filed as **M14** and **M15**) do not
+obviously meet. Schedule the start-to-finish pass, or record an explicit ruling that passes 1 and 2
+discharge the criterion. [harvested: T-158/uat-start-to-finish-remainder]
+
+**Accept:** (human-gated) either a start-to-finish career UAT pass is run and its outcome recorded
+against `docs/VERSIONING.md:137`'s alpha criterion, or a dated owner ruling records that the M14 and
+M15 feel-level sessions discharge that criterion and says why; whichever way it goes,
+`docs/VERSIONING.md`'s stage table and `docs/RELEASE-CHECKLIST.md` are left consistent with the
+decision (coordinate with T-233 so the two do not contradict each other); the task halts `BLOCKED`
+for the owner and is never self-approved.
 
 ---
 
@@ -5427,6 +4826,31 @@ R2 remains open; T-198 stays `BLOCKED(Human ruling)` until R2 is answered and T-
 
 Orchestration: attempts=1/4 · HUMAN-GATE HALT, released 2026-08-05.
 
+### T-237 · F-162-4: the route preview shows a fuel bill the resolver will not charge — `status: TODO` · `coder: opus` · `after: —`
+
+**The route preview shows a fuel bill the resolver will not charge.** `travelPreview(state,
+destination, die?)` documents its no-die default as the UNDISCOUNTED ceiling ("never an
+understatement"), but `App.tsx` calls `routePreview(game, target)` with **no die**, while
+`resolveTravel` applies `navDieFuelDiscount` for the armed die — so the cockpit previews 60 fuel and
+charges 59, making **T-195's headline feature invisible**. Still live as of this harvest:
+`packages/ui/src/App.tsx:3731` (the T-162 block cites 3500; the call has moved), plus
+`App.tsx:3799`, `:4774`, `:5089` and `:5116`. The UI DOES know the armed die — `dieArmed` /
+`state.selectedDie` is in the same component. **Owner action:** decide whether the starmap preview
+should pass the armed die (making the discount visible) or stay a ceiling, and say which in
+`docs/DAWN-HAND-REDESIGN.md`. Deferred by T-162 with the Bug Discovery Policy risk analysis: out of
+scope (a T-195/M17 feature-visibility question, not a Tier-3 testing one) and does-not-compound
+(nothing builds on the previewed figure; the specs that pinned it no longer do per F-162-3, the
+long-haul sweep reads the depot readout, and `travelPreview`'s contract guarantees the preview is
+never an *under*statement). [harvested: T-162/F-162-4]
+
+**Accept:** the owner's call — preview the armed die's discounted figure, or keep the preview as an
+undiscounted ceiling — is recorded dated in `docs/DAWN-HAND-REDESIGN.md`; the code matches the
+ruling at every call site (`packages/ui/src/App.tsx:3731`, `:3799`, `:4774`, `:5089`, `:5116`, at
+their then-current lines), with no site left silently disagreeing with another; a test pins
+preview-vs-charge agreement (or, if the ceiling is ruled, pins that the preview is never an
+understatement) so the divergence cannot re-open unnoticed; if the discount is shown, T-195's
+feature is verified visible in the cockpit rather than only asserted; gate green.
+
 ---
 
 ## M18 — Owner feature requests, filed at the T-198 pacing review (2026-08-05)
@@ -6929,3 +6353,8 @@ Retrieve any block with `git log --grep="^<ID>:" -1 -p -- TASKS.md`.
 | T-154 | Build: native LLM pilot policy for the player seat | M7 | 2026-08-02 | `d9b3a1bc` | f-155-1-live-anthropic-leg, sweep-invariant-ownership-pointer, write-tasks-order-vs-after-check, write-delivered-note-claim-audit |
 | T-160 | Fix F-137-1: the dealer's certain-loss structure — bakeoff the two sanctioned shapes, ship the winner | M7 | 2026-08-02 | `345870d1` | protocol-quantity-max-vacuous-at-tier-0, protocol-opening-floor-refusal-branch-unreachable, todo-md-t160-anchors-go-stale-on-prune, lesson |
 | T-161 | Fix F-159-1: veteranPolicy's un-relaxed contract filter — the last of the class | M7 | 2026-08-02 | `bf95ac80` | F-161-1, lesson |
+| T-158 | CHECKPOINT — human UAT, plus recorded rulings on Combat's chosen branch and F-150-1 | M7 | 2026-08-02 | `5a8792a3` | r1-r2-revisit-now-due, post-uat-stage-docs-stale, uat-start-to-finish-remainder, lesson |
+| T-155 | Validate: run the pilot end-to-end and confirm it's trustworthy | M7 | 2026-08-04 | `da1190ec` | F-155-1, after-field-gate-check, lesson, lesson, lesson |
+| T-199 | F-150-2: `smugglerPolicy`'s unguarded Explore loop, and the shared `planPacifistCombat` stall behind it | M7 | 2026-08-04 | `a55edd53` | F-199-1, F-199-2, f199-id-collision, t199-remote-sweep-gate-unconfirmed, write-tasks-line-ref-check, lesson, lesson |
+| T-162 | Build: the browser/DOM-level long-horizon check — the bridge blind spot gets an owner | M7 | 2026-08-04 | `c1133bbd` | F-162-4, longhaul-unfired-verbs, lesson, lesson, lesson |
+| T-163 | Working branches never run e2e before merge — widen the CI trigger or gate rule-deleting changes | M8 | 2026-08-04 | `c447cbcd` | t163-ci-evidence, f-153-1-cron |

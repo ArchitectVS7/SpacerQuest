@@ -164,6 +164,16 @@ the exact confound N4's control arm exists to prevent. The deferral still owes t
 both-limbs risk analysis on the RECEIVING task, per the Bug Discovery Policy; a fingerprint
 argument buys the split, it does not buy silence.
 
+**TP-32 — A deferred defect whose fix would move a WIDE-BLAST constant comes back as its own
+task block, never as an inline constant edit inside whatever task next touches the area.**
+(T-158, on F-150-1; the ruling itself is BR-79.) Either constant BR-50 names — the
+`rng.next() < 0.25` named-pool interceptor gate in `packages/engine/src/actions/travel.ts`, or
+`DISPOSITION_DECAY_INTERVAL_DAYS = 3` in `packages/content/src/disposition.ts` — moves every
+disposition-reading system at once and therefore owes its own capstone (BR-61). This is TP-29's
+rule stated forward rather than in hindsight: the size of the blast radius is known at deferral
+time, so the shape of the eventual fix is decided at deferral time too, before anyone is standing
+in the file with a one-line change in front of them.
+
 ---
 
 ## 5. Versioning ceremony
