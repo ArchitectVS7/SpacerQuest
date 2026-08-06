@@ -1931,6 +1931,30 @@ gambler's mean final credits by −0.33%.** At the shipped baseline, FOLD is a *
 neither a trap nor a tool. That is a coverage statement about the baseline planner as much as
 about the rule; a human player who folds often would be leaking the per-fold 627 cr edge above.
 
+> **RULED AT T-177 (2026-08-06) — F-160-3 closed; the binding ruling is `docs/LIARS-DICE-DECISIONS.md`
+> LD-26, and it is not restated here.**
+>
+> §16.3's derivation above is **untouched and still true**: FOLD is weakly dominated by CHALLENGE in
+> credits everywhere and strictly dominated wherever `P_false > 0`. What §16.3 never did was price
+> the SECOND currency, and that is where the ruling lives. Writing the crossover as an expression
+> over the three live constants in `packages/content/src/hangout.ts` — never as a literal — FOLD is
+> the disposition-better play iff `P_false > (LOSS − FOLD)/(LOSS − WIN)`; and the reachable `P_false`
+> spectrum off this file's own model is not dense on `[0,1]` but `{0} ∪ [(5/6)^u, 1]` for
+> `u ∈ {4,5,6}`, because `q − own ≤ 0` gives exactly 0 and `q − own ≥ 1` gives at least
+> `1 − probAtLeast(1, u)`. **That floor clears the crossover at every shipped tier.** So the two
+> currencies PARTITION: wherever FOLD strictly loses credits it strictly wins disposition, and where
+> it does not lose credits at all the credit comparison is a tie. FOLD is a **priced trade, not a
+> dead move** — and §16.6's measured interceptor lift is what makes the currency it buys worth having.
+>
+> **Counterweight 2 above (concealment) is RETIRED from the justification.** It is inert, exactly as
+> §16.3 says, and the ruling does not lean on it — it is *not* part of why FOLD is kept. M4e still
+> owns the memory that would make it worth something.
+>
+> Nothing shipped in `packages/engine/src` beyond comments; `rulesFingerprint` was computed before
+> and after and is unmoved, so the "if anything ships" clause did not fire. Shapes (B) *give
+> concealment a real channel* and (C) *change FOLD's economics* were both logged and rejected, with
+> reasons, in LD-26.
+
 ### 16.4 RAISE BOTH — the 2× ante
 
 | | count |
@@ -2092,6 +2116,14 @@ not happen: `DARE_ANTE_BAND_FRACTION` 0.03 · `DARE_PEEK_DC` 12 · `DARE_WIN_DIS
    CHALLENGE by construction. Whether that is acceptable — a fold that is never the better
    credit play, whose only positive payoff is `+1` disposition and whose stated concealment
    benefit is inert against a memoryless dealer — is a design question, not a constant.
+   > **RULED AT T-177 (2026-08-06)** — carried to T-160 as F-160-3 (§17.7, §17.8) and closed there.
+   > The shape taken is **(A): accept FOLD as a disposition move and say so in the spec** — but on
+   > the stronger argument, not the "flavour" one. The two currencies PARTITION and FOLD is a
+   > **priced trade** rather than a null mechanic: it is never the better credit play and is the
+   > better disposition play at every state where the credit comparison is not already a tie.
+   > Shapes (B) *give concealment a real channel* and (C) *change FOLD's economics* were rejected
+   > with reasons. The binding ruling is `docs/LIARS-DICE-DECISIONS.md` **LD-26**; the concealment
+   > half of item 6's own wording is retired from the justification rather than repeated.
 
 ---
 
@@ -2330,6 +2362,31 @@ arm (the planner always opens). So FOLD is measurably *less* dead than at T-137,
 never the better credit play. **FILED as a finding for the owner (F-160-3, §17.8), not redesigned
 here** — the task is explicit that a still-dead FOLD is a finding to file, not a licence.
 
+> **RULED AT T-177 (2026-08-06).** Shape **(A)** — FOLD is accepted as a **disposition purchase**,
+> and the spec now says so (`docs/LIARS-DICE-DECISIONS.md` **LD-26**, the binding ruling;
+> `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3b for the `optimal` arm; the §16.3 blockquote for the
+> derivation's second half). Every number in §17.7 above stands exactly as measured.
+>
+> **The 3.51% take rate is NOT a defect under the ruling — it is the expected rate for a move whose
+> price is denominated in the other currency.** FOLD costs `P_false · (potPlayer + potDealer)`
+> credits and buys `FOLD − (P_false·WIN + (1 − P_false)·LOSS)` disposition, and the reachable
+> `P_false` spectrum (`{0} ∪ [(5/6)^u, 1]`, `u ∈ {4,5,6}`) clears the disposition crossover at every
+> shipped tier, so the two currencies partition: FOLD is never the better credit play *and* is
+> always the better disposition play wherever the credit comparison is not a tie. A rate near zero
+> would be the reading the credit ledger alone predicts; a few percent is what a player buying
+> goodwill looks like.
+>
+> **This measurement is the standing one.** Nothing shipped in `packages/engine/src` beyond
+> comments — `rulesFingerprint` computed before and after and UNMOVED — so the Accept clause's "if
+> anything ships, re-run the derivation and re-measure at n ≥ 10,000" did not fire; §17.7's
+> n = 18,678 post-bid decision points already satisfies it.
+>
+> **The concealment sentence in §17.7 is retired from the JUSTIFICATION but stands as a statement of
+> fact.** Concealment is still inert and LD-26 does not lean on it. A follow-on backlog row covers
+> the one thing the ruling does leave open: the player cannot currently SEE the price they are
+> paying, and a purchase whose price is invisible is a trap rather than a design. That is a UI
+> obligation, filed rather than shipped here.
+
 **The player-side ante clamp (§16.5 / §16.8 item 5).** §16.5 said the player-side 0.00% was a
 selection effect downstream of F-137-1 and had to be re-measured "once hands run longer than 1.19
 bids". Re-measured, and the answer is that the premise is gone in the other direction: **shape (b)
@@ -2471,6 +2528,14 @@ independent change on top of the shipped (b), and would need its own bakeoff.
 decision points), dominance unchanged, because the dominance is a derivation about escrow and not a
 constant. Its only positive payoff remains `+1` disposition, and its stated concealment benefit is
 still inert against a memoryless dealer. A design question for the owner.
+> **CLOSED AT T-177 (2026-08-06).** Ruled shape (A): FOLD is accepted as a **disposition purchase**,
+> not a null mechanic — the two currencies partition (never the better credit play, always the better
+> disposition play where credits do not already tie), and the crossover falls below the reachable
+> `P_false` floor `(5/6)^u` at every shipped tier. Binding ruling:
+> `docs/LIARS-DICE-DECISIONS.md` **LD-26**; see §16.3 and §17.7's blockquotes. Comment-only in
+> `packages/engine/src`; `rulesFingerprint` unmoved. **F-175-2** (T-175's `optimal`-fold-branch
+> narrowing) was ruled in the same pass — branch RETAINED and guarded by a named test,
+> `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3b.
 
 ### 17.9 The gate, and the baseline re-pin
 

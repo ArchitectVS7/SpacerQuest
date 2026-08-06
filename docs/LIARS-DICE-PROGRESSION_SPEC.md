@@ -422,8 +422,47 @@ support is a POINT read, so `pTrue` is now 0 or 1. With `pTrue = 1` a challenge 
 `−potDealer`, which TIES fold and wins the tie-break; with `pTrue = 0` it scores `+potPlayer` and
 beats it outright. **`optimal`'s fold branch is therefore provably unreachable**, where §3.3 above
 called it "rare but reachable". This costs nothing measurable — `optimal`'s fold share was already
-**0.00%** of ~42,000 decisions per tier BEFORE the change — but it is a real narrowing and it is
-filed as **F-175-2** against T-177 (F-160-3), which owns FOLD.
+**0.00%** of ~42,000 decisions per tier BEFORE the change — but it is a real narrowing and it was
+**RULED at T-177 (`docs/LIARS-DICE-DECISIONS.md` LD-26 / §3.3b below)**, which owns FOLD.
+
+#### 3.3b AMENDMENT (T-177, 2026-08-06) — the FOLD branch is UNREACHABLE and RETAINED (F-175-2)
+
+**§3.3's last paragraph — *"It is rare but reachable, and it must not be special-cased away"* — is
+SUPERSEDED for `optimal`.** It is kept verbatim above for the same reason §3.3a keeps what it
+replaced: the amendment is only intelligible next to the sentence it overturns, and four tasks had
+quoted that one as settled.
+
+**The branch is unreachable BY CONSTRUCTION at the shipped read**, not rarely reached.
+`probClaimTrue` (§3.3a) is a POINT read, so `pTrue ∈ {0, 1}` exactly. `optimal` scores
+`fold` at `−potDealer` and `challenge` at `(1 − pTrue)·potPlayer − pTrue·potDealer`:
+
+| `pTrue` | `challenge` scores | vs `fold` (`−potDealer`) | argmax |
+| --- | --- | --- | --- |
+| `1` | `−potDealer` | **TIE** | `challenge` — the fixed tie-break orders it first |
+| `0` | `+potPlayer` (`≥ 0`) | strictly ≥ | `challenge` |
+
+There is no third case, and the tie corner (`potDealer = 0`, no affordable raise) is reached by the
+test below rather than argued.
+
+**It is RETAINED rather than removed, and that is deliberate.** Two reasons, both binding on a
+future reader who finds a dead branch and reaches for the delete key:
+
+1. **`optimal` is an ARGMAX OVER THE WHOLE LEGAL SET.** The branch goes live again the instant
+   `pTrue` stops being a point read — LD-25's rejected soft reads, or the raise-valuation work
+   `T-219` owns. Deleting it would leave a policy that silently cannot express a move `legalMovesFrom`
+   allows, which is exactly the special-casing §3.3 forbade.
+2. **Removal is a SEMANTIC edit.** `hashSemantic` strips comments only, so deleting the entry moves
+   `rulesFingerprint` and buys a capstone plus an 8,000-row sweep for **zero** behaviour change. The
+   change T-175 made cost nothing measurable in the first place (`optimal`'s fold share was already
+   0.00% of ~42,000 decisions per tier before it), so there is nothing to bank.
+
+**What guards it, so this is mechanical rather than prose.**
+`packages/engine/src/__tests__/liarsDiceArchetypes.test.ts`, describe **`T-177 · F-175-2 — OPTIMAL
+never folds, and that is now a construction`**: zero folds over 5,000 randomised positions at each
+of `dicePerSideForTier(0|1|2)` with the raise and challenge branches both proven non-vacuous; the
+tie corner at `potPlayer`/`potDealer` `= 0` with the raise set emptied; and — the part that matters
+most — **the point-read property of `probClaimTrue` asserted directly**, so a future soft `pTrue`
+trips this test and revives the branch by design rather than in silence.
 
 ### 3.4 BAD — a specified leak, not "worse random"
 

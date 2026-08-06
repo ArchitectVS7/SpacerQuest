@@ -8,6 +8,7 @@ import {
   LIARS_DICE_OPPONENTS,
   Stat,
 } from '@spacerquest/content';
+import { SeededRng } from '../rng.js';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { applyPlayerAction, endDay, startDay } from '../day.js';
 import { resetDailyHangoutCaps, venueParamsFor, wagerBandFor } from '../hangoutRules.js';
@@ -23,6 +24,7 @@ import {
   legalMovesFrom,
   maxQuantityForDice,
   minOpeningQuantity,
+  probAtLeast,
   resolveChallenge,
   seedLiarsDicePurses,
 } from '../liarsDiceRules.js';
@@ -2059,5 +2061,138 @@ describe('T-160 · the opening floor (§16.2 shape (b), fixing F-137-1)', () => 
         roll: 0,
       }),
     ).toThrow(/no standing bid/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-177 · THE FOLD RULING (F-160-3) — `docs/LIARS-DICE-DECISIONS.md` LD-26,
+// `docs/LIARS-DICE_REDESIGN.md` §16.3 / §17.7.
+//
+// The ruling is that the two currencies PARTITION: FOLD is never the better
+// CREDIT play (§16.3's derivation, untouched) and is always the better
+// DISPOSITION play at every state where the credit comparison is not a tie. So
+// it is a PRICED TRADE, not a dead move. Both halves are asserted here from the
+// live constants and the live probability model — nothing below is a literal,
+// and that is deliberate: if a later task retunes a disposition constant or adds
+// a dice tier, this file goes red and the ruling is RE-OPENED rather than
+// silently voided.
+// ---------------------------------------------------------------------------
+
+describe('T-177 · the FOLD ruling — the two currencies partition', () => {
+  // FOLD is the disposition-better play  ⟺  P_false > (LOSS − FOLD)/(LOSS − WIN).
+  const crossover =
+    (DARE_LOSS_DISPOSITION - DARE_FOLD_DISPOSITION) /
+    (DARE_LOSS_DISPOSITION - DARE_WIN_DISPOSITION);
+
+  it('the disposition crossover is strictly interior — FOLD is neither always nor never disposition-better', () => {
+    // A crossover at 0 would mean FOLD always wins the second currency (and the
+    // ruling would be trivial); at 1 it would mean it never does (and FOLD would
+    // be dead in BOTH currencies, which is what F-160-3 feared). It is interior,
+    // so the ruling is a real partition rather than a restatement.
+    expect(crossover).toBeGreaterThan(0);
+    expect(crossover).toBeLessThan(1);
+    // …and it is a statement about the three constants, checked against the
+    // definition rather than against a copy of it.
+    const dispFold = DARE_FOLD_DISPOSITION;
+    const dispChallengeAt = (pFalse: number) =>
+      pFalse * DARE_WIN_DISPOSITION + (1 - pFalse) * DARE_LOSS_DISPOSITION;
+    expect(dispChallengeAt(crossover)).toBeCloseTo(dispFold, 12);
+    expect(dispChallengeAt(crossover + 0.01)).toBeLessThan(dispFold);
+    expect(dispChallengeAt(crossover - 0.01)).toBeGreaterThan(dispFold);
+  });
+
+  it('THE RULING: every reachable non-zero P_false clears the crossover, at every shipped tier', () => {
+    // `P_false = 1 - probAtLeast(q - own(face), dicePerSide)`, so it is NOT dense
+    // on [0,1]: `q - own <= 0` gives exactly 0 (the claim is true by
+    // construction — and there the CREDIT comparison is a tie, so nothing is
+    // given up by challenging), and `q - own >= 1` gives at least
+    // `1 - probAtLeast(1, u) = (5/6)^u`, minimised at the ladder's widest hand.
+    // The reachable spectrum is therefore `{0} ∪ [(5/6)^u, 1]`.
+    //
+    // ***THIS ASSERTION IS THE RULING.*** If a future task retunes any of
+    // DARE_FOLD_DISPOSITION / DARE_WIN_DISPOSITION / DARE_LOSS_DISPOSITION, or
+    // adds a dice tier wider than six, this goes red — and that is the intended
+    // behaviour: LD-26 is re-opened and re-argued, not quietly voided. Do NOT
+    // move the bar to make it pass (N4/N10, `docs/VERSIONING.md`).
+    for (const tier of [0, 1, 2]) {
+      const u = dicePerSideForTier(tier);
+      const smallestNonZero = 1 - probAtLeast(1, u);
+      expect(smallestNonZero, `tier ${tier}, u = ${u}`).toBeGreaterThan(crossover);
+      // Non-vacuity: the zero end of the spectrum is genuinely reachable too.
+      expect(1 - probAtLeast(0, u)).toBe(0);
+    }
+  });
+
+  it('the CREDIT half, as a test rather than only prose: EV_challenge − EV_fold = P_false · (potPlayer + potDealer) ≥ 0', () => {
+    // §16.3's derivation, re-run over a randomised sweep. The escrow is debited
+    // at CONTRIBUTION time, so a fold forfeits `potPlayer` with certainty and a
+    // challenge costs nothing to make: EV_fold = −potPlayer, and
+    // EV_challenge = P_false·potDealer − (1 − P_false)·potPlayer.
+    const rng = new SeededRng(20_260_806);
+    let strict = 0;
+    let equal = 0;
+    for (let i = 0; i < 20_000; i += 1) {
+      const u = dicePerSideForTier(i % 3);
+      const dice = Array.from({ length: u }, () => rng.d6());
+      const face = 1 + Math.floor(rng.next() * 6);
+      const quantity = 1 + Math.floor(rng.next() * maxQuantityForDice(u));
+      const own = dice.filter((d) => d === face).length;
+      const potPlayer = Math.floor(rng.next() * 3000);
+      const potDealer = Math.floor(rng.next() * 3000);
+      const pFalse = 1 - probAtLeast(quantity - own, u);
+      const evFold = -potPlayer;
+      const evChallenge = pFalse * potDealer - (1 - pFalse) * potPlayer;
+      const where = `u=${u} q=${quantity} own=${own} pots=${potPlayer}/${potDealer}`;
+      expect(evChallenge - evFold, where).toBeCloseTo(pFalse * (potPlayer + potDealer), 9);
+      expect(evChallenge - evFold, where).toBeGreaterThanOrEqual(0);
+      // …with equality IFF P_false is 0 or the whole pot is empty. The pot is a
+      // real degree of freedom here, so both directions are stated.
+      if (pFalse === 0 || potPlayer + potDealer === 0) {
+        expect(evChallenge - evFold, where).toBe(0);
+        equal += 1;
+      } else {
+        expect(evChallenge - evFold, where).toBeGreaterThan(0);
+        strict += 1;
+      }
+    }
+    // Non-vacuity: BOTH branches were reached.
+    expect(strict).toBeGreaterThan(0);
+    expect(equal).toBeGreaterThan(0);
+  });
+
+  it('the two together: wherever FOLD loses credits it WINS disposition — the partition, stated as one assertion', () => {
+    // The join of the two halves above, over the same reachable spectrum. For
+    // every state with a non-empty pot: either P_false = 0 (credits TIE, so FOLD
+    // gives up nothing measurable, and the disposition read is the only live
+    // difference — challenge wins it) or P_false >= (5/6)^u > crossover (FOLD
+    // strictly loses credits AND strictly wins disposition). There is no state
+    // where FOLD loses both, which is exactly what "priced trade, not a dead
+    // move" means.
+    const rng = new SeededRng(177);
+    let tiedCredits = 0;
+    let pricedTrades = 0;
+    for (let i = 0; i < 20_000; i += 1) {
+      const u = dicePerSideForTier(i % 3);
+      const dice = Array.from({ length: u }, () => rng.d6());
+      const face = 1 + Math.floor(rng.next() * 6);
+      const quantity = 1 + Math.floor(rng.next() * maxQuantityForDice(u));
+      const own = dice.filter((d) => d === face).length;
+      const pFalse = 1 - probAtLeast(quantity - own, u);
+      const dispChallenge = pFalse * DARE_WIN_DISPOSITION + (1 - pFalse) * DARE_LOSS_DISPOSITION;
+      const where = `u=${u} q=${quantity} own=${own} pFalse=${pFalse}`;
+      if (pFalse === 0) {
+        // Credits tie; disposition strictly prefers the challenge.
+        expect(dispChallenge, where).toBeGreaterThan(DARE_FOLD_DISPOSITION);
+        tiedCredits += 1;
+      } else {
+        // Credits strictly prefer the challenge; disposition strictly prefers
+        // the fold. That opposition IS the price.
+        expect(pFalse, where).toBeGreaterThan(crossover);
+        expect(dispChallenge, where).toBeLessThan(DARE_FOLD_DISPOSITION);
+        pricedTrades += 1;
+      }
+    }
+    expect(tiedCredits).toBeGreaterThan(0);
+    expect(pricedTrades).toBeGreaterThan(0);
   });
 });

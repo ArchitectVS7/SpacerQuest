@@ -10,6 +10,7 @@ import {
   legalMovesFrom,
   maxQuantityForDice,
   probAtLeast,
+  probClaimTrue,
   resolveMixedArchetype,
 } from '../liarsDiceRules.js';
 import { DareBid, DareMoveKind } from '../types.js';
@@ -715,4 +716,148 @@ describe('T-145 · obligation 9 — OPTIMAL is a measurably better policy than B
     },
     120_000,
   );
+});
+
+// ---------------------------------------------------------------------------
+// T-177 · F-175-2 — `optimal` never folds, and that is now a CONSTRUCTION
+// (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3b, `docs/LIARS-DICE-DECISIONS.md`
+// LD-26).
+// ---------------------------------------------------------------------------
+
+/** The shared `sweep` above is pinned to tier 0 (`DARE_DICE_PER_SIDE` /
+ *  `DARE_MAX_QUANTITY`). This one takes the tier's dice width, because the claim
+ *  under test is about the WHOLE shipped ladder rather than its first rung. */
+function sweepAtWidth(rng: SeededRng, n: number, dicePerSide: number): SweepCase[] {
+  const maxQuantity = maxQuantityForDice(dicePerSide);
+  const cases: SweepCase[] = [];
+  for (let i = 0; i < n; i += 1) {
+    cases.push({
+      dealerDice: Array.from({ length: dicePerSide }, () => rng.d6()),
+      bid: {
+        quantity: 1 + Math.floor(rng.next() * maxQuantity),
+        face: 1 + Math.floor(rng.next() * 6),
+      },
+      ante: 1 + Math.floor(rng.next() * 90),
+      headroom: Math.floor(rng.next() * 2000),
+      dealerCredits: Math.floor(rng.next() * 20000),
+      potPlayer: 1 + Math.floor(rng.next() * 3000),
+      potDealer: 1 + Math.floor(rng.next() * 3000),
+      roll: Math.floor(rng.next() * 100),
+    });
+  }
+  return cases;
+}
+
+describe('T-177 · F-175-2 — OPTIMAL never folds, and that is now a construction', () => {
+  const TIERS = [0, 1, 2] as const;
+
+  it.each(TIERS.map((tier) => [tier, dicePerSideForTier(tier)]))(
+    'tier %i (%i dice/side): 5,000 randomised positions emit no fold, ever (seed 20260806)',
+    (_tier, dicePerSide) => {
+      // The EMPIRICAL half. `optimal` scores `fold` at `-potDealer` against a
+      // challenge at `(1 - pTrue) * potPlayer - pTrue * potDealer`, and
+      // `probClaimTrue` is a POINT read, so the challenge is `-potDealer` (a TIE,
+      // broken toward `challenge` by `OPTIMAL_TIE_BREAK`) or `+potPlayer` (a win
+      // outright). The corner cases below are the proof; this is the coverage.
+      const cases = sweepAtWidth(new SeededRng(20_260_806), 5_000, dicePerSide);
+      let folds = 0;
+      let challenges = 0;
+      let raises = 0;
+      let pointReads = 0;
+      for (const c of cases) {
+        const move = archetypeMove({
+          archetype: 'optimal',
+          dicePerSide,
+          maxQuantity: maxQuantityForDice(dicePerSide),
+          ...c,
+        });
+        if (move.move === 'fold') folds += 1;
+        else if (move.move === 'challenge') challenges += 1;
+        else raises += 1;
+        // THE MECHANISM, pinned rather than the outcome: the credited read is a
+        // POINT read. If a later task makes `probClaimTrue` soft (LD-25's
+        // rejected shapes, or `T-219`'s raise valuation), this trips FIRST and
+        // the fold branch is live again by design rather than by silence.
+        const p = probClaimTrue(
+          c.bid,
+          c.dealerDice.filter((d) => d === c.bid.face).length,
+          dicePerSide,
+        );
+        if (p === 0 || p === 1) pointReads += 1;
+      }
+      expect(folds).toBe(0);
+      expect(pointReads).toBe(cases.length);
+      // …and the sweep is not vacuous: it reached BOTH live branches.
+      expect(challenges).toBeGreaterThan(0);
+      expect(raises).toBeGreaterThan(0);
+    },
+  );
+
+  it('the tie corner: at potDealer = 0 the challenge TIES fold, and OPTIMAL_TIE_BREAK breaks it toward challenge', () => {
+    // The sweep's pots are `>= 1`, so it never reaches the corner where the two
+    // EVs are equal. These cases do, on both pot axes and at both point reads,
+    // with the raise set EMPTIED (`headroom = 0` and `dealerCredits = 0`, so
+    // `chargedAnte` can never equal a nominal ante and only `challenge` and
+    // `fold` remain legal).
+    for (const tier of TIERS) {
+      const dicePerSide = dicePerSideForTier(tier);
+      const maxQuantity = maxQuantityForDice(dicePerSide);
+      // Four 3s (plus filler at tier 1/2): `own(3)` is 4.
+      const dealerDice = Array.from({ length: dicePerSide }, (_, i) => (i < 4 ? 3 : 1));
+      const own = 4;
+      // `pTrue = 1`: quantity <= own + creditedClaimSupport(quantity, dicePerSide).
+      // `pTrue = 0`: the top of the lattice, which no credited support can reach.
+      const bids: Array<[string, DareBid, number]> = [
+        ['pTrue=1', { quantity: 2, face: 3 }, 1],
+        ['pTrue=0', { quantity: maxQuantity, face: 6 }, 0],
+      ];
+      for (const [label, bid, expectedP] of bids) {
+        expect(probClaimTrue(bid, bid.face === 3 ? own : 0, dicePerSide), label).toBe(expectedP);
+        for (const potPlayer of [0, 1]) {
+          for (const potDealer of [0, 1]) {
+            const move = archetypeMove({
+              archetype: 'optimal',
+              dealerDice,
+              dicePerSide,
+              maxQuantity,
+              bid,
+              ante: 30,
+              headroom: 0,
+              dealerCredits: 0,
+              potPlayer,
+              potDealer,
+              roll: 0,
+            });
+            const where = `tier=${tier} ${label} potPlayer=${potPlayer} potDealer=${potDealer}`;
+            expect(legalMovesFrom(bid, 30, 0, 0, true, maxQuantity).sort(), where).toEqual([
+              'challenge',
+              'fold',
+            ]);
+            expect(move.move, where).toBe('challenge');
+          }
+        }
+      }
+    }
+  });
+
+  it('OPTIMAL_TIE_BREAK orders challenge strictly before fold — the other half of why', () => {
+    // Exported only through the policy's behaviour, so this asserts it the way a
+    // caller can see it: an EV-tied position (pTrue = 1, potDealer = 0, no
+    // affordable raise) resolves to `challenge`, which is only possible if
+    // `challenge` outranks `fold` in the fixed total order.
+    const move = archetypeMove({
+      archetype: 'optimal',
+      dealerDice: [3, 3, 3, 3],
+      dicePerSide: 4,
+      maxQuantity: maxQuantityForDice(4),
+      bid: { quantity: 2, face: 3 },
+      ante: 30,
+      headroom: 0,
+      dealerCredits: 0,
+      potPlayer: 0,
+      potDealer: 7,
+      roll: 0,
+    });
+    expect(move.move).toBe('challenge');
+  });
 });

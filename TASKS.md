@@ -2051,7 +2051,11 @@ TERMINATION against the shipped planner's move rule, settling on the engine's ow
 `optimal`'s FOLD branch is now provably unreachable where §3.3 called it "rare but reachable". It
 costs nothing measurable — `optimal`'s fold share was already **0.00%** of ~42,000 decisions per
 tier before the change — but §3.3's old sentence is no longer true of `optimal` and T-177 must state
-the arm explicitly rather than inherit it.
+the arm explicitly rather than inherit it. **CLOSED AT T-177:** the branch is UNREACHABLE by
+construction and is **RETAINED DELIBERATELY** rather than removed — `optimal` is an argmax over the
+whole legal set and the branch goes live again the moment `pTrue` stops being a point read, and
+removal is a semantic edit that would move `rulesFingerprint` for zero behaviour change. Now guarded
+by a named test rather than by prose (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3b, LD-26).
 
 **F-175-3 FOUND BY THE CAPSTONE'S OWN GATE, AND CLOSED HERE.** The first full sweep came back
 **FAIL, 2 invariant violations** — `assertNoIncomeStall` on `gambler`, seeds 819 and 485, five
@@ -2306,7 +2310,7 @@ be tuning the instrument to hit a threshold), and FOLD (T-177).
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
 
-### T-177 · F-160-3: FOLD is still never the better credit play — an owner design call — `status: TODO` · `coder: opus` · `after: T-160, T-198`
+### T-177 · F-160-3: FOLD is still never the better credit play — an owner design call — `status: DONE` · `coder: opus` · `after: T-160, T-198`
 
 **Filed at T-160 (2026-08-02), `docs/LIARS-DICE_REDESIGN.md` §17.7 / §17.8; the standing version of
 §16.8 item 6.** T-160 re-measured FOLD post-fix as the task required. It is **less dead than at
@@ -2343,6 +2347,100 @@ FOLD's economics); if anything ships, the dominance derivation is re-run against
 rather than re-sampled, and the fold rate is re-measured at n ≥ 10,000 decision points;
 `docs/LIARS-DICE_REDESIGN.md` §16.3 and §17.7 updated with the outcome; if `packages/engine/src` is
 touched the task takes its own capstone with the moved rows predicted first; gate green.
+
+**Delivered (2026-08-06). SHAPE (A): FOLD is accepted as a DISPOSITION PURCHASE — and the T-137 /
+T-160 framing of it ("null mechanic", "its only positive payoff is +1 disposition") is retired as
+INCOMPLETE rather than repeated.** The reason in one sentence: the game pays in two currencies, and
+they PARTITION — FOLD is never the better CREDIT play (§16.3's escrow derivation, untouched) and is
+the better DISPOSITION play at every state where the credit comparison is not already a tie, so it
+is a **priced trade, not a dead move**.
+
+- **The derivation, in the form it is recorded (never as a literal).** Crossover from the three live
+  constants in `packages/content/src/hangout.ts` (`DARE_WIN_DISPOSITION` `:78`,
+  `DARE_LOSS_DISPOSITION` `:79`, `DARE_FOLD_DISPOSITION` `:153`): FOLD is disposition-better iff
+  `P_false > (LOSS − FOLD)/(LOSS − WIN)`. The reachable `P_false` spectrum off the engine's own model
+  (`probAtLeast`, `packages/engine/src/liarsDiceRules.ts:712`) is **not dense on `[0,1]`** — it is
+  `{0} ∪ [(5/6)^u, 1]`, because `q − own ≤ 0` gives exactly 0 (claim true by construction; credits
+  TIE) and `q − own ≥ 1` gives at least `1 − probAtLeast(1, u)`. `u ∈ {4,5,6}` across the whole
+  shipped ladder (`dicePerSideForTier`, `liarsDiceRules.ts:126`, capped at six forever), so the
+  binding case is `u = 6`. **Verified before it was written**: the floor clears the crossover at all
+  three widths, `u = 6` by the narrowest margin. §16.6's measured interceptor lift (2.4–2.9× uniform
+  on captain disposition) is what makes the currency FOLD buys worth buying.
+- **The mechanically-inert §6.1 concealment claim is RETIRED from the justification**, not repeated:
+  `dealerMove` / `archetypeMove` take no history parameter and hold no cross-hand memory, so it is
+  **not** part of why FOLD is kept. M4e still owns the memory that would make it worth something.
+- **The two rejected shapes, logged with reasons** (LD-26): **(B) give concealment a real channel** —
+  needs cross-hand memory on both policies, i.e. a save-shape change + migration + round-trip test, a
+  `rulesFingerprint` move, a capstone and an 8,000-row sweep, and it re-opens the archetype ordering
+  T-175 shipped one task ago and collides with the open `T-219`; M4e gives it for free. **(C) change
+  FOLD's economics** — LD-7 pins forfeiture as a CLOSED exploit fix and §6.2 rejected the neighbouring
+  shapes for exactly the gameability a partial refund reintroduces ("open, then walk" cheap on every
+  hand, dusk timeout re-priced); LD-8's own closing sentence names it as the expensive lever it is.
+- **Doc anchors, by file and section.** `docs/LIARS-DICE-DECISIONS.md` — new **LD-26** (the binding
+  ruling: both currencies, the `(5/6)^u` bound, the two rejected shapes, what it does NOT do, the
+  F-175-2 arm, and the two enforcing tests) and **LD-8** amended with a `RULED AT T-177` blockquote,
+  its own text verbatim. `docs/LIARS-DICE_REDESIGN.md` — `RULED AT T-177` blockquotes appended
+  verbatim-preserving at **§16.3**, **§16.8 item 6**, **§17.7**, and `CLOSED AT T-177` on **§17.8's
+  F-160-3 entry**. No §19 was added: the derivation lives in LD-26 only, so the design record and the
+  binding ruling do not restate each other. `docs/LIARS-DICE-PROGRESSION_SPEC.md` — new **§3.3b**,
+  and §3.3a's closing paragraph plus **LD-25**'s closing paragraph retargeted `filed as F-175-2
+  against T-177` → `RULED at T-177 (LD-26 / §3.3b)`.
+- **F-175-2 (in scope, ruled here).** `optimal`'s FOLD branch is **UNREACHABLE BY CONSTRUCTION** at
+  the shipped point read and is **RETAINED DELIBERATELY**, not deleted: `optimal` is an argmax over
+  the whole legal set and the branch goes live the instant `pTrue` stops being a point read (LD-25's
+  rejected soft reads, or `T-219`), and removal is a SEMANTIC edit that would move `rulesFingerprint`
+  and buy a capstone for zero behaviour change. §3.3's *"rare but REACHABLE, and it must not be
+  special-cased away"* is superseded at the site (`liarsDiceRules.ts:1218`, comment) and in the spec
+  (§3.3b); `probClaimTrue`'s header consequence 2 retargeted `filed as F-175-2 against T-177` →
+  `RULED at T-177 (LD-26)`, the measured **0.00%** figure kept verbatim.
+- **The two named tests, with counts observed before they were written down.**
+  - `packages/engine/src/__tests__/liarsDice.test.ts` — describe **`T-177 · the FOLD ruling — the two
+    currencies partition`**, 4 tests, all computed from the imported constants and `probAtLeast`, no
+    literals. (1) crossover strictly interior to `(0,1)`, checked against the disposition expectation
+    either side of it; (2) **THE RULING** — `1 − probAtLeast(1, u) > crossover` at
+    `u = dicePerSideForTier(0|1|2)`, commented at the assertion as the thing that re-opens LD-26 if a
+    disposition constant is retuned or a wider tier is added; (3) the credit identity
+    `EV_challenge − EV_fold = P_false · (potPlayer + potDealer) ≥ 0` over 20,000 randomised states,
+    equality iff `P_false = 0` (or an empty pot) — **non-vacuity observed: 18,444 strict / 1,556
+    equal**; (4) the join, which is the partition itself — **1,674 credit-tied / 18,326 priced trades
+    over 20,000 states**.
+  - `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` — describe **`T-177 · F-175-2 —
+    OPTIMAL never folds, and that is now a construction`**, 5 tests. The sweep runs at **all three**
+    tier widths (the existing `bad` block only runs tier 0; that limitation was not copied):
+    **tier 0 (u=4) folds 0, challenges 4,016, raises 984; tier 1 (u=5) folds 0, challenges 3,900,
+    raises 1,100; tier 2 (u=6) folds 0, challenges 3,818, raises 1,182** — 5,000 positions each, both
+    live branches non-vacuous. The corner half is the actual proof: `potPlayer`/`potDealer` at 0 (the
+    sweep's pots are `≥ 1` and never reach it), crossed with a `pTrue = 1` and a `pTrue = 0` bid, with
+    the raise set EMPTIED (`headroom = 0`, `dealerCredits = 0`, asserted to leave exactly
+    `['challenge','fold']` legal) — `challenge` in every one, at every tier. And the MECHANISM is
+    pinned rather than the outcome: `probClaimTrue ∈ {0,1}` asserted over the same sweep, so LD-25's
+    rejected soft reads or `T-219` trip this test rather than silently reviving the branch.
+- **NO `rulesFingerprint` MOVE — MEASURED, NOT ASSERTED, per the T-176 §18.6a precedent.**
+  `computeRulesFingerprint(repoRoot)` (`packages/sim/src/balance/rules-fingerprint.ts`) via `tsx`,
+  BEFORE the engine edit: **`cabd2112ccf4cefb`**. AFTER: **`cabd2112ccf4cefb`**. Equal. The only
+  non-doc, non-test file touched is `liarsDiceRules.ts` and both edits are inside comments, which
+  `hashSemantic` strips. The two test files are free of a capstone by
+  `HASHED_ROOT_IGNORED_DIRECTORIES.__tests__` (`rules-fingerprint.ts:255-262`), read at HEAD rather
+  than taken from the plan.
+- **THE "IF ANYTHING SHIPS" CLAUSE DID NOT FIRE.** Nothing shipped in `packages/engine/src` beyond
+  comments, so: **no re-derivation against a new rule** (the rule is unchanged — the ruling is about
+  a currency §16.3 never priced), **no re-measurement, no capstone, no 8,000-row sweep, no fixture
+  re-extract, no migration.** T-160's standing measurement already satisfies the `n ≥ 10,000` clause
+  at **18,678 post-bid player decision points** (Arm 2, n = 101,616 hands), and under the ruling its
+  **3.51%** take rate is not a defect but the expected rate for a move priced in the other currency.
+  `CURRENT_SAVE_VERSION` re-read live at `packages/engine/src/save.ts:627` — **17, UNMOVED**; no
+  save-shape change was made, so no migration is owed.
+- **One thing the ruling leaves open, filed rather than shipped** (standing bug-discovery policy):
+  the player cannot SEE the price they are paying. `packages/ui/src/format.ts` mentions fold only in
+  the no-reveal / settlement path (`:914`, `:926`, `:950`) and nothing surfaces the disposition arm at
+  the table. A purchase whose price is invisible is a trap, not a design — filed as **`T-221`
+  (F-177-1)** with its Accept criterion. Not shipped here: a UI change is outside this task's Accept
+  and would have put a UI diff in a comment-only ruling commit.
+- **Gate green**: `npm run format` (before the gate), `npm test`, `npx tsc -b`, `npm run lint`,
+  `npm run format:check`, plus `npm run balance:smoke` as the belt-and-braces check that the
+  fixture's `rulesFingerprint` still matches the tree.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
 ### T-219 · F-176-1: `optimal`'s RAISE valuation prices a counterparty that does not exist — `status: TODO` · `coder: opus` · `after: T-175, T-176`
 
@@ -2396,6 +2494,33 @@ the band was a bakeoff instrument and retires it explicitly in `docs/LIARS-DICE-
 any rule moves in response, it is bakeoff'd rather than tuned and the archetype ordering is
 re-scored alongside; the rate is re-measured at n ≥ 10,000 hands per pool with `n` on every cell;
 `docs/LIARS-DICE_REDESIGN.md` §17.2's C2 row gains the outcome; gate green.
+
+### T-221 · F-177-1: the FOLD trade is invisible to the player — `status: TODO` · `coder: opus` · `after: T-177`
+
+**Filed at T-177 (2026-08-06), `docs/LIARS-DICE-DECISIONS.md` LD-26 / `docs/LIARS-DICE_REDESIGN.md`
+§17.7.** T-177 ruled that FOLD is a **priced purchase of goodwill**, not a null mechanic: it costs
+`P_false · (potPlayer + potDealer)` credits and buys
+`DARE_FOLD_DISPOSITION − (P_false·DARE_WIN_DISPOSITION + (1 − P_false)·DARE_LOSS_DISPOSITION)`
+disposition, and the two currencies partition cleanly across the whole reachable `P_false` spectrum.
+**A purchase whose price the buyer cannot see is not a design, it is a trap** — and nothing at the
+table surfaces either side of that trade. `packages/ui/src/format.ts` mentions fold only in the
+no-reveal / settlement path (`:914`, `:926`, `:950`); the disposition arm never appears at the
+table, the escrow the player is about to forfeit is not labelled as the price of anything, and the
+ruling's own justification (§16.6's measured 2.4–2.9× interceptor lift on captain disposition) is
+invisible to the player who would be buying it. T-177 was explicitly a ruling-only task — a UI
+change is outside its Accept and would have dragged the ruling into a shipping commit, with a
+`docsFingerprint`/UI diff in what is otherwise a comment-only change — so this is **filed rather
+than shipped**, per the standing bug-discovery policy. [filed: T-177/F-177-1]
+
+**Accept:** the Dare table surfaces BOTH arms of the fold trade at the point of decision — what the
+fold forfeits in credits and what it pays in dealer disposition — with both read from the live
+engine/content values rather than restated as UI copy (no threshold, no duplicated formula, no
+`if (` in the view deciding the outcome); the disposition arm is legible to a player who has never
+read `LD-26` (plain language, not "+1 disposition"); the copy is tested through the real DOM in the
+e2e rather than asserted on a formatter; `docs/LIARS-DICE_REDESIGN.md` §17.7's blockquote gains the
+outcome and LD-26's "what this ruling does NOT do" is amended to say the visibility gap is closed;
+if any engine or content value moves to support it, that task takes its own capstone with the moved
+rows predicted first; gate green.
 
 ---
 

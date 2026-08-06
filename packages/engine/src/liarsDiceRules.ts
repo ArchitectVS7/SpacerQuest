@@ -981,7 +981,9 @@ export function creditedClaimSupport(claimQuantity: number, dicePerSide: number)
  *      `pTrue = 0` a challenge scores `+potPlayer` and beats it outright. This
  *      costs nothing measurable — `optimal`'s fold share was already 0.00% of
  *      ~42,000 decisions per tier BEFORE this change — but it is a real narrowing
- *      and it is filed as F-175-2 against T-177 (F-160-3), which owns FOLD.
+ *      and it was **RULED at T-177 (LD-26)**, which owns FOLD: the branch is
+ *      retained rather than removed (see the `scored` array's own note) and is
+ *      guarded by a named test. `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3b.
  *
  * NO HIDDEN INFORMATION. `bid` is PUBLIC — it rides every `DareBidPlaced` — and
  * `ownOfClaimedFace` is the house's own hand. The §3.2 anti-cheat discipline is
@@ -1194,8 +1196,25 @@ export function archetypeMove(input: {
     { move: { move: 'challenge' }, ev: (1 - pTrue) * potPlayer - pTrue * potDealer },
     // A fold is legal while the hand is open, always. `optimal` folds only when
     // `-potDealer` beats every alternative, which needs `pTrue` very high AND every
-    // raise unaffordable or worse. Rare but REACHABLE, and it must not be
-    // special-cased away.
+    // raise unaffordable or worse.
+    //
+    // T-177 · **THIS BRANCH IS UNREACHABLE BY CONSTRUCTION, AND IT IS RETAINED
+    // DELIBERATELY** (F-175-2; `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3b,
+    // `docs/LIARS-DICE-DECISIONS.md` LD-26). §3.3's old sentence here — "rare but
+    // REACHABLE, and it must not be special-cased away" — became FALSE the moment
+    // T-175 gave the challenge score a CREDITED read: {@link probClaimTrue} is a
+    // POINT read, so `pTrue` is exactly 0 or 1. At `pTrue = 1` the challenge scores
+    // `-potDealer`, which TIES this entry and wins {@link OPTIMAL_TIE_BREAK}; at
+    // `pTrue = 0` it scores `+potPlayer` and beats it outright. It is kept anyway,
+    // for two reasons: (a) `optimal` is an ARGMAX OVER THE WHOLE LEGAL SET, and the
+    // branch goes live again the instant `pTrue` stops being a point read (LD-25's
+    // rejected soft reads, or the raise valuation `T-219` owns) — deleting it would
+    // leave a policy that silently cannot express a legal move; (b) removal is a
+    // SEMANTIC edit that moves `rulesFingerprint` and buys a capstone for zero
+    // behaviour change. Guarded by `packages/engine/src/__tests__/
+    // liarsDiceArchetypes.test.ts`, describe `T-177 · F-175-2 — OPTIMAL never folds,
+    // and that is now a construction`, which asserts the point read as well as the
+    // outcome so a future soft `pTrue` trips it rather than reviving this silently.
     { move: { move: 'fold' }, ev: -potDealer },
   ];
   for (const candidate of raiseCandidates(bid, ante, choices)) {

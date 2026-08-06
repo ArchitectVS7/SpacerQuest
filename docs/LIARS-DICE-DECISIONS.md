@@ -55,6 +55,12 @@ dominant, is weakly dominated by CHALLENGE everywhere, and is strictly dominated
 `P_false > 0`. Measured: 0.03% taken, 5/5 observed folds in the strictly dominated set,
 and ablating FOLD entirely moves EV/hand by +0.16%. **Changing this requires changing what
 FOLD pays, not a number.**
+> **RULED AT T-177 (2026-08-06) — see LD-26.** LD-8's final sentence is exactly why shape (C),
+> *change FOLD's economics*, was rejected: it is a change to what FOLD PAYS, so it needs the full
+> capstone + 8,000-row sweep + re-derivation, and it re-opens LD-7's closed exploit fix ("FOLD
+> forfeits seed plus all accumulated antes"). LD-8's derivation itself is **untouched and still
+> stands**: FOLD remains weakly dominated by CHALLENGE in credits, everywhere. LD-26 rules that this
+> is acceptable because the credit ledger is not the only one the move is priced in.
 
 ---
 
@@ -412,5 +418,130 @@ opponent challenges it immediately" model assumption is untouched and remains **
 to rule on. It does not move `BAD_CREDULITY`, which was re-derived against measured post-fix data
 and left at `1` (spec §3.4a). It does not reweight the four tone mixes, which LD-20 rejected as
 circular and which are CONTENT besides. And it narrows one thing: `optimal`'s FOLD branch becomes
-provably unreachable (`pTrue` is now 0 or 1, so a challenge always ties or beats a fold), filed as
-**F-175-2** against T-177, which owns FOLD.
+provably unreachable (`pTrue` is now 0 or 1, so a challenge always ties or beats a fold), **RULED at
+T-177 (LD-26 / `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3b)**: the branch is RETAINED rather than
+removed, and is guarded by a named test.
+
+---
+
+**LD-26 — FOLD IS A DISPOSITION PURCHASE, AND THE TWO CURRENCIES PARTITION.** (T-177, ruling on
+**F-160-3**; harvested from T-137 §16.8 item 6, re-measured at T-160 §17.7.) **The shape taken is
+(A): FOLD is ACCEPTED as a disposition move, and it is said so in the spec.** But it is accepted on
+a stronger argument than "flavour", and the T-137/T-160 framing of it — *a null mechanic whose only
+positive payoff is `+1` disposition* — is retired as INCOMPLETE rather than repeated. The correct
+statement is that the game pays in **two** currencies and FOLD's price is denominated in the second
+one.
+
+**The credit half (LD-8 / §16.3, untouched and still true).** The escrow is debited at CONTRIBUTION
+time, so a fold forfeits `potPlayer` with certainty while a challenge costs nothing to make:
+
+```
+EV_fold       = −potPlayer
+EV_challenge  = P_false · potDealer − (1 − P_false) · potPlayer
+EV_challenge − EV_fold = P_false · (potPlayer + potDealer)  ≥ 0, everywhere
+```
+
+FOLD is therefore weakly dominated by CHALLENGE in credits at every state, and strictly dominated
+wherever `P_false > 0`. This is a DERIVATION about escrow, not a constant; T-160 confirmed the
+opening floor does not touch it, and nothing in this ruling does either.
+
+**The disposition half — the part §16.3 never priced, and the spine of the ruling.** Read live from
+`packages/content/src/hangout.ts`: `DARE_WIN_DISPOSITION` (`:78`), `DARE_LOSS_DISPOSITION` (`:79`),
+`DARE_FOLD_DISPOSITION` (`:153`). Higher disposition is better for the player, so
+
+```
+disp(fold)          = DARE_FOLD_DISPOSITION
+E[disp(challenge)]  = P_false · DARE_WIN_DISPOSITION + (1 − P_false) · DARE_LOSS_DISPOSITION
+
+FOLD is the DISPOSITION-better play  ⟺  P_false > crossover,
+   where  crossover = (DARE_LOSS_DISPOSITION − DARE_FOLD_DISPOSITION)
+                    / (DARE_LOSS_DISPOSITION − DARE_WIN_DISPOSITION)
+```
+
+**The crossover is stated as that expression and never as a literal** — the ruling is that it falls
+where the three shipped constants already put it, not that it was tuned to.
+
+**The reachable `P_false` spectrum is NOT dense on `[0,1]`, and that is what closes the argument.**
+The engine's one probability model is `probAtLeast` (`packages/engine/src/liarsDiceRules.ts:712`)
+and `P_false = 1 − probAtLeast(q − own(face), dicePerSide)`:
+
+- `q − own ≤ 0` → `P_false = 0` exactly. The claim is TRUE BY CONSTRUCTION (`resolveChallenge`
+  counts the face across all dice in play, so `actualCount ≥ own`). Here the credit comparison is a
+  **TIE** — `EV_challenge − EV_fold = 0` — so folding gives up nothing measurable in credits, and
+  the disposition read is the only live difference. It favours the CHALLENGE.
+- `q − own ≥ 1` → the smallest non-zero value is `1 − probAtLeast(1, u) = (5/6)^u`, and `u ∈ {4,5,6}`
+  across the whole shipped ladder (`dicePerSideForTier`, `liarsDiceRules.ts:126`, capped at six
+  forever). The binding case is `u = 6`.
+
+So the reachable spectrum is `{0} ∪ [(5/6)^u, 1]`, and **`(5/6)^u > crossover` at every shipped
+tier** — verified at all three widths by the named test below, computed from the live constants.
+
+**THE RULING, in one sentence.** The two currencies partition the state space cleanly: FOLD is never
+the better CREDIT play, and is the better DISPOSITION play at *every* state where the credit
+comparison is not already a tie. It is therefore a **priced trade, not a dead move** — it costs
+`P_false · (potPlayer + potDealer)` credits and buys
+`DARE_FOLD_DISPOSITION − (P_false · WIN + (1 − P_false) · LOSS)` disposition. *Decline a fight you
+would probably win, and the dealer stays warm.* §16.6's measured interceptor lift — a captain's
+disposition really does reach into who flies the intercept, at 2.4–2.9× uniform — is what makes that
+second currency worth buying, so this is a purchase against a measured effect rather than against
+flavour text.
+
+**The concealment claim (§6.1) is RETIRED from the justification, not repeated.** It is
+mechanically inert — `dealerMove` and `archetypeMove` take no history parameter and hold no
+cross-hand memory, so there is no channel by which a past reveal could reach a future decision. It
+is NOT part of why FOLD is kept, and a later reader must not re-derive the ruling from it. **M4e is
+the milestone that gives archetypes memory** (§16.3); concealment becomes worth something there,
+for free, without this ruling pre-empting it.
+
+**The two shapes REJECTED, with reasons.**
+
+- **(B) give concealment a real channel.** Requires cross-hand memory reaching both `dealerMove` and
+  `archetypeMove` — a signature change on both policies plus persisted per-opponent memory, i.e. a
+  save-shape change with a migration and a round-trip test, a `rulesFingerprint` move, a capstone
+  and an 8,000-row sweep. It would also re-open the archetype ordering LD-25 shipped one task
+  earlier and collide with the open raise-valuation finding (`T-219` / F-176-1). M4e already owns
+  the memory; the correct move is to wait for it rather than to buy it here at full price.
+- **(C) change FOLD's economics** (e.g. refund a fraction of `potPlayer`). **LD-7** pins "FOLD
+  forfeits seed plus all accumulated antes" as a CLOSED exploit fix, and §6.2 rejected the
+  neighbouring shapes (auto-challenge, void) for exactly the gameability a partial refund
+  reintroduces: any refund makes *open, then walk* a cheap option on every hand and re-prices the
+  dusk timeout. **LD-8**'s own closing sentence — "changing this requires changing what FOLD pays,
+  not a number" — names this as the expensive lever it is. Not warranted to rescue a move that is
+  already a coherent trade in the second currency.
+
+**What this ruling does NOT do.** It does not touch LD-7's forfeiture rule. It does not move
+`DARE_FOLD_DISPOSITION`, `DARE_WIN_DISPOSITION` or `DARE_LOSS_DISPOSITION` — retuning one of them to
+relocate the crossover would be tuning a number to make the ruling come out, and the ruling is
+precisely that the crossover falls where the constants already are. It does not give the dealer
+memory (M4e's). It does not touch `optimal`'s raise valuation (`T-219`'s). Nothing shipped in
+`packages/engine/src` beyond comments: `rulesFingerprint` was computed before and after and is
+UNMOVED, so no capstone, no sweep and no re-measurement were owed. T-160's standing measurement
+(n = 18,678 post-bid player decision points, FOLD legal at 100.00% and taken at 3.51%) satisfies the
+`n ≥ 10,000` clause, and **under this ruling a 3.51% take rate is not a defect — it is the expected
+rate for a move whose price is denominated in the other currency**.
+
+**The F-175-2 arm, stated explicitly rather than inherited.** `optimal`'s FOLD branch is
+**UNREACHABLE BY CONSTRUCTION** at the shipped `probClaimTrue` (`liarsDiceRules.ts:992`), which is a
+POINT read: at `pTrue = 1` a challenge scores `−potDealer`, tying fold and winning
+`OPTIMAL_TIE_BREAK`; at `pTrue = 0` it scores `+potPlayer` and beats it outright. §3.3's "rare but
+REACHABLE, and it must not be special-cased away" is **superseded** for `optimal`. The branch is
+**RETAINED, not removed** (`liarsDiceRules.ts:1218`): `optimal` is an argmax over the whole legal
+set and the branch goes live again the instant `pTrue` stops being a point read, and removal would
+be a semantic edit that moves `rulesFingerprint` and buys a capstone for zero behaviour change.
+It cost nothing to narrow — `optimal`'s fold share was already 0.00% of ~42,000 dealer decisions per
+tier BEFORE T-175's change. See `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3b.
+
+**What enforces this ruling.** Both halves are asserted from the live constants and the live
+probability model, with no literals, so a later retune goes RED and re-opens LD-26 rather than
+silently voiding it:
+
+- `packages/engine/src/__tests__/liarsDice.test.ts` — describe **`T-177 · the FOLD ruling — the two
+  currencies partition`**: the crossover is strictly interior; `1 − probAtLeast(1, u) > crossover`
+  at `u = dicePerSideForTier(0|1|2)` (*this assertion is the ruling*); the credit identity
+  `EV_challenge − EV_fold = P_false · (potPlayer + potDealer) ≥ 0` with equality iff `P_false = 0`;
+  and the join of the two, which is the partition itself.
+- `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` — describe **`T-177 · F-175-2 —
+  OPTIMAL never folds, and that is now a construction`**: zero folds over 5,000 positions at each of
+  the three tier widths, the tie corner at `potPlayer`/`potDealer` `= 0` with the raise set emptied,
+  and the POINT-read property of `probClaimTrue` pinned so a future soft read trips the test rather
+  than reviving the branch in silence.
