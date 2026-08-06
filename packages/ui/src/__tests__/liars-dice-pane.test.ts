@@ -6,6 +6,9 @@ import {
   legalDareMoves,
   minOpeningQuantity,
   startDay,
+  // T-221 · the PORT's own `dare` row, so the fold trade's disposition arm is
+  // asserted against the value the engine resolves rather than a copied number.
+  venueParamsFor,
   wagerBandFor,
   type GameEvent,
   type GameState,
@@ -23,6 +26,9 @@ function openingBid(state: GameState, face: number): Extract<PlayerAction, { typ
   return { type: 'Dare', move: 'bid', face, quantity: minOpeningQuantity(own) };
 }
 import {
+  // T-221 · LD-26's disposition arm at its source. Imported so a retune moves the
+  // table's own copy rather than reddening a literal typed into this file.
+  DARE_FOLD_DISPOSITION,
   LIARS_DICE_OPPONENTS,
   LIARS_DICE_RAISED_CEILING_MULT,
   NPC_PROFILES,
@@ -759,5 +765,118 @@ describe('T-207 · a roaming captain speaks in their own authored voice', () => 
     // The bark is a SEPARATE element, never composed into the standing line.
     expect(readout.line).not.toContain(readout.tableTalk!);
     expect(readout.line).toBe(`${dispositionHint(0)}.`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-221 · THE FOLD TRADE IS PRICED AT THE TABLE (F-177-1; `docs/LIARS-DICE-
+// DECISIONS.md` LD-26, `docs/LIARS-DICE_REDESIGN.md` §17.7).
+//
+// LD-26 ruled FOLD a PRICED PURCHASE of goodwill rather than a null mechanic. A
+// purchase whose price the buyer cannot see is a trap, so the table now prints
+// both arms of it. These tests guard the VALUES; the copy itself is asserted
+// through the real DOM in `packages/ui/e2e/liars-dice.spec.ts` and
+// `liars-dice-roster.spec.ts`, which is where a claim about what a player can see
+// can actually be proved.
+//
+// EVERY EXPECTATION BELOW IS READ FROM THE ENGINE OR FROM CONTENT. The load-
+// bearing one is the second: it binds the projection to `settleDareHand`'s own
+// `creditsDelta` / `dispositionDelta`, so the price shown at the point of
+// decision and the price actually charged cannot drift apart.
+// ---------------------------------------------------------------------------
+
+describe('T-221 · the FOLD trade is priced at the table', () => {
+  it('prices the disposition arm off the PORT’s own `dare` row, not a UI constant', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    const view = dareScene(state)!;
+    const params = venueParamsFor(state.dareHand!.systemId, 'dare');
+    expect(view.foldTrade.disposition).toBe(params.dispositionOnFold);
+    // And the row itself inherits the shipped constant field-wise, so a retune of
+    // LD-26's number moves the table rather than reddening a literal typed here.
+    expect(view.foldTrade.disposition).toBe(DARE_FOLD_DISPOSITION);
+    // Legible without LD-26: the sentence names the captain and says what warmth
+    // is FOR. It never prints a threshold, a probability or the crossover.
+    expect(view.foldTrade.line).toContain(view.dealerName);
+    expect(view.foldTrade.line).toMatch(/warm/i);
+    expect(view.foldTrade.line).toContain(String(view.foldTrade.disposition));
+  });
+
+  it('prices the credit arm at exactly what the resolver charges — both arms bound', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    const view = dareScene(state)!;
+    // Read off the LIVE escrow, which is money already debited (§2.4).
+    expect(view.foldTrade.creditsForfeited).toBe(state.dareHand!.potPlayer);
+    expect(view.foldTrade.creditsLeftOnTable).toBe(state.dareHand!.potDealer);
+    expect(view.foldTrade.line).toContain(`${view.foldTrade.creditsForfeited}cr`);
+    expect(view.foldTrade.line).toContain(`${view.foldTrade.creditsLeftOnTable}cr`);
+
+    // THE BINDING. Fold for real and compare the quoted price to the charged one.
+    const out = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
+    const reveal = dareRevealFrom(out.events, out.state)!;
+    expect(reveal.outcome).toBe('player-fold');
+    expect(reveal.creditsDelta).toBe(-view.foldTrade.creditsForfeited);
+    expect(reveal.dispositionDelta).toBe(view.foldTrade.disposition);
+  });
+
+  it('TRACKS the escrow — the quoted price rises with the antes it will forfeit', () => {
+    // The escrow only GROWS on a raise (`nominalCost`: the open, the challenge and
+    // the fold all cost nothing), and whether a raise is reachable after the
+    // dealer answers is a property of the seed. So the sample is WIDENED across
+    // seeds until one produces the state the claim is about, and the premise is
+    // asserted rather than assumed — never narrowed to whatever seed 1 happens to
+    // deal.
+    let raised = 0;
+    for (let seed = 1; seed <= 20 && raised === 0; seed += 1) {
+      const { state } = openHand(dayOneAtSun3(seed));
+      const opened = dareScene(state)!;
+      const answered = applyPlayerAction(state, openingBid(state, 3)).state;
+      if (answered.dareHand === null) continue; // the dealer settled it (§9.4).
+      const standing = dareScene(answered)!;
+      // At every live frame, the quoted price IS the live escrow.
+      expect(standing.foldTrade.creditsForfeited).toBe(answered.dareHand.potPlayer);
+      if (!standing.legalMoves.includes('raise-quantity') || standing.bid === null) continue;
+      const after = applyPlayerAction(answered, {
+        type: 'Dare',
+        move: 'raise-quantity',
+        quantity: standing.bid.quantity + 1,
+        face: standing.bid.face,
+      }).state;
+      if (after.dareHand === null) continue;
+      const later = dareScene(after)!;
+      expect(later.foldTrade.creditsForfeited).toBe(after.dareHand.potPlayer);
+      expect(later.foldTrade.creditsForfeited).toBeGreaterThan(opened.foldTrade.creditsForfeited);
+      expect(later.foldTrade.line).toContain(`${later.foldTrade.creditsForfeited}cr`);
+      raised += 1;
+    }
+    expect(raised).toBe(1);
+  });
+
+  it('has NO disposition arm on a `ld-` roster seat — there is no standing to buy', () => {
+    const { state } = openRosterHand(dayOneAtSun3(1), 'ld-1-2');
+    const view = dareScene(state)!;
+    // The readout's own hard null, reused rather than a second `opponentKind` test.
+    expect(liarsDiceDealerReadout(state, 'ld-1-2')).toBeNull();
+    expect(view.foldTrade.disposition).toBeNull();
+    // The credit arm is unchanged — pool A forfeits exactly as pool B does.
+    expect(view.foldTrade.creditsForfeited).toBe(state.dareHand!.potPlayer);
+    expect(view.foldTrade.line).toContain(`${view.foldTrade.creditsForfeited}cr`);
+    // And no fabricated second clause: the resolver moves nothing here (§7.6), so
+    // a warmth sentence on this seat would be a lie rather than a rounding.
+    expect(view.foldTrade.line).not.toMatch(/warm/i);
+    const out = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
+    const reveal = dareRevealFrom(out.events, out.state)!;
+    expect(reveal.dispositionDelta).toBe(0);
+    expect(out.events.some((e) => e.type === 'DispositionChanged')).toBe(false);
+  });
+
+  it('did not open a leak — the new field is blind to the dealer’s dice', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    // The T-136 headline experiment already deep-equals the WHOLE `DareSceneView`
+    // across three dealer hands, so it covers `foldTrade` for free the moment the
+    // field exists. Re-run here for this field specifically, exactly as T-203 and
+    // T-207 did for theirs, so a regression names the guilty field.
+    expect(dareScene(withDealerDice(state, [6, 6, 6, 6]))!.foldTrade).toEqual(
+      dareScene(state)!.foldTrade,
+    );
   });
 });

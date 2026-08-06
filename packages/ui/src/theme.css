@@ -4542,6 +4542,18 @@ body {
   font-size: 9.5px;
   letter-spacing: 0.1em;
 }
+/* T-221 · the priced FOLD line, printed beside the FOLD control. A MODIFIER on
+   `.ld-tabletalk`, never a standalone block, for the same reason
+   `.ld-dealer-standing` is one: the spacing, the face and the measure stay the
+   single copy `.ld-tabletalk` owns. It sets only what it must — its own row in
+   the flex strip (the buttons would otherwise be squeezed by a full sentence)
+   and a centred, slightly wider measure to match the table's own alignment. */
+.ld-fold-trade {
+  flex-basis: 100%;
+  max-width: 52ch;
+  margin: 2px auto 0;
+  text-align: center;
+}
 .ld-moves input {
   width: 58px;
   text-align: center;

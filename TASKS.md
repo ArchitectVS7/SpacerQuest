@@ -2734,7 +2734,7 @@ re-scored alongside; the rate is re-measured at n ≥ 10,000 hands per pool with
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
 
-### T-221 · F-177-1: the FOLD trade is invisible to the player — `status: TODO` · `coder: opus` · `after: T-177`
+### T-221 · F-177-1: the FOLD trade is invisible to the player — `status: DONE` · `coder: opus` · `after: T-177`
 
 **Filed at T-177 (2026-08-06), `docs/LIARS-DICE-DECISIONS.md` LD-26 / `docs/LIARS-DICE_REDESIGN.md`
 §17.7.** T-177 ruled that FOLD is a **priced purchase of goodwill**, not a null mechanic: it costs
@@ -2760,6 +2760,67 @@ e2e rather than asserted on a formatter; `docs/LIARS-DICE_REDESIGN.md` §17.7's 
 outcome and LD-26's "what this ruling does NOT do" is amended to say the visibility gap is closed;
 if any engine or content value moves to support it, that task takes its own capstone with the moved
 rows predicted first; gate green.
+
+**Delivered (2026-08-06).** The Dare table now prices the FOLD at the point of decision. **UI +
+docs only — no engine or content value moved, so `rulesFingerprint` is UNMOVED and no capstone was
+owed.** That is a fact about the hash's scope, not a judgment call: `computeRulesFingerprint`
+(`packages/sim/src/balance/rules-fingerprint.ts`) hashes `packages/engine/src` (its rule modules)
+and `packages/content/src` (wholesale, minus the barrel), and `computeInstrumentFingerprint` hashes
+`packages/sim/src` — **`packages/ui` is in neither set**, so the Accept's capstone clause ("if any
+engine or content value moves") did not fire. `git diff --stat -- packages/engine/src
+packages/content/src` is empty, and `balance-smoke.test.ts`'s "is not stale" assertion is green.
+
+*The projection* — `DareFoldTrade` and the module-private `dareFoldTrade` in
+`packages/ui/src/format.ts`, reached from `dareScene` as `foldTrade`. Both arms are READS, never
+derivations: the credit arm is the hand's own escrow (`potPlayer` / `potDealer`, already debited at
+contribution time), which is exactly the magnitude `settleDareHand` pays as
+`creditsDelta = −hand.potPlayer` on both fold arms (`packages/engine/src/actions/dare.ts:145`); the
+disposition arm is `venueParamsFor(hand.systemId, 'dare').dispositionOnFold` — the same port row the
+resolver reads at `packages/engine/src/actions/dare.ts:168-176`. **Nothing from LD-26 is restated in
+`packages/ui`**: no `DARE_*_DISPOSITION` import, no crossover, no `P_false`, no `probAtLeast`. The
+roaming/roster gate is NOT re-opened — the helper takes the already-hoisted
+`liarsDiceDealerReadout(...)` result (the file's own "ONE place the roaming-vs-roster distinction is
+made"), so the disposition arm hard-nulls on a `ld-` seat for the same §7.6 reason `dealerHistory`
+and `dealerTableTalk` do. The `disposition !== 0` clause guard mirrors `applyDisposition`'s own
+`delta === 0` early return, so a port authoring `dispositionOnFold: 0` can never make the table say
+"0 warmer".
+
+*The view* — `packages/ui/src/App.tsx`: one `<p data-testid="dare-fold-trade">` inside `.ld-moves`
+beside the FOLD button, gated only on `canMove('fold')` (the engine's own `legalMoves`, the same
+legality read every other control uses). It renders a pre-composed string and holds no branch that
+decides an outcome. The FOLD button's static `title` was replaced with `view.foldTrade.line`, so the
+hover and the printed line are one string. `.ld-fold-trade` in `theme.css` is a modifier on
+`.ld-tabletalk` (spacing/measure stay that block's single copy), adding only `flex-basis: 100%` so
+the sentence takes its own row rather than squeezing the buttons.
+
+*The guards.* `packages/ui/src/__tests__/liars-dice-pane.test.ts`, describe **`T-221 · the FOLD
+trade is priced at the table`** — five tests: (1) *prices the disposition arm off the PORT's own
+`dare` row, not a UI constant* (asserted against `venueParamsFor(...).dispositionOnFold` **and** the
+imported `DARE_FOLD_DISPOSITION`); (2) *prices the credit arm at exactly what the resolver charges —
+both arms bound*, the load-bearing one: it folds for real and compares the quoted price to
+`DareHandResolved`'s own `creditsDelta` / `dispositionDelta`, so the price shown and the price
+charged cannot drift; (3) *TRACKS the escrow* (sample widened across seeds until a raise is
+reachable, premise asserted rather than assumed — never narrowed to one seed's script); (4) *has NO
+disposition arm on a `ld-` roster seat*, paired with the resolver's own 0 and the absent
+`DispositionChanged`; (5) *did not open a leak* — the T-136 experiment re-run for `foldTrade` (the
+headline deep-equal already covers it, since it compares the whole `DareSceneView`). **The COPY is
+tested through the real DOM**, as the Accept requires: `packages/ui/e2e/liars-dice.spec.ts` — *the
+FOLD trade is priced at the point of decision — both arms* (credit arm read off the pane's own
+`dare-pot-player` cell, disposition arm against the content constant, the captain named, "warm" and
+the intercept consequence present, the jargon `/disposition|crossover|probab/i` absent, and the
+hover title identical to the line) — and `packages/ui/e2e/liars-dice-roster.spec.ts` — *a roster
+seat is quoted the credit arm of the fold, and no warmth*. Both drive real clicks only.
+
+*Docs.* `docs/LIARS-DICE_REDESIGN.md` §17.7's blockquote gains the **SHIPPED AT T-221** outcome
+paragraph; `docs/LIARS-DICE-DECISIONS.md` LD-26's "What this ruling does NOT do" now records that
+the one thing it left open is closed (the ruling itself unchanged — only its visibility moved), and
+its "What enforces this ruling" list gains the T-221 bullet naming the pane describe and the two
+e2e tests, so a later retune of `DARE_FOLD_DISPOSITION` reddens the UI's read too.
+
+*Gate.* `npx tsc -b`, `npm test`, `npm run lint`, `npm run format:check` green; the two Playwright
+specs run explicitly (10 passed).
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root. · attempts=1/4.
 
 ### T-222 · F-219-1: the house's raise evidence bar is set by the PLAYER's own stake — `status: TODO` · `coder: opus` · `after: T-219`
 

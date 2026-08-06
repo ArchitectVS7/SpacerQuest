@@ -538,6 +538,17 @@ UNMOVED, so no capstone, no sweep and no re-measurement were owed. T-160's stand
 `n ≥ 10,000` clause, and **under this ruling a 3.51% take rate is not a defect — it is the expected
 rate for a move whose price is denominated in the other currency**.
 
+**The one thing it left open is now CLOSED.** T-177 was ruling-only, so the player could not SEE the
+price they were being asked to pay — and a purchase whose price the buyer cannot see is not a design,
+it is a trap. That gap was filed as **F-177-1** / `T-221` and **shipped at T-221**: the Dare table
+prints both arms of the trade at the point of decision (`dare-fold-trade`, beside the FOLD control),
+read from the live escrow (`potPlayer` / `potDealer`) and the port's own `dare` row
+(`venueParamsFor(...).dispositionOnFold`) — no constant imported into the UI, no crossover and no
+`P_false` restated there, and the disposition arm absent on a roster seat through the same §7.6 hard
+null `liarsDiceDealerReadout` owns. **The ruling itself is unchanged; only its visibility moved**, and
+the change was UI-only (`rulesFingerprint` unmoved, no capstone owed). See
+`docs/LIARS-DICE_REDESIGN.md` §17.7's blockquote for the shipped detail.
+
 **The F-175-2 arm, stated explicitly rather than inherited.** `optimal`'s FOLD branch is
 **UNREACHABLE BY CONSTRUCTION** at the shipped `probClaimTrue` (`liarsDiceRules.ts:992`), which is a
 POINT read: at `pTrue = 1` a challenge scores `−potDealer`, tying fold and winning
@@ -563,6 +574,18 @@ silently voiding it:
   the three tier widths, the tie corner at `potPlayer`/`potDealer` `= 0` with the raise set emptied,
   and the POINT-read property of `probClaimTrue` pinned so a future soft read trips the test rather
   than reviving the branch in silence.
+- **T-221 · the ruling's VISIBILITY, guarded on the same terms.**
+  `packages/ui/src/__tests__/liars-dice-pane.test.ts` — describe **`T-221 · the FOLD trade is priced
+  at the table`**: the disposition arm is asserted equal to `venueParamsFor(systemId,
+  'dare').dispositionOnFold` *and* to the imported `DARE_FOLD_DISPOSITION`, so a retune reddens the
+  UI's read rather than leaving the table quoting the old price; and — the load-bearing one — a real
+  fold is applied and the quoted price compared against `DareHandResolved`'s own `creditsDelta` and
+  `dispositionDelta`, which binds the projection to `settleDareHand` so the price SHOWN and the price
+  CHARGED cannot drift. The roster arm asserts the hard null against the resolver's own 0 and the
+  absent `DispositionChanged`. The COPY (as opposed to the values) is asserted through the real DOM
+  by `packages/ui/e2e/liars-dice.spec.ts` — *the FOLD trade is priced at the point of decision — both
+  arms* — and `packages/ui/e2e/liars-dice-roster.spec.ts` — *a roster seat is quoted the credit arm
+  of the fold, and no warmth*.
 
 ---
 

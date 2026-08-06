@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
-import { DARE_MIN_WAGER } from '@spacerquest/content';
+// T-221 · the disposition arm's number at its source, so a retune of LD-26's
+// constant moves what this spec expects rather than reddening a literal.
+import { DARE_FOLD_DISPOSITION, DARE_MIN_WAGER } from '@spacerquest/content';
 
 // ---------------------------------------------------------------------------
 // T-136 acceptance: THE LIAR'S DICE TABLE, PLAYED THROUGH THE REAL UI.
@@ -308,4 +310,60 @@ test('the Peek spends a die and shows exactly one of the house’s dice', async 
 
   // One Peek per hand — the window closes whether it hit or missed.
   await expect(move(page, 'peek')).toHaveCount(0);
+});
+
+// ---------------------------------------------------------------------------
+// T-221 · THE FOLD TRADE IS PRICED AT THE POINT OF DECISION (F-177-1;
+// `docs/LIARS-DICE-DECISIONS.md` LD-26, `docs/LIARS-DICE_REDESIGN.md` §17.7).
+//
+// LD-26 rules FOLD a PRICED PURCHASE of goodwill rather than a null mechanic. The
+// claim under test is about what a player can SEE before they commit, so it is
+// asserted in the real DOM beside the real FOLD control — a formatter assertion
+// could not make it. Real clicks only, as everywhere else in this file.
+//
+// Both arms are checked against LIVE sources rather than against numbers typed
+// here: the credit arm against the pane's own escrow cell, the disposition arm
+// against `DARE_FOLD_DISPOSITION` imported from content.
+// ---------------------------------------------------------------------------
+
+test('the FOLD trade is priced at the point of decision — both arms', async ({ page }) => {
+  await openHand(page);
+
+  const trade = page.getByTestId('dare-fold-trade');
+  await expect(trade).toBeVisible();
+
+  // --- ARM 1: what the fold FORFEITS, equal to the escrow the pane itself shows.
+  const staked = (await page.getByTestId('dare-pot-player').innerText()).match(/\d+/)![0];
+  await expect(trade).toHaveAttribute('data-credits', staked);
+  await expect(trade).toContainText(`${staked}cr`);
+  // …and what it walks away from, likewise off the pane's own house cell.
+  const house = (await page.getByTestId('dare-pot-dealer').innerText()).match(/\d+/)![0];
+  await expect(trade).toContainText(`${house}cr`);
+
+  // --- ARM 2: what it BUYS. The number is content's, never a literal, and the
+  // sentence has to be legible to a player who has never read LD-26 — so it names
+  // the captain, says "warmer", and says what warmth is for.
+  await expect(trade).toHaveAttribute('data-disposition', String(DARE_FOLD_DISPOSITION));
+  const dealer = await page.getByTestId('dare-dealer-name').innerText();
+  expect((await trade.innerText()).toLowerCase()).toContain(dealer.toLowerCase());
+  await expect(trade).toContainText(/warm/i);
+  await expect(trade).toContainText(/intercept/i);
+  // The RULING is not restated at the table: no threshold, no probability, no
+  // crossover, and no bare "+1 disposition" jargon.
+  await expect(trade).not.toContainText(/disposition|crossover|probab/i);
+
+  // The hover and the printed line are ONE string, so they cannot drift.
+  await expect(move(page, 'fold')).toHaveAttribute('title', await trade.innerText());
+
+  // --- it TRACKS the escrow rather than freezing the opening number.
+  await page.getByTestId('dare-quantity').fill('2');
+  await page.getByTestId('dare-face').fill('3');
+  await move(page, 'bid').click();
+  if ((await page.getByTestId('dare-reveal').count()) === 0) {
+    // The hand still stands (the dealer answered without settling, §9.4) — the
+    // quoted price is still the pane's own live escrow, whatever it now reads.
+    const now = (await page.getByTestId('dare-pot-player').innerText()).match(/\d+/)![0];
+    await expect(page.getByTestId('dare-fold-trade')).toHaveAttribute('data-credits', now);
+    await expect(page.getByTestId('dare-fold-trade')).toContainText(`${now}cr`);
+  }
 });

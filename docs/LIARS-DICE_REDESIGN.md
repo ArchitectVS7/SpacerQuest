@@ -2391,6 +2391,23 @@ here** — the task is explicit that a still-dead FOLD is a finding to file, not
 > the one thing the ruling does leave open: the player cannot currently SEE the price they are
 > paying, and a purchase whose price is invisible is a trap rather than a design. That is a UI
 > obligation, filed rather than shipped here.
+>
+> **SHIPPED AT T-221 (F-177-1) — THE OBLIGATION IS DISCHARGED.** The Dare table now prints BOTH
+> arms of the trade at the point of decision: a `dare-fold-trade` line rendered beside the FOLD
+> control (and reused verbatim as that control's hover title, so the two cannot drift). It is
+> composed in `packages/ui/src/format.ts`'s `dareFoldTrade` from the LIVE hand and the LIVE port
+> row — the escrow (`potPlayer` / `potDealer`, the same two numbers `settleDareHand` pays out as
+> `creditsDelta = −potPlayer`, `actions/dare.ts:145`) and the port's own `dare` row
+> (`venueParamsFor(hand.systemId, 'dare').dispositionOnFold`, the same field the resolver reads at
+> `actions/dare.ts:173`). **No constant is imported into the UI, and no crossover, `P_false` or
+> `probAtLeast` is restated there** — the derivation stays in the engine's tests, and a retune of
+> `DARE_FOLD_DISPOSITION` moves what the table says with no UI edit. The disposition arm is ABSENT
+> on a roster seat, through the same hard null `liarsDiceDealerReadout` already owns (§7.6: pool A
+> has no `NpcState`, so there is no standing to buy). Guarded through the real DOM by
+> `packages/ui/e2e/liars-dice.spec.ts` and `liars-dice-roster.spec.ts`, and bound to the resolver's
+> own `creditsDelta` / `dispositionDelta` by `packages/ui/src/__tests__/liars-dice-pane.test.ts`.
+> **UI-only: `rulesFingerprint` unmoved** (`packages/ui` is in neither the rules nor the instrument
+> hash set, `packages/sim/src/balance/rules-fingerprint.ts`), so no capstone was owed.
 
 **The player-side ante clamp (§16.5 / §16.8 item 5).** §16.5 said the player-side 0.00% was a
 selection effect downstream of F-137-1 and had to be re-measured "once hands run longer than 1.19

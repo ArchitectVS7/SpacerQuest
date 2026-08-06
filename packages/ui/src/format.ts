@@ -759,6 +759,49 @@ export function dareWagerBounds(game: GameState): DareWagerBounds {
 // resolver wrote.
 
 /**
+ * T-221 · BOTH ARMS OF THE FOLD TRADE, priced at the point of decision
+ * (`docs/LIARS-DICE-DECISIONS.md` **LD-26**, `docs/LIARS-DICE_REDESIGN.md` §17.7;
+ * filed as F-177-1).
+ *
+ * LD-26 rules that FOLD is a PRICED PURCHASE of goodwill rather than a null
+ * mechanic: it forfeits the escrow with certainty and buys the dealer's warmth.
+ * A purchase whose price the buyer cannot see is not a design, it is a trap — and
+ * until this view existed nothing at the table named either side of it.
+ *
+ * WHAT THIS IS NOT. It is not the ruling restated in the UI. There is no
+ * crossover here, no `P_false`, no `probAtLeast`, and no `DARE_*_DISPOSITION`
+ * import: the ruling's DERIVATION stays in the engine's tests, and the pane reads
+ * only what the live hand and the live port row already say. Every number below is
+ * a read, never a computation:
+ *   - the credit arm is the hand's own escrow (`potPlayer` / `potDealer`, money
+ *     already debited at contribution time, §2.4) — the same two numbers
+ *     `settleDareHand` pays out as `creditsDelta = −potPlayer` on both fold arms
+ *     (`packages/engine/src/actions/dare.ts:145`);
+ *   - the disposition arm is the PORT's own `dare` row (`dispositionOnFold`),
+ *     resolved through the engine's `venueParamsFor` exactly as `peekDc` above it
+ *     is — the same field `settleDareHand` reads at `actions/dare.ts:173`.
+ * A retune of either therefore moves what the table says, with no edit here.
+ */
+export interface DareFoldTrade {
+  /** Forfeited WITH CERTAINTY if the player folds — `hand.potPlayer`, the escrow
+   *  already debited. Not a re-derivation: it is the exact magnitude of the
+   *  `creditsDelta` the resolver pays on both fold arms. */
+  creditsForfeited: number;
+  /** The house money the fold walks away from — `hand.potDealer`. */
+  creditsLeftOnTable: number;
+  /** What the fold BUYS: the port's own `dispositionOnFold`, never a constant
+   *  restated here. `null` on a ROSTER seat — pool A is outside the NPC economy
+   *  (§7.6), so there is no standing to buy and the resolver moves nothing; naming
+   *  one would be the same false cue {@link liarsDiceDealerReadout}'s hard null
+   *  exists to prevent. */
+  disposition: number | null;
+  /** The composed sentence the pane prints. Composed HERE, for the same reason
+   *  {@link LiarsDiceDealerReadout.line} is: the view owns no branch, and the
+   *  hover title and the printed line come off ONE string so they cannot drift. */
+  line: string;
+}
+
+/**
  * The live hand, as the PLAYER may see it. One peeked die is the single legal
  * leak (§8.3) and is marked as such; everything else about the dealer's hand is a
  * count.
@@ -845,6 +888,16 @@ export interface DareSceneView {
    * of `hand.dealerDice`, so the T-136 deep-equal experiment still holds.
    */
   dealerTableTalk: string | null;
+  /**
+   * T-221 · What a FOLD costs and what it buys — see {@link DareFoldTrade} for the
+   * argument and for where each number is read from.
+   *
+   * Like `dealerHistory` and `dealerTableTalk`, it is a function of the hand's
+   * ESCROW (`potPlayer` / `potDealer`), its `systemId` and `npcs` only, and never
+   * of `hand.dealerDice`, so the T-136 deep-equal-across-three-dealer-hands
+   * experiment still holds with this field present.
+   */
+  foldTrade: DareFoldTrade;
 }
 
 /** T-146 · This hand's "Read the Table" line, straight off the `DareHandStarted`
@@ -860,6 +913,44 @@ function dareOpponentRead(game: GameState, handId: string): string | null {
   return null;
 }
 
+/**
+ * T-221 · The FOLD trade, composed. See {@link DareFoldTrade} for what each arm
+ * is read from and why nothing is derived here.
+ *
+ * THE ROAMING/ROSTER GATE IS NOT RE-OPENED. It is handed in as `dealerReadout`,
+ * which is {@link liarsDiceDealerReadout}'s hard null — "the ONE place the
+ * roaming-vs-roster distinction is made in this file". A `hand.opponentKind`
+ * test here would be a second gate that could later disagree with it, exactly
+ * what `dealerHistory` and `dealerTableTalk` were written to avoid.
+ */
+function dareFoldTrade(
+  hand: NonNullable<GameState['dareHand']>,
+  dealerName: string,
+  dealerReadout: LiarsDiceDealerReadout | null,
+): DareFoldTrade {
+  const creditsForfeited = hand.potPlayer;
+  const creditsLeftOnTable = hand.potDealer;
+  // The PORT's own `dare` row, resolved by the engine — never a constant. Null on
+  // a roster seat, through the readout's gate and no test of our own.
+  const disposition = dealerReadout
+    ? venueParamsFor(hand.systemId, 'dare').dispositionOnFold
+    : null;
+  const price =
+    `Fold and the ${creditsForfeited}cr you have already staked is gone — the cup is never ` +
+    `lifted, and the ${creditsLeftOnTable}cr the house put up stays with them.`;
+  // The `!== 0` arm is NOT a rule of the pane's: it mirrors `applyDisposition`'s
+  // own `delta === 0` early return, which a port authoring `dispositionOnFold: 0`
+  // already triggers (`packages/engine/src/actions/dare.ts:180`). Where the engine
+  // emits no `DispositionChanged` at all, the table must not say "warmer by 0".
+  const buys =
+    disposition !== null && disposition !== 0
+      ? ` What it buys: ${dealerName} takes the pot unshown and comes away ` +
+        `${signedMargin(disposition)} warmer toward you — and a captain who is warm to you is ` +
+        `likelier to wave you past than to fly the intercept.`
+      : '';
+  return { creditsForfeited, creditsLeftOnTable, disposition, line: `${price}${buys}` };
+}
+
 export function dareScene(game: GameState): DareSceneView | null {
   const hand = game.dareHand;
   if (!hand) return null;
@@ -871,14 +962,15 @@ export function dareScene(game: GameState): DareSceneView | null {
   const roster =
     hand.opponentKind === 'roster' ? liarsDiceOpponentFor(hand.systemId, hand.dealerId) : undefined;
   const dealer = roster ?? game.npcs.find((n) => n.id === hand.dealerId);
-  // T-207 · ONE call, two fields. Hoisted so the projection asks the roaming/roster
-  // gate exactly once — a second call site would be a second place for the two
-  // fields to drift out of step.
+  // T-207 · ONE call, two fields. T-221 · three. Hoisted so the projection asks
+  // the roaming/roster gate exactly once — a second call site would be a second
+  // place for the fields to drift out of step.
   const dealerReadout = liarsDiceDealerReadout(game, hand.dealerId);
+  const dealerName = dealer?.name ?? hand.dealerId;
   return {
     handId: hand.id,
     dealerId: hand.dealerId,
-    dealerName: dealer?.name ?? hand.dealerId,
+    dealerName,
     opponentKind: hand.opponentKind,
     tableTalk: roster?.lines.tableTalk ?? null,
     opponentRead: dareOpponentRead(game, hand.id),
@@ -902,6 +994,10 @@ export function dareScene(game: GameState): DareSceneView | null {
     history: hand.history.map((h) => ({ ...h })),
     legalMoves: legalDareMoves(hand, 'player', game.player.credits),
     peekDc: venueParamsFor(hand.systemId, 'dare').dc,
+    // T-221 · LD-26's trade, priced at the table. Same hoisted readout, so the
+    // disposition arm is absent on a roster seat for the same one reason
+    // `dealerHistory` and `dealerTableTalk` are.
+    foldTrade: dareFoldTrade(hand, dealerName, dealerReadout),
   };
 }
 

@@ -3284,11 +3284,31 @@ function LiarsDiceScene({
               className="btn ghost"
               data-testid="dare-move"
               data-move="fold"
-              title="Pay the table and leave — the cup is never lifted"
+              // T-221 · the SAME string the priced line below prints, so the hover
+              // and the table can never drift apart.
+              title={view.foldTrade.line}
               onClick={() => dareMove('fold')}
             >
               {DARE_MOVE_LABEL.fold}
             </button>
+          )}
+          {/* T-221 · WHAT THE FOLD COSTS AND WHAT IT BUYS (LD-26 / §17.7). The
+              ruling prices FOLD in two currencies; until this line existed the
+              player could see neither, which makes a priced purchase a trap.
+              Every number is composed in `dareFoldTrade` off the live escrow and
+              the port's own `dare` row — the pane holds no threshold, no formula
+              and no branch that decides an outcome. `canMove('fold')` is the
+              engine's own `legalMoves`, the same legality read every control
+              above uses. */}
+          {canMove('fold') && (
+            <p
+              className="ld-tabletalk ld-fold-trade"
+              data-testid="dare-fold-trade"
+              data-credits={String(view.foldTrade.creditsForfeited)}
+              data-disposition={String(view.foldTrade.disposition ?? '')}
+            >
+              {view.foldTrade.line}
+            </p>
           )}
         </div>
       )}

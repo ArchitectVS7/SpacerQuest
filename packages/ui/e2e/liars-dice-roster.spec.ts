@@ -230,3 +230,35 @@ test('a roster seat carries its table talk and NO standing cue', async ({ page }
   // What it must never say.
   await expect(page.getByTestId('dare-dealer-history')).toHaveCount(0);
 });
+
+// ---------------------------------------------------------------------------
+// T-221 · THE ROSTER SEAT HAS NO STANDING TO BUY.
+//
+// T-221 prices the FOLD trade at the table (LD-26 / §17.7). Its CREDIT arm is
+// pool-agnostic — a roster fold forfeits the escrow exactly as a roaming one does
+// — but its DISPOSITION arm must be absent here, for the same §7.6 reason
+// `dare-dealer-history` is: pool A has no `NpcState`, `settleDareHand` moves
+// nothing and emits no `DispositionChanged`, so a warmth clause on this seat
+// would be selling something that does not exist.
+// ---------------------------------------------------------------------------
+
+test('a roster seat is quoted the credit arm of the fold, and no warmth', async ({ page }) => {
+  await openHangout(page);
+
+  await rosterRow(page, SEATS[1].id).click();
+  await page.getByTestId('dare-wager').fill(String(DARE_MIN_WAGER));
+  await expect(page.getByTestId('dare-commit')).toBeEnabled();
+  await page.getByTestId('dare-commit').click();
+  await expect(page.getByTestId('dare-scene')).toBeVisible();
+
+  const trade = page.getByTestId('dare-fold-trade');
+  await expect(trade).toBeVisible();
+  // The credit arm, read off the pane's own escrow cell rather than assumed.
+  const staked = (await page.getByTestId('dare-pot-player').innerText()).match(/\d+/)![0];
+  await expect(trade).toHaveAttribute('data-credits', staked);
+  await expect(trade).toContainText(`${staked}cr`);
+  // What it must never say — and the empty attribute, so an accidental 0 would
+  // fail here rather than print "0 warmer" at the table.
+  await expect(trade).toHaveAttribute('data-disposition', '');
+  await expect(trade).not.toContainText(/warm/i);
+});
