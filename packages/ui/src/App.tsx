@@ -25,6 +25,7 @@ import {
   CARGO_TYPES,
   NEMESIS_SYSTEM_ID,
   RENOWN_RANKS,
+  STAR_SYSTEMS,
   Stat,
   type HangoutVenueId,
 } from '@spacerquest/content';
@@ -100,7 +101,15 @@ import * as sound from './sound';
 import {
   systemName,
   cargoName,
-  starmapProjection,
+  // T-215 · the 3D lat/long globe (T-188's ruled candidate 4B) — the geometry,
+  // the camera clamp and the label-collision suppressor are all pure and live in
+  // format.ts; this file only renders what they return and drives the pointer.
+  starmapGlobe,
+  clampGlobeView,
+  GLOBE_MIN_ZOOM,
+  GLOBE_MAX_ZOOM,
+  type GlobeView,
+  type LabelMetrics,
   routePreview,
   explorationPreview,
   recoveryReadout,
@@ -3686,16 +3695,292 @@ function Bezel({ game, seed, children }: { game: GameState; seed: number; childr
   );
 }
 
-// The coordinate-accurate starmap (T-304). Plan a jump entirely here: pick a die
-// from the hand, click a reachable system to preview the engine's own fuel cost /
-// DC / danger, then commit. Every rule number is read from the engine (via
+// ===========================================================================
+// T-215 · THE GLOBE'S INPUT LAYER AND ITS TEXT METRICS.
+//
+// REAL RENDERED TEXT METRICS, NOT A CHARACTER-WIDTH GUESS. The T-188 mockup
+// approximated a label's width as `0.6 × font-size` per character and the ruling
+// recorded that it visibly UNDER-measured, which is why 4B's own collision
+// survey read low. The shipped build measures the actual glyph advances of the
+// actual font through a canvas, keyed on the computed font string so a text-size
+// change or a late webfont re-measures rather than shipping stale boxes.
+//
+// THE FONT ARRIVES LATE, AND THAT MATTERS. `index.html` pulls Chakra Petch and
+// IBM Plex Mono from Google Fonts asynchronously (and a packaged offline launch
+// never gets them at all), so the FIRST measurement is of a fallback stack whose
+// advances differ from Plex Mono's. `document.fonts.ready` + `loadingdone` clear
+// the cache and re-measure, so the suppression the player sees is computed
+// against the type they are actually reading.
+// ===========================================================================
+
+/** Only reached with no canvas at all (SSR, a DOM-less test env). Deliberately
+ *  PESSIMISTIC — wider than IBM Plex Mono's 0.6em and wider than every fallback
+ *  in `--font-data` — so a degraded environment over-suppresses rather than
+ *  shipping overlapping labels. It is never the production path. */
+const GLOBE_LABEL_FONT_PX = 8;
+const GLOBE_FALLBACK_METRICS: LabelMetrics = {
+  widthOf: (text) => text.length * GLOBE_LABEL_FONT_PX * 0.62,
+  ascent: GLOBE_LABEL_FONT_PX * 0.85,
+  descent: GLOBE_LABEL_FONT_PX * 0.35,
+};
+
+let labelCtx: CanvasRenderingContext2D | null | undefined;
+function measureContext(): CanvasRenderingContext2D | null {
+  if (labelCtx === undefined) {
+    try {
+      labelCtx = document.createElement('canvas').getContext('2d');
+    } catch {
+      labelCtx = null;
+    }
+  }
+  return labelCtx;
+}
+
+/** `${font}|${text}` → advance width. Cleared whenever the font changes. */
+const labelWidths = new Map<string, number>();
+
+/** Build metrics from a PROBE that is a real `.smlabel` inside the real SVG, so
+ *  the computed font is whatever the cascade actually resolved — not a font
+ *  string this file guessed at and would have to keep in sync with `theme.css`. */
+function buildLabelMetrics(probe: SVGTextElement | null): LabelMetrics {
+  const ctx = typeof document === 'undefined' ? null : measureContext();
+  if (!ctx || !probe) return GLOBE_FALLBACK_METRICS;
+  const cs = getComputedStyle(probe);
+  const font =
+    cs.font && cs.font.trim().length > 0
+      ? cs.font
+      : `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  ctx.font = font;
+  const px = Number.parseFloat(cs.fontSize) || GLOBE_LABEL_FONT_PX;
+  const m = ctx.measureText('Mg');
+  // Font-box metrics where the browser exposes them: they bound EVERY glyph of
+  // the face, so a name with a descender ('Procyon-5') cannot outgrow its box.
+  const ascent = m.fontBoundingBoxAscent || m.actualBoundingBoxAscent || px * 0.85;
+  const descent = m.fontBoundingBoxDescent || m.actualBoundingBoxDescent || px * 0.35;
+  // `.smlabel` paints a `--well` halo UNDER the glyphs (`paint-order: stroke`),
+  // so its rendered extent is the advance PLUS the stroke — half of it on each
+  // side. Measure what is actually on screen, or the e2e proof that reads
+  // `getBoundingClientRect()` would be measuring a different box than this does.
+  const halo = Number.parseFloat(cs.strokeWidth) || 0;
+  return {
+    widthOf(text: string): number {
+      const key = `${font}|${halo}|${text}`;
+      const cached = labelWidths.get(key);
+      if (cached !== undefined) return cached;
+      ctx.font = font;
+      const w = ctx.measureText(text).width + halo;
+      labelWidths.set(key, w);
+      return w;
+    },
+    ascent: ascent + halo / 2,
+    descent: descent + halo / 2,
+  };
+}
+
+/** The camera the globe opens on, and the one RESET returns to. */
+const GLOBE_HOME: GlobeView = { yaw: 0.62, pitch: 0.34, zoom: 1 };
+const GLOBE_DRAG_RADIANS_PER_PX = 0.011;
+const GLOBE_KEY_STEP = 0.18;
+const GLOBE_ZOOM_STEP = 1.25;
+/** Pointer travel, in CSS px, above which a gesture is a ROTATION and the click
+ *  it ends on must not also plot a course. Tap-vs-drag is load-bearing: the drag
+ *  surface is the SVG and every node click bubbles through it. */
+const GLOBE_TAP_SLOP_PX = 4;
+
+// The coordinate-accurate starmap (T-304), rebuilt by T-215 as the rotatable 3D
+// lat/long globe T-188 ruled for (candidate 4B). Plan a jump entirely here: pick
+// a die from the hand, click a reachable system to preview the engine's own fuel
+// cost / DC / danger, then commit. Every rule number is read from the engine (via
 // format.ts helpers) — the UI only projects coordinates and gates clicks.
 function Starmap({ state }: { state: CockpitState }) {
   const game = state.game;
   const [target, setTarget] = useState<number | null>(null);
-
-  const proj = starmapProjection(game);
   const here = game.player.currentSystemId;
+
+  // ---- T-215 · the camera. EPHEMERAL, and never persisted: a yaw in a save
+  // file would owe a migration for a value with no gameplay meaning. ----
+  const [view, setView] = useState<GlobeView>(GLOBE_HOME);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const [grabbing, setGrabbing] = useState(false);
+  const [hover, setHover] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const probeRef = useRef<SVGTextElement | null>(null);
+  /** pointerId → last client position. Two entries means a pinch. */
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ dist: number; zoom: number } | null>(null);
+  /** Total pointer travel of the gesture in flight — the tap-vs-drag test. */
+  const travelled = useRef(0);
+
+  // Re-measure on mount (the probe does not exist on the first render) and
+  // whenever the player changes text size.
+  const [fontTick, setFontTick] = useState(0);
+  useLayoutEffect(() => {
+    labelWidths.clear();
+    setFontTick((t) => t + 1);
+  }, [state.textSize]);
+  useEffect(() => {
+    const fonts = typeof document === 'undefined' ? undefined : document.fonts;
+    if (!fonts) return;
+    let live = true;
+    const remeasure = () => {
+      if (!live) return;
+      labelWidths.clear();
+      setFontTick((t) => t + 1);
+    };
+    void fonts.ready?.then(remeasure).catch(() => {});
+    fonts.addEventListener?.('loadingdone', remeasure);
+    return () => {
+      live = false;
+      fonts.removeEventListener?.('loadingdone', remeasure);
+    };
+  }, []);
+  const metrics = useMemo(() => buildLabelMetrics(probeRef.current), [fontTick]);
+
+  // ---- T-215 · POINTER EVENTS ONLY, and NO pointer capture. ----
+  //
+  // ROOT CAUSE OF THE T-188 MOBILE FAILURE, cause (a), measured rather than
+  // asserted (see `e2e/starmap-globe-touch.spec.ts`): the prototype drove its
+  // drag from `mousedown/mousemove/mouseup` and set no `touch-action`, so on a
+  // touch device the handlers never fired AND the browser claimed the gesture
+  // for panning before they could have. One Pointer-Events path plus
+  // `touch-action: none` covers mouse, touch and pen with the same code.
+  //
+  // Capture is DELIBERATELY not used: `setPointerCapture` retargets the
+  // subsequent compatibility mouse events (and therefore `click`) to the capture
+  // element in Chromium, which would swallow every node click on the map. Window
+  // listeners give the same "keep tracking outside the element" behaviour with no
+  // effect on click targeting.
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const prev = pointers.current.get(e.pointerId);
+      if (!prev) return;
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.current.size >= 2) {
+        const [a, b] = [...pointers.current.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        const start = pinch.current;
+        if (!start) return;
+        travelled.current += Math.abs(dist - start.dist);
+        setView((v) => clampGlobeView({ ...v, zoom: start.zoom * (dist / start.dist) }));
+        return;
+      }
+      const dx = e.clientX - prev.x;
+      const dy = e.clientY - prev.y;
+      travelled.current += Math.abs(dx) + Math.abs(dy);
+      setView((v) =>
+        clampGlobeView({
+          ...v,
+          yaw: v.yaw + dx * GLOBE_DRAG_RADIANS_PER_PX,
+          pitch: v.pitch + dy * GLOBE_DRAG_RADIANS_PER_PX,
+        }),
+      );
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!pointers.current.delete(e.pointerId)) return;
+      if (pointers.current.size < 2) pinch.current = null;
+      if (pointers.current.size === 0) setGrabbing(false);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, []);
+
+  // React 19 attaches `onWheel` PASSIVELY, so a `preventDefault()` inside it
+  // warns and does nothing — the page would scroll while the globe zoomed.
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? GLOBE_ZOOM_STEP : 1 / GLOBE_ZOOM_STEP;
+      setView((v) => clampGlobeView({ ...v, zoom: v.zoom * factor }));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    travelled.current = 0;
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = {
+        dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+        zoom: viewRef.current.zoom,
+      };
+    }
+    setGrabbing(true);
+  };
+
+  /** True when the gesture that just ended was a rotation, so the click it
+   *  produced must not also plot a course. */
+  const wasDrag = () => travelled.current > GLOBE_TAP_SLOP_PX;
+
+  const nudge = (dYaw: number, dPitch: number) =>
+    setView((v) => clampGlobeView({ ...v, yaw: v.yaw + dYaw, pitch: v.pitch + dPitch }));
+  const zoomBy = (factor: number) =>
+    setView((v) => clampGlobeView({ ...v, zoom: v.zoom * factor }));
+
+  // A POINTER-FREE PATH EXISTS BY CONSTRUCTION. Arrow keys rotate, +/− zoom, 0
+  // resets — this is keyboard accessibility and, equally, the guaranteed
+  // fallback if any platform ever swallows the gesture the way the T-188
+  // prototype's did.
+  const onKeyDown = (e: React.KeyboardEvent<SVGSVGElement>) => {
+    const step = GLOBE_KEY_STEP;
+    switch (e.key) {
+      case 'ArrowLeft':
+        nudge(-step, 0);
+        break;
+      case 'ArrowRight':
+        nudge(step, 0);
+        break;
+      case 'ArrowUp':
+        nudge(0, -step);
+        break;
+      case 'ArrowDown':
+        nudge(0, step);
+        break;
+      case '+':
+      case '=':
+        zoomBy(GLOBE_ZOOM_STEP);
+        break;
+      case '-':
+      case '_':
+        zoomBy(1 / GLOBE_ZOOM_STEP);
+        break;
+      case '0':
+        setView(GLOBE_HOME);
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+  };
+
+  // PERFORMANCE, not premature optimisation: `routePreview` is engine-backed and
+  // the drag re-renders at pointer rate. Memoised on the game state, it runs once
+  // per state change instead of once per node per frame; the globe itself then
+  // only does trigonometry.
+  const reachable = useMemo(() => {
+    const set = new Set<number>();
+    for (const sys of Object.values(STAR_SYSTEMS)) {
+      if (sys.id === game.player.currentSystemId) continue;
+      if (routePreview(game, sys.id).reachable) set.add(sys.id);
+    }
+    return set;
+  }, [game]);
+
+  const proj = starmapGlobe(game, view, metrics, {
+    reachable,
+    courseId: target,
+    focusId: hover,
+  });
   const visited = new Set(game.player.charts.visitedSystemIds);
   const npcCounts = knownNpcCounts(game);
   const eraSystems = new Set(game.eraEvent?.affectedSystemIds ?? []);
@@ -3722,10 +4007,24 @@ function Starmap({ state }: { state: CockpitState }) {
           : 'Off-lane sweep';
 
   const hereNode = proj.here;
-  // A transparent per-node hit target, narrower than the node spacing so
-  // neighbours never intercept, tall enough that the node's centre (used by
-  // click) lands on it. Decorative marks are pointer-events:none in CSS.
-  const hitW = Math.max(proj.scale * 0.85, 10);
+  // Paint order: far nodes first, then near ones — and the current system and the
+  // set course last of all. Their labels are exempt from the dot obstacles by
+  // ruling, so they are the only labels that can land on another system's mark,
+  // and they must land ON TOP of it rather than under. `data-testid` /
+  // `data-system-id` selectors are unaffected by DOM order.
+  //
+  // HOVER IS DELIBERATELY NOT IN THIS KEY, and the reason is a real bug that was
+  // measured, not a style preference. Re-ordering on hover moved the node's `<g>`
+  // among its siblings BETWEEN `mousedown` and `mouseup` — and Blink treats a
+  // moved element as a broken click target, so no `click` was dispatched at all
+  // and NO starmap node could be selected. A hovered label is revealed by CSS,
+  // which needs no reorder.
+  const paintRank = (id: number) => (id === here || id === target ? 1 : 0);
+  // Near nodes paint over far ones. `data-testid`/`data-system-id` selectors are
+  // unaffected by DOM order, and every node is rendered at every rotation.
+  const painted = [...proj.nodes].sort(
+    (a, b) => paintRank(a.id) - paintRank(b.id) || a.depth - b.depth,
+  );
   const targetNode = target !== null ? (proj.nodes.find((n) => n.id === target) ?? null) : null;
   // The target is only ever set to a reachable node, but recompute honestly.
   const preview = target !== null ? routePreview(game, target) : null;
@@ -3758,12 +4057,41 @@ function Starmap({ state }: { state: CockpitState }) {
             un-inerted by it. */}
         <div className="sm-plot" {...railsProps(state, 'starmap')}>
           <svg
-            className="smsvg"
+            ref={svgRef}
+            className={grabbing ? 'smsvg grabbing' : 'smsvg'}
             viewBox={proj.viewBox}
             role="img"
             aria-label="Starmap"
             preserveAspectRatio="xMidYMid meet"
+            tabIndex={0}
+            onPointerDown={onPointerDown}
+            onKeyDown={onKeyDown}
           >
+            {/* T-215 · The METRICS PROBE: a real `.smlabel` in the real SVG,
+                under a real `.smsys.here`, so the canvas measures the font the
+                cascade actually resolved rather than one this file guessed —
+                including `.smsys.here .smlabel`'s `font-weight: 600`, the widest
+                face any label renders in, which makes every measured box a
+                pessimistic bound rather than an average. Hidden, inert, and
+                deliberately not a `starmap-system`. */}
+            <g className="smsys here" aria-hidden="true">
+              <text className="smlabel probe" data-probe="1" ref={probeRef} x={-999} y={-999}>
+                Mg
+              </text>
+            </g>
+            {/* T-215 · the dotted lat/long wireframe. NO silhouette/emphasis ring
+                is drawn — the ruling forbids one, and `starmap-globe.test.ts`
+                pins its absence rather than trusting this comment. */}
+            <g className="graticule">
+              {proj.graticule.map((c, i) => (
+                <path
+                  key={i}
+                  className={`gline ${c.kind}${c.back ? ' back' : ''}`}
+                  data-back={c.back ? '1' : '0'}
+                  d={c.d}
+                />
+              ))}
+            </g>
             {hereNode && proj.ringUnits > 0 && (
               <circle
                 className="fuel-ring"
@@ -3785,22 +4113,35 @@ function Starmap({ state }: { state: CockpitState }) {
                 r={0}
               />
             )}
-            {hereNode && targetNode && showPreview && (
-              <line
-                className={preview.reachable ? 'route-line' : 'route-line blocked'}
-                x1={hereNode.sx}
-                y1={hereNode.sy}
-                x2={targetNode.sx}
-                y2={targetNode.sy}
-              />
-            )}
-            {proj.nodes.map((n) => {
+            {/* T-215 · LANES. Dim from the ship — not from Sol — to every
+                reachable system; the set course is the one bright lane. The hub
+                is `hereNode`, whatever system that is; Sol only ever looked like
+                the hub because the sample career happens to start docked there.
+                The bright lane keeps the `route-line` / `route-line blocked`
+                classes the flat map used, so its two meanings are unchanged. */}
+            <g className="lanes">
+              {proj.lanes.map((lane) => (
+                <line
+                  key={lane.toId}
+                  className={
+                    lane.bright ? (lane.reachable ? 'route-line' : 'route-line blocked') : 'smlane'
+                  }
+                  data-lane-to={lane.toId}
+                  data-lane-bright={lane.bright ? '1' : '0'}
+                  x1={lane.x1}
+                  y1={lane.y1}
+                  x2={lane.x2}
+                  y2={lane.y2}
+                />
+              ))}
+            </g>
+            {painted.map((n) => {
               const isHere = n.id === here;
-              const reachable = isHere ? true : routePreview(game, n.id).reachable;
-              const clickable = !isHere && reachable;
+              const canReach = isHere ? true : reachable.has(n.id);
+              const clickable = !isHere && canReach;
               // T-1505b · The event horizon reads differently from a port. The node
               // is only ever in `proj.nodes` at all once the crossing stake is paid
-              // (format.ts `starmapProjection`), so the tag doubles as the visible
+              // (format.ts `starmapGlobe`), so the tag doubles as the visible
               // proof the gate lifted; everything else about it (reachability, the
               // route preview, Confirm jump) is the ordinary travel path, reused.
               const isCrossing = n.id === NEMESIS_SYSTEM_ID;
@@ -3813,8 +4154,12 @@ function Starmap({ state }: { state: CockpitState }) {
                 isHere ? 'here' : visited.has(n.id) ? 'visited' : 'unvisited',
                 n.isRim ? 'rim' : '',
                 isCrossing ? 'crossing' : '',
-                !isHere && !reachable ? 'unreachable' : '',
+                !isHere && !canReach ? 'unreachable' : '',
                 target === n.id ? 'sel' : '',
+                // T-215 · the far hemisphere is DIMMED, never culled: it stays
+                // rendered, `data-reachable`-accurate and clickable, because
+                // hiding a destination the engine will happily fly to is a bug.
+                n.front ? '' : 'back',
               ]
                 .filter(Boolean)
                 .join(' ');
@@ -3826,14 +4171,27 @@ function Starmap({ state }: { state: CockpitState }) {
                   data-testid="starmap-system"
                   data-system-id={n.id}
                   data-crossing={isCrossing ? '1' : undefined}
-                  data-reachable={reachable ? '1' : '0'}
+                  data-reachable={canReach ? '1' : '0'}
                   data-visited={visited.has(n.id) ? '1' : '0'}
                   data-here={isHere ? '1' : '0'}
+                  data-depth={Math.round(n.depth * 100) / 100}
+                  data-label-hidden={n.labelVisible ? '0' : '1'}
                   data-rails-locked={railsLocked ? '1' : undefined}
                   data-rails-target={railsTarget === n.id ? '1' : undefined}
                   aria-label={n.name}
                   aria-disabled={clickable && !railsLocked ? undefined : 'true'}
-                  onClick={clickable && !railsLocked ? () => setTarget(n.id) : undefined}
+                  onPointerEnter={() => setHover(n.id)}
+                  onPointerLeave={() => setHover((h) => (h === n.id ? null : h))}
+                  onClick={
+                    clickable && !railsLocked
+                      ? () => {
+                          // Tap, not the tail of a rotation. Without this every
+                          // drag that ends over a node would also plot a course.
+                          if (wasDrag()) return;
+                          setTarget(n.id);
+                        }
+                      : undefined
+                  }
                   transform={`translate(${n.sx} ${n.sy})`}
                 >
                   <circle className="smdot" r={5} />
@@ -3853,14 +4211,59 @@ function Starmap({ state }: { state: CockpitState }) {
                       r={1.6}
                     />
                   ))}
-                  <text className="smlabel" x={0} y={16}>
+                  {/* A suppressed label is RENDERED and hidden in CSS, not
+                      omitted: hovering it is what brings it back, and a node
+                      that keeps its text node is cheaper to reveal. */}
+                  <text
+                    className="smlabel"
+                    data-hidden={n.labelVisible || hover === n.id ? undefined : '1'}
+                    x={0}
+                    y={16}
+                  >
                     {n.name}
                   </text>
-                  <rect className="smhit" x={-hitW / 2} y={-12} width={hitW} height={32} />
+                  {/* T-215 · The hit target is a CIRCLE sized by `starmapGlobe`
+                      to this node's nearest on-screen neighbour, so no node can
+                      ever swallow another's click as the globe turns. */}
+                  <circle className="smhit" r={n.hitRadius} />
                 </g>
               );
             })}
           </svg>
+          {/* T-215 · The pointer-free control path. Zoom and reset without a
+              gesture — accessibility, and the standing fallback if a platform
+              ever swallows touch the way the T-188 prototype's did. */}
+          <div className="globe-ctl" data-testid="globe-controls">
+            <button
+              type="button"
+              className="gctl"
+              data-testid="globe-zoom-out"
+              aria-label="Zoom out"
+              onClick={() => zoomBy(1 / GLOBE_ZOOM_STEP)}
+              disabled={proj.scale <= 0 || view.zoom <= GLOBE_MIN_ZOOM}
+            >
+              &minus;
+            </button>
+            <button
+              type="button"
+              className="gctl"
+              data-testid="globe-zoom-in"
+              aria-label="Zoom in"
+              onClick={() => zoomBy(GLOBE_ZOOM_STEP)}
+              disabled={view.zoom >= GLOBE_MAX_ZOOM}
+            >
+              +
+            </button>
+            <button
+              type="button"
+              className="gctl"
+              data-testid="globe-reset"
+              aria-label="Reset view"
+              onClick={() => setView(GLOBE_HOME)}
+            >
+              RESET
+            </button>
+          </div>
 
           {showPreview && (
             <div className="route-preview" data-testid="route-preview">

@@ -17,7 +17,10 @@ in `docs/SAVE-FORMAT-DECISIONS.md`. Liar's-Dice-table presentation lives in
 
 **UI-1 — Each cockpit quadrant owns an EXCLUSIVE shape language, and a new treatment is chosen
 by ELIMINATION, not by taste.** (T-191, building on T-189 and T-190.) The four claimed languages
-are: starmap = SVG star plane in square 1px `--hair` pane chrome (`.pane.starmap`); ship =
+are: starmap = SVG star field in square 1px `--hair` pane chrome (`.pane.starmap`) — since T-215
+(T-188's ruling) that field is a **rotatable 3D lat/long globe**, not the flat 2D projection this
+line originally described, and the flat `starmapProjection` path is deleted rather than kept as a
+fallback; ship =
 T-189's annotated hull outline with callouts and yard bench (`.pane.ship`); manifest = T-190's
 ROUNDED 2px clipboard with bulldog clip, punched paper, torn edge and a −0.45deg hang
 (`.pane.manifest-board`); Port Ledger = T-191's bolted SERVICE RACK (chamfered plates, riveted

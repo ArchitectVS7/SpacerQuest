@@ -818,7 +818,7 @@ export type GameEvent =
        * FLAGS this arc writes (all on the existing `GameState.flags`):
        *   - `nemesis.crossing.unlocked`      (true) — lifts the NEMESIS gate.
        *     READERS: day.ts's destination gate, the sim protocol's legalActions,
-       *     the UI starmap band (format.ts `starmapProjection`), and the crossing
+       *     the UI starmap band (format.ts `starmapGlobe`), and the crossing
        *     storylet's own retire-trigger.
        *   - `nemesis.crossing.stake.credits` (number) — what was surrendered.
        *   - `nemesis.crossing.stake.day`     (number) — when.

@@ -481,9 +481,113 @@ body {
 .smsvg {
   width: 100%;
   height: auto;
+  /* T-215 · UNCHANGED AT 240px, DELIBERATELY. A globe is a CIRCLE in a wide,
+     short pane, so the temptation is to raise this ceiling — but the starmap
+     row is `minmax(0, auto)` (see `.col.left`) and the pane's own body scrolls,
+     so every pixel taken here pushes the off-lane sweep's button below the fold.
+     Measured at 264px and 320px: both hide the control. The globe was made to
+     fill more of the plate by TIGHTENING ITS viewBox instead (260x200 around a
+     168-unit sphere, `format.ts`), which costs the layout nothing. */
   max-height: 240px;
   overflow: visible;
   display: block;
+  /* T-215 · THE MOBILE ROOT CAUSE, FIXED IN ONE DECLARATION. Without
+     `touch-action: none` the browser claims a touch drag for pan/scroll before
+     any handler sees it — which, together with the T-188 prototype's mouse-only
+     listeners, is why that prototype could not be rotated on a touch device.
+     `user-select` stops a drag from selecting the port labels instead. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+/* The UA's own focus ring on a `tabindex`-bearing SVG paints BLUE, which is an
+   off-system hue on a one-phosphor console. Replaced, not merely suppressed. */
+.smsvg:focus {
+  outline: none;
+}
+.smsvg:focus-visible {
+  outline: 1px solid var(--amber);
+  outline-offset: 2px;
+}
+.smsvg.grabbing {
+  cursor: grabbing;
+}
+/* The canvas metrics probe: a real label, measured, never seen. */
+.smlabel.probe {
+  visibility: hidden;
+}
+
+/* ---- T-215 · the lat/long wireframe. DOTTED, DIM, and deliberately WITHOUT a
+   silhouette/emphasis ring — the T-188 ruling forbids one, and the absence is
+   pinned by `src/__tests__/starmap-globe.test.ts` rather than by this comment.
+   The far hemisphere is the same stroke at lower opacity, which is what makes a
+   flat set of arcs read as a sphere. ---- */
+.gline {
+  fill: none;
+  stroke: var(--amber-dim);
+  stroke-width: 0.5;
+  stroke-dasharray: 0.9 2.4;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.gline.back {
+  opacity: 0.35;
+}
+/* A dim lane from the SHIP to a reachable system. The one BRIGHT lane is the set
+   course and keeps `.route-line` — see App.tsx's lanes group. */
+.smlane {
+  stroke: var(--amber-dim);
+  stroke-width: 0.6;
+  opacity: 0.6;
+  pointer-events: none;
+}
+/* The far hemisphere is DIMMED, never culled: still clickable, still charted. */
+.smsys.back .smdot {
+  opacity: 0.45;
+}
+.smsys.back .smlabel {
+  opacity: 0.6;
+}
+/* A label the collision suppressor dropped. The NODE is untouched; hovering it
+   restores the text (App.tsx clears `data-hidden` on the hovered system). */
+.smlabel[data-hidden='1'] {
+  display: none;
+}
+
+/* T-215 · the pointer-free camera controls. OUTSIDE THE GLASS, so they are unlit
+   machined keys (edge + bevel + etched legend), never amber — amber on a key
+   means ARMED, and a zoom control commits nothing. */
+.globe-ctl {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.gctl {
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  font-size: 10px;
+  min-width: 26px;
+  padding: 2px 8px;
+  color: var(--etch);
+  background: var(--steel);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  box-shadow: var(--bevel);
+  cursor: pointer;
+}
+.gctl:hover:not(:disabled) {
+  color: var(--ember);
+  text-shadow: var(--glow);
+}
+.gctl:active:not(:disabled) {
+  box-shadow: var(--recess);
+}
+.gctl:disabled {
+  color: var(--etch-dim);
+  cursor: default;
 }
 
 /* fuel-range ring — a true distance circle centred on the ship */
@@ -576,7 +680,7 @@ body {
   fill: var(--ember-hi);
 }
 /* T-1505b · the event horizon. Only ever drawn once the crossing stake is paid
-   (format.ts starmapProjection), so it reads as a door that just opened rather
+   (format.ts starmapGlobe), so it reads as a door that just opened rather
    than a port on the lane: hollow dot, ember rim, ember label. */
 .smsys.crossing .smdot {
   fill: none;

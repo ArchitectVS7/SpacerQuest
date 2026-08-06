@@ -31,6 +31,8 @@ import {
   FACTION_IDS,
   FACTION_LABELS,
   NEMESIS_SYSTEM_ID,
+  // T-215 · the T-188 sphere geometry the live Starmap now projects.
+  coordinates3D,
   NEMESIS_CROSSING_DC,
   CROSSING_STAKE_MIN_CREDITS,
   CROSSING_REQUIRED_RANK,
@@ -1558,56 +1560,375 @@ export function contrabandHold(game: GameState): ContrabandHold {
   return { carrying: isCarryingIllicit(game), source };
 }
 
-/** A system placed on the SVG plane: raw coordinates plus projected (viewBox)
- *  screen coordinates. */
-export interface ProjectedNode {
+function round(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+// ===========================================================================
+// T-215 · THE 3D LAT/LONG GLOBE STARMAP (T-188's ruled candidate 4B).
+//
+// This REPLACES the flat SVG `starmapProjection` outright — the ruling's own
+// "not a toggle, not a fallback" — and that function is deleted, not left dead.
+//
+// The whole projection is a PURE FUNCTION of (game, view, label metrics). That
+// is the precedent the retired flat map set and the ship diagram follows:
+// SVG geometry and the derived readouts are computed in this file, `App.tsx`
+// only renders them, and so the entire surface — including the label-collision
+// suppressor the ruling made mandatory — is unit-testable with no DOM.
+//
+// Three deliberate choices, stated here so they are not re-litigated:
+//
+//  * THE SPHERE IS CENTRED ON SOL, THE LANE HUB IS THE CURRENT SYSTEM. These
+//    are different things and the ruling only speaks to the second. `coordinates3D`
+//    is Sol-centred by construction and its radius-from-Sol invariant is the
+//    entire balance-preservation story of T-188 — recentring the camera on the
+//    docked system would throw that away for nothing. The lanes, which is what
+//    the ruling is about, radiate from wherever the ship actually is.
+//  * ORTHOGRAPHIC, NOT PERSPECTIVE. Under an orthographic projection a sphere's
+//    silhouette is a true circle and a distance circle stays round, which is what
+//    keeps the fuel-range ring (`data-radius-units` = `maxJumpDistance`) an
+//    honest reading of range rather than a decoration.
+//  * THE viewBox IS FIXED (`0 0 300 220`), independent of the data AND of the
+//    view. `starmapProjection` fitted its box to the band; on a globe that would
+//    resize the box on every drag frame — the map would appear to breathe, and
+//    label metrics measured in CSS px would drift against viewBox units frame to
+//    frame. Fixed box, `preserveAspectRatio="xMidYMid meet"`, everything scales
+//    inside it.
+// ===========================================================================
+
+/** The camera. Ephemeral UI state, deliberately NEVER persisted: a save that
+ *  carried a yaw would owe a migration for a value with no gameplay meaning. */
+export interface GlobeView {
+  /** Rotation about the vertical axis, radians. Wraps. */
+  yaw: number;
+  /** Camera elevation, radians. Clamped short of the poles — see {@link clampGlobeView}. */
+  pitch: number;
+  /** Uniform zoom multiplier. Clamped to [0.6, 3]. */
+  zoom: number;
+}
+
+/** Rendered-text measurement, INJECTED rather than approximated.
+ *  The T-188 mockup used a fixed `0.6 × font-size` per character and the ruling
+ *  recorded that it visibly under-measured; the shipped build measures the real
+ *  font through a canvas (`App.tsx`'s `useLabelMetrics`). The interface exists so
+ *  the suppressor stays pure and testable in vitest's DOM-less `node` env. */
+export interface LabelMetrics {
+  /** Advance width of the rendered string, in viewBox units. */
+  widthOf(text: string): number;
+  ascent: number;
+  descent: number;
+}
+
+/** A system on the globe. Screen coordinates plus the rotated depth that both
+ *  orders the label-collision tie-break and dims the far hemisphere. */
+export interface GlobeNode {
   id: number;
   name: string;
   isRim: boolean;
-  x: number;
-  y: number;
   sx: number;
   sy: number;
+  /** Rotated z. Positive = toward the camera (front hemisphere). */
+  depth: number;
+  front: boolean;
+  /** False when the collision suppressor dropped this label. The NODE always
+   *  renders and stays clickable — only the text is withheld. */
+  labelVisible: boolean;
+  labelW: number;
+  labelH: number;
+  /** Radius of this node's transparent hit target, in viewBox units.
+   *
+   *  NOT A CONSTANT, and not a decoration. The flat map could use one width for
+   *  every node because a lane spaced them evenly; on a globe the on-screen
+   *  spacing changes with every degree of rotation, and a fixed target silently
+   *  swallows a neighbour's clicks — measured, not theorised: a fixed 22-unit
+   *  rect made three `starmap.spec.ts` jumps un-clickable because Fomalhaut-2's
+   *  rect covered its neighbour's centre.
+   *
+   *  So the radius is capped at nine tenths of the distance to this node's own
+   *  NEAREST on-screen neighbour, which makes interception impossible rather
+   *  than unlikely: for any pair, r_j = 0.9·min_k d_jk ≤ 0.9·d_ji < d_ij, so no
+   *  node's hit target can ever reach another node's centre. */
+  hitRadius: number;
 }
 
-export interface StarmapProjection {
-  /** SVG viewBox string sized to the displayed band. */
+/** A lane from the current system. `bright` is true for EXACTLY the set course. */
+export interface GlobeLane {
+  toId: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  bright: boolean;
+  reachable: boolean;
+}
+
+/** One projected graticule stroke, split at the depth sign change so the far
+ *  half of the wireframe can render dimmer than the near half. */
+export interface GlobeCurve {
+  d: string;
+  kind: 'lat' | 'lon';
+  back: boolean;
+}
+
+export interface StarmapGlobe {
+  /** Fixed. Byte-identical across every rotation and zoom — see the header. */
   viewBox: string;
   width: number;
   height: number;
-  /** Distance-units → viewBox-units (uniform, so a distance circle stays round). */
+  /** Distance-units → viewBox-units (uniform, so the fuel ring stays round). */
   scale: number;
-  nodes: ProjectedNode[];
-  here: ProjectedNode | null;
-  /** Fuel-range ring radius in distance units (from maxJumpDistance) … */
+  nodes: GlobeNode[];
+  here: GlobeNode | null;
+  lanes: GlobeLane[];
+  graticule: GlobeCurve[];
+  /** Fuel-range ring radius in distance units (from `maxJumpDistance`) … */
   ringUnits: number;
   /** … and in projected viewBox units. */
   ringRadius: number;
 }
 
+// The box is sized SNUGLY around the sphere plus its label drop, not to a
+// pleasing round number: the pane is wide and short, so every viewBox unit of
+// slack above or below the globe is height the letterboxed SVG spends on
+// nothing. Sphere 168 tall in a 200-tall box; the extra 4 units under the
+// lowest label are the descender.
+const GLOBE_W = 260;
+const GLOBE_H = 200;
+const GLOBE_CX = GLOBE_W / 2;
+const GLOBE_CY = 96;
+/** Sphere radius in viewBox units at zoom 1 — leaves room under the globe for
+ *  the 16-unit label drop without the labels falling out of the box. */
+const GLOBE_FIT_RADIUS = 84;
+/** `App.tsx` anchors `<text className="smlabel">` at local (0, 16). */
+export const GLOBE_LABEL_Y_OFFSET = 16;
+
+/** Half-extent of a system's drawn mark (`.smdot` is `r = 5`), used as the
+ *  obstacle a label must not be drawn across. */
+export const GLOBE_NODE_MARK_RADIUS = 6;
+/** The largest a node's transparent hit target ever gets, in viewBox units —
+ *  comfortably bigger than the `r = 5` dot it sits over. */
+export const GLOBE_MAX_HIT_RADIUS = 10;
+/** …and the share of the distance to the nearest neighbour it may not exceed.
+ *  Strictly below 1, which is what makes interception impossible. */
+export const GLOBE_HIT_NEIGHBOUR_FRACTION = 0.9;
+
+export const GLOBE_MIN_ZOOM = 0.6;
+export const GLOBE_MAX_ZOOM = 3;
+/** Just under 69°. The poles are excluded on purpose: at pitch = ±90° every
+ *  latitude circle sits at a constant depth, so the wireframe stops splitting
+ *  front-from-back and the equator projects onto the silhouette — which is
+ *  exactly the "bright emphasis ring" the ruling forbids, arrived at by accident. */
+export const GLOBE_MAX_PITCH = 1.2;
+
+/** Normalise a camera into the legal range. Applied inside `starmapGlobe` too,
+ *  so no caller can hand it an out-of-range view. */
+export function clampGlobeView(view: GlobeView): GlobeView {
+  const tau = Math.PI * 2;
+  return {
+    yaw: ((view.yaw % tau) + tau) % tau,
+    pitch: Math.max(-GLOBE_MAX_PITCH, Math.min(GLOBE_MAX_PITCH, view.pitch)),
+    zoom: Math.max(GLOBE_MIN_ZOOM, Math.min(GLOBE_MAX_ZOOM, view.zoom)),
+  };
+}
+
+interface Rotated {
+  sx: number;
+  sy: number;
+  depth: number;
+}
+
+/** Orthographic rotate-and-project. A rigid motion (yaw about the vertical axis,
+ *  then pitch), so every pairwise 3D distance survives it unchanged — which is
+ *  what lets the balance-preserving radius-from-Sol invariant hold on screen. */
+function rotateProject(
+  p: { x: number; y: number; z: number },
+  view: GlobeView,
+  k: number,
+): Rotated {
+  const cy = Math.cos(view.yaw);
+  const sy = Math.sin(view.yaw);
+  const x1 = p.x * cy + p.z * sy;
+  const z1 = -p.x * sy + p.z * cy;
+  const cp = Math.cos(view.pitch);
+  const sp = Math.sin(view.pitch);
+  const y2 = p.y * cp - z1 * sp;
+  const depth = p.y * sp + z1 * cp;
+  // SVG y grows downward, so the projected up-axis is negated.
+  return { sx: GLOBE_CX + x1 * k, sy: GLOBE_CY - y2 * k, depth };
+}
+
+/** The latitudes and longitudes of the dotted wireframe. No silhouette outline
+ *  is generated — the ruling's "no bright emphasis ring" is a property of what
+ *  this function does NOT emit, and `starmap-globe.test.ts` pins it. */
+const GLOBE_LATITUDES = [-60, -30, 0, 30, 60].map((d) => (d * Math.PI) / 180);
+const GLOBE_LONGITUDE_COUNT = 12;
+const GLOBE_LAT_SAMPLES = 64;
+const GLOBE_LON_SAMPLES = 33;
+
+function pathOf(points: readonly Rotated[]): string {
+  return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${round(p.sx)} ${round(p.sy)}`).join(' ');
+}
+
+/** Break a projected curve wherever the depth changes sign and emit one run per
+ *  hemisphere, so the far half of the wireframe can be drawn dimmer. */
+function splitByDepth(points: readonly Rotated[], kind: 'lat' | 'lon'): GlobeCurve[] {
+  const out: GlobeCurve[] = [];
+  let run: Rotated[] = [];
+  let back = points.length > 0 ? points[0].depth < 0 : false;
+  for (const p of points) {
+    const isBack = p.depth < 0;
+    if (isBack !== back && run.length > 0) {
+      // Carry the boundary point into both runs so the two halves visually meet.
+      run.push(p);
+      out.push({ d: pathOf(run), kind, back });
+      run = [run[run.length - 1]];
+      back = isBack;
+    }
+    run.push(p);
+  }
+  if (run.length > 1) out.push({ d: pathOf(run), kind, back });
+  return out;
+}
+
+function graticuleCurves(radius: number, view: GlobeView, k: number): GlobeCurve[] {
+  const curves: GlobeCurve[] = [];
+  for (const lat of GLOBE_LATITUDES) {
+    const ring = radius * Math.cos(lat);
+    const y = radius * Math.sin(lat);
+    const pts: Rotated[] = [];
+    for (let i = 0; i <= GLOBE_LAT_SAMPLES; i += 1) {
+      const t = (i / GLOBE_LAT_SAMPLES) * Math.PI * 2;
+      pts.push(rotateProject({ x: ring * Math.cos(t), y, z: ring * Math.sin(t) }, view, k));
+    }
+    curves.push(...splitByDepth(pts, 'lat'));
+  }
+  for (let m = 0; m < GLOBE_LONGITUDE_COUNT; m += 1) {
+    const lon = (m / GLOBE_LONGITUDE_COUNT) * Math.PI * 2;
+    const pts: Rotated[] = [];
+    for (let i = 0; i <= GLOBE_LON_SAMPLES; i += 1) {
+      const phi = -Math.PI / 2 + (i / GLOBE_LON_SAMPLES) * Math.PI;
+      const ring = radius * Math.cos(phi);
+      pts.push(
+        rotateProject(
+          { x: ring * Math.cos(lon), y: radius * Math.sin(phi), z: ring * Math.sin(lon) },
+          view,
+          k,
+        ),
+      );
+    }
+    curves.push(...splitByDepth(pts, 'lon'));
+  }
+  return curves;
+}
+
+/** One label's bounding box, in viewBox units. */
+export interface LabelCandidate {
+  id: number;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  /** Rotated z — the nearest-to-camera tie-break the ruling names. */
+  depth: number;
+}
+
+function boxesOverlap(a: Omit<LabelCandidate, 'depth'>, b: Omit<LabelCandidate, 'depth'>): boolean {
+  return a.minX < b.maxX && a.maxX > b.minX && a.minY < b.maxY && a.maxY > b.minY;
+}
+
 /**
- * Project the relevant band of systems onto an SVG plane. We do NOT fit all 28
- * systems: the Andromeda cluster sits at x up to 99 and would crush the core
- * lane into an unreadable sliver. Instead we render the core+rim lane (ids
- * 1–20) plus the current system and any charted system, then bound the box to
- * exactly that set. The scale is uniform so the fuel-range ring — a true
- * distance circle — is drawn round rather than sheared.
+ * T-215 · LABEL-COLLISION SUPPRESSION — REQUIRED, NOT OPTIONAL.
  *
- * T-1505b · ONE DELIBERATE EXCEPTION: NEMESIS (id 28) joins the band once
- * `nemesis.crossing.unlocked` is set. The band stretches only for the endgame,
- * and only after the stake is paid — before that the black hole is not on the
- * chart at all, so the map never advertises a door the player cannot open, and
- * the arc's terminus is never spoiled on day one. Andromeda (21–26) and MALIGNA
- * (27) are still never shown: the gate lift is NEMESIS-only (design call D1), so
- * showing them would offer six systems the engine would refuse. This is the UI
- * READER of the crossing flag; the other two are the engine gate (day.ts) and the
- * sim protocol's legalActions.
+ * T-188's own measurement across 90 sampled rotations found 97.8% of them
+ * produce at least one collision among the 20 charted systems, so "spin to a
+ * clean angle" is not a fallback that exists. The ruling's priority order, in
+ * order, is what this implements:
+ *
+ *   1. the hovered/selected system (the ruling's "until hovered/selected" clause
+ *      — a label the player is actively pointing at always wins);
+ *   2. the current system;
+ *   3. the set-course target;
+ *   4. everything else, nearest-to-camera first (descending rotated `z`).
+ *
+ * Greedy accept: a label is kept when its box clears every box already kept AND
+ * every FIXED OBSTACLE. The obstacles are the other systems' own dots, which was
+ * not in the ruling's text but is in the ruling's intent — the first shipped
+ * frame put "Fomalhaut-2" straight through a neighbour's dot and its NPC pips,
+ * which is the same illegibility the owner flagged, arrived at from the other
+ * side. A dot cannot move and cannot be dropped, so the label yields to it.
+ *
+ * A LOSER KEEPS ITS DOT. Suppression withholds text, never a node — the node
+ * stays rendered, `data-reachable`-accurate and clickable, because hiding a
+ * destination the engine will happily jump to is a bug, not a decluttering.
+ *
+ * Returns the ids whose labels survive.
  */
-export function starmapProjection(game: GameState): StarmapProjection {
+export function suppressLabels(
+  candidates: readonly LabelCandidate[],
+  priority: { focusId?: number | null; hereId?: number | null; courseId?: number | null } = {},
+  obstacles: readonly Omit<LabelCandidate, 'depth'>[] = [],
+): Set<number> {
+  const rank = (c: LabelCandidate): number => {
+    if (priority.focusId != null && c.id === priority.focusId) return 0;
+    if (priority.hereId != null && c.id === priority.hereId) return 1;
+    if (priority.courseId != null && c.id === priority.courseId) return 2;
+    return 3;
+  };
+  const ordered = [...candidates].sort((a, b) => {
+    const dr = rank(a) - rank(b);
+    if (dr !== 0) return dr;
+    if (b.depth !== a.depth) return b.depth - a.depth;
+    return a.id - b.id; // total order, so the result is deterministic
+  });
+  const kept: Omit<LabelCandidate, 'depth'>[] = [];
+  const visible = new Set<number>();
+  for (const c of ordered) {
+    // A node never blocks its OWN label: the dot sits at the anchor and the text
+    // hangs 16 units below it, so the two cannot intersect by construction.
+    //
+    // THE THREE PRIORITY LABELS ARE EXEMPT FROM THE DOT OBSTACLES. The ruling
+    // makes "current system, then the set-course target" unconditional — those
+    // two must always be readable — and the hovered label is the player's own
+    // request. Only rank-3 labels yield to a dot.
+    if (rank(c) === 3 && obstacles.some((o) => o.id !== c.id && boxesOverlap(o, c))) continue;
+    if (kept.some((k) => boxesOverlap(k, c))) continue;
+    kept.push(c);
+    visible.add(c.id);
+  }
+  return visible;
+}
+
+/**
+ * Project the shown band of systems onto the rotatable globe.
+ *
+ * THE NODE SET IS UNCHANGED FROM `starmapProjection` — ids 1–20, plus the
+ * current system, plus every charted system, plus NEMESIS (28) once
+ * `nemesis.crossing.unlocked` is set. That predicate is a gameplay contract
+ * (T-1505b, `e2e/nemesis-crossing.spec.ts`), not a layout detail, so the change
+ * of projection does not touch it. Andromeda (21–26) and MALIGNA (27) are still
+ * never charted: the crossing lift is NEMESIS-only (design call D1).
+ *
+ * `reachable` is passed IN rather than computed here on purpose. The engine's
+ * `routePreview` is the hot path under a drag — recomputing it per node per
+ * pointer frame is the difference between a globe that spins and one that
+ * stutters — so `App.tsx` memoises it on the game state and this function only
+ * ever does trigonometry.
+ */
+export function starmapGlobe(
+  game: GameState,
+  rawView: GlobeView,
+  metrics: LabelMetrics,
+  opts: {
+    reachable?: ReadonlySet<number>;
+    courseId?: number | null;
+    focusId?: number | null;
+  } = {},
+): StarmapGlobe {
+  const view = clampGlobeView(rawView);
   const here = game.player.currentSystemId;
   const visited = new Set(game.player.charts.visitedSystemIds);
   const crossingOpen = game.flags['nemesis.crossing.unlocked'] === true;
-  const shown = new Map<number, (typeof STAR_SYSTEMS)[number]>();
+  const shown: (typeof STAR_SYSTEMS)[number][] = [];
   for (const sys of Object.values(STAR_SYSTEMS)) {
     if (
       (sys.id >= 1 && sys.id <= 20) ||
@@ -1615,58 +1936,111 @@ export function starmapProjection(game: GameState): StarmapProjection {
       visited.has(sys.id) ||
       (crossingOpen && sys.id === NEMESIS_SYSTEM_ID)
     ) {
-      shown.set(sys.id, sys);
+      shown.push(sys);
     }
   }
-  const systems = [...shown.values()];
-  const xs = systems.map((s) => s.coordinates.x);
-  const ys = systems.map((s) => s.coordinates.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const spanX = maxX - minX;
-  const spanY = maxY - minY;
 
-  const pad = 8; // viewBox units of margin around the band
-  const targetSpan = 220; // desired long-axis size in viewBox units
-  const scale = targetSpan / Math.max(spanX, spanY, 1);
+  const coords = new Map(shown.map((s) => [s.id, coordinates3D(s.id)]));
+  let maxRadius = 1;
+  for (const c of coords.values()) {
+    maxRadius = Math.max(maxRadius, Math.hypot(c.x, c.y, c.z));
+  }
+  const k = (GLOBE_FIT_RADIUS / maxRadius) * view.zoom;
 
-  const width = spanX * scale + pad * 2;
-  // A pure lane (spanY 0) still needs vertical room for the node + label.
-  const laneHeight = 64;
-  const height = Math.max(spanY * scale, laneHeight) + pad * 2;
-  const yOffset = spanY === 0 ? height / 2 : pad;
+  const reachable =
+    opts.reachable ??
+    new Set(
+      shown.filter((s) => s.id !== here && routePreview(game, s.id).reachable).map((s) => s.id),
+    );
 
-  const project = (sys: (typeof STAR_SYSTEMS)[number]): ProjectedNode => ({
-    id: sys.id,
-    name: sys.name,
-    isRim: sys.isRim,
-    x: sys.coordinates.x,
-    y: sys.coordinates.y,
-    sx: pad + (sys.coordinates.x - minX) * scale,
-    sy: spanY === 0 ? yOffset : pad + (sys.coordinates.y - minY) * scale,
+  const nodes: GlobeNode[] = shown.map((sys) => {
+    const r = rotateProject(coords.get(sys.id)!, view, k);
+    return {
+      id: sys.id,
+      name: sys.name,
+      isRim: sys.isRim,
+      sx: r.sx,
+      sy: r.sy,
+      depth: r.depth,
+      front: r.depth >= 0,
+      labelVisible: true,
+      labelW: metrics.widthOf(sys.name),
+      labelH: metrics.ascent + metrics.descent,
+      hitRadius: GLOBE_MAX_HIT_RADIUS,
+    };
   });
 
-  const nodes = systems.map(project);
-  const hereSys = STAR_SYSTEMS[here];
+  for (const n of nodes) {
+    let nearest = Number.POSITIVE_INFINITY;
+    for (const other of nodes) {
+      if (other.id === n.id) continue;
+      nearest = Math.min(nearest, Math.hypot(other.sx - n.sx, other.sy - n.sy));
+    }
+    n.hitRadius = Number.isFinite(nearest)
+      ? Math.min(GLOBE_MAX_HIT_RADIUS, nearest * GLOBE_HIT_NEIGHBOUR_FRACTION)
+      : GLOBE_MAX_HIT_RADIUS;
+  }
+
+  const visible = suppressLabels(
+    nodes.map((n) => ({
+      id: n.id,
+      minX: n.sx - n.labelW / 2,
+      maxX: n.sx + n.labelW / 2,
+      minY: n.sy + GLOBE_LABEL_Y_OFFSET - metrics.ascent,
+      maxY: n.sy + GLOBE_LABEL_Y_OFFSET + metrics.descent,
+      depth: n.depth,
+    })),
+    { focusId: opts.focusId, hereId: here, courseId: opts.courseId },
+    // The dots themselves. Fixed, undroppable, so a label yields to them.
+    nodes.map((n) => ({
+      id: n.id,
+      minX: n.sx - GLOBE_NODE_MARK_RADIUS,
+      maxX: n.sx + GLOBE_NODE_MARK_RADIUS,
+      minY: n.sy - GLOBE_NODE_MARK_RADIUS,
+      maxY: n.sy + GLOBE_NODE_MARK_RADIUS,
+    })),
+  );
+  for (const n of nodes) n.labelVisible = visible.has(n.id);
+
+  const hereNode = nodes.find((n) => n.id === here) ?? null;
+  const courseId = opts.courseId ?? null;
+  const lanes: GlobeLane[] = [];
+  if (hereNode) {
+    for (const n of nodes) {
+      if (n.id === here) continue;
+      const isCourse = n.id === courseId;
+      const canReach = reachable.has(n.id);
+      // Dim lanes go to reachable systems only; the COURSE lane is drawn even
+      // when the course cannot currently be flown — an unaffordable plot still
+      // has to be visible, which is today's `route-line blocked` behaviour.
+      if (!canReach && !isCourse) continue;
+      lanes.push({
+        toId: n.id,
+        x1: hereNode.sx,
+        y1: hereNode.sy,
+        x2: n.sx,
+        y2: n.sy,
+        bright: isCourse,
+        reachable: canReach,
+      });
+    }
+  }
+
   const ship = game.player.ship;
   const ringUnits = maxJumpDistance(ship.drives, ship.fuel, ship.hasTransWarpDrive ?? false);
 
   return {
-    viewBox: `0 0 ${round(width)} ${round(height)}`,
-    width,
-    height,
-    scale,
+    viewBox: `0 0 ${GLOBE_W} ${GLOBE_H}`,
+    width: GLOBE_W,
+    height: GLOBE_H,
+    scale: k,
     nodes,
-    here: hereSys ? project(hereSys) : null,
+    here: hereNode,
+    lanes,
+    graticule: graticuleCurves(maxRadius, view, k),
     ringUnits,
-    ringRadius: ringUnits * scale,
+    ringRadius: ringUnits * k,
   };
-}
-
-function round(n: number): number {
-  return Math.round(n * 100) / 100;
 }
 
 /**
@@ -2389,7 +2763,7 @@ export function shipComponents(game: GameState): ShipComponentRow[] {
 //     picture's coordinates in content would stale every balance fixture for a
 //     drawing. Nothing here is a rule; nothing here is persisted.
 //
-// The projection follows `starmapProjection`'s precedent — SVG geometry and the
+// The projection follows the starmap's precedent — SVG geometry and the
 // derived readouts are computed in this file and `App.tsx` only renders them —
 // which is what makes the whole surface unit-testable without a DOM.
 // ===========================================================================

@@ -1218,7 +1218,7 @@ target → nearest-to-camera, others hidden until hover/selection) is therefore 
 the build, not a nice-to-have.** Ruling also covers scope: 4B **fully replaces** the flat 2D
 Starmap projection, not a toggle/fallback. Follow-on build task: T-215.
 
-### T-215 · Build: the 3D lat/long globe Starmap, replacing the flat 2D projection — `status: TODO` · `coder: opus` · `after: T-188`
+### T-215 · Build: the 3D lat/long globe Starmap, replacing the flat 2D projection — `status: DONE` · `coder: opus` · `after: T-188`
 
 T-188's ruling (2026-08-05): build candidate 4B, the rotatable 3D globe, as the live Starmap in
 `App.tsx` — not a prototype, not a toggle-able alternative to the existing flat SVG projection,
@@ -1251,6 +1251,153 @@ ring), and the lane/label behaviour the ruling specified:
 sample of rotations, not just one; the current-system/course-lane brightness behaviour matches
 the ruling; the mobile-open failure is root-caused and fixed or explicitly re-scoped with a
 reason recorded; the old flat 2D projection code is deleted; gate green.
+
+**Delivered (2026-08-06) — the globe is the live Starmap; the flat projection is gone.**
+
+1. **The projection is a PURE FUNCTION, `starmapGlobe(game, view, metrics, opts)`**, in
+   `packages/ui/src/format.ts` beside where `starmapProjection` used to sit, with
+   `clampGlobeView` / `suppressLabels` / the `GlobeView` / `LabelMetrics` / `StarmapGlobe`
+   types exported alongside it. `App.tsx`'s `Starmap` renders what it returns and owns only
+   the pointer. Three choices worth naming because they are not obvious:
+   - **The sphere is centred on SOL; the lane hub is the CURRENT SYSTEM.** These are
+     different things and the ruling only speaks to the second. `coordinates3D` is
+     Sol-centred by construction and its radius-from-Sol invariant is T-188's whole
+     balance-preservation story — re-centring the camera on the docked system would throw
+     that away for nothing. The LANES radiate from `here`, whatever `here` is (tested by
+     jumping to system 2 and asserting every lane's origin moved with the ship).
+   - **Orthographic, not perspective** — a sphere's silhouette stays a true circle, so the
+     fuel ring stays a real distance circle and `data-radius-units` stays honest.
+   - **The viewBox is FIXED (`0 0 260 200`)**, independent of the data AND the camera. The
+     flat map fitted its box to the band; on a globe that resizes it every drag frame, which
+     reads as the map breathing and makes CSS-px label metrics drift against viewBox units.
+     Pinned by a unit test across every rotation and zoom.
+2. **Label suppression, as ruled, with the fixed-character-width shortcut explicitly NOT
+   carried over.** Priority: hovered/selected → current system → set course → nearest to
+   camera (descending rotated `z`), greedy accept, losers keep their dot and their click and
+   get their label back on hover. Proved in two tiers, deliberately:
+   - `src/__tests__/starmap-label-overlap.test.ts` — the T-188 tripwire, rewritten as its 3D
+     successor over the ruling's own 90-angle grid (18 yaws × 5 pitches), with a metrics
+     provider that is a **pessimistic bound, not an approximation**: 0.62em per character
+     (Plex Mono is 0.6em, every `--font-data` fallback narrower) plus a viewBox unit of
+     padding each side. Clearing a WIDER box necessarily clears the real one. It also reads
+     `theme.css` and `App.tsx` back and fails loudly if `.smlabel`'s 8px / `text-anchor:
+     middle` / the `y={16}` anchor ever move out from under its box maths.
+   - `e2e/starmap-globe.spec.ts` — the same claim against **real rendered boxes**: eight
+     successive real pointer drags, `getBoundingClientRect()` on the labels the browser is
+     actually painting, in the loaded webfont (`document.fonts.ready` is awaited first). The
+     canvas measurer also adds `.smlabel`'s own 1.6px halo stroke, so the model and the
+     rendered ink are the same box.
+3. **THE `it.fails` → `it` FLIP IS PRE-AUTHORISED, and is called out in the test header, so
+   no reviewer mistakes it for a softened test.** T-188's delivered record warrants it
+   verbatim: *"It currently fails against today's live map … Flips green the moment a
+   redesigned map (4a/4b/4c) ships."* T-215 is that ship. The claim was not weakened — the
+   sample went from one static frame to ninety rotations and the boxes got wider.
+4. **The mobile risk: cause (a) ROOT-CAUSED AND FIXED, cause (b) RE-SCOPED with its reason.**
+   The T-188 prototypes were never committed and are gone from disk, so the failure MODE was
+   reproduced instead of the artefact inspected (`e2e/starmap-globe-touch.spec.ts`):
+   - **(a) a real code defect — mouse-only handlers and no `touch-action`.** A drag built on
+     `mousedown/mousemove/mouseup` receives nothing from a touch device, and without
+     `touch-action: none` the browser claims the gesture for scrolling first. The spec builds
+     that exact shape and shows it **dead** under a real CDP touch drag, then shows the same
+     gesture driving `pointerdown` + `touch-action: none`, then shows the SHIPPED globe
+     rotating, pinch-zooming and accepting a tap under the identical input. Shipped fix:
+     Pointer Events only, `touch-action: none` + `user-select: none`, two-pointer pinch, and
+     a pointer-free path (`−` / `+` / `RESET` buttons, arrow-key rotation on a focusable SVG)
+     that works even if a platform swallows gestures entirely.
+     **`setPointerCapture` is deliberately NOT used** — Chromium retargets the compatibility
+     mouse events (and therefore `click`) to the capture element, which would swallow every
+     node click on the map. Window listeners give the same tracking with no such effect.
+   - **(b) a distribution artefact, RE-SCOPED, not dropped.** The prototypes were sent as
+     standalone HTML attachments, and mobile mail/chat clients routinely preview those in a
+     sandboxed viewer with scripting disabled — nothing interactive can work there however it
+     is coded. This cannot apply to the shipped build: the surfaces are the Electron app and
+     the Vite-served web build, and `packages/ui/index.html` already carries
+     `<meta name="viewport" content="width=device-width, initial-scale=1">`.
+5. **Two REAL regressions were found by the gate and fixed at the cause, not routed around.**
+   Both are pinned by tests so they cannot come back:
+   - **A fixed hit-target size silently swallowed neighbours' clicks.** The flat map could use
+     one 22-unit rect per node because a lane spaced nodes evenly; on a globe the on-screen
+     spacing changes with every degree of rotation, and three `starmap.spec.ts` jumps went
+     un-clickable because Fomalhaut-2's rect covered its neighbour's centre. `GlobeNode.hitRadius`
+     is now capped at nine tenths of the distance to that node's nearest on-screen neighbour,
+     which makes interception impossible rather than unlikely (`r_j = 0.9·min_k d_jk ≤ 0.9·d_ji
+     < d_ij`). Asserted over 3 zooms × 5 pitches × the full yaw sweep.
+   - **Re-ordering nodes on HOVER broke every click on the map.** Painting the hovered node
+     last moved its `<g>` among its siblings between `mousedown` and `mouseup`, and Blink
+     treats a moved element as a broken click target — no `click` was dispatched at all.
+     Hover is out of the paint key; only the current system and the set course are promoted,
+     and neither changes mid-gesture. The comment at the sort says so.
+6. **Two visual findings, fixed after looking at the screenshot rather than at the tests.**
+   The first frame did not read as a sphere (the graticule at `--hair`/0.4 was invisible at
+   1×) and a label was drawn straight through a neighbour's dot and NPC pips — the same
+   illegibility the owner flagged at T-188, reached from the other side. So: the wireframe
+   moved to `--amber-dim`, and `suppressLabels` now also treats the other systems' DOTS as
+   fixed obstacles (a dot cannot move and cannot be dropped, so the label yields). The three
+   priority labels are exempt from the dot obstacles, because the ruling makes
+   current-system and set-course unconditional. The globe was enlarged by TIGHTENING its
+   viewBox (260×200 around a 168-unit sphere) rather than by raising `.smsvg`'s `max-height`
+   — measured at 264px and 320px, both push the off-lane sweep's button below the fold.
+7. **The flat path is DELETED, not left dead.** `ProjectedNode`, `StarmapProjection` and
+   `starmapProjection` are gone from `format.ts`; the `App.tsx` import and every line of flat
+   JSX with them. `grep -rn "starmapProjection" packages docs TASKS.md` (excluding
+   `node_modules`, `dist`, and the committed `packages/desktop/renderer/assets` build output)
+   now returns only historical prose plus this record. The four live pointers that would
+   otherwise have lied were re-aimed at `starmapGlobe`: `packages/content/src/systems.ts:298`
+   (the NEMESIS-flag reader list), `packages/engine/src/types.ts:821`,
+   `packages/ui/src/theme.css`'s `.smsys.crossing` note, and
+   `docs/UI-PRESENTATION-DECISIONS.md` UI-1 ("SVG star plane" → the globe).
+   `orbitalLayout2D` is **retained deliberately** and its doc comment now says why: deleting
+   live code from a hashed file would move `rulesFingerprint` and owe an 8,000-run capstone
+   for zero gameplay benefit.
+8. **NO rulesFingerprint move, NO capstone, NO save migration is owed, and here is why.**
+   `packages/sim/src/balance/rules-fingerprint.ts` hashes `packages/engine/src` (minus
+   `index.ts`/`save.ts`/`schema.ts`) and `packages/content/src` (minus `index.ts`);
+   **`packages/ui` is not hashed at all**, and this task is UI-only apart from three
+   COMMENT-ONLY edits in `systems.ts` / `types.ts`, which `hashSemantic` strips before
+   hashing (only the never-failing `docsFingerprint` moves). Verified by the gate: the
+   balance-smoke suite refuses a stale fixture and passed untouched. The camera
+   (yaw/pitch/zoom) is ephemeral `useState` and is deliberately **never persisted** — a save
+   carrying a yaw would owe a migration for a value with no gameplay meaning.
+   `CURRENT_SAVE_VERSION` is **17** today (`packages/engine/src/save.ts:627`), unchanged.
+
+**FOUND, FILED, NOT FIXED HERE — the cockpit's small-screen layout.** At `devices['Pixel 5']`'s
+393px the panes overlap each other (the manifest board paints across the starmap) and the
+masthead chrome runs off the right edge. This is a pre-existing limitation of a fixed console
+layout, not something this task introduced: it reproduces on every pane, not just the starmap.
+It is why `starmap-globe-touch.spec.ts` emulates TOUCH (`hasTouch` + `isMobile`) at a viewport
+the console supports rather than at Pixel 5's width — a touch test inside a broken layout would
+be measuring the layout, not the gesture. Filed as T-219 below.
+
+Gate: `npm test` green across all five workspaces (2,728 tests; `packages/ui` 29 files / 505,
+of which the two starmap suites are 30), `npx tsc -b`, `npm run lint`, `npm run format:check` clean,
+and — mandatory for a cockpit change under `docs/ENGINEERING-POLICY.md` §2 —
+`npm run test:e2e -w @spacerquest/ui` at **195 passed / 0 failed**, including the 15 new specs.
+
+Orchestration: attempts=1/4.
+
+### T-219 · BUG: the cockpit's panes overlap each other at phone width — `status: TODO` · `coder: opus` · `after: T-215`
+
+Found during T-215's mobile root-cause pass (2026-08-06) and filed rather than folded into it —
+it is out of that task's scope (T-215 is the starmap's geometry and gestures, and this reproduces
+on every pane) and deferring it rolls up no debt, because nothing T-215 shipped builds on or
+routes around the broken layout: the globe is `width: 100%` inside its pane and inherits whatever
+the pane's box becomes.
+
+**Reproduce:** open the cockpit under Playwright's `devices['Pixel 5']` (393×851). The manifest
+board and port-ledger panes paint across the starmap pane, the masthead's control cluster runs
+off the right edge, and the dawn-hand tray sits under the overlay. `document.scrollWidth` still
+equals `clientWidth`, so this is overlap inside a fixed grid, not horizontal overflow.
+
+**Scope note:** this is the whole cockpit's responsive story, not one pane's — `.col` /
+`.col.left`'s grid rows, `.pane` sizing and the masthead. Whether phone width is even a supported
+surface is an owner call (the shipped surfaces today are the Electron app and the web build);
+"decide it is not supported, and say so in `docs/UI-PRESENTATION-DECISIONS.md`" is a legitimate
+resolution of this task.
+
+**Accept:** either (a) at 393×851 no two panes' bounding boxes intersect and every masthead
+control is inside the viewport, with an e2e spec pinning it; or (b) a recorded owner ruling that
+phone width is out of scope, written into `docs/UI-PRESENTATION-DECISIONS.md` with the reason,
+and `starmap-globe-touch.spec.ts`'s viewport comment re-pointed at that ruling. Gate green.
 
 ---
 
