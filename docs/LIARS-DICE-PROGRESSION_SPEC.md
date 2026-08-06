@@ -2084,6 +2084,57 @@ deliberate-play rewards and say so in the spec. **Left for an owner call.**
 > but the gauntlet is now further from completion than when the finding was filed. `planDare`'s
 > selection rule was NOT changed.
 
+> **RULED AT T-169 (2026-08-05) — SHAPE (b): THE FIFTEEN SET-COMPLETION DEEDS ARE DELIBERATE-PLAY
+> REWARDS, AND THIS SWEEP IS NOT THE INSTRUMENT EXPECTED TO REACH THEM.** `planDare` does **not**
+> gain a set-completion preference. The sweep seats the richest live purse; the gauntlet rewards
+> seating by *set*. Those are two different questions, and the honest answer is to let two
+> instruments ask them rather than to bend one into the other.
+>
+> **The "unmeasured for a human player" clause is retired, by measurement, not by assertion.** It
+> was already false when F-148-2 was restated: T-147 added a **roster tour errand** to the
+> deliberate-play rig — `packages/sim/src/__tests__/support/deed-hunter.ts:568-640`, registry-driven
+> (`need('liars_dice_grand_slam')` at `:580` is the master switch, `need(ROSTER_PORT_DEED_ID[…])` at
+> `:584` the per-port continue-condition), seating at unbeaten, non-broke seats at the port band's
+> minimum and flying on an idle day to the nearest port that still owes seats. That policy is what
+> "a human hunting the deed would seat deliberately" looks like implemented honestly (legal
+> `PlayerAction`s only; it never writes `player.registry`). It is driven by
+> `packages/sim/src/__tests__/deed-coverage.test.ts` over **seeds 1..76 × 300 days** (`:274-276`),
+> which already asserted the whole-`DEEDS` union (`:306`) and ≥ 2 individually-total careers
+> (`:322`) — both of which bind `liars_dice_grand_slam` (`content/deeds.ts:1108`). T-147's
+> provenance recorded the figure at the time: **61 of 65 careers closed the whole 42-seat roster**
+> (`deed-coverage.test.ts:52-53`).
+>
+> **Today's number, measured at T-169 on that rig and now pinned by its own named assertion**
+> (`deed-coverage.test.ts`, *"the fifteen set-completion deeds are reached by DELIBERATE play"*):
+> **`liars_dice_grand_slam` is earned by 75 of 76 careers**; thirteen of the fourteen port deeds by
+> **76 of 76** and `liars_dice_cleared_altair_3` by **75 of 76**. Against the sweep's **0 in 720**.
+> The finding's own mechanism is therefore confirmed and re-scoped in one stroke: the zero is a fact
+> about `planDare`'s selection rule, not about the deeds' reachability. The assertion is derived
+> from `trigger.eventType === 'LiarsDiceSetCleared'` rather than hand-listed, and asserts a COUNT of
+> careers (floor `>= 2`, far below the measurement) rather than which seed — so it holds the ruling
+> honest without pinning a trajectory.
+>
+> **The not-chosen shape, logged.** Giving `planDare` a set-completion preference was rejected for
+> three reasons. (1) It is the *instrument's* policy, not the game's rule — this section's own
+> levers table already rules that changing it "re-bases every baseline in the same commit that
+> measures it", and the blast radius is concrete: §12.2, §12.3, §12.5, §12.6 and §12.11 all read off
+> `planDare`. A set-seeking `planDare` would then be judged for grand slams on the instrument it had
+> just re-based. (2) The task asked for it as an **inert-first commit**, and there is no such commit
+> to land: a set-completion preference *is* the behaviour change — changing which seat is picked is
+> its entire content — so unlike T-168's `preHandWagerBand` there is no behaviour-preserving
+> extraction to prove first. (3) The number it would produce is one the deliberate-play rig already
+> produces, more honestly, at a 300-day horizon.
+>
+> **If a future task ever wants the set-seeking number FROM THE SWEEP**, the honest shape is a
+> **separate probe policy alongside `gambler`** — the `degradedTraderPolicy` /
+> `makeDegradedTraderPolicy` precedent at `sim/index.ts:3431` / `:3454`, an instrument added *beside* the
+> baseline and never edited into it. Not an edit to `planDare`.
+>
+> **What this does NOT rule.** F-148-1, F-148-3 and F-160-1 are untouched and stay open. Nothing
+> here is a tuning change; no constant moved; `archetypeMove`, `BAD_CREDULITY`,
+> `LIARS_DICE_RAISED_CEILING_MULT` and `LIARS_DICE_UNLOCK_GAMES` are all still where §12.9 left
+> them.
+
 **F-148-3 · The roster is the softer and richer pool, which is backwards for a gauntlet.** Status:
 REPORTED, NOT FIXED. Pool A supplies 57.04% of hands, 60.23% of the money, a win rate 5.5 pp higher
 and an EV/hand 14% higher than pool B. A fixed roster of named characters with authored bankrolls
@@ -2124,7 +2175,7 @@ point: a capstone that reports a bad number and quietly moves a constant has fai
 | --- | --- | --- | --- |
 | `LIARS_DICE_UNLOCK_GAMES` `[5,10,20,40,80]` | `content/liarsDice.ts:89` | Rung 5 opens at median day 55 and carries 53% of all hands — the top rung is the *default* state, not the endgame | Widening it would be tuning to the maximal playstyle, the only one the rig can see (§12.0 limitation 1). Owner call. |
 | `LIARS_DICE_RAISED_CEILING_MULT` = 3 | `content/liarsDice.ts:93` | ×3 buys only +43.7% bids/hand, less than §4.4 predicted | The shortfall is F-148-4's (the seed is never raised), not the multiplier's. Fixing the wrong one first would hide the real gap. **Vindicated at T-168:** with F-148-4 fixed the mean stake rises ×4.35 (§12.11). The multiplier was never the problem, and it is STILL not touched. |
-| `planDare`'s richest-candidate rule | `sim/index.ts:3487-3513` | Drives both the 57%/43% pool split (§12.3) and F-148-2's zero grand slams | It is the *instrument's* policy, not the game's rule; changing it re-bases every baseline in the same commit that measures it. |
+| `planDare`'s richest-candidate rule | `sim/index.ts:4219-4263` (the T-169 ruling comment through `if (dealer === null)`) | Drives both the 57%/43% pool split (§12.3) and F-148-2's zero grand slams | It is the *instrument's* policy, not the game's rule; changing it re-bases every baseline in the same commit that measures it. **RULED AT T-169:** the lever stays unpulled — F-148-2 above takes shape (b), and the deed's reachability is measured on the deliberate-play rig instead (75 of 76 careers). The pin was also re-read at T-169; the old `3487-3513` had rotted. |
 | `planDare`'s tier-0 band sizing | `sim/index.ts:3524` | F-148-4 / F-146-1 | ~~Needs a third `liarsDiceTier` call site, which §4.6 forbids. Amendment first, edit second.~~ **LEVER TAKEN AT T-168**, in that order: §4.6a's amendment landed in its own docs-only commit, then `preHandWagerBand` and the two call-site substitutions. What it moved is §12.11's table. |
 | `dealerMove`'s F-137-1 opener + all `DARE_AI_*` | `engine/liarsDiceRules.ts` | 100.00% of openers still guaranteed true; it is the root cause under F-148-1 and F-148-3 | §3.9 and §10.5 both explicitly scope it out of M4e. It is an owner call and always was. |
 | `BAD_CREDULITY` = 1 and `archetypeMove` | `engine/liarsDiceRules.ts:761` | The inverted ordering, z = −30.76 | The policies do what they are specified to do. Retuning them would paper over F-137-1. |
@@ -2140,11 +2191,18 @@ point: a capstone that reports a bad number and quietly moves a constant has fai
 1. **F-148-1 / F-148-3 / F-137-1 are one owner call, not three.** The archetype inversion, the
    roster-is-easier result and the guaranteed-true opener share a single root. Whoever takes it
    should close F-137-1 first and re-run this capstone's Arm 2 before touching `archetypeMove`.
-2. **F-148-2's deed reachability is unmeasured for a human player.** The rig's `planDare` seats by
+2. ~~**F-148-2's deed reachability is unmeasured for a human player.** The rig's `planDare` seats by
    bankroll; a person hunting `liars_dice_grand_slam` would seat by set. The deeds may be perfectly
    reachable deliberately and merely invisible to this instrument — that distinction needs either a
    set-seeking probe arm or an explicit spec sentence saying the fifteen deeds are deliberate-play
-   content.
+   content.~~ **RESOLVED AT T-169.** F-148-2's ruling above takes the second of the two routes this
+   item allowed — the explicit spec sentence: the fifteen deeds are deliberate-play content, and
+   `planDare` was left unchanged. The honest twist is that the *first* route turned out to already
+   exist in tree: `deed-hunter.ts`'s T-147 roster tour **is** the set-seeking probe arm, and
+   `deed-coverage.test.ts` had been driving it over seeds 1..76 × 300 days since before this item
+   was written. So the spec sentence is a **record of a measurement** rather than a substitute for
+   one — 75 of 76 careers earn `liars_dice_grand_slam` — and T-169 added the named assertion that
+   pins that number so the sentence cannot rot into an assumption.
 3. ~~**F-148-4 needs a §4.6 amendment before it needs code.** The raised ceiling cannot be staked
    into without a third `liarsDiceTier` read, which §4.6 rules a bug.~~ **RESOLVED AT T-168.**
    §4.6a is the amendment, and it took the second of the two routes this item allowed — "a rule

@@ -4216,6 +4216,18 @@ function planDare(
   // a tie. The ordering is deterministic — the in-system NPCs are considered
   // first, so at equal credits a roaming captain still wins the seat and the
   // pre-T-145 behaviour survives wherever the roster does not out-bank the field.
+  // T-169 · THE RICHEST-CANDIDATE RULE BELOW IS RULED, NOT OVERLOOKED
+  // (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.9 F-148-2, shape (b)). It has no
+  // idea a *set* exists, which is why the M4e sweep reports 0 `liars_dice_grand_slam`
+  // in 720 careers. That zero is a fact about THIS policy, not about the deed:
+  // deliberate set-seeking play is measured on a different instrument —
+  // `__tests__/support/deed-hunter.ts`'s roster tour, driven by
+  // `__tests__/deed-coverage.test.ts`, where the grand slam lands in 75 of 76
+  // careers. Do NOT teach this loop set-completion: it is the shared seat-picker
+  // every dice sweep row reads off (§12.2, §12.3, §12.5, §12.6, §12.11), so
+  // changing it re-bases every baseline in the same commit that measures it. If a
+  // set-seeking number is ever wanted FROM THE SWEEP, add a probe policy beside
+  // `gambler` on the `degradedTraderPolicy` precedent instead.
   let dealer: { id: string; credits: number } | null = null;
   for (const npc of state.npcs) {
     // F-121-1 · `!npc.dead` MIRRORS THE ENGINE'S N3 GUARD (`actions/hangout.ts`:

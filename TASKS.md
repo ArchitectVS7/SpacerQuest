@@ -1698,7 +1698,7 @@ inversion. **Left for the same owner call as F-148-1 / F-148-3 / F-160-1.**
 [found: T-168 capstone, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.11.3]
 
 
-### T-169 · F-148-2: the 42-seat gauntlet is played but never completed — `liars_dice_grand_slam` is unreachable — `status: TODO` · `coder: opus` · `after: T-198`
+### T-169 · F-148-2: the 42-seat gauntlet is played but never completed — `liars_dice_grand_slam` is unreachable — `status: DONE` · `coder: opus` · `after: T-198`
 
 Median 29 of 42 seats beaten, 3 of 14 ports cleared, **0 grand slams in 720 careers**, median 0
 seats drained — not a purse-depletion problem. `planDare`
@@ -1714,6 +1714,51 @@ post-fix arm. [harvested: T-148/F-148-2]
 (landed as its own inert-first commit with the fingerprint rows named, then re-measured for grand
 slams per 720 careers) or the spec states the fifteen deeds are deliberate-play rewards the sim is
 not expected to reach; the not-chosen shape is logged; gate green.
+
+**Delivered (2026-08-05). SHAPE (b): the fifteen `LiarsDiceSetCleared` deeds are deliberate-play
+rewards; `planDare` did NOT gain a set-completion preference.** The reason in one sentence: the
+zero-in-720 is a fact about the sweep's seat-picker, not about the deeds — the deliberate-play rig
+already reaches them, and re-basing the shared seat-picker to prove otherwise would have re-based
+every baseline in the same commit that measured it.
+
+- **The ruling**, with the retirement of the "unmeasured for a human player" clause and its
+  measurement, is `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.9, the `RULED AT T-169` blockquote
+  appended to F-148-2 (line 2087). The original filing and T-160's restatement are untouched above
+  it, verbatim.
+- **The levers row** (§12.9, line 2178) records `RULED AT T-169` — the lever stays unpulled — and
+  its pin was re-read rather than copied: `sim/index.ts:3487-3513` had rotted to `4219-4263`.
+- **§12.10 item 2** (line 2194) is struck through, `RESOLVED AT T-169`, naming which of its own two
+  allowed routes was taken. The honest twist recorded there: the *probe arm* route already existed
+  in tree, so the spec sentence is a record of a measurement rather than a substitute for one.
+- **The named assertion**, `packages/sim/src/__tests__/deed-coverage.test.ts` — *"the fifteen
+  set-completion deeds are reached by DELIBERATE play"* — derives the family from
+  `trigger.eventType === 'LiarsDiceSetCleared'` (never hand-listed) and asserts a COUNT of careers
+  (floor `>= 2`), reading the already-driven `RUNS` map so it costs ~0s. **MEASURED at T-169 over
+  seeds 1..76 × 300 days: `liars_dice_grand_slam` earned by 75 of 76 careers; thirteen port deeds by
+  76 of 76 and `liars_dice_cleared_altair_3` by 75 of 76 — against the sweep's 0 in 720.** The
+  numbers were observed before they were written down (temporary log, run, then removed). File: 6
+  tests green in 48.8s (was 5 / 49.3s).
+- **The pointer at the named call site**, `packages/sim/src/index.ts:4219`, records that the
+  richest-candidate rule is ruled rather than overlooked and names the alternative shape.
+- **NO `rulesFingerprint` OR `instrumentFingerprint` MOVE, NO CAPSTONE OWED, NO SWEEP OWED.** The
+  only non-doc file touched is `sim/index.ts`, comment-only, and both fingerprints strip comments
+  before hashing (`hashSemantic`, `balance/rules-fingerprint.ts:11-17`); the raw-byte
+  `docsFingerprint` is reported, never failing (`balance/checkpoints.ts:462-481`). The test addition
+  is free of a capstone by `HASHED_ROOT_IGNORED_DIRECTORIES.__tests__`
+  (`rules-fingerprint.ts:255-262`) — tests observe the rules and never author them.
+- **The not-chosen shape is logged** in the §12.9 blockquote with all three reasons (instrument not
+  rule, with the §12.2/§12.3/§12.5/§12.6/§12.11 blast radius named; no inert first commit exists,
+  because changing which seat is picked *is* the behaviour change; the number already exists on a
+  better rig) and with the honest alternative route named — a **separate probe policy beside
+  `gambler`** on the `degradedTraderPolicy` precedent (`sim/index.ts:3431` / `:3454`), never an edit
+  to `planDare`.
+- **Untouched, as §12.9 requires:** `archetypeMove`, `BAD_CREDULITY`,
+  `LIARS_DICE_RAISED_CEILING_MULT`, `LIARS_DICE_UNLOCK_GAMES`, `planDare`'s selection rule and band
+  sizing. F-148-1 / F-148-3 / F-160-1 stay open for T-175/T-176/T-177. No deed id renamed.
+  `docs/LIARS-DICE-DECISIONS.md` carried no open call for F-148-2, so it was not edited.
+- Gate: `npx tsc -b`, `npm run lint`, `npm run format:check` (run after `npm run format`) all clean.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
 ### T-170 · F-148-5: `CONQUEROR = 38` is unreached at 120 days by every policy — run the 300-day arm — `status: TODO` · `coder: opus` · `after: T-198`
 

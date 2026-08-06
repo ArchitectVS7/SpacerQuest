@@ -333,6 +333,55 @@ describe('T-1504d deed coverage + Conqueror reachability (pinned seeds)', () => 
     ).toBeGreaterThanOrEqual(2);
   }, 300000);
 
+  it('the fifteen set-completion deeds are reached by DELIBERATE play', () => {
+    // T-169 · THE ASSERTION THAT HOLDS `docs/LIARS-DICE-PROGRESSION_SPEC.md`
+    // §12.9 F-148-2's ruling HONEST. That ruling takes shape (b) — the fifteen
+    // `LiarsDiceSetCleared` deeds are DELIBERATE-PLAY rewards, and the M4e sweep's
+    // `planDare` (which seats the richest candidate, and reported 0 grand slams in
+    // 720 careers) is not the instrument expected to reach them.
+    //
+    // A ruling that says "a deliberate player gets there" is worth nothing unless
+    // something measures a deliberate player. That is THIS file: `deed-hunter.ts`'s
+    // roster tour errand seats at unbeaten, non-broke seats at the port band
+    // minimum and flies to the nearest port still owing seats. It lives here and
+    // not in the sweep because the two rigs ask different questions — the sweep is
+    // the maximal-EV instrument, this is the deliberate-play one, and F-148-2 is
+    // exactly the gap between them.
+    //
+    // The union assertion above already binds every one of the fifteen, but it
+    // binds them at ONE career. This says the gauntlet is comfortably inside the
+    // horizon rather than a single lucky trajectory, which is the claim §12.9
+    // actually makes.
+    //
+    // DERIVED, never hand-listed — a renamed or newly authored set deed cannot
+    // silently escape this, the same convention `ALL_DEED_IDS` uses.
+    const setDeedIds = DEEDS.filter((deed) => deed.trigger.eventType === 'LiarsDiceSetCleared').map(
+      (deed) => deed.id,
+    );
+    expect(setDeedIds.length, 'the §6.4 set-completion family is not fifteen deeds').toBe(15);
+
+    // Asserted as a COUNT of careers, never as WHICH seed — this file's standing
+    // convention, so a diverging trajectory cannot red it while the property holds.
+    // MEASURED AT T-169 over these 76 careers: thirteen of the fourteen port
+    // deeds are earned by 76 of 76, `liars_dice_cleared_altair_3` by 75, and
+    // `liars_dice_grand_slam` by 75 of 76 — against the sweep's 0 in 720. The
+    // `>= 2` floor is deliberately far below the measurement, matching the totals
+    // assertion above, so a trajectory re-phase cannot red it while the property
+    // holds.
+    const earnedByCount = new Map<string, number>();
+    for (const id of setDeedIds) {
+      earnedByCount.set(
+        id,
+        COVERAGE_SEEDS.filter((seed) => earnedIds(RUNS.get(seed)!).has(id)).length,
+      );
+    }
+    const thin = setDeedIds.filter((id) => earnedByCount.get(id)! < 2);
+    expect(
+      thin,
+      `set deeds earned by fewer than two of seeds ${COVERAGE_SEEDS[0]}..${COVERAGE_SEEDS[COVERAGE_SEEDS.length - 1]}: ${thin.join(', ')}`,
+    ).toEqual([]);
+  }, 300000);
+
   it('rank is a function of deeds actually banked, in every career', () => {
     // HONESTY: nothing in the drive assigns a rank. If a test or the policy had
     // poked `renownRank`, this disagrees.
