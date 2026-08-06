@@ -270,6 +270,824 @@ mandatory gate** — the Gate block above is amended accordingly.
 
 ---
 
+## FILE ORDER — re-sequenced 2026-08-06
+
+The 2026-08-06 harvest pruned 46 DONE blocks and left the survivors grouped by harvest batch,
+not by run order; it also left four visual-arc tasks filed under the owner-gated M20 header and
+two halt-on-sight human gates (T-232, T-234) sitting ABOVE fifteen runnable tasks — the exact
+T-154/T-158 file-order failure T-229 exists to catch (that check is still unbuilt; it is the
+first M8 task below). This re-sequence is ordering and grouping only: no task body, Accept
+criterion, status, or harvested marker was altered, except two dated notes (T-233, T-251) and
+T-251's `after:` gaining the motion-tier gate its own design doc states in prose.
+
+The file order is now the run order:
+
+1. **The visual/core-loop arc (M17, M14 → M19)** — the owner's standing priority (ruled
+   2026-08-03 at T-158, restated 2026-08-05 in the M20 header). All autonomous. M17's
+   completed checkpoint record leads the arc because T-186, T-193 and T-194 are gated
+   `after: T-198` and file order must agree with `after:`.
+2. **The harvested process guards (M8)**, then the Liar's Dice / instrument / policy
+   remainders (M9 → M12), then the un-gated but unscheduled builds (M13). All autonomous.
+3. **THE OWNER GATE** — every open task whose Accept needs a human ruling, pick, playtest read
+   or session, so no `/orchestrate` run ever strands runnable work below a human halt.
+4. **M20 last, behind its T-209 checkpoint**, exactly as the owner gated it.
+
+File order agrees with every `after:` field (verified 2026-08-06).
+
+---
+
+## M17 — Owner ruling: the dawn-hand action economy (2026-08-04)
+
+Authority: `docs/DAWN-HAND-REDESIGN.md`. The owner's board-game-designer pass on the whole
+dawn-hand system: most of today's 15 die-costed actions were administrative overhead riding the
+same scarce resource as the decisions that actually vary a run. The ruling splits every action
+into **Main Actions** (cost a die — the actions that make a day's shape a real choice) and
+**Free Actions** (bounded by something else already: credits, inventory slots, one-contract-at-
+a-time, one-loan-at-a-time), plus new caps on the Free actions that had no bound besides the
+die today. See the spec doc for the full table, the reasoning per action, and §5's open
+questions.
+
+**Amended at the owner-approved review pass, 2026-08-04.** Five changes, all reflected in the
+blocks below and in the spec doc's own amendment header: (1) T-196 is split into T-196a/b/c —
+the original task was engine + types + protocol + sim policies + UI + capstone in one commit,
+and the a/b arms now double as a control-arm pair (rules-eased vs instruments-exploiting,
+N13's own discipline). (2) The owner ruled a **single daily social pool**
+(`SOCIAL_PLAYS_PER_DAY = 3`, a content constant) over Meet, Befriend, AND Insult — the three
+disposition movers with no other bound — superseding the same-day per-NPC-per-day draft (spec
+§4a records both the ruling and the logged not-chosen shapes); the capstone still measures the
+Insult encounter-farming loop, now as verification that X = 3 holds it. (3) The spec's §5
+Befriend-check question is RESOLVED in the same ruling: free Befriend rolls an internal d20
+from the action's rng against the port's authored DC — the check and its content stay live.
+(4) T-197 carries the save bump (13 → 14) its
+two persistent caps imply, per the standing migration constraint. (5) T-198, a pacing
+checkpoint, sits between the capstone and T-194 — T-195 already moved clear rate +12.6% and
+median credits +40.5%, M17 roughly doubles a trading day's useful actions, and the day-30
+marker/contract deadlines/loan terms were all tuned against the old economy; nobody should
+write tutorial copy against numbers the owner may still re-tune.
+
+**Moved at the 2026-08-06 re-order:** T-237 (the route-preview fuel-bill call, harvested from
+T-162 into this section) needs an owner decision and now sits in the OWNER GATE section below.
+
+### T-198 · CHECKPOINT — owner pacing read on the post-M17 economy — `status: DONE` · `coder: opus` · `after: T-197`
+
+The dawn-hand arc is the game's second intentional easing in a week: T-195 alone moved
+`fleet.tourOneClearRate` 0.5605 → 0.6310 and `finalCredits.median` +40.5%, and M17 roughly
+doubles a trading day's useful actions (sign/fuel/repair/hire no longer compete with jumps for
+dice). The day-30 marker, contract deadlines, and loan terms were all tuned against the OLD
+action economy, and nothing inside M17's build tasks judges whether they still hold — this
+checkpoint is where that judgment happens, BEFORE T-194 bakes the new economy into tutorial
+copy.
+
+**The brief, assembled from work already done (no new sweeps):** T-197's cumulative table
+(t182 → t195 → t199 → t196a → t196b → t197), the Insult encounter-farming measurement (moved or
+clear), and one owner play session at feel level. **The orchestrator HALTS here** per the T-158
+convention — the outputs are owner rulings, not code: (1) is the pacing acceptable, or does a
+re-tuning task get filed (marker day, contract deadlines, T-195's 15%/20% magnitudes, the §4b
+rounds table) before T-194 runs; (2) whether `SOCIAL_PLAYS_PER_DAY = 3` needs tightening — the
+pool was ruled with the prediction that X = 3 holds the Insult encounter-farming loop, and
+T-197's capstone measurement either confirms that or is the finding this ruling answers. Record
+both rulings in this block, dated; T-194 un-gates on them.
+
+**Prepared (2026-08-05, AUTOMATED HALF ONLY — this task is NOT done and was not self-approved).**
+The automated half of the checkpoint is complete and the run **halts here**, per the T-158
+convention. What landed:
+
+- **The brief: `docs/playtests/T-198-pacing-brief.md`.** Ten sections, mirroring T-158's: what
+  closes the task (**three** rulings, not two — F-198-3); the runbook, which does **not** duplicate
+  T-158 §2 but points at it and adds only the M17 deltas (every administrative verb and all seven
+  Hangout verbs free; `Dare{move:'peek'}` the only Hangout die spend left; the two live readouts
+  `social-plays-left` / `dare-rounds-left`; the two typed refusals `social-limit-reached` /
+  `daily-round-limit`; the standing play-through-the-UI rule restated); a suggested-not-scripted
+  pass aimed at the pacing question; **§4 the cumulative arc as measured**, with F-198-2's
+  two-origins sentence; **§5 the pacing clamps and the F-198-1 correction**; **§6 R2's evidence, the
+  Insult null result**; **§7 R3's evidence, the rounds table**; §8 instrumentation, re-grepped at
+  each call site rather than copied from T-158's block; §9 a session-notes template with the Bug
+  Discovery Policy pointer; **§10 the three EMPTY ruling slots**, in T-158 §9's table idiom.
+- **One heading inserted in `docs/DAWN-HAND-REDESIGN.md`** — `## 0 · M17 as measured — the Insult
+  null result and the cumulative arc` — so the Insult block, the still-open-rounds bullet, the
+  cumulative table and "what the arc actually shows" become one section-pinnable region running to
+  `## 1 ·`, plus one sentence pointing at the brief. **No existing section was renumbered**, and no
+  test parses this document's heading structure (checked: only comment references in
+  `protocol.test.ts` and `campaign-smuggler-gambler.test.ts`).
+- **New test: `packages/sim/src/__tests__/pacing-brief-figures.test.ts`** (5 tests). (1) Sixteen
+  prose figures pinned in **both** directions — heading exists, value is inside that section, value
+  is in the brief — with non-vacuity asserted. (2) **The cumulative arc table is DERIVED, not
+  transcribed**: all six committed aggregates are read, `runs === 8000` is asserted on each, and the
+  four columns are re-formatted and required to appear as whole table rows in **both** the spec §0
+  and the brief — so a re-pinned baseline cannot leave a stale arc row standing anywhere. (3) The
+  F-198-4 null result is **machine-checked** against `packages/sim/src/index.ts`: no
+  `venue: 'meet'|'befriend'|'insult'` literal may appear, and the three venues that ARE planned are
+  asserted positively so the check cannot pass by the file having moved. (4) R3's receipt: the
+  `PROPOSED` marker must be present at all three sites AND the array must still read
+  `[1, 2, 2, 3, 3, 4]`, so a ruling moves all four together or the suite goes red. (5) All three
+  ruling cells and all three date cells asserted **EMPTY** — a filled cell no owner wrote is a
+  self-waiver. The file header states that **test 5 INVERTS when the owner rules** and names the
+  T-158 precedent (`uat-brief-figures.test.ts`'s third test) so the closer flips it rather than
+  deleting it.
+
+**FOUR FINDINGS — these are the brief's spine, filed here so they survive a cleared session.**
+
+**F-198-1 · "Contract deadlines" do not exist in this game — a correction to this task block's own
+framing, recorded rather than silently substituted** (the idiom T-197's Delivered note used for its
+two). This block names contract deadlines among the things tuned against the old action economy.
+`CargoContract` (`packages/engine/src/types.ts:2142-2148`) is
+`{ destination, cargoType, payment, pods, haggled? }` — **no deadline, no expiry, no due-day field**
+— and `/usr/bin/grep -rn "deadline\|expiresDay\|daysToDeliver"` over `packages/engine/src` and
+`packages/content/src` returns nothing for contracts. The manifest board rerolls
+(`generateManifestBoard`, `packages/engine/src/day.ts:145`); a *signed* contract has no clock on it.
+The pacing clamps that DO exist, and that R1 actually rules on, are four:
+
+| clamp | value | pin |
+| --- | --- | --- |
+| the day-30 marker | a literal `30`, **not a constant** | `packages/engine/src/day.ts:1284` (`nextState.day === 30`) |
+| Tour One debt | `25000` | `packages/engine/src/state.ts:128` |
+| Guild debt interest | `GUILD_DEBT_DAILY_RATE = 0.02`/dusk | `packages/content/src/guild.ts:80` |
+| loan term / rate | `LOAN_TERM_DAYS = 15`, `LOAN_DAILY_RATE = 0.05` | `packages/content/src/lending.ts:69,63` |
+
+plus T-195's own two magnitudes, `NAV_DIE_FUEL_DISCOUNT_MAX = 0.15` / `NAV_DIE_EVASION_MAX = 0.2`
+(`packages/engine/src/actions/travel.ts:128-129`), which the block names correctly.
+
+**F-198-2 · This block's headline figure and the cumulative table's origin row are two different
+"before"s, and both are correct.** This block (and T-195's, above) quote `fleet.tourOneClearRate`
+**0.5605 → 0.6310**; `0.5605` is `docs/balance/baseline-t188-orbital-3d.json`, T-195's *immediate*
+predecessor. The cumulative table (`docs/DAWN-HAND-REDESIGN.md` §0) starts at **0.5689**, which is
+`docs/balance/baseline-t182-reroll-fix.json`, the last **pre-T-195** baseline T-197's capstone was
+required to span. Both verified by reading the files. The brief says so in one sentence with both
+pins, so the checkpoint does not spend the owner's attention on an artefact.
+
+**F-198-3 · There is a THIRD ruling already pending at this checkpoint, and T-197's Delivered note
+contradicts the repository on it — a correction to T-197's framing, recorded rather than silently
+substituted.** `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]` still ships marked
+`PROPOSED — AWAITING OWNER CONFIRMATION` in three places (`packages/content/src/liarsDice.ts:101`,
+`docs/DAWN-HAND-REDESIGN.md:283-289` §5's last bullet headed **STILL OPEN**,
+`docs/LIARS-DICE-DECISIONS.md:219-228` LD-23), yet T-197's Delivered note says the numbers "were
+confirmed with the owner". Surfacing is not confirming; the correction is recorded beside that
+sentence above, and the sentence is not deleted. This is the T-158 "POINTER, NOT AN AMENDMENT"
+situation except that it lands **inside** the checkpoint — T-198's own text already names "the §4b
+rounds table" inside ruling (1). It is therefore promoted to its own slot, **R3**. **Three rulings,
+not two.**
+
+**F-198-4 · The Insult measurement is a NULL RESULT, and the reason is structural and
+machine-checkable.** `docs/DAWN-HAND-REDESIGN.md` §0 and `docs/NPC_REDESIGN.md:161` already state
+it; this pass proved the mechanism. The only `venue:` literals any policy PLANS in
+`packages/sim/src/index.ts` are `venue: 'borrow'` (`:2604`), `venue: 'repay'` (`:2637`) and
+`venue: 'dare'` (`:4225`). `meet`/`befriend`/`insult` appear at `:1399-1401` **only as a telemetry
+reader** (`hangoutPlay.socialBeats += 1`), and `socialBeats` is not even in the committed aggregate;
+`packages/sim/src/protocol.ts:914` enumerates them for the protocol seam, but nothing emits them. So
+the fighter row coming back byte-identical to T-196b is **not** evidence that X = 3 holds the loop —
+the loop cannot be exhibited by this instrument at all. **`SOCIAL_PLAYS_PER_DAY = 3` is UNVERIFIED,
+not verified.** What R2 actually rules on is the analytic bound: 3 plays/day × −4 disposition
+(`INSULT_DISPOSITION = -4`, `packages/content/src/hangout.ts:96`) ⇒ at most **one** manufactured
+grudge to the −10 floor per day, against unbounded before the cap; the −10 hunt weight is 16×
+(`packages/content/src/hangout.ts:118`) and the measured wronged-captain lift is 2.358×
+(`docs/HANGOUT_REDESIGN.md` §11.3). Test 3 of `pacing-brief-figures.test.ts` makes this durable: the
+day a policy learns to plan a social venue, the suite says the finding is stale.
+
+**Gate transcript, run BEFORE writing anything and again AFTER, so a pre-existing red could not be
+mis-attributed.** BEFORE: `npm test` → **126 files / 2,473 tests passing, 0 failing**
+(content 2/25 · desktop 7/110 · devpanel 5/61 · engine 50/1346 · sim 37/524 · ui 25/407). AFTER:
+**127 files / 2,478 tests passing, 0 failing** — exactly this task's one new file and its five
+tests (`packages/sim` 37/524 → 38/529), nothing else moved. The known-red `it.fails` tripwires behaved
+as expected-red on both runs and none flipped to unexpectedly passing. `npx tsc -b`, `npm run lint`
+and `npm run format:check` exit 0 on both runs.
+
+**NO FINGERPRINT MOVED, NO CAPSTONE IS OWED, AND NO SWEEP WAS RUN — stated rather than left
+unaddressed.** Every edit is under `docs/` (not hashed at all) or `packages/sim/src/__tests__/`
+(`__tests__` is in `HASHED_ROOT_IGNORED_DIRECTORIES`, `rules-fingerprint.ts:255-267`). Therefore
+`rulesFingerprint` is **unmoved at `10e19c88e9a07856`** and `instrumentFingerprint` **unmoved at
+`5c230e99648cddee`**; the baseline of record `docs/balance/baseline-t197-hangout-caps.json` is
+untouched, with no re-pin and no `smoke/tiers.json` re-extract. The brief is assembled from work
+already done, which is this task's own instruction. `CURRENT_SAVE_VERSION` stays **16** — re-read at
+`packages/engine/src/save.ts:562`, not copied out of a task block (T-197's block carries a stale
+"13 → 14"; the shipped bump was 15 → 16). No new non-test module was added under `packages/sim/src`,
+so **no `SIM_NON_INSTRUMENT_SOURCES` entry is owed** — the figure table lives inside the test file
+for exactly that reason. Nothing under `packages/engine`, `packages/content`, `packages/ui` or
+`packages/desktop` changed: `SOCIAL_PLAYS_PER_DAY`, `LIARS_DICE_ROUNDS_PER_DAY`,
+`NAV_DIE_FUEL_DISCOUNT_MAX`, `NAV_DIE_EVASION_MAX`, `LOAN_TERM_DAYS`, `LOAN_DAILY_RATE`,
+`GUILD_DEBT_DAILY_RATE` and `day.ts`'s `=== 30` are all untouched, by name.
+
+**TO CLOSE THIS TASK — where each ruling gets transcribed when it arrives.** Do not re-derive this
+after the halt; it is written down here on purpose.
+
+1. **R1 (is the post-M17 pacing acceptable?)** → (a) this block, dated; (b)
+   `docs/DAWN-HAND-REDESIGN.md`, as a dated ruling line at the top beside the existing SHIPPED
+   PART 1/2/3 blocks; (c) **if and only if the ruling is "re-tune"**, a NEW TASK BLOCK — never a
+   constant edited inline, because every named lever (the day-30 literal, the debt/interest, the
+   loan terms, the two `NAV_DIE_*_MAX` magnitudes) moves the fleet economy and owes its own capstone
+   diffed against `docs/balance/baseline-t197-hangout-caps.json`.
+2. **R2 (`SOCIAL_PLAYS_PER_DAY = 3`)** → (a) this block; (b) `docs/DAWN-HAND-REDESIGN.md` §4a; (c)
+   if "tighten", a new **content** task plus its capstone; if "measure first", a new **instrument**
+   task for the insult-playing policy arm — a new instrument BEHAVIOUR with its own arm, moving
+   `instrumentFingerprint` only.
+3. **R3 (the §4b rounds table)** → all four sites in ONE edit:
+   `packages/content/src/liarsDice.ts:101`'s docblock, `docs/DAWN-HAND-REDESIGN.md` §5's last
+   bullet, `docs/LIARS-DICE-DECISIONS.md` LD-23, plus the array itself if revised. **A
+   marker-comment flip alone is FREE**: `rulesFingerprint` is *semantic* and strips comments
+   (`packages/sim/src/balance/rules-fingerprint.ts:448-496`), so only `docsFingerprint` moves and
+   that is a NOTE, not a failure (`packages/sim/src/balance/checkpoints.ts:467-490`). **Revising the
+   ARRAY is a content edit and DOES owe a capstone**, diffed against
+   `baseline-t197-hangout-caps.json`. Stated explicitly so the closer does not run 8,000 rows for a
+   comment.
+4. Then flip **test 5** of `packages/sim/src/__tests__/pacing-brief-figures.test.ts` from
+   asserts-empty to asserts-non-empty, per that file's own header comment and the T-158 precedent.
+5. **T-194 and the ~12 backlog tasks whose `after:` names T-198 stay gated.** No `after:` field was
+   touched by this pass — they un-gate when the owner rules, not when the brief was written.
+
+**THE HALT (2026-08-05).** Nothing further was done on this task by any coder. **No ruling was made,
+guessed at, paraphrased or implied by this pass** — the coder does not self-waive, and the six empty
+cells in the brief's §10 are the record that it did not. The task now awaits: Human ruling (R1, R2,
+R3).
+
+**RULING — R1 (owner, 2026-08-05): pacing is acceptable as-is.** No re-tuning task filed for the
+day-30 marker, Tour One debt, guild interest, or loan terms — the cumulative arc showed M17's
+freeing of admin/Hangout actions did not measurably ease the fleet economy (all within noise of
+T-196a), so the levers tuned against the old economy stand unchanged. R2 and R3 remain open;
+T-198 stays `BLOCKED(Human ruling)` until both are answered.
+
+**RULING — R2 (owner, 2026-08-05): `SOCIAL_PLAYS_PER_DAY = 3` confirmed, no change.** Per the
+insult-farming investigation (background test, 2026-08-05): the pool cap correctly blocks a
+4th same-day insult; insult/disposition never touches faction reputation or any player-facing
+score (fully separate systems, verified against source); and the interception-reweighting
+mechanism it gates is real (measured 27%→72% wronged-share lift, matching the ~2.358×
+theoretical figure) but economically narrow — it only reorders WHICH same-tier rival shows up,
+never adds encounters or changes payout, so even the cap's own existence isn't load-bearing for
+balance. No re-tuning task filed. **All three rulings (R1, R2, R3) are now recorded; T-198
+closes per T-202's conditional instructions once T-202 lands.**
+
+**RULING — R3 (owner, 2026-08-05): `LIARS_DICE_ROUNDS_PER_DAY` = `[1, 2, 3, 4, 5, 6]`** (tiers
+0-5, a strict +1/tier climb, revised up from the shipped `[1, 2, 2, 3, 3, 4]` suggestion).
+Owner's reasoning, recorded rather than paraphrased: the simulated ceiling (an always-wins
+gambler playing every free round) is a rare, high-skill-adjacent, high-variance play — real
+play at these odds still loses ~40% of individual hands — and rewarding a risky gambler
+archetype with the credits to buy fast drives/cloaking and run a scoundrel playstyle (trade
+combat for evasion) is an ACCEPTED, intentional outcome, not an exploit to close. Confirmed by
+simulation before this ruling (Measure 1 optimistic ceiling +228% vs field median, Measure 2
+realistic play +84%, both including the already-baked-in +68% shipped-gambler edge — see the
+capstone note above). **Implementation is content-only** (the array + its three `PROPOSED`
+markers) and owed its own capstone per T-198's own closing instructions — filed as **T-202**.
+R2 remains open; T-198 stays `BLOCKED(Human ruling)` until R2 is answered and T-202 lands.
+
+**CLOSED (2026-08-05, by T-202). All three rulings are in and every item of this block's own
+"TO CLOSE THIS TASK" checklist is discharged.**
+
+- **R1 — pacing accept-as-is.** Transcribed per checklist 1: (a) this block, dated, above;
+  (b) `docs/DAWN-HAND-REDESIGN.md`'s dated ruling line beside the SHIPPED PART blocks (§0's
+  preamble); (c) N/A — the ruling was not "re-tune", so **no constant was edited and no
+  re-tuning task filed**, which is the checklist's own conditional.
+- **R2 — `SOCIAL_PLAYS_PER_DAY = 3` confirmed, no change.** Transcribed per checklist 2:
+  (a) this block; (b) a new dated **RULING — R2** paragraph in `docs/DAWN-HAND-REDESIGN.md`,
+  and §0's now-false "R2 … remain open" / "R2 remains open" sentences corrected in place
+  rather than deleted; (c) N/A — neither "tighten" nor "measure first" was ruled, so **no
+  content task, no capstone and no insult-playing instrument arm is owed.** Nothing under
+  `packages/engine` or `packages/content` moved for R2; `SOCIAL_PLAYS_PER_DAY` is untouched.
+- **R3 — `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]`.** Shipped by **T-202** per
+  checklist 3, all sites in ONE edit, with the capstone the checklist says a REVISION (as
+  opposed to a free marker flip) owes: `docs/balance/baseline-t202-liars-dice-ceiling.json`,
+  diffed against `baseline-t197-hangout-caps.json` and re-pinned at all five pointer sites.
+- **Checklist 4 — test 5 of `packages/sim/src/__tests__/pacing-brief-figures.test.ts` is
+  FLIPPED, not deleted**, from asserts-empty to asserts-non-empty, per that file's own header
+  and the T-158 precedent; test 4 was inverted the same way (PROPOSED → CONFIRMED markers,
+  `[1, 2, 2, 3, 3, 4]` → `[1, 2, 3, 4, 5, 6]`), and the brief's §10 now carries the owner's
+  ruling text and date in all six cells, transcribed from this block rather than paraphrased.
+- **Checklist 5 — the gates are now un-gated.** T-194 and every backlog task whose `after:`
+  field names T-198 are eligible from this point; no `after:` field was rewritten, the block
+  they name is simply `DONE`.
+
+Orchestration: attempts=1/4 · HUMAN-GATE HALT, released 2026-08-05.
+
+---
+
+## M14 — Owner UAT pass 1 feedback (2026-08-03)
+
+Three findings from the owner's first hands-on session (build launched via `npm run dev -w
+@spacerquest/ui` + `npm run dev -w @spacerquest/desktop`, playtest logging **not** enabled for this
+particular pass — the session itself produced no exportable log; these are the owner's direct
+verbal notes, captured per the Bug Discovery Policy rather than left in conversation). All three are
+UX/design, not correctness defects — filed as tasks, not as `F-` findings, because each is
+substantial enough to need its own implementation pass.
+
+**Re-homed here at the 2026-08-06 re-order:** T-218 (the ruled T-186 build) and T-216/T-217
+(both filed during the T-186 bake-off) had been appended under the M20 header, which is
+owner-gated and "deliberately not urgent" — the opposite of this arc's standing priority.
+
+### T-186 · Visual identity reads as monochrome sameness — resolve the tension with the PRD's committed CRT-amber pillar — `status: DONE` · `coder: opus` · `after: T-198`
+
+Owner's read: "the monochrome amber is cool, but everything blends together... even here in an IDE
+there is variety of format and color. We need to do something color-wise, I am not quite sure just
+yet." **This is in direct tension with a COMMITTED design pillar, not a blank slate** —
+`docs/PRD-REIMAGINED.md` §4 states "rendered in committed amber-phosphor CRT style... Duskers-grade
+commitment, not scanline shader on a menu," and `docs/TECH-STACK.md`:164/247-248 name the CRT
+aesthetic as the *reason* Electron and the DOM/WebGL renderer were chosen over alternatives. Silently
+reworking the palette would override an explicit prior commitment the owner made themselves — so
+this is a ruling, not a build-and-ship task, and it starts BLOCKED for exactly that reason.
+
+**Accept (the ruling, first):** the owner reviews candidate directions that add legibility/variety
+*within* the committed CRT-terminal frame (e.g. diegetic per-module accent hues — combat vs. trade
+vs. Hangout rendered as different "instruments" on the one screen, still phosphor-style, still not a
+generic web palette — vs. a harder break from monochrome) before any implementation, ideally via
+`/bakeoff` so the options are compared with mockups rather than argued in prose. Once ruled: `docs/
+PRD-REIMAGINED.md` §4 is updated to match (never silently left to contradict shipped behaviour), the
+chosen direction is implemented (`packages/ui/src/theme.css` and call sites), and a screenshot pass
+confirms it reads as a game, not an IDE-neutral palette bolted onto the existing CRT chrome.
+
+**RULED (owner, 2026-08-05) — process, not final direction: run `/bakeoff`.** The owner declined
+to pick a direction from prose/description alone and asked for the Accept criterion's own
+recommended path — independent review plus real mockups compared side by side — before ruling on
+monochrome-vs-accent-hues-vs-harder-break. No longer `BLOCKED`: the next step (`/bakeoff`) needs
+no further owner input to start; the owner ruling this task is still waiting on is which direction
+wins the bakeoff, not whether to run one.
+
+**`/bakeoff` results (2026-08-05).** Three independent reviewers (visual/art director,
+UX-legibility/accessibility, engineering-feasibility), isolated context, each required to build
+and screenshot a real mockup before giving a verdict — not just argue in prose. Strong 3/3
+convergence: all three independently measured the same root defect (panel/background contrast
+1.04:1, pane borders 1.36:1 — both below the 3:1 floor at which a boundary is perceivable at
+all), all three rejected candidate B (a harder break from monochrome — would force rewriting PRD
+§4 *and* invalidating `docs/TECH-STACK.md`'s stated Electron/DOM-over-Tauri/canvas rationale),
+and all three rejected candidate A (per-instrument accent hues) — engineering found it a real
+CSS-architecture trap (custom properties don't cascade the way you'd assume; every derived token
+needs re-declaring at every scope or it silently stays amber), legibility found it a *measured*
+accessibility regression (colorblind simulation: the four instruments collapse to two
+indistinguishable pairs under deuteranopia), visual rejected it as literally the "second
+phosphor colour" the T-302 law and PRD §4 forbid. All three landed on some flavor of "add zero
+hues, fix through structure": engineering and legibility called it **C+** (pure tonal — value
+zoning, reverse-video reserved to exactly one meaning, physical control bodies, wider
+label→value contrast); the visual director called it **D — "one phosphor, two materials"**:
+amber remains the only hue and the only thing that emits light; everything that is not light
+becomes unlit, near-achromatic metal (chassis, bezels, frames). Two real bugs surfaced and
+filed along the way, independent of which direction won: T-216 (the "one phosphor" law is
+already broken in two live UI spots — `--accent`/`--line` never defined, `.as-hostile` hardcoded
+— amended with a measured accessibility-defect finding) and T-217 (the Galactic Wire `LOG`
+button overlapping the ticker text, root-caused to a stale magic-number offset).
+
+**RULED (owner, 2026-08-05): candidate D**, specifically the visual director's own
+`T186-chassis.png` build/palette — not a subsequent synthesis attempt that tried to merge D's
+material framing with C+'s stricter interaction rules (reverse-video-reserved-to-one-meaning,
+flatter achromatic steel), which the owner rejected on sight ("terrible for a lot of reasons").
+**Open scope question for the follow-on build task, not resolved by this ruling:** whether the
+legibility reviewer's specific, measurement-backed interaction rules (reverse video reserved to
+real urgency only instead of used broadly, a physically distinct button body vs. an inert flag,
+a visibly-dead locked-row treatment) get folded into the D implementation, or whether D ships
+as-is with its own original interaction treatment. Not assumed either way — ask before building.
+
+### T-218 · Build: ship the "one phosphor, two materials" visual identity — `status: TODO` · `coder: opus` · `after: T-186`
+
+T-186's ruling (2026-08-05): implement candidate D — amber stays the only hue and the only thing
+that emits light; every structural/inert surface (panel chassis, bezels, frames, dividers)
+becomes unlit, near-achromatic steel instead of the current amber-on-amber haze. The owner's
+reference build is the bake-off's visual-director mockup, not the subsequent synthesis attempt
+that layered in the legibility reviewer's stricter interaction rules — that synthesis was
+rejected on sight. Real work: `packages/ui/src/theme.css` (new neutral/steel token family
+alongside the existing five amber tokens, which keep their exact current values per the bake-off
+engineering reviewer's finding — this is additive, not a re-hue), `packages/ui/src/App.tsx` call
+sites for structural chrome, and `docs/PRD-REIMAGINED.md` §4 gets the one added sentence the
+bake-off named (the amber-phosphor commitment survives unchanged in hue-count; the fiction shifts
+from "a monochrome tube" to "amber CRT readouts set into machined metal" — write that sentence,
+don't silently leave §4 undescriptive of what ships).
+
+**RULED (owner, 2026-08-05) — the scope question:** D, plus exactly one interaction rule layered
+in — reverse video reserved to real urgency only. The owner rejected a fuller synthesis attempt
+that also changed D's materials/palette toward the legibility reviewer's flatter, colder steel
+("terrible for a lot of reasons"); the follow-up isolated the single rule from that rejected
+attempt and re-tested it as a minimal diff against D's own unmodified source
+(`chassis-rvrule.html`, built from the bake-off's own `chassis.html` by editing exactly two
+selectors) — approved on sight ("go with this version"). **The two concrete edits, and nothing
+else changes from the ruled D reference build:**
+- `.slot.ready` (the "which die clears this check" badge on Manifest Board rows): was solid
+  `background: var(--ember)` + dark text: now an outlined `var(--well)` fill with an `--ember`
+  border, text and inset glow — no longer a reverse-video fill.
+- `.die.sel` (the armed die in the Dawn Hand tray): was a solid light-amber gradient fill with
+  dark text: now the die's own dark steel gradient stays, with an `--ember` inset ring + glow and
+  `--ember` text — selected reads as "lit," not "inverted."
+- Everything else in the reference build — `.chip.rev` (DEBT), `.flag.urgent`, `.due-soon b`,
+  `.ship-region.damaged .rg-v`, all chassis/steel materials, the manifest "paper," the ledger
+  rail, the wire slot, the dawn-hand tray — is **unchanged** from D as ruled. The button-body and
+  locked-row questions raised when this scope call was first opened are **not** part of this
+  ruling — D's own existing button/lock treatment ships as built, nothing added from the
+  legibility reviewer's build beyond the one rule above.
+
+**Accept:** the live UI renders candidate D's material treatment (steel chassis + amber-only
+light) matching the ruled reference build, with the one reverse-video-discipline edit above
+applied to the die-armed and check-clearing-badge states and nothing else changed from D;
+`docs/PRD-REIMAGINED.md` §4 carries its one added sentence; a live screenshot pass (same
+six-panel board used throughout T-186's bake-off) confirms it reads as the ruled direction, not a
+redrift back toward either the pre-T-186 baseline or the rejected fuller-synthesis attempt; T-216
+and T-217 (both filed during the bake-off) are either fixed in the same pass or explicitly left
+to their own tasks with a reason recorded; gate green.
+
+### T-216 · BUG: `theme.css`'s "one phosphor colour" law is already broken in two live UI spots — `status: TODO` · `coder: opus` · `after: —`
+
+**Found incidentally** during the T-186 visual-identity bake-off (2026-08-05), by the engineering-feasibility reviewer, while establishing the ground truth that "there is currently no second hue anywhere in the shipped UI" — that premise turned out to be false, and this is filed per the Bug Discovery Policy rather than held for later. Confirmed against source directly, not taken on the reviewer's word:
+
+- `packages/ui/src/theme.css:4929,4938,4947` — `color: var(--accent, #4fd1c5)` (teal). `--accent` is **never defined** anywhere in the repo (`grep -n "\-\-accent:" packages/ui/src/theme.css` → no match), so the fallback is what actually renders. Live: `.ship-honor` (the Top Gun Honor List) is rendered at `App.tsx:4381` (`data-testid="honor-list"`) — the player's own row and any held-rank row render teal, not amber.
+- `packages/ui/src/theme.css:4891,4911` — `border: 1px solid var(--line, #2b3a44)` (blue-grey). `--line` is likewise **never defined**; same `.ship-honor` component, so its borders are blue-grey, not amber.
+- `packages/ui/src/theme.css:3217` — `.as-hostile .as-value { color: #e0562a; }` (orange-red), not a broken variable but a hardcoded second hue that bypasses the token system entirely. Live: `App.tsx:3462` builds `` `as-row as-${s.tone}` `` dynamically, so a hostile-attitude row renders orange-red in production right now.
+
+**SEVERITY AMENDMENT (2026-08-05), the T-186 bake-off's legibility/accessibility reviewer,
+independently:** the `.as-hostile` leak is not just a one-phosphor-law consistency violation —
+it is a functional accessibility defect. Simulated via Viénot matrices against the two live
+attitude colors (`#e0562a` hostile vs. `#c0781a` neutral `--amber`): under deuteranopia both
+resolve to hue ≈52° within 3 units on every channel; protanopia is the same collapse. **A
+deuteranope or protanope cannot currently distinguish a hostile captain from a neutral one by
+this color alone.** This raises the Accept bar: closing the leak by giving `.as-hostile` an
+amber-family value does not fully discharge the finding if hostile/neutral then collapse to the
+same *luminance* too — the fix must leave hostile distinguishable from neutral by some
+non-hue-dependent channel (e.g. luminance step, reverse-video, or an icon/glyph), not just move
+the bug from "wrong hue" to "right hue, still indistinguishable."
+
+None of this is dead CSS — both class families are confirmed rendered, not just declared. Whatever T-186 rules (monochrome-only vs. per-instrument accents vs. a harder break), this needs a decision on its own terms: either these three sites get real amber-family values (closing the accidental leak and making "one phosphor" true again), or they get formally adopted as the second/third hue the law already has in production, with `theme.css`'s header law rewritten to say so honestly instead of asserting something the shipped code already contradicts.
+
+**Accept:** `--accent` and `--line` are either defined (as amber-family values, closing the leak) or deliberately promoted to real, documented tokens with `theme.css`'s header comment updated to no longer claim zero second hues; `.as-hostile`'s hardcoded `#e0562a` is resolved the same way — token-ized amber or deliberately kept and documented; a screenshot of `.ship-honor` (Records → ship honors) and an attitude-hostile row confirms the fix; gate green.
+
+### T-217 · BUG: the Galactic Wire ticker scrolls underneath the LOG button — `status: TODO` · `coder: opus` · `after: —`
+
+**Found incidentally** during the T-186 visual-identity bake-off (2026-08-05), by the visual-design
+reviewer, and confirmed independently against a screenshot taken earlier the same session (not
+just the reviewer's word) — visible right now on a live boot: the Galactic Wire band reads
+`GALACTIC WIRE [LOG]uiet. Roll the day and make some news.` instead of `GALACTIC WIRE [LOG]  The
+wire is quiet. Roll the day and make some news.` — the ticker text scrolls in **underneath** the
+LOG button rather than starting clear of it.
+
+**Root cause, confirmed against source.** `packages/ui/src/theme.css:1883-1885` — `.ticker` has a
+hardcoded `padding-left: 138px`, sized to clear the original `.cap` contents (the "GALACTIC WIRE"
+label + pulse dot). `theme.css:1912-1923`'s own comment marks the `.wire-log-btn` as a LATER
+addition ("T-306"), and `App.tsx:5492-5504` confirms it's rendered *inside* the same
+absolutely-positioned `.cap` element, after the label. Adding the button widened `.cap` beyond the
+138px the ticker reserves for it — a magic number that was never updated when T-306 shipped, so
+`.cap`'s real rendered width and the ticker's clearance have silently drifted apart.
+
+**Accept:** the ticker's left clearance tracks `.cap`'s actual rendered width (e.g. measured via
+`ResizeObserver`/`getBoundingClientRect`, or `.cap` reserves its own space via normal flow instead
+of `position: absolute` + a magic-number sibling offset) rather than a hardcoded pixel value that
+can drift again the next time something is added to `.cap`; a screenshot of the Galactic Wire band
+confirms `GALACTIC WIRE [LOG]` and the ticker text no longer overlap; gate green.
+
+### T-250 · F-185-4: the playtest-logging default is still the interim ON — `status: TODO` · `coder: opus` · `after: —`
+
+F-185-4 left the playtest-logging default at the interim ON that HEAD `5b430136` flipped it to "for
+the internal UAT build", and nothing else in `TASKS.md` or `TODO.md` tracks restoring it. VERIFIED
+LIVE: `packages/ui/src/playtestLog.ts:166` reads
+`return storage.getItem(PLAYTEST_LOGGING_KEY) !== 'off';` (default ON), while
+`docs/PLAYTEST-TELEMETRY_SPEC.md` §3 line 56 states "**OFF by default.**". Restoring spec §3's OFF
+must ALSO edit the test that now pins the interim ON explicitly
+(`packages/ui/e2e/playtest-logging.spec.ts`, plus the `shell.spec.ts` test that shares the
+`setLogging(page, on)` shape) — that pin was written so the restore cannot pass silently.
+[harvested: T-185/playtest-logging-default-off]
+
+**Accept:** either `packages/ui/src/playtestLog.ts:166` is restored to
+`docs/PLAYTEST-TELEMETRY_SPEC.md` §3's "OFF by default", or spec §3 is amended to ON with the owner's
+reason recorded and dated — the two are never left disagreeing; whichever way it goes,
+`packages/ui/e2e/playtest-logging.spec.ts` and the `shell.spec.ts` test sharing the
+`setLogging(page, on)` shape are updated in the SAME change and shown to fail against the old default
+first, so the restore cannot pass silently; the interim-ON provenance (HEAD `5b430136`, "for the
+internal UAT build") is recorded beside the outcome; the desktop shell's session JSONL behaviour under
+the chosen default is stated; gate green.
+
+---
+
+## M15 — Owner UAT pass 2: board-quadrant feedback (2026-08-03)
+
+Four findings from the owner's second live session, one per board quadrant. Captured verbatim per
+the Bug Discovery Policy. All four are UX/design, filed as tasks rather than `F-` findings for the
+same reason as M14: each is substantial enough to need its own implementation pass.
+
+**Re-homed here at the 2026-08-06 re-order:** T-215 (the ruled T-188 globe build) had been
+appended under the owner-gated M20 header; it is this milestone's build-out.
+
+### T-188 · Galaxy map: port spacing gives near-zero travel payoff, and a jump is imperceptible — an owner design decision — `status: DONE` · `coder: opus` · `after: —`
+
+Owner's original read: "the galaxy on the top left is too crowded. All the space ports are super
+close together. There is basically zero payoff to travelling between ports... The OG game had a
+real-time ascii animation which was too slow, we just have instant jump to port, and it is barely
+noticeable that any game action has happened. We need to come up with a design decision on this."
+
+**SUPERSEDING SPEC (owner, 2026-08-04) — the ruling arrived as a concrete build plan, not a
+`/bakeoff` request.** Verbatim, in order:
+
+1. **A standing quality gate:** "already you should be flagging and failing this since the port
+   names are overlapping with other ports and names." A regression test for label-collision on the
+   starmap, independent of whichever layout ships — it must hold for ANY coordinate set, not just
+   today's.
+2. **Rename `Sun-3` → `Sol-3`** — "the base game" name, reads more sci-fi. On the screen; swept
+   through docs and tests. **NOT** the persisted deed id `liars_dice_cleared_sun_3`
+   (`packages/content/src/deeds.ts:921`) or the `SUN_3_HANGOUT` code identifier
+   (`packages/content/src/portHangouts.ts:278`) — those are data/code identifiers, not display
+   text, and renaming a persisted id is a save-migration question the owner did not ask for here.
+3. **A real geometry pipeline, replacing the hand-authored `{x,y}` scatter:**
+   - **3a.** Distance-from-Sol per system — already derivable (`distance(1, id)` in
+     `systems.ts`), used as the FIXED radius input to what follows so every existing Sol-relative
+     balance number (rim ring ~20-24, core mean ~11, the fuel/DC/danger tuning in
+     `docs/balance/BASELINE-T-1603a.md`) is preserved exactly.
+   - **3b.** A generated 2D radial ("orbital/atomic," explicitly NOT the old game's linear line)
+     layout: systems placed on rings at their 3a radius, spread by angle within each ring.
+   - **3c.** Lift 3b into 3D: same radius-from-Sol as 3a/3b, dispersed across a sphere. New
+     `coordinates3D: {x,y,z}` field on `StarSystem`. Owner's own note: **nothing about Sol-relative
+     distance, fuel cost or travel time changes at this step.**
+   - **3d.** Pairwise distance between EVERY system pair, from the 3c coordinates. Owner's own
+     note: **this DOES change non-Sol-to-non-Sol route numbers** versus today's ad hoc 2D scatter.
+4. **Three prototype visualizations, screenshotted, not built into the live game yet:**
+   - **4a.** Flat 2D, current system highlighted, connecting lines to every other system.
+   - **4b.** The 3c sphere, draggable/zoomable, same connecting lines.
+   - **4c.** Wildcard — web research for sci-fi galaxy-map UI, mocked up.
+   Owner: "I will pick one and we will build it" — so 4a-4c are comparison artifacts, not a
+   shipped feature yet; whichever is picked becomes its own follow-on build task (wiring it into
+   `App.tsx`'s `Starmap`, replacing the current SVG projection).
+
+**Scope call made during implementation, stated rather than left implicit:** item 3d's new
+pairwise-distance function is additive (`distance3D`, alongside the existing 2D `distance`) —
+it is NOT wired into `travel.ts`'s live `jumpFuelCost`/`travelDc`/`calculateRouteDanger` in this
+pass. The owner's own text acknowledges 3d "will directly affect" contract-run distances once it's
+the live formula, and `packages/content/src/systems.ts` is a hashed rule source
+(`rules-fingerprint.ts`), so swapping the ACTIVE distance formula is a rulesFingerprint-moving
+change with real balance consequences (every rim/danger/fuel number in
+`docs/balance/BASELINE-T-1603a.md` is tuned against the current 2D numbers) — that swap belongs
+with whichever map (4a/4b/4c) the owner picks, not bundled silently into a geometry-data commit.
+Building the 3D data and the comparison prototypes does not itself require moving that live
+formula.
+
+**Accept:** (1) a starmap label-overlap test exists, generic to any coordinate set, and is
+currently RED against today's live map (documented, not silently fixed) unless the map is
+redesigned in the same pass; (2) `Sol-3` is the display name everywhere a player or reader sees
+it, with the deed-id/code-identifier exceptions above stated explicitly, not silently skipped; (3)
+`StarSystem` carries `coordinates3D`, `distanceFromSol` is derivable, and a tested `distance3D`
+function returns real pairwise 3D distances; (4) three screenshotted prototypes exist for the
+owner to choose from; (5) the live travel formula is UNCHANGED by this task (verified: `travel.ts`
+still imports the 2D `distance`); gate green; `rulesFingerprint`'s move (if any) is stated and
+paid for with a capstone re-pin.
+
+**Delivered (2026-08-04) — items 1-3 built, item 4 prototyped; BLOCKED on the owner's pick, not
+DONE.**
+
+1. **The overlap tripwire:** `packages/ui/src/__tests__/starmap-label-overlap.test.ts`, an
+   `it.fails` tripwire (this repo's standing pattern for a documented, intentional red) generic to
+   whatever `starmapProjection` returns — approximate label bounding boxes from `.smlabel`'s actual
+   CSS (8px font, text-anchor middle, `(0,16)` offset), asserting no two intersect. It currently
+   fails against today's live map — confirmed by an out-of-band run: 4 real collisions (Arcturus-6/
+   Procyon-5, Deneb-4/Rigel-8, Fomalhaut-2/Mira-9, Fomalhaut-2/Spica-3) — matching the screenshot
+   the owner flagged. Flips green the moment a redesigned map (4a/4b/4c) ships.
+2. **`Sun-3` → `Sol-3`**, swept across ~75 live source/doc/test files (display text, comments, test
+   assertions). Explicitly NOT renamed: the persisted deed id `liars_dice_cleared_sun_3`
+   (its player-visible citation text WAS updated) and the `SUN_3_HANGOUT` code identifier.
+   Deliberately NOT renamed: dated historical/archival documents (`docs/archive/`, the two
+   `T-16xx`-era balance reports, `TODO.md`'s harvested provenance) — those describe what the game
+   was called at the time, not what it's called now.
+3. **The geometry pipeline, in `packages/content/src/systems.ts`:** `Star3DCoordinates`, a
+   `coordinates3D` field populated for all 28 systems at module load (radius from Sol preserved
+   exactly from the existing 2D `coordinates` — verified: `distance(1, id)` and each system's 3D
+   radius match to rounding), a Fibonacci-sphere point distribution for the angular spread
+   (golden-angle longitude, arccos latitude — the standard even-coverage algorithm), `distance3D`
+   (pairwise 3D Euclidean, additive, NOT wired into `travel.ts`), and `orbitalLayout2D` (the 3b
+   flat radial layout, golden-angle spread, for the 4a prototype). **rulesFingerprint moved**
+   (any edit to a hashed rule-source file does, even purely additive code) — **paid for with a real
+   8,000-run capstone**, `docs/balance/baseline-t188-orbital-3d.json`, re-pinned at all four sites
+   (`balance-targets.test.ts`, `docs/NPC_REDESIGN.md` ×2, `docs/balance/smoke/tiers.json`).
+   **This task's own changes are PROVEN INERT, not assumed** — two isolated 30-seed bisects
+   (gambler, veteran) each report "NOTHING MOVED." The `fleet`/`veteran` movement in the full
+   8,000-row diff against the outgoing baseline is T-161's `veteranPolicy` fix (already reviewed,
+   gated, committed) getting its first capstone — see the standing amendment in `docs/NPC_REDESIGN.md`
+   for the full account, attributed there so it isn't mistaken for new drift from this task.
+4. **Three screenshotted, standalone prototypes** (not wired into `App.tsx`'s live `Starmap`),
+   built from the REAL 3b/3c/3d data: **4a** flat orbital, Sol highlighted, lanes to every system;
+   **4b** the 3c sphere, drag-to-rotate + scroll-to-zoom (genuinely interactive, not just a static
+   mock); **4c** wildcard — a long-range-scan radar console (range rings, a nearest-neighbour lane
+   graph instead of pure hub-and-spoke, a rotating sweep), informed by a web sweep of FTL/Star
+   Traders/Sunless Sea-style node maps. Sent to the owner as screenshots plus the live HTML files.
+   **THE HALT.** Whichever the owner picks becomes its own follow-on build task (wiring the chosen
+   layout/interaction into `App.tsx`'s `Starmap`, replacing the current SVG projection) — not
+   self-selected here.
+
+Gate: `npm test` 118 files / 2,295 tests green across all five workspaces, `npx tsc -b`,
+`npm run lint`, `npm run format:check` clean.
+
+**NOTE (owner, 2026-08-04): the interactive HTML prototypes (4a/4b, sent as standalone files)
+did not work when opened on the owner's mobile app/device.** Not investigated — the screenshots
+sent alongside them were viewable and are the actual basis for comparison; the live HTML was a
+bonus for drag/zoom feel on desktop.
+
+**RULED (owner, 2026-08-05): 4B — the 3D lat/long globe.** The original 4a/4b/4c standalone
+files no longer existed on disk (never committed, sent as ephemeral attachments only) and were
+regenerated from the real committed data (`coordinates3D`, `orbitalLayout2D`, `distance3D`) for
+re-comparison. Two rounds: the first 4B pass was rejected as not actually reading as a sphere (no
+latitude/longitude graticule); rebuilt with a real dotted lat/long wireframe, current-system hub
+(bright, dim lanes to all reachable systems), and one lit lane for a set course. **A real,
+measured finding surfaced during this pass, and it changes the build's scope:** sampling label
+placement across 90 rotation angles (every 20° yaw × 5 pitches, same bounding-box method as
+`starmap-label-overlap.test.ts`) found **97.8% of rotations have at least one label collision**
+(avg. 4/frame; `Arcturus-6`/`Fomalhaut-2` collided in 22/90 samples). "Rotate to a clean angle"
+is not a real fallback — the 20 charted systems are too tightly clustered near Sol for that to
+reliably work. **Active label-collision suppression (priority: current system → set-course
+target → nearest-to-camera, others hidden until hover/selection) is therefore a required part of
+the build, not a nice-to-have.** Ruling also covers scope: 4B **fully replaces** the flat 2D
+Starmap projection, not a toggle/fallback. Follow-on build task: T-215.
+
+### T-215 · Build: the 3D lat/long globe Starmap, replacing the flat 2D projection — `status: TODO` · `coder: opus` · `after: T-188`
+
+T-188's ruling (2026-08-05): build candidate 4B, the rotatable 3D globe, as the live Starmap in
+`App.tsx` — not a prototype, not a toggle-able alternative to the existing flat SVG projection,
+a full replacement of it. Real geometry already exists and is committed: `coordinates3D`,
+`distance3D`, `orbitalLayout2D` in `packages/content/src/systems.ts` (from T-188). This task is
+the drag/zoom interaction, the render (dotted lat/long graticule wireframe, no bright emphasis
+ring), and the lane/label behaviour the ruling specified:
+
+- **Lanes:** dim by default from the player's current (docked) system to every reachable system;
+  the lane to a set course renders bright. Hub is the current system, not always Sol — Sol only
+  looks like the hub today because the sample game state happens to be docked there.
+- **Label collision suppression is required, not optional.** The ruling's own measurement (90
+  sampled rotation angles, same bounding-box method as `starmap-label-overlap.test.ts`) found
+  97.8% of rotations produce at least one label collision among the 20 charted systems — spinning
+  to a "clean" angle is not a reliable fallback. Priority order for which label wins a collision:
+  current system, then the set-course target, then nearest-to-camera (by rotated `z`); losers
+  keep their dot but drop their label until hovered/selected. Use real rendered text metrics for
+  the collision boxes, not a fixed-character-width approximation (the T-188 mockup used one and
+  it visibly under-measured — do not carry that shortcut into the shipped build).
+- **Mobile/cross-platform risk, named and open:** the T-188 interactive HTML prototype failed to
+  open correctly on the owner's mobile device, and this was never root-caused (out of scope at
+  the time — screenshots were the actual basis for that ruling). This task inherits that open
+  risk and must root-cause and resolve it before considering the globe done, since the shipped
+  build (unlike the prototype) is not optional to open correctly.
+- **Retire, don't leave dead:** the existing flat SVG `starmapProjection`/2D rendering path in
+  `App.tsx` is removed once the globe ships, not kept as unreachable code.
+
+**Accept:** the live Starmap renders the rotatable 3D globe (real drag/zoom, not a static frame);
+`starmap-label-overlap.test.ts` (or its 3D-projection successor) passes across a representative
+sample of rotations, not just one; the current-system/course-lane brightness behaviour matches
+the ruling; the mobile-open failure is root-caused and fixed or explicitly re-scoped with a
+reason recorded; the old flat 2D projection code is deleted; gate green.
+
+---
+
+## M16 — Owner UAT pass 3: the dawn-hand die is illegible (2026-08-04)
+
+### T-193 · BUG: the starmap shows a "PILOT DC" for every jump, but ordinary jumps never roll against it — `status: TODO` · `coder: opus` · `after: T-198`
+
+Found while explaining the dawn-hand mechanic to the owner (they could not tell what assigning a
+die to a jump does — see T-194 for the full finding). Root cause, verified in code:
+`travelPreview()` (`packages/engine/src/actions/travel.ts:189`) unconditionally computes
+`dc: travelDc(routeDistance, destination)` and the route-preview panel
+(`packages/ui/src/App.tsx:3649`, `data-testid="route-dc"`) renders it for EVERY destination. But
+`resolveTravel` (same file, `:572`) only actually rolls a Pilot check against that DC for the
+Nemesis crossing (`isCrossing` branch, `:624-629`) — per the `T-1605 · AN ORDINARY JUMP ALWAYS
+ARRIVES` comment at `:608`, the pilot check was deliberately removed from ordinary travel (34% of
+jumps used to fail even on the player's best die). **Nobody removed the now-dead DC readout when
+the check was removed.** The UI has been showing a stat check that cannot fail for every ordinary
+jump since T-1605 shipped — actively misleading, not merely uninformative: a player reads "PILOT DC
+12" and reasonably concludes their die and Pilot stat matter here, when neither does.
+
+**Accept (amended at the 2026-08-04 review pass — T-195 shipped in the same commit as this
+filing, and it changes what "honest" means here):** the route-preview panel does not display a DC
+for a destination `resolveTravel` will not roll a check against (ordinary jumps); it MAY still
+show the Nemesis crossing's real DC, since that check is real. But do NOT replace the dead DC
+with only a "no check — every jump with fuel arrives" line — since T-195, an ordinary jump's die
+is no longer inert: it sets a fuel discount (`navDieFuelDiscount`, 0-15%) and an
+encounter-evasion factor (`navDieEvasionFactor`, 0-20%), and `travelPreview` already computes
+both once a die is known. The honest readout is the armed die's live effect (e.g. "die 14 · fuel
+−9% · encounter odds −13%"), with the "no check" copy covering the no-die-armed state — either
+way the absence of a DC reads as a stated fact, not a missing feature. `travelPreview`'s `dc`
+field can stay (still useful for the crossing and anything else that reads it), but the UI
+consumer must stop rendering it as if it always means something. Coverage lands in the existing
+DOM pane-test harness (`packages/ui/src/__tests__/`, vitest + testing-library — "coverage" here
+means these; do NOT stand up a browser tier for this task, that is T-162's still-open thread): a
+route preview to a non-crossing destination renders no Pilot-DC readout (the die-effect or
+"no check" copy instead); a preview to the (unlocked) Nemesis crossing still renders the real
+DC. Gate green.
+
+### T-194 · The dawn hand's die-value mechanic is illegible — teach it, and make success visible — `status: TODO` · `coder: opus` · `after: T-198`
+
+Owner's read, after a live session: "it was not at all apparent why I was adding a d20 to any of my
+tasks. Taking a contract? Making a jump to deliver the contract? Entering the hangout? ... In its
+current state it feels like I have [a] number of action points, I have no feedback if the die does
+anything."
+
+**The pre-M17 mechanic this task was filed against (kept as the record of the finding; the full
+value-blind/value-matters split is preserved in `docs/DAWN-HAND-REDESIGN.md` §3's table):** every
+action cost one die, but only some read its face value, and nothing in the UI distinguished the
+two classes — `dieArmed` (`App.tsx:3471`) is a plain boolean, not a comparison. **M17 dissolves
+that split instead of teaching it:** after T-196a-c and T-197, every remaining Main Action reads
+its die — Jump (fuel discount + encounter evasion, monotonic, T-195), Explore (Pilot vs Nav DC),
+Haggle (Trade vs DC), Combat (Guns/Pilot/Trade vs DC by stance), Peek (Guile vs DC), Nemesis
+crossing (Pilot vs DC) — and everything else is a Free Action costing no die at all. Two
+deliberate corners stay die-blind, both ruled out of M17's scope by the spec's §3: storylet
+choices authored with `spendDie` and no `statCheck`, and Explore's secondary extra-dice toll.
+
+**RE-SCOPED at the owner-approved review pass, 2026-08-04** (originally written pre-M17, then
+marked superseded with a "re-scope later" note — this rewrite IS that re-scope, done now so no
+future coder inherits an Accept that contradicts its own postscript; the original two-part
+version is in git history). Gated `after: T-198` so the tutorial teaches the post-checkpoint
+economy, not numbers the owner may still re-tune.
+
+**Accept, in three parts, all required:**
+
+1. **Teach the two-class economy in the hand-held tutorial (T-187's contextual coach).** At the
+   first die assignment: Main Actions cost a die and the die IS your roll (or, for a jump, your
+   edge — higher is strictly better); Free Actions cost nothing and can be taken even with an
+   empty hand — with one bounded exception, the daily social plays (§4a's pool), taught where
+   the player first meets it (on entering a Hangout), not front-loaded. Demonstrate, don't just
+   state: the walkthrough already covers a Free action (sign a contract) and a Main one (jump)
+   back-to-back, so the contrast is felt.
+2. **Show the roll before it's committed, everywhere a die is read.** For every check-based Main
+   Action (Explore, Haggle, Combat, Peek, Crossing), once a die is armed, render that die's value
+   against the action's DC as a clear success/fail read (e.g. "[14] vs DC 12 — clears it" or a
+   plain pass/fail badge), not a bare DC sitting next to an unrelated hand of dice. For the jump,
+   T-193's die-effect readout is the same idea and lands first; this task extends the pattern to
+   the check actions. A DC shown before any die is armed (planning view) must be visually
+   distinct from a live per-die read.
+3. **The two residual die-blind corners must not be taught wrong.** Storylet `spendDie`-only
+   choices and Explore's extra-dice toll still spend dice without reading them; the tutorial and
+   the per-die read must not imply those dice roll against anything. If making them honest in the
+   UI is cheap, do it here; if not, FILE the cleanup as a follow-up task rather than widening
+   this one.
+
+Gate green.
+
+---
+
+## M18 — Owner feature requests, filed at the T-198 pacing review (2026-08-05)
+
+Two feel/onboarding requests the owner raised while reviewing T-198's pacing brief. Independent
+of the M17 dawn-hand arc and of R2/R3 — both are eligible now, not gated behind T-198.
+
+**Moved at the 2026-08-06 re-order:** T-251 (needs the owner's treatment pick before any build)
+and T-254 (an owner vocabulary ruling) now sit in the OWNER GATE section below.
+
+### T-252 · The third motion tier — SpacerQuest ships a binary motion model against a three-tier rule — `status: TODO` · `coder: opus` · `after: —`
+
+Q4 / §3.6 of `docs/design/T-201-dawn-hand-roll.md`: SpacerQuest ships a BINARY motion model
+(`reducedMotion` OR'd with the OS query at `App.tsx:931` driving `data-motion` at `:933`, with two CSS
+rails — `theme.css:2567–2595` and the `:root[data-motion='reduced'] *` kill-switch at
+`theme.css:2601–2605`), while `tabletop-ui` §8's standing rule mandates **Cinematic / Snappy /
+Instant** and "never ship cinematic-only". The divergence exists TODAY and was deliberately not fixed
+by T-201, whose doc recommends a separate task that retrofits every existing beat (`.sweep`, `om-*`,
+`ld-settle`, the Liar's Dice timeline, `.die.bloom`) and warns that T-201's implementation should not
+ship a cinematic-only beat while this is unanswered.
+[harvested: T-201/motion-tier-third-rail]
+
+**Accept:** either the three-tier motion model (Cinematic / Snappy / Instant) is implemented — the
+setting, the `data-motion` values, the CSS rails, and the OS-query mapping — and every existing beat
+named above (`.sweep`, `om-*`, `ld-settle`, the Liar's Dice timeline, `.die.bloom`) is retrofitted with
+a Snappy form, or the divergence from `tabletop-ui` §8 is ruled deliberate for this product with the
+reason recorded where a future UI task will read it; the retrofit list is proven complete by a scan of
+the animation rails rather than by inspection; each tier is screenshotted/recorded per the
+`tabletop-ui` §7 loop; no beat is left cinematic-only; UI-only change, so no rule fingerprint moves —
+state that explicitly; gate green.
+
+### T-253 · F-204-1: `wireStories.ts`'s "VERBATIM PRD §6 sample" no longer matches the PRD — `status: TODO` · `coder: opus` · `after: —`
+
+**F-204-1 (OPEN, carried forward from T-204).** `wireStories.ts`'s "VERBATIM PRD §6 sample — do not
+reword" contract now diverges from the PRD. `wireStories.ts:49` declares index 0 is the verbatim PRD §6
+sample and it is pinned exactly at `wire.test.ts:132`; that line now says "Cantina" while
+`docs/PRD-REIMAGINED.md:113` still says "Hangout" (as do §7.3/§7.5 at lines 145/163/167/177/195/217/223).
+The PRD was not in T-204's IN-SCOPE list, so updating it is its own scoped decision. Related and
+deliberate: the comment at `wireStories.ts:16-17` quoting the old sample and the one at
+`hangout.test.ts:373-374` ("The gamble templates all name the Hangout") were left UNEDITED to keep
+T-204's out-of-scope comment-count proof clean; both are knowingly stale pending the PRD decision and
+should be corrected by whichever task takes it. [harvested: T-204/F-204-1]
+
+**Accept:** the PRD decision is taken explicitly — either `docs/PRD-REIMAGINED.md:113` and the §7.3/§7.5
+occurrences (lines 145/163/167/177/195/217/223) are updated to "Cantina" so `wireStories.ts:49`'s
+verbatim contract holds again, or the sample is de-designated as verbatim and `wire.test.ts:132`'s exact
+pin is re-shaped, with the reason recorded either way; the two knowingly-stale comments
+(`wireStories.ts:16-17` and `hangout.test.ts:373-374`) are corrected in the same change; the "VERBATIM
+PRD §6 sample — do not reword" contract is left either genuinely true or explicitly retired, never
+half-true; content/doc-only change, so no rule fingerprint moves — state that explicitly; gate green.
+
+---
+
+## M19 — Captain voice: table talk, battle catchphrases, and quest-captain pinning (owner, 2026-08-05)
+
+Two owner requests from reviewing the cast content-authoring survey. Both are about the 30 named
+captains (`NPC_PROFILES`, `packages/content/src/cast.ts`) and the 11 quest captains
+(`QUEST_PROFILES`, same file) specifically — NOT the 42-seat Liar's Dice roster (already has its
+own `lines`) and NOT the 65-entry anonymous pirate/patrol pool (explicitly out of scope here; the
+owner confirmed the gambler ladder and dropped the random-gambler idea with no further action).
+
+**Moved at the 2026-08-06 re-order:** T-256 and T-257 (both owner content-design rulings) now
+sit in the OWNER GATE section below. T-255 is autonomous and stays.
+
+### T-255 · The four captain-voice surfaces have unit coverage only — prove them in real DOM — `status: TODO` · `coder: opus` · `after: —`
+
+T-207's four new player-visible surfaces have UNIT coverage only and no real-DOM proof. T-207's block
+states "No e2e change was needed or made" because `packages/ui/e2e/combat.spec.ts`'s two seeds are both
+ANONYMOUS encounters, and `packages/ui/e2e/liars-dice-roster.spec.ts`'s `dare-table-talk` /
+`dare-dealer-history` assertions are on the ROSTER seat. VERIFIED: grepping `packages/ui/e2e/` finds NO
+assertion on `dare-dealer-table-talk` (the roaming captain's line, `packages/ui/src/App.tsx:3017`) nor on
+`combat-enemy-bark` / `combat-enemy-battle-bark` / `combat-aftermath-bark`
+(`App.tsx:1818 · 1823 · 2041`). It needs an e2e seed that deals a ROAMING named captain's hand and one
+that draws a NAMED interceptor, so the copy a player can actually see is proved where
+`packages/ui/src/__tests__/liars-dice-pane.test.ts`'s own T-221 header says such a claim can be proved.
+[harvested: T-207/t207-e2e-bark-dom]
+
+**Accept:** `packages/ui/e2e` gains a seed that deals a ROAMING named captain's Liar's Dice hand and a
+seed that draws a NAMED combat interceptor, and asserts all four surfaces in real DOM —
+`dare-dealer-table-talk` (`App.tsx:3017`), `combat-enemy-bark`, `combat-enemy-battle-bark` and
+`combat-aftermath-bark` (`App.tsx:1818 · 1823 · 2041`); the seeds are found and pinned deterministically
+rather than left to chance, and each assertion is shown to fail with the bark rendering suppressed, so
+none is vacuous; the existing anonymous-encounter seeds in `combat.spec.ts` and the ROSTER-seat
+assertions in `liars-dice-roster.spec.ts` are left intact; the specs declare their first-run walkthrough
+stance per the suite convention; UI/test-only change, no fingerprint moves — state that explicitly;
+gate green.
+
+---
+
 ## M8 — Harvested: testing, CI and gate coverage
 
 Transplanted 2026-08-02 out of completed blocks before they were pruned. Each body carries its
@@ -428,6 +1246,10 @@ documented; gate green.
 ---
 
 ## M9 — Harvested: Liar's Dice, roster and ladder
+
+**Moved at the 2026-08-06 re-order:** T-224, T-225, T-226 and T-227 — the four findings filed
+by T-222/T-223, each Accept requiring an owner ruling — now sit in the OWNER GATE section
+below. Their delivered evidence (the T-222/T-223 blocks) stays here.
 
 ### T-222 · F-219-1: the house's raise evidence bar is set by the PLAYER's own stake — `status: DONE` · `coder: opus` · `after: T-219`
 
@@ -730,168 +1552,6 @@ actually buys what the roster sells, and RULED**. The ruling is **LD-30** in
 
 Orchestration: attempts=1/4.
 
-### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: TODO` · `coder: opus` · `after: T-222`
-
-**Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4b / §21.7,
-`docs/LIARS-DICE-DECISIONS.md` LD-29, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3d.** `headroomFor`
-is `max(0, bandMax − pot)` and **the seed counts against it** (§4.3: `band.max` is a whole-hand
-exposure ceiling, not a seed ceiling). So a seed within **one ante** of the ceiling leaves **both**
-sides unable to cover a raise: `legalMovesFrom` offers only `challenge` and `fold`, and the hand is
-**one claim long by construction**. The zone is exactly one ante wide — i.e. exactly
-`DARE_ANTE_BAND_FRACTION` (3%) of the ceiling, because that is what the ante *is*.
-
-**The consequence is a dominant player strategy that skips the mechanic.** The hand resolves at
-`probAtLeast(1, u)`, which is **in the player's favour at every width**, at **the largest stake the
-port allows**. Measured on identical seeds, n = 40,000 per cell:
-
-| dice | stake | house net / seed | player win | `probAtLeast(1, u)` |
-| --- | --- | --- | --- | --- |
-| 4 | 75% of band | **+0.445** | 28.02% | — |
-| 4 | **the exact ceiling** | **−0.045** | **52.27%** | 51.77% |
-| 6 | 75% of band | **+0.373** | 31.35% | — |
-| 6 | **the exact ceiling** | **−0.321** | **66.04%** | 66.51% |
-
-At the default band at tier 4 that is **+962 cr/hand to the player against −842** one quarter-band
-lower — a **1,804 cr/hand swing, and a sign flip, from a 25%-of-band change in stake**. This is
-F-134-1's band clamp **priced for the first time**: §16.5 measured it firing on the house at 53.12%
-with the gambler's median stake-to-band ratio at **100.00%**, and §17.7 re-measured the rate but
-never the price. It also mechanically corroborates LD-28's ply-1 derivation from an angle §20 could
-not see. **T-222 could not fix it**: the lever is §4.3's whole-hand exposure ruling, not the ante —
-§21.4a proves the one ante-side alternative leaves the zone byte-identical — and re-opening §4.3
-inside a measurement task is §16.2's banned third shape. [filed: T-222/F-222-1]
-
-**Accept:** the share of shipped hands actually seated **inside** the dead zone is measured rather
-than bounded — §21.4c bounds it at ≤ 49.6% from `bids/hand = 1.504` and says the exact figure needs
-a `dareCells` stake/headroom cut, so **this task owns that instrument change** and takes its
-`instrumentFingerprint` move deliberately, with the moved rows predicted first; the player's gain
-from seating there is re-priced on HEAD with `n` on every cell; the owner then either **rules the
-zone intended** — in which case §4.3's "whole-hand exposure ceiling" ruling is restated in
-`docs/LIARS-DICE-DECISIONS.md` with the derivation of why a one-claim maximum-stake hand is a
-feature, and a standing invariant bounds the player's edge there — or **rules it a defect**, in
-which case the fix is **bakeoff'd against at least one named alternative on identical seeds** (e.g.
-a seed ceiling separate from the exposure ceiling, or an exposure ceiling that reserves at least one
-ante), LD-27's `k`-gate derivation is re-run against the new numbers, the archetype ordering
-(`bad − optimal` = +15.79 pp, z = 35.93) is re-scored and must not re-invert, and **LD-28's two
-standing invariants are re-scored alongside** because the fix moves the player's EV directly; §21.4b
-and §21.7 gain the outcome; if any rule moves the task takes its own capstone with the moved rows
-predicted first; gate green.
-
-### T-225 · F-222-2: at tier 5 nothing caps the pot/ante ratio, and past `k ≤ 3` the house's own gate misprices — `status: TODO` · `coder: opus` · `after: T-222`
-
-**Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4 / §21.7,
-`docs/LIARS-DICE-DECISIONS.md` LD-29, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3d.** Every **bounded**
-tier stops at `k ≤ 3` for a structural reason: `anteFor` makes the ante a fixed fraction `f` of the
-same ceiling the stake is capped at, so the ceiling ratio is `f / (2 + f)` and the band cancels out.
-**Tier 5 removes the ceiling** (`effectiveWagerBand → {min: 0, max: null}`, §4.8 / T-146) while the
-ante stays **frozen at the tier-4 reference**, so the ratio → 0 as the stake grows and the gate keeps
-opening.
-
-**Past `k ≤ 3` the direction reverses**, measured on identical seeds at n = 40,000 per cell:
-
-| stake (multiples of the ante) | gate | house net / seed | player win | `bad − optimal` |
-| --- | --- | --- | --- | --- |
-| 57× — 1,026 cr at the 5–200 port, 5,127 at the default band | `k ≤ 4` | **+0.220** | 38.67% | +13.29 pp |
-| 752× | `k ≤ 4` opening, `k = 5` reached mid-hand | **−0.139** | 56.91% | **−4.95 pp** |
-| 2,000× | `k ≤ 5` | **−0.119** | 55.95% | **−3.98 pp** |
-| 23,328× | `k = u`, fully dissolved | **−0.244** | 62.21% | **−10.25 pp** |
-
-against **+0.373 / 31.35% / +20.61 pp** at `k ≤ 3`. Both `k = 4` boundaries sit **inside** the
-**32,510** largest stake measured over 1,600 careers, so this is reachable rather than theoretical;
-full dissolution needs ≥ 419,896 and is **not** reached. The mechanism is LD-27's own — the
-immediate-challenge premise is a *conservative* error at tight gates and an *expensive* one once the
-pot/ante ratio admits raises whose truth probability is under 1%. **T-222 predicted this would not
-happen and was wrong** (§21.6, prediction 3), which is why LD-29 is scoped to bounded tiers.
-**T-222 could not fix it**: the lever is §4.8's removed ceiling, not the ante, and §21.4a shows the
-ante's reference cannot be moved to reach it without changing every other tier as well.
-[filed: T-222/F-222-2]
-
-**Accept:** the tier-5 stake distribution is measured on the shipped instrument with `n` on every
-cell (how many hands actually sit past the `k ≤ 4` boundary, and at which ports); the owner either
-**rules the uncapped ratio intended** — in which case §4.8's "unlimited betting" ruling is restated
-in `docs/LIARS-DICE-DECISIONS.md` with the derivation of why a veteran table should price raises
-this way, and a standing invariant bounds the house's loss there — or **rules it a defect**, in
-which case the fix is **bakeoff'd against at least one named alternative on identical seeds** (§21.4a
-records the strongest candidate: reference the ante to `seedWager`, which caps the ratio at
-`f / (2 + f)` without capping the stake — and **its LD-28 exposure must be scored on a full capstone
-rather than argued**, since it moves the table against the player at every measured cell), LD-27's
-`k`-gate derivation is re-run against the new numbers rather than re-sampled, the archetype ordering
-(+15.79 pp, z = 35.93) is re-scored and must not re-invert, and LD-28's two standing invariants are
-re-scored alongside; §21.4 and §21.7 gain the outcome; if any rule moves the task takes its own
-capstone with the moved rows predicted first; gate green.
-
-### T-226 · F-222-3: the archetype ordering is STAKE-CONDITIONAL, and no test covers it off the stakes the sweep happens to play — `status: TODO` · `coder: opus` · `after: T-222`
-
-**Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4 / §21.7,
-`docs/LIARS-DICE-DECISIONS.md` LD-29.** LD-25 publishes `bad − optimal > 0` as a property of the
-**archetypes**, and every task since (T-148 F-148-1, T-160 F-160-1, T-175, T-176, T-219 K2, T-220 C6)
-has scored it on one arm at one stake distribution. Measured across the stake axis it is a property
-of the archetypes **at a stake**:
-
-| regime | `bad − optimal` |
-| --- | --- |
-| band floor, 4 dice (`k ≤ 0` / `k ≤ 1`) | **−21.15 / −15.69 pp** |
-| band floor, 6 dice | **−13.32 / −9.47 pp** |
-| mid-band (`k ≤ 2` / `k ≤ 3`) | +2.61 … **+20.61 pp** |
-| the ceiling dead zone | **0.00 pp** — both arms can only challenge |
-| deep tier 5 (`k ≥ 5`) | **−4.95 / −3.98 / −10.25 pp** |
-
-`bad` reads **no pot at all** (`BAD_CREDULITY` is a count rule), so the entire stake-dependence is
-`optimal`'s. The shipped arm sits at +15.79 pp (z = 35.93) because the gambler's stakes sit
-mid-band-and-above — per-career mean seated stake p10/p50/p90 = **1,537 / 2,477 / 3,876** — and
-**"unexercised by today's gambler policy" is not "unreachable by a player"**: a human may stake the
-band floor at any time. The bar has never been stated with the stake range it holds over, and no
-test would notice if a retune moved that range. [filed: T-222/F-222-3]
-
-**Accept:** the ordering is re-measured across the stake axis with `n` on every cell and the range
-over which `bad − optimal > 0` holds is stated explicitly per dice width; the owner either **rules
-the ordering a mid-band property** — in which case LD-25 is amended in place (kept verbatim,
-superseded) to name the stake range, and the enforcing test asserts the bar **over that range**
-rather than at one point, computed from `probAtLeast` and the accessors with no literal stake — or
-**rules the inversion a defect**, in which case the fix is bakeoff'd rather than tuned against at
-least one named alternative on identical seeds and LD-28's invariants are re-scored alongside;
-either way `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` gains an assertion that goes
-RED if the range moves; §21.7 gains the outcome; if any rule moves the task takes its own capstone
-with the moved rows predicted first; gate green.
-
-### T-227 · F-223-1: the player is never told which of the house's three seats is the hard one — `status: TODO` · `coder: opus` · `after: T-223`
-
-**Filed at T-223 (2026-08-06), `docs/HANGOUT_REDESIGN.md` §7 Finding F-223-1 /
-`docs/LIARS-DICE_REDESIGN.md` §22.6 / `docs/LIARS-DICE-DECISIONS.md` LD-30.** Content authors a
-**strict difficulty ladder** at every one of the fourteen Liar's Dice ports — seat 1 the journeyman
-(`bad`/`random`, `3 × wager.max`), seat 2 the regular (`mixed`, `5 ×`), seat 3 the house
-(`optimal`, `8 ×`), with the table's own header saying *"difficulty rises monotonically with the
-purse"* — and T-223 **pinned that ladder with a test**, so it is now a guaranteed property rather
-than an authoring convention. **The UI surfaces none of it.** `hangoutRosterOpponents`
-(`packages/ui/src/format.ts:571`) projects name / beaten / **purse** / broke plus a tier-≥-3 `read`,
-and the pane (`packages/ui/src/App.tsx:2470-2510`) renders **four of those five — not the purse**
-(`grep -n purse packages/ui/src/App.tsx` returns one comment). The row's own `seat`, and content's
-`journeyman / regular / house` role table, are **not in `HangoutRosterOpponent` at all**.
-`liarsDiceDealerReadout` hard-nulls on any `ld-` id (correctly — §7.6). So **before tier 3 the three
-seats are distinguished by their authored NAMES alone**, and **after tier 3 the one cue that arrives
-describes STYLE, not difficulty**, with its connotation running the wrong way: `optimal` — the
-hardest and richest seat — reads **"This one plays it safe."**
-(`packages/engine/src/liarsDiceRules.ts:335`).
-
-**This is a disclosure finding, not a pricing one, and that is deliberate.** LD-30 measures the
-roster at **+21.5 cr/hand (n = 11,021)** for the set-seeking instrument that buys what it sells, so
-the seat is **not** a trap in credits — which is exactly why the obvious "this seat is expensive" cue
-must not be shipped: it would print a claim the measurement contradicts. T-223 pre-committed
-(§22.2, criterion A4) to answering the disclosure question **independently of the sign**, on LD-26 /
-T-221's standing rule that *"a purchase whose price the buyer cannot see is not a design, it is a
-trap"*. A ladder the game guarantees and never mentions fails that test whether the rungs are cheap
-or dear. [filed: T-223/F-223-1]
-
-**Accept:** the owner rules what the player should be told about the seat ladder and when, and the
-ruling is written into `docs/HANGOUT_REDESIGN.md` §7 beside F-223-1 (accept-as-is counts as a
-ruling, in writing, with its reason); if a disclosure ships it is **UI-only** so `rulesFingerprint`
-stays unmoved, it reads the engine's or content's own value rather than a copied string (T-221's
-precedent), it is pinned in `packages/ui/src/__tests__/hangout-pane.test.ts` or
-`liars-dice-pane.test.ts` against that value, and it does **not** surface a `'mixed'` seat's resolved
-arm before the hand exists (§4.5 ruling 1), does **not** move `readTheTableLine`'s tier-3 unlock or
-its three authored strings (T-146's), and does **not** import a content constant into the pane;
-§22.6 and the F-223-1 finding gain the outcome; if any rule moves the task takes its own capstone
-with the moved rows predicted first; gate green.
-
 ### T-243 · Write the check that keeps §4.6a's closed list closed — `status: TODO` · `coder: opus` · `after: —`
 
 T-168's only enforcement of the §4.6a amendment was a MANUAL DONE-gate grep
@@ -948,25 +1608,8 @@ first; fingerprint discipline stated; gate green.
 
 ## M10 — Harvested: Explore, deeds and the recovery ladder
 
-### T-171 · Deed supply after Explore's 10× event-rate drop — an owner ruling on the sealed-pod line — `status: TODO` · `coder: opus` · `after: T-198`
-
-F-115-B left an unanswered supply question. Explore's per-outcome event rate fell ~10× by design
-(a board now draws one row of 100 instead of walking three legs), and on
-`deed-coverage.test.ts`'s own driver the number of careers that earn the whole 44-deed slate alone
-fell from four in twelve to **two in sixty-five** (seeds 31 and 65); twelve of the fourteen
-near-misses miss `slipped_the_scan`, the same long pole every previous sweep names. The union is
-still 44/44 so no deed is dead content, and the sample was widened (`COVERAGE_SEEDS` 1..12 → 1..65)
-rather than the `>= 2` threshold moved. T-115 deferred the verdict to T-116, but T-116's delivered
-note rules only on whether Explore is a net loss and never addresses deed supply or
-`slipped_the_scan`. Needs an explicit owner ruling on the sealed-pod supply line
-(`slipped_the_scan` / `known_to_the_league` / `run_seized`, all downstream of the sealed pod at
-20% → 4.4% of boards). [harvested: T-115/deed-supply-slipped-the-scan]
-
-**Accept:** a recorded owner ruling on the sealed-pod supply line (raise the pod rate, re-home the
-three deeds, move the `>= 2` threshold, or accept as-is — any of the four counts as a ruling), with
-the post-ruling per-career slate-completion number re-measured on `COVERAGE_SEEDS` and stated
-beside the pre-ruling two-in-sixty-five; the ruling written into the Explore spec beside §10.4's
-other open calls; gate green.
+**Moved at the 2026-08-06 re-order:** T-171 (an explicit owner ruling on the sealed-pod line)
+now sits in the OWNER GATE section below.
 
 ### T-172 · Re-measure per-band recovery collection and forfeiture — prove band 4 is reachable after T-131 — `status: TODO` · `coder: opus` · `after: T-198`
 
@@ -1249,6 +1892,11 @@ pinned to a single definition; fingerprint discipline stated; gate green.
 
 ## M13 — Harvested: owner rulings and unscheduled builds
 
+**Moved at the 2026-08-06 re-order:** T-181 (needs the owner's playtest read first), T-232 and
+T-234 (both explicitly human-gated, halt `BLOCKED`) now sit in the OWNER GATE section below.
+T-233 stays here: commit `b0112472` already did most of its doc reconciliation, and T-234's
+`after: T-233` needs it above the gate.
+
 ### T-180 · N8 — the actor-parameterised `resolveVisitHangout`, un-gated but unscheduled — `status: TODO` · `coder: opus` · `after: T-198`
 
 N8 is now UN-GATED but NOT scheduled: the owner's 2026-08-02 ruling on `docs/NPC_REDESIGN.md`'s
@@ -1269,22 +1917,6 @@ explicitly re-deferred with a reason; `gambler` no longer needs its entry in
 `ACKNOWLEDGED_COVERAGE_GAPS`; its own capstone is run and the four baseline pointers re-pinned;
 `docs/NPC_REDESIGN.md`'s STATUS BOARD and PARITY LEDGER row updated; gate green.
 
-### T-181 · D7's not-built alternative: a per-port interest-rate multiplier on `LOAN_DAILY_RATE` — `status: TODO` · `coder: opus` · `after: T-198`
-
-The per-port INTEREST RATE multiplier on `LOAN_DAILY_RATE` — the alternative logged under owner
-ruling D7 and explicitly NOT built by T-133 ("the previously-logged interest-rate-multiplier
-alternative was not built") — is still open. Revisit after this playtest if Arcturus-6's tight
-principal band alone doesn't read as enough per-port distinction, or if a later port wants to vary
-predatory/generous terms rather than just loan size. It was not ruled out, only deferred because the
-principal band reuses the `wager`-band pattern byte-for-byte (lowest engine risk).
-[harvested: T-133/loan-interest-rate-axis]
-
-**Accept:** the UAT/playtest read on whether the principal band alone gives enough per-port
-distinction is recorded first; then either a per-port `LOAN_DAILY_RATE` multiplier ships as content
-(read through an accessor, never an `if (systemId === ...)` branch in the engine, per T-133's
-standing rule) with its band pinned by accessor rather than literal, or the alternative is closed
-with the reason recorded in the D7 log; gate green.
-
 ### T-228 · N5 — NPC proficiency spread, un-gated at N13 but unscheduled — `status: TODO` · `coder: opus` · `after: —`
 
 N5 — NPC proficiency spread — was UN-GATED by N13/T-156 (2026-08-02) and its lever list rewritten
@@ -1303,27 +1935,6 @@ not across archetypes; the measurement states what the spread moved and what it 
 `docs/NPC_REDESIGN.md`'s STATUS BOARD N5 row and its §"N5 — NPC proficiency spread" lever list are
 updated with the outcome; fingerprint discipline stated and any baseline re-pin paid; gate green.
 
-### T-232 · The R1/R2 revisit the owner deferred behind the UI iteration is now DUE — `status: TODO` · `coder: opus` · `after: —`
-
-The owner's 2026-08-03 rulings on **R1 (Combat's chosen `executeCombat` branch)** and **R2 (F-150-1
-— the 0.25 named-pool interceptor gate in `packages/engine/src/actions/travel.ts`, read together
-with `DISPOSITION_DECAY_INTERVAL_DAYS = 3` in `packages/engine/src/content/disposition.ts`)** were
-both DEFER-and-revisit-after-UI-iteration, naming **T-186, T-188, T-189, T-190 and T-191** as the
-work they were deferred behind. All five are now `status: DONE`, so the revisit is DUE — and
-neither ruling has been re-asked. The deferral text lives in `TASKS.md`'s "Deliberately deferred"
-`executeCombat` bullet and in the **F-150-1** row of the "Findings filed BY T-150" table, and is
-mirrored at `packages/sim/src/balance/coverage.ts`'s `ACKNOWLEDGED_COVERAGE_GAPS.fighter.owner`, in
-`docs/NPC_REDESIGN.md`'s `| Combat |` PARITY LEDGER row, and in `docs/HANGOUT_REDESIGN.md` §11.3's
-STATUS line. [harvested: T-158/r1-r2-revisit-now-due]
-
-**Accept:** (human-gated) both R1 and R2 are re-asked against the post-UI tree and carry a fresh
-dated owner ruling — "unchanged" counts as a ruling for each — recorded in
-`docs/HANGOUT_REDESIGN.md` §11.3 and `docs/NPC_REDESIGN.md`'s PARITY LEDGER; the deferral text in
-`TASKS.md`'s "Deliberately deferred" section, `ACKNOWLEDGED_COVERAGE_GAPS.fighter.owner` and
-§11.3's STATUS line are updated so none of them still names the completed T-186/T-188/T-189/T-190/
-T-191 gate as pending; any constant the ruling moves is paid with its capstone; the task halts
-`BLOCKED` for the owner and is never self-approved.
-
 ### T-233 · The pre-alpha stage record was never reconciled after T-158's UAT closed — `status: TODO` · `coder: opus` · `after: —`
 
 The pre-alpha stage record was never reconciled after T-158's UAT closed (the owner played two live
@@ -1335,596 +1946,215 @@ manifest-version bullet still says the first (`alpha`) tag "waits on T-158's own
 Either advance the stage and cut the tag, or record why pre-alpha still stands.
 [harvested: T-158/post-uat-stage-docs-stale]
 
+**Largely discharged in advance (2026-08-06, commit `b0112472` — verified, not assumed):**
+the reconciliation commit corrected all three named sites. `docs/RELEASE-CHECKLIST.md`'s header
+now carries a dated correction block, `docs/VERSIONING.md:136`'s stage row reads "we are here
+(see note below)", and the `TASKS.md` manifest bullet was re-aimed at the start-to-finish pass.
+The stage itself was deliberately NOT advanced. What remains here is the verification pass and
+the explicit either/or closure; the advance-or-not ruling stays T-234's, which depends on this
+task.
+
 **Accept:** `docs/RELEASE-CHECKLIST.md:8` and its lines 11-13, `docs/VERSIONING.md:136`'s stage
 table, and `TASKS.md`'s "Deliberately deferred" manifest-version bullet all agree with reality — no
 site still claims the build is unplayed or that T-158 is pending, and no site points at a deleted
 block; EITHER the stage advances and the `alpha` tag is cut per `docs/VERSIONING.md`'s own criteria,
 OR a dated statement records why pre-alpha still stands (and what would end it); gate green.
 
-### T-234 · No start-to-finish career UAT pass exists — schedule it or rule the two feel-level sessions sufficient — `status: TODO` · `coder: opus` · `after: T-233`
-
-T-158 closed with the owner giving both rulings directly and "choosing not to prolong the checkpoint
-into a full scripted career playthrough", so NO start-to-finish career pass exists.
-`docs/VERSIONING.md:137`'s alpha criterion is "the owner's own UAT passes — played start to finish,
-holds together", which the two feel-level sessions (feedback filed as **M14** and **M15**) do not
-obviously meet. Schedule the start-to-finish pass, or record an explicit ruling that passes 1 and 2
-discharge the criterion. [harvested: T-158/uat-start-to-finish-remainder]
-
-**Accept:** (human-gated) either a start-to-finish career UAT pass is run and its outcome recorded
-against `docs/VERSIONING.md:137`'s alpha criterion, or a dated owner ruling records that the M14 and
-M15 feel-level sessions discharge that criterion and says why; whichever way it goes,
-`docs/VERSIONING.md`'s stage table and `docs/RELEASE-CHECKLIST.md` are left consistent with the
-decision (coordinate with T-233 so the two do not contradict each other); the task halts `BLOCKED`
-for the owner and is never self-approved.
-
 ---
 
-## M14 — Owner UAT pass 1 feedback (2026-08-03)
+## OWNER GATE — open tasks that need a human ruling or session
 
-Three findings from the owner's first hands-on session (build launched via `npm run dev -w
-@spacerquest/ui` + `npm run dev -w @spacerquest/desktop`, playtest logging **not** enabled for this
-particular pass — the session itself produced no exportable log; these are the owner's direct
-verbal notes, captured per the Bug Discovery Policy rather than left in conversation). All three are
-UX/design, not correctness defects — filed as tasks, not as `F-` findings, because each is
-substantial enough to need its own implementation pass.
+Every task below requires owner input to close: a design ruling, a treatment pick, a playtest
+read, or a live session. They sit BELOW all autonomous work so a run never queues runnable
+tasks behind a human halt. Several carry real preparation work (re-measurements, write-ups) a
+runner can complete before halting `BLOCKED` for the ruling; none may be self-approved. The
+first four are one owner sitting: they are the Liar's Dice findings T-222/T-223 filed, and
+share one evidence base (`docs/LIARS-DICE_REDESIGN.md` §21/§22).
 
-### T-186 · Visual identity reads as monochrome sameness — resolve the tension with the PRD's committed CRT-amber pillar — `status: DONE` · `coder: opus` · `after: T-198`
+Provenance (harvest grouping, for the record): T-224–T-227 from M9; T-171 from M10; T-237 from
+M17; T-254 from M18; T-256/T-257 from M19; T-251 from M18; T-181, T-232, T-234 from M13.
 
-Owner's read: "the monochrome amber is cool, but everything blends together... even here in an IDE
-there is variety of format and color. We need to do something color-wise, I am not quite sure just
-yet." **This is in direct tension with a COMMITTED design pillar, not a blank slate** —
-`docs/PRD-REIMAGINED.md` §4 states "rendered in committed amber-phosphor CRT style... Duskers-grade
-commitment, not scanline shader on a menu," and `docs/TECH-STACK.md`:164/247-248 name the CRT
-aesthetic as the *reason* Electron and the DOM/WebGL renderer were chosen over alternatives. Silently
-reworking the palette would override an explicit prior commitment the owner made themselves — so
-this is a ruling, not a build-and-ship task, and it starts BLOCKED for exactly that reason.
+### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: TODO` · `coder: opus` · `after: T-222`
 
-**Accept (the ruling, first):** the owner reviews candidate directions that add legibility/variety
-*within* the committed CRT-terminal frame (e.g. diegetic per-module accent hues — combat vs. trade
-vs. Hangout rendered as different "instruments" on the one screen, still phosphor-style, still not a
-generic web palette — vs. a harder break from monochrome) before any implementation, ideally via
-`/bakeoff` so the options are compared with mockups rather than argued in prose. Once ruled: `docs/
-PRD-REIMAGINED.md` §4 is updated to match (never silently left to contradict shipped behaviour), the
-chosen direction is implemented (`packages/ui/src/theme.css` and call sites), and a screenshot pass
-confirms it reads as a game, not an IDE-neutral palette bolted onto the existing CRT chrome.
+**Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4b / §21.7,
+`docs/LIARS-DICE-DECISIONS.md` LD-29, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3d.** `headroomFor`
+is `max(0, bandMax − pot)` and **the seed counts against it** (§4.3: `band.max` is a whole-hand
+exposure ceiling, not a seed ceiling). So a seed within **one ante** of the ceiling leaves **both**
+sides unable to cover a raise: `legalMovesFrom` offers only `challenge` and `fold`, and the hand is
+**one claim long by construction**. The zone is exactly one ante wide — i.e. exactly
+`DARE_ANTE_BAND_FRACTION` (3%) of the ceiling, because that is what the ante *is*.
 
-**RULED (owner, 2026-08-05) — process, not final direction: run `/bakeoff`.** The owner declined
-to pick a direction from prose/description alone and asked for the Accept criterion's own
-recommended path — independent review plus real mockups compared side by side — before ruling on
-monochrome-vs-accent-hues-vs-harder-break. No longer `BLOCKED`: the next step (`/bakeoff`) needs
-no further owner input to start; the owner ruling this task is still waiting on is which direction
-wins the bakeoff, not whether to run one.
+**The consequence is a dominant player strategy that skips the mechanic.** The hand resolves at
+`probAtLeast(1, u)`, which is **in the player's favour at every width**, at **the largest stake the
+port allows**. Measured on identical seeds, n = 40,000 per cell:
 
-**`/bakeoff` results (2026-08-05).** Three independent reviewers (visual/art director,
-UX-legibility/accessibility, engineering-feasibility), isolated context, each required to build
-and screenshot a real mockup before giving a verdict — not just argue in prose. Strong 3/3
-convergence: all three independently measured the same root defect (panel/background contrast
-1.04:1, pane borders 1.36:1 — both below the 3:1 floor at which a boundary is perceivable at
-all), all three rejected candidate B (a harder break from monochrome — would force rewriting PRD
-§4 *and* invalidating `docs/TECH-STACK.md`'s stated Electron/DOM-over-Tauri/canvas rationale),
-and all three rejected candidate A (per-instrument accent hues) — engineering found it a real
-CSS-architecture trap (custom properties don't cascade the way you'd assume; every derived token
-needs re-declaring at every scope or it silently stays amber), legibility found it a *measured*
-accessibility regression (colorblind simulation: the four instruments collapse to two
-indistinguishable pairs under deuteranopia), visual rejected it as literally the "second
-phosphor colour" the T-302 law and PRD §4 forbid. All three landed on some flavor of "add zero
-hues, fix through structure": engineering and legibility called it **C+** (pure tonal — value
-zoning, reverse-video reserved to exactly one meaning, physical control bodies, wider
-label→value contrast); the visual director called it **D — "one phosphor, two materials"**:
-amber remains the only hue and the only thing that emits light; everything that is not light
-becomes unlit, near-achromatic metal (chassis, bezels, frames). Two real bugs surfaced and
-filed along the way, independent of which direction won: T-216 (the "one phosphor" law is
-already broken in two live UI spots — `--accent`/`--line` never defined, `.as-hostile` hardcoded
-— amended with a measured accessibility-defect finding) and T-217 (the Galactic Wire `LOG`
-button overlapping the ticker text, root-caused to a stale magic-number offset).
+| dice | stake | house net / seed | player win | `probAtLeast(1, u)` |
+| --- | --- | --- | --- | --- |
+| 4 | 75% of band | **+0.445** | 28.02% | — |
+| 4 | **the exact ceiling** | **−0.045** | **52.27%** | 51.77% |
+| 6 | 75% of band | **+0.373** | 31.35% | — |
+| 6 | **the exact ceiling** | **−0.321** | **66.04%** | 66.51% |
 
-**RULED (owner, 2026-08-05): candidate D**, specifically the visual director's own
-`T186-chassis.png` build/palette — not a subsequent synthesis attempt that tried to merge D's
-material framing with C+'s stricter interaction rules (reverse-video-reserved-to-one-meaning,
-flatter achromatic steel), which the owner rejected on sight ("terrible for a lot of reasons").
-**Open scope question for the follow-on build task, not resolved by this ruling:** whether the
-legibility reviewer's specific, measurement-backed interaction rules (reverse video reserved to
-real urgency only instead of used broadly, a physically distinct button body vs. an inert flag,
-a visibly-dead locked-row treatment) get folded into the D implementation, or whether D ships
-as-is with its own original interaction treatment. Not assumed either way — ask before building.
+At the default band at tier 4 that is **+962 cr/hand to the player against −842** one quarter-band
+lower — a **1,804 cr/hand swing, and a sign flip, from a 25%-of-band change in stake**. This is
+F-134-1's band clamp **priced for the first time**: §16.5 measured it firing on the house at 53.12%
+with the gambler's median stake-to-band ratio at **100.00%**, and §17.7 re-measured the rate but
+never the price. It also mechanically corroborates LD-28's ply-1 derivation from an angle §20 could
+not see. **T-222 could not fix it**: the lever is §4.3's whole-hand exposure ruling, not the ante —
+§21.4a proves the one ante-side alternative leaves the zone byte-identical — and re-opening §4.3
+inside a measurement task is §16.2's banned third shape. [filed: T-222/F-222-1]
 
-### T-250 · F-185-4: the playtest-logging default is still the interim ON — `status: TODO` · `coder: opus` · `after: —`
+**Accept:** the share of shipped hands actually seated **inside** the dead zone is measured rather
+than bounded — §21.4c bounds it at ≤ 49.6% from `bids/hand = 1.504` and says the exact figure needs
+a `dareCells` stake/headroom cut, so **this task owns that instrument change** and takes its
+`instrumentFingerprint` move deliberately, with the moved rows predicted first; the player's gain
+from seating there is re-priced on HEAD with `n` on every cell; the owner then either **rules the
+zone intended** — in which case §4.3's "whole-hand exposure ceiling" ruling is restated in
+`docs/LIARS-DICE-DECISIONS.md` with the derivation of why a one-claim maximum-stake hand is a
+feature, and a standing invariant bounds the player's edge there — or **rules it a defect**, in
+which case the fix is **bakeoff'd against at least one named alternative on identical seeds** (e.g.
+a seed ceiling separate from the exposure ceiling, or an exposure ceiling that reserves at least one
+ante), LD-27's `k`-gate derivation is re-run against the new numbers, the archetype ordering
+(`bad − optimal` = +15.79 pp, z = 35.93) is re-scored and must not re-invert, and **LD-28's two
+standing invariants are re-scored alongside** because the fix moves the player's EV directly; §21.4b
+and §21.7 gain the outcome; if any rule moves the task takes its own capstone with the moved rows
+predicted first; gate green.
 
-F-185-4 left the playtest-logging default at the interim ON that HEAD `5b430136` flipped it to "for
-the internal UAT build", and nothing else in `TASKS.md` or `TODO.md` tracks restoring it. VERIFIED
-LIVE: `packages/ui/src/playtestLog.ts:166` reads
-`return storage.getItem(PLAYTEST_LOGGING_KEY) !== 'off';` (default ON), while
-`docs/PLAYTEST-TELEMETRY_SPEC.md` §3 line 56 states "**OFF by default.**". Restoring spec §3's OFF
-must ALSO edit the test that now pins the interim ON explicitly
-(`packages/ui/e2e/playtest-logging.spec.ts`, plus the `shell.spec.ts` test that shares the
-`setLogging(page, on)` shape) — that pin was written so the restore cannot pass silently.
-[harvested: T-185/playtest-logging-default-off]
+### T-225 · F-222-2: at tier 5 nothing caps the pot/ante ratio, and past `k ≤ 3` the house's own gate misprices — `status: TODO` · `coder: opus` · `after: T-222`
 
-**Accept:** either `packages/ui/src/playtestLog.ts:166` is restored to
-`docs/PLAYTEST-TELEMETRY_SPEC.md` §3's "OFF by default", or spec §3 is amended to ON with the owner's
-reason recorded and dated — the two are never left disagreeing; whichever way it goes,
-`packages/ui/e2e/playtest-logging.spec.ts` and the `shell.spec.ts` test sharing the
-`setLogging(page, on)` shape are updated in the SAME change and shown to fail against the old default
-first, so the restore cannot pass silently; the interim-ON provenance (HEAD `5b430136`, "for the
-internal UAT build") is recorded beside the outcome; the desktop shell's session JSONL behaviour under
-the chosen default is stated; gate green.
+**Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4 / §21.7,
+`docs/LIARS-DICE-DECISIONS.md` LD-29, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3d.** Every **bounded**
+tier stops at `k ≤ 3` for a structural reason: `anteFor` makes the ante a fixed fraction `f` of the
+same ceiling the stake is capped at, so the ceiling ratio is `f / (2 + f)` and the band cancels out.
+**Tier 5 removes the ceiling** (`effectiveWagerBand → {min: 0, max: null}`, §4.8 / T-146) while the
+ante stays **frozen at the tier-4 reference**, so the ratio → 0 as the stake grows and the gate keeps
+opening.
 
----
+**Past `k ≤ 3` the direction reverses**, measured on identical seeds at n = 40,000 per cell:
 
-## M15 — Owner UAT pass 2: board-quadrant feedback (2026-08-03)
+| stake (multiples of the ante) | gate | house net / seed | player win | `bad − optimal` |
+| --- | --- | --- | --- | --- |
+| 57× — 1,026 cr at the 5–200 port, 5,127 at the default band | `k ≤ 4` | **+0.220** | 38.67% | +13.29 pp |
+| 752× | `k ≤ 4` opening, `k = 5` reached mid-hand | **−0.139** | 56.91% | **−4.95 pp** |
+| 2,000× | `k ≤ 5` | **−0.119** | 55.95% | **−3.98 pp** |
+| 23,328× | `k = u`, fully dissolved | **−0.244** | 62.21% | **−10.25 pp** |
 
-Four findings from the owner's second live session, one per board quadrant. Captured verbatim per
-the Bug Discovery Policy. All four are UX/design, filed as tasks rather than `F-` findings for the
-same reason as M14: each is substantial enough to need its own implementation pass.
+against **+0.373 / 31.35% / +20.61 pp** at `k ≤ 3`. Both `k = 4` boundaries sit **inside** the
+**32,510** largest stake measured over 1,600 careers, so this is reachable rather than theoretical;
+full dissolution needs ≥ 419,896 and is **not** reached. The mechanism is LD-27's own — the
+immediate-challenge premise is a *conservative* error at tight gates and an *expensive* one once the
+pot/ante ratio admits raises whose truth probability is under 1%. **T-222 predicted this would not
+happen and was wrong** (§21.6, prediction 3), which is why LD-29 is scoped to bounded tiers.
+**T-222 could not fix it**: the lever is §4.8's removed ceiling, not the ante, and §21.4a shows the
+ante's reference cannot be moved to reach it without changing every other tier as well.
+[filed: T-222/F-222-2]
 
-### T-188 · Galaxy map: port spacing gives near-zero travel payoff, and a jump is imperceptible — an owner design decision — `status: DONE` · `coder: opus` · `after: —`
+**Accept:** the tier-5 stake distribution is measured on the shipped instrument with `n` on every
+cell (how many hands actually sit past the `k ≤ 4` boundary, and at which ports); the owner either
+**rules the uncapped ratio intended** — in which case §4.8's "unlimited betting" ruling is restated
+in `docs/LIARS-DICE-DECISIONS.md` with the derivation of why a veteran table should price raises
+this way, and a standing invariant bounds the house's loss there — or **rules it a defect**, in
+which case the fix is **bakeoff'd against at least one named alternative on identical seeds** (§21.4a
+records the strongest candidate: reference the ante to `seedWager`, which caps the ratio at
+`f / (2 + f)` without capping the stake — and **its LD-28 exposure must be scored on a full capstone
+rather than argued**, since it moves the table against the player at every measured cell), LD-27's
+`k`-gate derivation is re-run against the new numbers rather than re-sampled, the archetype ordering
+(+15.79 pp, z = 35.93) is re-scored and must not re-invert, and LD-28's two standing invariants are
+re-scored alongside; §21.4 and §21.7 gain the outcome; if any rule moves the task takes its own
+capstone with the moved rows predicted first; gate green.
 
-Owner's original read: "the galaxy on the top left is too crowded. All the space ports are super
-close together. There is basically zero payoff to travelling between ports... The OG game had a
-real-time ascii animation which was too slow, we just have instant jump to port, and it is barely
-noticeable that any game action has happened. We need to come up with a design decision on this."
+### T-226 · F-222-3: the archetype ordering is STAKE-CONDITIONAL, and no test covers it off the stakes the sweep happens to play — `status: TODO` · `coder: opus` · `after: T-222`
 
-**SUPERSEDING SPEC (owner, 2026-08-04) — the ruling arrived as a concrete build plan, not a
-`/bakeoff` request.** Verbatim, in order:
+**Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4 / §21.7,
+`docs/LIARS-DICE-DECISIONS.md` LD-29.** LD-25 publishes `bad − optimal > 0` as a property of the
+**archetypes**, and every task since (T-148 F-148-1, T-160 F-160-1, T-175, T-176, T-219 K2, T-220 C6)
+has scored it on one arm at one stake distribution. Measured across the stake axis it is a property
+of the archetypes **at a stake**:
 
-1. **A standing quality gate:** "already you should be flagging and failing this since the port
-   names are overlapping with other ports and names." A regression test for label-collision on the
-   starmap, independent of whichever layout ships — it must hold for ANY coordinate set, not just
-   today's.
-2. **Rename `Sun-3` → `Sol-3`** — "the base game" name, reads more sci-fi. On the screen; swept
-   through docs and tests. **NOT** the persisted deed id `liars_dice_cleared_sun_3`
-   (`packages/content/src/deeds.ts:921`) or the `SUN_3_HANGOUT` code identifier
-   (`packages/content/src/portHangouts.ts:278`) — those are data/code identifiers, not display
-   text, and renaming a persisted id is a save-migration question the owner did not ask for here.
-3. **A real geometry pipeline, replacing the hand-authored `{x,y}` scatter:**
-   - **3a.** Distance-from-Sol per system — already derivable (`distance(1, id)` in
-     `systems.ts`), used as the FIXED radius input to what follows so every existing Sol-relative
-     balance number (rim ring ~20-24, core mean ~11, the fuel/DC/danger tuning in
-     `docs/balance/BASELINE-T-1603a.md`) is preserved exactly.
-   - **3b.** A generated 2D radial ("orbital/atomic," explicitly NOT the old game's linear line)
-     layout: systems placed on rings at their 3a radius, spread by angle within each ring.
-   - **3c.** Lift 3b into 3D: same radius-from-Sol as 3a/3b, dispersed across a sphere. New
-     `coordinates3D: {x,y,z}` field on `StarSystem`. Owner's own note: **nothing about Sol-relative
-     distance, fuel cost or travel time changes at this step.**
-   - **3d.** Pairwise distance between EVERY system pair, from the 3c coordinates. Owner's own
-     note: **this DOES change non-Sol-to-non-Sol route numbers** versus today's ad hoc 2D scatter.
-4. **Three prototype visualizations, screenshotted, not built into the live game yet:**
-   - **4a.** Flat 2D, current system highlighted, connecting lines to every other system.
-   - **4b.** The 3c sphere, draggable/zoomable, same connecting lines.
-   - **4c.** Wildcard — web research for sci-fi galaxy-map UI, mocked up.
-   Owner: "I will pick one and we will build it" — so 4a-4c are comparison artifacts, not a
-   shipped feature yet; whichever is picked becomes its own follow-on build task (wiring it into
-   `App.tsx`'s `Starmap`, replacing the current SVG projection).
+| regime | `bad − optimal` |
+| --- | --- |
+| band floor, 4 dice (`k ≤ 0` / `k ≤ 1`) | **−21.15 / −15.69 pp** |
+| band floor, 6 dice | **−13.32 / −9.47 pp** |
+| mid-band (`k ≤ 2` / `k ≤ 3`) | +2.61 … **+20.61 pp** |
+| the ceiling dead zone | **0.00 pp** — both arms can only challenge |
+| deep tier 5 (`k ≥ 5`) | **−4.95 / −3.98 / −10.25 pp** |
 
-**Scope call made during implementation, stated rather than left implicit:** item 3d's new
-pairwise-distance function is additive (`distance3D`, alongside the existing 2D `distance`) —
-it is NOT wired into `travel.ts`'s live `jumpFuelCost`/`travelDc`/`calculateRouteDanger` in this
-pass. The owner's own text acknowledges 3d "will directly affect" contract-run distances once it's
-the live formula, and `packages/content/src/systems.ts` is a hashed rule source
-(`rules-fingerprint.ts`), so swapping the ACTIVE distance formula is a rulesFingerprint-moving
-change with real balance consequences (every rim/danger/fuel number in
-`docs/balance/BASELINE-T-1603a.md` is tuned against the current 2D numbers) — that swap belongs
-with whichever map (4a/4b/4c) the owner picks, not bundled silently into a geometry-data commit.
-Building the 3D data and the comparison prototypes does not itself require moving that live
-formula.
+`bad` reads **no pot at all** (`BAD_CREDULITY` is a count rule), so the entire stake-dependence is
+`optimal`'s. The shipped arm sits at +15.79 pp (z = 35.93) because the gambler's stakes sit
+mid-band-and-above — per-career mean seated stake p10/p50/p90 = **1,537 / 2,477 / 3,876** — and
+**"unexercised by today's gambler policy" is not "unreachable by a player"**: a human may stake the
+band floor at any time. The bar has never been stated with the stake range it holds over, and no
+test would notice if a retune moved that range. [filed: T-222/F-222-3]
 
-**Accept:** (1) a starmap label-overlap test exists, generic to any coordinate set, and is
-currently RED against today's live map (documented, not silently fixed) unless the map is
-redesigned in the same pass; (2) `Sol-3` is the display name everywhere a player or reader sees
-it, with the deed-id/code-identifier exceptions above stated explicitly, not silently skipped; (3)
-`StarSystem` carries `coordinates3D`, `distanceFromSol` is derivable, and a tested `distance3D`
-function returns real pairwise 3D distances; (4) three screenshotted prototypes exist for the
-owner to choose from; (5) the live travel formula is UNCHANGED by this task (verified: `travel.ts`
-still imports the 2D `distance`); gate green; `rulesFingerprint`'s move (if any) is stated and
-paid for with a capstone re-pin.
+**Accept:** the ordering is re-measured across the stake axis with `n` on every cell and the range
+over which `bad − optimal > 0` holds is stated explicitly per dice width; the owner either **rules
+the ordering a mid-band property** — in which case LD-25 is amended in place (kept verbatim,
+superseded) to name the stake range, and the enforcing test asserts the bar **over that range**
+rather than at one point, computed from `probAtLeast` and the accessors with no literal stake — or
+**rules the inversion a defect**, in which case the fix is bakeoff'd rather than tuned against at
+least one named alternative on identical seeds and LD-28's invariants are re-scored alongside;
+either way `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` gains an assertion that goes
+RED if the range moves; §21.7 gains the outcome; if any rule moves the task takes its own capstone
+with the moved rows predicted first; gate green.
 
-**Delivered (2026-08-04) — items 1-3 built, item 4 prototyped; BLOCKED on the owner's pick, not
-DONE.**
+### T-227 · F-223-1: the player is never told which of the house's three seats is the hard one — `status: TODO` · `coder: opus` · `after: T-223`
 
-1. **The overlap tripwire:** `packages/ui/src/__tests__/starmap-label-overlap.test.ts`, an
-   `it.fails` tripwire (this repo's standing pattern for a documented, intentional red) generic to
-   whatever `starmapProjection` returns — approximate label bounding boxes from `.smlabel`'s actual
-   CSS (8px font, text-anchor middle, `(0,16)` offset), asserting no two intersect. It currently
-   fails against today's live map — confirmed by an out-of-band run: 4 real collisions (Arcturus-6/
-   Procyon-5, Deneb-4/Rigel-8, Fomalhaut-2/Mira-9, Fomalhaut-2/Spica-3) — matching the screenshot
-   the owner flagged. Flips green the moment a redesigned map (4a/4b/4c) ships.
-2. **`Sun-3` → `Sol-3`**, swept across ~75 live source/doc/test files (display text, comments, test
-   assertions). Explicitly NOT renamed: the persisted deed id `liars_dice_cleared_sun_3`
-   (its player-visible citation text WAS updated) and the `SUN_3_HANGOUT` code identifier.
-   Deliberately NOT renamed: dated historical/archival documents (`docs/archive/`, the two
-   `T-16xx`-era balance reports, `TODO.md`'s harvested provenance) — those describe what the game
-   was called at the time, not what it's called now.
-3. **The geometry pipeline, in `packages/content/src/systems.ts`:** `Star3DCoordinates`, a
-   `coordinates3D` field populated for all 28 systems at module load (radius from Sol preserved
-   exactly from the existing 2D `coordinates` — verified: `distance(1, id)` and each system's 3D
-   radius match to rounding), a Fibonacci-sphere point distribution for the angular spread
-   (golden-angle longitude, arccos latitude — the standard even-coverage algorithm), `distance3D`
-   (pairwise 3D Euclidean, additive, NOT wired into `travel.ts`), and `orbitalLayout2D` (the 3b
-   flat radial layout, golden-angle spread, for the 4a prototype). **rulesFingerprint moved**
-   (any edit to a hashed rule-source file does, even purely additive code) — **paid for with a real
-   8,000-run capstone**, `docs/balance/baseline-t188-orbital-3d.json`, re-pinned at all four sites
-   (`balance-targets.test.ts`, `docs/NPC_REDESIGN.md` ×2, `docs/balance/smoke/tiers.json`).
-   **This task's own changes are PROVEN INERT, not assumed** — two isolated 30-seed bisects
-   (gambler, veteran) each report "NOTHING MOVED." The `fleet`/`veteran` movement in the full
-   8,000-row diff against the outgoing baseline is T-161's `veteranPolicy` fix (already reviewed,
-   gated, committed) getting its first capstone — see the standing amendment in `docs/NPC_REDESIGN.md`
-   for the full account, attributed there so it isn't mistaken for new drift from this task.
-4. **Three screenshotted, standalone prototypes** (not wired into `App.tsx`'s live `Starmap`),
-   built from the REAL 3b/3c/3d data: **4a** flat orbital, Sol highlighted, lanes to every system;
-   **4b** the 3c sphere, drag-to-rotate + scroll-to-zoom (genuinely interactive, not just a static
-   mock); **4c** wildcard — a long-range-scan radar console (range rings, a nearest-neighbour lane
-   graph instead of pure hub-and-spoke, a rotating sweep), informed by a web sweep of FTL/Star
-   Traders/Sunless Sea-style node maps. Sent to the owner as screenshots plus the live HTML files.
-   **THE HALT.** Whichever the owner picks becomes its own follow-on build task (wiring the chosen
-   layout/interaction into `App.tsx`'s `Starmap`, replacing the current SVG projection) — not
-   self-selected here.
+**Filed at T-223 (2026-08-06), `docs/HANGOUT_REDESIGN.md` §7 Finding F-223-1 /
+`docs/LIARS-DICE_REDESIGN.md` §22.6 / `docs/LIARS-DICE-DECISIONS.md` LD-30.** Content authors a
+**strict difficulty ladder** at every one of the fourteen Liar's Dice ports — seat 1 the journeyman
+(`bad`/`random`, `3 × wager.max`), seat 2 the regular (`mixed`, `5 ×`), seat 3 the house
+(`optimal`, `8 ×`), with the table's own header saying *"difficulty rises monotonically with the
+purse"* — and T-223 **pinned that ladder with a test**, so it is now a guaranteed property rather
+than an authoring convention. **The UI surfaces none of it.** `hangoutRosterOpponents`
+(`packages/ui/src/format.ts:571`) projects name / beaten / **purse** / broke plus a tier-≥-3 `read`,
+and the pane (`packages/ui/src/App.tsx:2470-2510`) renders **four of those five — not the purse**
+(`grep -n purse packages/ui/src/App.tsx` returns one comment). The row's own `seat`, and content's
+`journeyman / regular / house` role table, are **not in `HangoutRosterOpponent` at all**.
+`liarsDiceDealerReadout` hard-nulls on any `ld-` id (correctly — §7.6). So **before tier 3 the three
+seats are distinguished by their authored NAMES alone**, and **after tier 3 the one cue that arrives
+describes STYLE, not difficulty**, with its connotation running the wrong way: `optimal` — the
+hardest and richest seat — reads **"This one plays it safe."**
+(`packages/engine/src/liarsDiceRules.ts:335`).
 
-Gate: `npm test` 118 files / 2,295 tests green across all five workspaces, `npx tsc -b`,
-`npm run lint`, `npm run format:check` clean.
+**This is a disclosure finding, not a pricing one, and that is deliberate.** LD-30 measures the
+roster at **+21.5 cr/hand (n = 11,021)** for the set-seeking instrument that buys what it sells, so
+the seat is **not** a trap in credits — which is exactly why the obvious "this seat is expensive" cue
+must not be shipped: it would print a claim the measurement contradicts. T-223 pre-committed
+(§22.2, criterion A4) to answering the disclosure question **independently of the sign**, on LD-26 /
+T-221's standing rule that *"a purchase whose price the buyer cannot see is not a design, it is a
+trap"*. A ladder the game guarantees and never mentions fails that test whether the rungs are cheap
+or dear. [filed: T-223/F-223-1]
 
-**NOTE (owner, 2026-08-04): the interactive HTML prototypes (4a/4b, sent as standalone files)
-did not work when opened on the owner's mobile app/device.** Not investigated — the screenshots
-sent alongside them were viewable and are the actual basis for comparison; the live HTML was a
-bonus for drag/zoom feel on desktop.
+**Accept:** the owner rules what the player should be told about the seat ladder and when, and the
+ruling is written into `docs/HANGOUT_REDESIGN.md` §7 beside F-223-1 (accept-as-is counts as a
+ruling, in writing, with its reason); if a disclosure ships it is **UI-only** so `rulesFingerprint`
+stays unmoved, it reads the engine's or content's own value rather than a copied string (T-221's
+precedent), it is pinned in `packages/ui/src/__tests__/hangout-pane.test.ts` or
+`liars-dice-pane.test.ts` against that value, and it does **not** surface a `'mixed'` seat's resolved
+arm before the hand exists (§4.5 ruling 1), does **not** move `readTheTableLine`'s tier-3 unlock or
+its three authored strings (T-146's), and does **not** import a content constant into the pane;
+§22.6 and the F-223-1 finding gain the outcome; if any rule moves the task takes its own capstone
+with the moved rows predicted first; gate green.
 
-**RULED (owner, 2026-08-05): 4B — the 3D lat/long globe.** The original 4a/4b/4c standalone
-files no longer existed on disk (never committed, sent as ephemeral attachments only) and were
-regenerated from the real committed data (`coordinates3D`, `orbitalLayout2D`, `distance3D`) for
-re-comparison. Two rounds: the first 4B pass was rejected as not actually reading as a sphere (no
-latitude/longitude graticule); rebuilt with a real dotted lat/long wireframe, current-system hub
-(bright, dim lanes to all reachable systems), and one lit lane for a set course. **A real,
-measured finding surfaced during this pass, and it changes the build's scope:** sampling label
-placement across 90 rotation angles (every 20° yaw × 5 pitches, same bounding-box method as
-`starmap-label-overlap.test.ts`) found **97.8% of rotations have at least one label collision**
-(avg. 4/frame; `Arcturus-6`/`Fomalhaut-2` collided in 22/90 samples). "Rotate to a clean angle"
-is not a real fallback — the 20 charted systems are too tightly clustered near Sol for that to
-reliably work. **Active label-collision suppression (priority: current system → set-course
-target → nearest-to-camera, others hidden until hover/selection) is therefore a required part of
-the build, not a nice-to-have.** Ruling also covers scope: 4B **fully replaces** the flat 2D
-Starmap projection, not a toggle/fallback. Follow-on build task: T-215.
+### T-171 · Deed supply after Explore's 10× event-rate drop — an owner ruling on the sealed-pod line — `status: TODO` · `coder: opus` · `after: T-198`
 
----
+F-115-B left an unanswered supply question. Explore's per-outcome event rate fell ~10× by design
+(a board now draws one row of 100 instead of walking three legs), and on
+`deed-coverage.test.ts`'s own driver the number of careers that earn the whole 44-deed slate alone
+fell from four in twelve to **two in sixty-five** (seeds 31 and 65); twelve of the fourteen
+near-misses miss `slipped_the_scan`, the same long pole every previous sweep names. The union is
+still 44/44 so no deed is dead content, and the sample was widened (`COVERAGE_SEEDS` 1..12 → 1..65)
+rather than the `>= 2` threshold moved. T-115 deferred the verdict to T-116, but T-116's delivered
+note rules only on whether Explore is a net loss and never addresses deed supply or
+`slipped_the_scan`. Needs an explicit owner ruling on the sealed-pod supply line
+(`slipped_the_scan` / `known_to_the_league` / `run_seized`, all downstream of the sealed pod at
+20% → 4.4% of boards). [harvested: T-115/deed-supply-slipped-the-scan]
 
-## M16 — Owner UAT pass 3: the dawn-hand die is illegible (2026-08-04)
-
-### T-193 · BUG: the starmap shows a "PILOT DC" for every jump, but ordinary jumps never roll against it — `status: TODO` · `coder: opus` · `after: T-198`
-
-Found while explaining the dawn-hand mechanic to the owner (they could not tell what assigning a
-die to a jump does — see T-194 for the full finding). Root cause, verified in code:
-`travelPreview()` (`packages/engine/src/actions/travel.ts:189`) unconditionally computes
-`dc: travelDc(routeDistance, destination)` and the route-preview panel
-(`packages/ui/src/App.tsx:3649`, `data-testid="route-dc"`) renders it for EVERY destination. But
-`resolveTravel` (same file, `:572`) only actually rolls a Pilot check against that DC for the
-Nemesis crossing (`isCrossing` branch, `:624-629`) — per the `T-1605 · AN ORDINARY JUMP ALWAYS
-ARRIVES` comment at `:608`, the pilot check was deliberately removed from ordinary travel (34% of
-jumps used to fail even on the player's best die). **Nobody removed the now-dead DC readout when
-the check was removed.** The UI has been showing a stat check that cannot fail for every ordinary
-jump since T-1605 shipped — actively misleading, not merely uninformative: a player reads "PILOT DC
-12" and reasonably concludes their die and Pilot stat matter here, when neither does.
-
-**Accept (amended at the 2026-08-04 review pass — T-195 shipped in the same commit as this
-filing, and it changes what "honest" means here):** the route-preview panel does not display a DC
-for a destination `resolveTravel` will not roll a check against (ordinary jumps); it MAY still
-show the Nemesis crossing's real DC, since that check is real. But do NOT replace the dead DC
-with only a "no check — every jump with fuel arrives" line — since T-195, an ordinary jump's die
-is no longer inert: it sets a fuel discount (`navDieFuelDiscount`, 0-15%) and an
-encounter-evasion factor (`navDieEvasionFactor`, 0-20%), and `travelPreview` already computes
-both once a die is known. The honest readout is the armed die's live effect (e.g. "die 14 · fuel
-−9% · encounter odds −13%"), with the "no check" copy covering the no-die-armed state — either
-way the absence of a DC reads as a stated fact, not a missing feature. `travelPreview`'s `dc`
-field can stay (still useful for the crossing and anything else that reads it), but the UI
-consumer must stop rendering it as if it always means something. Coverage lands in the existing
-DOM pane-test harness (`packages/ui/src/__tests__/`, vitest + testing-library — "coverage" here
-means these; do NOT stand up a browser tier for this task, that is T-162's still-open thread): a
-route preview to a non-crossing destination renders no Pilot-DC readout (the die-effect or
-"no check" copy instead); a preview to the (unlocked) Nemesis crossing still renders the real
-DC. Gate green.
-
-### T-194 · The dawn hand's die-value mechanic is illegible — teach it, and make success visible — `status: TODO` · `coder: opus` · `after: T-198`
-
-Owner's read, after a live session: "it was not at all apparent why I was adding a d20 to any of my
-tasks. Taking a contract? Making a jump to deliver the contract? Entering the hangout? ... In its
-current state it feels like I have [a] number of action points, I have no feedback if the die does
-anything."
-
-**The pre-M17 mechanic this task was filed against (kept as the record of the finding; the full
-value-blind/value-matters split is preserved in `docs/DAWN-HAND-REDESIGN.md` §3's table):** every
-action cost one die, but only some read its face value, and nothing in the UI distinguished the
-two classes — `dieArmed` (`App.tsx:3471`) is a plain boolean, not a comparison. **M17 dissolves
-that split instead of teaching it:** after T-196a-c and T-197, every remaining Main Action reads
-its die — Jump (fuel discount + encounter evasion, monotonic, T-195), Explore (Pilot vs Nav DC),
-Haggle (Trade vs DC), Combat (Guns/Pilot/Trade vs DC by stance), Peek (Guile vs DC), Nemesis
-crossing (Pilot vs DC) — and everything else is a Free Action costing no die at all. Two
-deliberate corners stay die-blind, both ruled out of M17's scope by the spec's §3: storylet
-choices authored with `spendDie` and no `statCheck`, and Explore's secondary extra-dice toll.
-
-**RE-SCOPED at the owner-approved review pass, 2026-08-04** (originally written pre-M17, then
-marked superseded with a "re-scope later" note — this rewrite IS that re-scope, done now so no
-future coder inherits an Accept that contradicts its own postscript; the original two-part
-version is in git history). Gated `after: T-198` so the tutorial teaches the post-checkpoint
-economy, not numbers the owner may still re-tune.
-
-**Accept, in three parts, all required:**
-
-1. **Teach the two-class economy in the hand-held tutorial (T-187's contextual coach).** At the
-   first die assignment: Main Actions cost a die and the die IS your roll (or, for a jump, your
-   edge — higher is strictly better); Free Actions cost nothing and can be taken even with an
-   empty hand — with one bounded exception, the daily social plays (§4a's pool), taught where
-   the player first meets it (on entering a Hangout), not front-loaded. Demonstrate, don't just
-   state: the walkthrough already covers a Free action (sign a contract) and a Main one (jump)
-   back-to-back, so the contrast is felt.
-2. **Show the roll before it's committed, everywhere a die is read.** For every check-based Main
-   Action (Explore, Haggle, Combat, Peek, Crossing), once a die is armed, render that die's value
-   against the action's DC as a clear success/fail read (e.g. "[14] vs DC 12 — clears it" or a
-   plain pass/fail badge), not a bare DC sitting next to an unrelated hand of dice. For the jump,
-   T-193's die-effect readout is the same idea and lands first; this task extends the pattern to
-   the check actions. A DC shown before any die is armed (planning view) must be visually
-   distinct from a live per-die read.
-3. **The two residual die-blind corners must not be taught wrong.** Storylet `spendDie`-only
-   choices and Explore's extra-dice toll still spend dice without reading them; the tutorial and
-   the per-die read must not imply those dice roll against anything. If making them honest in the
-   UI is cheap, do it here; if not, FILE the cleanup as a follow-up task rather than widening
-   this one.
-
-Gate green.
-
----
-
-## M17 — Owner ruling: the dawn-hand action economy (2026-08-04)
-
-Authority: `docs/DAWN-HAND-REDESIGN.md`. The owner's board-game-designer pass on the whole
-dawn-hand system: most of today's 15 die-costed actions were administrative overhead riding the
-same scarce resource as the decisions that actually vary a run. The ruling splits every action
-into **Main Actions** (cost a die — the actions that make a day's shape a real choice) and
-**Free Actions** (bounded by something else already: credits, inventory slots, one-contract-at-
-a-time, one-loan-at-a-time), plus new caps on the Free actions that had no bound besides the
-die today. See the spec doc for the full table, the reasoning per action, and §5's open
-questions.
-
-**Amended at the owner-approved review pass, 2026-08-04.** Five changes, all reflected in the
-blocks below and in the spec doc's own amendment header: (1) T-196 is split into T-196a/b/c —
-the original task was engine + types + protocol + sim policies + UI + capstone in one commit,
-and the a/b arms now double as a control-arm pair (rules-eased vs instruments-exploiting,
-N13's own discipline). (2) The owner ruled a **single daily social pool**
-(`SOCIAL_PLAYS_PER_DAY = 3`, a content constant) over Meet, Befriend, AND Insult — the three
-disposition movers with no other bound — superseding the same-day per-NPC-per-day draft (spec
-§4a records both the ruling and the logged not-chosen shapes); the capstone still measures the
-Insult encounter-farming loop, now as verification that X = 3 holds it. (3) The spec's §5
-Befriend-check question is RESOLVED in the same ruling: free Befriend rolls an internal d20
-from the action's rng against the port's authored DC — the check and its content stay live.
-(4) T-197 carries the save bump (13 → 14) its
-two persistent caps imply, per the standing migration constraint. (5) T-198, a pacing
-checkpoint, sits between the capstone and T-194 — T-195 already moved clear rate +12.6% and
-median credits +40.5%, M17 roughly doubles a trading day's useful actions, and the day-30
-marker/contract deadlines/loan terms were all tuned against the old economy; nobody should
-write tutorial copy against numbers the owner may still re-tune.
-
-### T-198 · CHECKPOINT — owner pacing read on the post-M17 economy — `status: DONE` · `coder: opus` · `after: T-197`
-
-The dawn-hand arc is the game's second intentional easing in a week: T-195 alone moved
-`fleet.tourOneClearRate` 0.5605 → 0.6310 and `finalCredits.median` +40.5%, and M17 roughly
-doubles a trading day's useful actions (sign/fuel/repair/hire no longer compete with jumps for
-dice). The day-30 marker, contract deadlines, and loan terms were all tuned against the OLD
-action economy, and nothing inside M17's build tasks judges whether they still hold — this
-checkpoint is where that judgment happens, BEFORE T-194 bakes the new economy into tutorial
-copy.
-
-**The brief, assembled from work already done (no new sweeps):** T-197's cumulative table
-(t182 → t195 → t199 → t196a → t196b → t197), the Insult encounter-farming measurement (moved or
-clear), and one owner play session at feel level. **The orchestrator HALTS here** per the T-158
-convention — the outputs are owner rulings, not code: (1) is the pacing acceptable, or does a
-re-tuning task get filed (marker day, contract deadlines, T-195's 15%/20% magnitudes, the §4b
-rounds table) before T-194 runs; (2) whether `SOCIAL_PLAYS_PER_DAY = 3` needs tightening — the
-pool was ruled with the prediction that X = 3 holds the Insult encounter-farming loop, and
-T-197's capstone measurement either confirms that or is the finding this ruling answers. Record
-both rulings in this block, dated; T-194 un-gates on them.
-
-**Prepared (2026-08-05, AUTOMATED HALF ONLY — this task is NOT done and was not self-approved).**
-The automated half of the checkpoint is complete and the run **halts here**, per the T-158
-convention. What landed:
-
-- **The brief: `docs/playtests/T-198-pacing-brief.md`.** Ten sections, mirroring T-158's: what
-  closes the task (**three** rulings, not two — F-198-3); the runbook, which does **not** duplicate
-  T-158 §2 but points at it and adds only the M17 deltas (every administrative verb and all seven
-  Hangout verbs free; `Dare{move:'peek'}` the only Hangout die spend left; the two live readouts
-  `social-plays-left` / `dare-rounds-left`; the two typed refusals `social-limit-reached` /
-  `daily-round-limit`; the standing play-through-the-UI rule restated); a suggested-not-scripted
-  pass aimed at the pacing question; **§4 the cumulative arc as measured**, with F-198-2's
-  two-origins sentence; **§5 the pacing clamps and the F-198-1 correction**; **§6 R2's evidence, the
-  Insult null result**; **§7 R3's evidence, the rounds table**; §8 instrumentation, re-grepped at
-  each call site rather than copied from T-158's block; §9 a session-notes template with the Bug
-  Discovery Policy pointer; **§10 the three EMPTY ruling slots**, in T-158 §9's table idiom.
-- **One heading inserted in `docs/DAWN-HAND-REDESIGN.md`** — `## 0 · M17 as measured — the Insult
-  null result and the cumulative arc` — so the Insult block, the still-open-rounds bullet, the
-  cumulative table and "what the arc actually shows" become one section-pinnable region running to
-  `## 1 ·`, plus one sentence pointing at the brief. **No existing section was renumbered**, and no
-  test parses this document's heading structure (checked: only comment references in
-  `protocol.test.ts` and `campaign-smuggler-gambler.test.ts`).
-- **New test: `packages/sim/src/__tests__/pacing-brief-figures.test.ts`** (5 tests). (1) Sixteen
-  prose figures pinned in **both** directions — heading exists, value is inside that section, value
-  is in the brief — with non-vacuity asserted. (2) **The cumulative arc table is DERIVED, not
-  transcribed**: all six committed aggregates are read, `runs === 8000` is asserted on each, and the
-  four columns are re-formatted and required to appear as whole table rows in **both** the spec §0
-  and the brief — so a re-pinned baseline cannot leave a stale arc row standing anywhere. (3) The
-  F-198-4 null result is **machine-checked** against `packages/sim/src/index.ts`: no
-  `venue: 'meet'|'befriend'|'insult'` literal may appear, and the three venues that ARE planned are
-  asserted positively so the check cannot pass by the file having moved. (4) R3's receipt: the
-  `PROPOSED` marker must be present at all three sites AND the array must still read
-  `[1, 2, 2, 3, 3, 4]`, so a ruling moves all four together or the suite goes red. (5) All three
-  ruling cells and all three date cells asserted **EMPTY** — a filled cell no owner wrote is a
-  self-waiver. The file header states that **test 5 INVERTS when the owner rules** and names the
-  T-158 precedent (`uat-brief-figures.test.ts`'s third test) so the closer flips it rather than
-  deleting it.
-
-**FOUR FINDINGS — these are the brief's spine, filed here so they survive a cleared session.**
-
-**F-198-1 · "Contract deadlines" do not exist in this game — a correction to this task block's own
-framing, recorded rather than silently substituted** (the idiom T-197's Delivered note used for its
-two). This block names contract deadlines among the things tuned against the old action economy.
-`CargoContract` (`packages/engine/src/types.ts:2142-2148`) is
-`{ destination, cargoType, payment, pods, haggled? }` — **no deadline, no expiry, no due-day field**
-— and `/usr/bin/grep -rn "deadline\|expiresDay\|daysToDeliver"` over `packages/engine/src` and
-`packages/content/src` returns nothing for contracts. The manifest board rerolls
-(`generateManifestBoard`, `packages/engine/src/day.ts:145`); a *signed* contract has no clock on it.
-The pacing clamps that DO exist, and that R1 actually rules on, are four:
-
-| clamp | value | pin |
-| --- | --- | --- |
-| the day-30 marker | a literal `30`, **not a constant** | `packages/engine/src/day.ts:1284` (`nextState.day === 30`) |
-| Tour One debt | `25000` | `packages/engine/src/state.ts:128` |
-| Guild debt interest | `GUILD_DEBT_DAILY_RATE = 0.02`/dusk | `packages/content/src/guild.ts:80` |
-| loan term / rate | `LOAN_TERM_DAYS = 15`, `LOAN_DAILY_RATE = 0.05` | `packages/content/src/lending.ts:69,63` |
-
-plus T-195's own two magnitudes, `NAV_DIE_FUEL_DISCOUNT_MAX = 0.15` / `NAV_DIE_EVASION_MAX = 0.2`
-(`packages/engine/src/actions/travel.ts:128-129`), which the block names correctly.
-
-**F-198-2 · This block's headline figure and the cumulative table's origin row are two different
-"before"s, and both are correct.** This block (and T-195's, above) quote `fleet.tourOneClearRate`
-**0.5605 → 0.6310**; `0.5605` is `docs/balance/baseline-t188-orbital-3d.json`, T-195's *immediate*
-predecessor. The cumulative table (`docs/DAWN-HAND-REDESIGN.md` §0) starts at **0.5689**, which is
-`docs/balance/baseline-t182-reroll-fix.json`, the last **pre-T-195** baseline T-197's capstone was
-required to span. Both verified by reading the files. The brief says so in one sentence with both
-pins, so the checkpoint does not spend the owner's attention on an artefact.
-
-**F-198-3 · There is a THIRD ruling already pending at this checkpoint, and T-197's Delivered note
-contradicts the repository on it — a correction to T-197's framing, recorded rather than silently
-substituted.** `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 2, 3, 3, 4]` still ships marked
-`PROPOSED — AWAITING OWNER CONFIRMATION` in three places (`packages/content/src/liarsDice.ts:101`,
-`docs/DAWN-HAND-REDESIGN.md:283-289` §5's last bullet headed **STILL OPEN**,
-`docs/LIARS-DICE-DECISIONS.md:219-228` LD-23), yet T-197's Delivered note says the numbers "were
-confirmed with the owner". Surfacing is not confirming; the correction is recorded beside that
-sentence above, and the sentence is not deleted. This is the T-158 "POINTER, NOT AN AMENDMENT"
-situation except that it lands **inside** the checkpoint — T-198's own text already names "the §4b
-rounds table" inside ruling (1). It is therefore promoted to its own slot, **R3**. **Three rulings,
-not two.**
-
-**F-198-4 · The Insult measurement is a NULL RESULT, and the reason is structural and
-machine-checkable.** `docs/DAWN-HAND-REDESIGN.md` §0 and `docs/NPC_REDESIGN.md:161` already state
-it; this pass proved the mechanism. The only `venue:` literals any policy PLANS in
-`packages/sim/src/index.ts` are `venue: 'borrow'` (`:2604`), `venue: 'repay'` (`:2637`) and
-`venue: 'dare'` (`:4225`). `meet`/`befriend`/`insult` appear at `:1399-1401` **only as a telemetry
-reader** (`hangoutPlay.socialBeats += 1`), and `socialBeats` is not even in the committed aggregate;
-`packages/sim/src/protocol.ts:914` enumerates them for the protocol seam, but nothing emits them. So
-the fighter row coming back byte-identical to T-196b is **not** evidence that X = 3 holds the loop —
-the loop cannot be exhibited by this instrument at all. **`SOCIAL_PLAYS_PER_DAY = 3` is UNVERIFIED,
-not verified.** What R2 actually rules on is the analytic bound: 3 plays/day × −4 disposition
-(`INSULT_DISPOSITION = -4`, `packages/content/src/hangout.ts:96`) ⇒ at most **one** manufactured
-grudge to the −10 floor per day, against unbounded before the cap; the −10 hunt weight is 16×
-(`packages/content/src/hangout.ts:118`) and the measured wronged-captain lift is 2.358×
-(`docs/HANGOUT_REDESIGN.md` §11.3). Test 3 of `pacing-brief-figures.test.ts` makes this durable: the
-day a policy learns to plan a social venue, the suite says the finding is stale.
-
-**Gate transcript, run BEFORE writing anything and again AFTER, so a pre-existing red could not be
-mis-attributed.** BEFORE: `npm test` → **126 files / 2,473 tests passing, 0 failing**
-(content 2/25 · desktop 7/110 · devpanel 5/61 · engine 50/1346 · sim 37/524 · ui 25/407). AFTER:
-**127 files / 2,478 tests passing, 0 failing** — exactly this task's one new file and its five
-tests (`packages/sim` 37/524 → 38/529), nothing else moved. The known-red `it.fails` tripwires behaved
-as expected-red on both runs and none flipped to unexpectedly passing. `npx tsc -b`, `npm run lint`
-and `npm run format:check` exit 0 on both runs.
-
-**NO FINGERPRINT MOVED, NO CAPSTONE IS OWED, AND NO SWEEP WAS RUN — stated rather than left
-unaddressed.** Every edit is under `docs/` (not hashed at all) or `packages/sim/src/__tests__/`
-(`__tests__` is in `HASHED_ROOT_IGNORED_DIRECTORIES`, `rules-fingerprint.ts:255-267`). Therefore
-`rulesFingerprint` is **unmoved at `10e19c88e9a07856`** and `instrumentFingerprint` **unmoved at
-`5c230e99648cddee`**; the baseline of record `docs/balance/baseline-t197-hangout-caps.json` is
-untouched, with no re-pin and no `smoke/tiers.json` re-extract. The brief is assembled from work
-already done, which is this task's own instruction. `CURRENT_SAVE_VERSION` stays **16** — re-read at
-`packages/engine/src/save.ts:562`, not copied out of a task block (T-197's block carries a stale
-"13 → 14"; the shipped bump was 15 → 16). No new non-test module was added under `packages/sim/src`,
-so **no `SIM_NON_INSTRUMENT_SOURCES` entry is owed** — the figure table lives inside the test file
-for exactly that reason. Nothing under `packages/engine`, `packages/content`, `packages/ui` or
-`packages/desktop` changed: `SOCIAL_PLAYS_PER_DAY`, `LIARS_DICE_ROUNDS_PER_DAY`,
-`NAV_DIE_FUEL_DISCOUNT_MAX`, `NAV_DIE_EVASION_MAX`, `LOAN_TERM_DAYS`, `LOAN_DAILY_RATE`,
-`GUILD_DEBT_DAILY_RATE` and `day.ts`'s `=== 30` are all untouched, by name.
-
-**TO CLOSE THIS TASK — where each ruling gets transcribed when it arrives.** Do not re-derive this
-after the halt; it is written down here on purpose.
-
-1. **R1 (is the post-M17 pacing acceptable?)** → (a) this block, dated; (b)
-   `docs/DAWN-HAND-REDESIGN.md`, as a dated ruling line at the top beside the existing SHIPPED
-   PART 1/2/3 blocks; (c) **if and only if the ruling is "re-tune"**, a NEW TASK BLOCK — never a
-   constant edited inline, because every named lever (the day-30 literal, the debt/interest, the
-   loan terms, the two `NAV_DIE_*_MAX` magnitudes) moves the fleet economy and owes its own capstone
-   diffed against `docs/balance/baseline-t197-hangout-caps.json`.
-2. **R2 (`SOCIAL_PLAYS_PER_DAY = 3`)** → (a) this block; (b) `docs/DAWN-HAND-REDESIGN.md` §4a; (c)
-   if "tighten", a new **content** task plus its capstone; if "measure first", a new **instrument**
-   task for the insult-playing policy arm — a new instrument BEHAVIOUR with its own arm, moving
-   `instrumentFingerprint` only.
-3. **R3 (the §4b rounds table)** → all four sites in ONE edit:
-   `packages/content/src/liarsDice.ts:101`'s docblock, `docs/DAWN-HAND-REDESIGN.md` §5's last
-   bullet, `docs/LIARS-DICE-DECISIONS.md` LD-23, plus the array itself if revised. **A
-   marker-comment flip alone is FREE**: `rulesFingerprint` is *semantic* and strips comments
-   (`packages/sim/src/balance/rules-fingerprint.ts:448-496`), so only `docsFingerprint` moves and
-   that is a NOTE, not a failure (`packages/sim/src/balance/checkpoints.ts:467-490`). **Revising the
-   ARRAY is a content edit and DOES owe a capstone**, diffed against
-   `baseline-t197-hangout-caps.json`. Stated explicitly so the closer does not run 8,000 rows for a
-   comment.
-4. Then flip **test 5** of `packages/sim/src/__tests__/pacing-brief-figures.test.ts` from
-   asserts-empty to asserts-non-empty, per that file's own header comment and the T-158 precedent.
-5. **T-194 and the ~12 backlog tasks whose `after:` names T-198 stay gated.** No `after:` field was
-   touched by this pass — they un-gate when the owner rules, not when the brief was written.
-
-**THE HALT (2026-08-05).** Nothing further was done on this task by any coder. **No ruling was made,
-guessed at, paraphrased or implied by this pass** — the coder does not self-waive, and the six empty
-cells in the brief's §10 are the record that it did not. The task now awaits: Human ruling (R1, R2,
-R3).
-
-**RULING — R1 (owner, 2026-08-05): pacing is acceptable as-is.** No re-tuning task filed for the
-day-30 marker, Tour One debt, guild interest, or loan terms — the cumulative arc showed M17's
-freeing of admin/Hangout actions did not measurably ease the fleet economy (all within noise of
-T-196a), so the levers tuned against the old economy stand unchanged. R2 and R3 remain open;
-T-198 stays `BLOCKED(Human ruling)` until both are answered.
-
-**RULING — R2 (owner, 2026-08-05): `SOCIAL_PLAYS_PER_DAY = 3` confirmed, no change.** Per the
-insult-farming investigation (background test, 2026-08-05): the pool cap correctly blocks a
-4th same-day insult; insult/disposition never touches faction reputation or any player-facing
-score (fully separate systems, verified against source); and the interception-reweighting
-mechanism it gates is real (measured 27%→72% wronged-share lift, matching the ~2.358×
-theoretical figure) but economically narrow — it only reorders WHICH same-tier rival shows up,
-never adds encounters or changes payout, so even the cap's own existence isn't load-bearing for
-balance. No re-tuning task filed. **All three rulings (R1, R2, R3) are now recorded; T-198
-closes per T-202's conditional instructions once T-202 lands.**
-
-**RULING — R3 (owner, 2026-08-05): `LIARS_DICE_ROUNDS_PER_DAY` = `[1, 2, 3, 4, 5, 6]`** (tiers
-0-5, a strict +1/tier climb, revised up from the shipped `[1, 2, 2, 3, 3, 4]` suggestion).
-Owner's reasoning, recorded rather than paraphrased: the simulated ceiling (an always-wins
-gambler playing every free round) is a rare, high-skill-adjacent, high-variance play — real
-play at these odds still loses ~40% of individual hands — and rewarding a risky gambler
-archetype with the credits to buy fast drives/cloaking and run a scoundrel playstyle (trade
-combat for evasion) is an ACCEPTED, intentional outcome, not an exploit to close. Confirmed by
-simulation before this ruling (Measure 1 optimistic ceiling +228% vs field median, Measure 2
-realistic play +84%, both including the already-baked-in +68% shipped-gambler edge — see the
-capstone note above). **Implementation is content-only** (the array + its three `PROPOSED`
-markers) and owed its own capstone per T-198's own closing instructions — filed as **T-202**.
-R2 remains open; T-198 stays `BLOCKED(Human ruling)` until R2 is answered and T-202 lands.
-
-**CLOSED (2026-08-05, by T-202). All three rulings are in and every item of this block's own
-"TO CLOSE THIS TASK" checklist is discharged.**
-
-- **R1 — pacing accept-as-is.** Transcribed per checklist 1: (a) this block, dated, above;
-  (b) `docs/DAWN-HAND-REDESIGN.md`'s dated ruling line beside the SHIPPED PART blocks (§0's
-  preamble); (c) N/A — the ruling was not "re-tune", so **no constant was edited and no
-  re-tuning task filed**, which is the checklist's own conditional.
-- **R2 — `SOCIAL_PLAYS_PER_DAY = 3` confirmed, no change.** Transcribed per checklist 2:
-  (a) this block; (b) a new dated **RULING — R2** paragraph in `docs/DAWN-HAND-REDESIGN.md`,
-  and §0's now-false "R2 … remain open" / "R2 remains open" sentences corrected in place
-  rather than deleted; (c) N/A — neither "tighten" nor "measure first" was ruled, so **no
-  content task, no capstone and no insult-playing instrument arm is owed.** Nothing under
-  `packages/engine` or `packages/content` moved for R2; `SOCIAL_PLAYS_PER_DAY` is untouched.
-- **R3 — `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]`.** Shipped by **T-202** per
-  checklist 3, all sites in ONE edit, with the capstone the checklist says a REVISION (as
-  opposed to a free marker flip) owes: `docs/balance/baseline-t202-liars-dice-ceiling.json`,
-  diffed against `baseline-t197-hangout-caps.json` and re-pinned at all five pointer sites.
-- **Checklist 4 — test 5 of `packages/sim/src/__tests__/pacing-brief-figures.test.ts` is
-  FLIPPED, not deleted**, from asserts-empty to asserts-non-empty, per that file's own header
-  and the T-158 precedent; test 4 was inverted the same way (PROPOSED → CONFIRMED markers,
-  `[1, 2, 2, 3, 3, 4]` → `[1, 2, 3, 4, 5, 6]`), and the brief's §10 now carries the owner's
-  ruling text and date in all six cells, transcribed from this block rather than paraphrased.
-- **Checklist 5 — the gates are now un-gated.** T-194 and every backlog task whose `after:`
-  field names T-198 are eligible from this point; no `after:` field was rewritten, the block
-  they name is simply `DONE`.
-
-Orchestration: attempts=1/4 · HUMAN-GATE HALT, released 2026-08-05.
+**Accept:** a recorded owner ruling on the sealed-pod supply line (raise the pod rate, re-home the
+three deeds, move the `>= 2` threshold, or accept as-is — any of the four counts as a ruling), with
+the post-ruling per-career slate-completion number re-measured on `COVERAGE_SEEDS` and stated
+beside the pre-ruling two-in-sixty-five; the ruling written into the Explore spec beside §10.4's
+other open calls; gate green.
 
 ### T-237 · F-162-4: the route preview shows a fuel bill the resolver will not charge — `status: TODO` · `coder: opus` · `after: —`
 
@@ -1951,75 +2181,6 @@ preview-vs-charge agreement (or, if the ceiling is ruled, pins that the preview 
 understatement) so the divergence cannot re-open unnoticed; if the discount is shown, T-195's
 feature is verified visible in the cockpit rather than only asserted; gate green.
 
----
-
-## M18 — Owner feature requests, filed at the T-198 pacing review (2026-08-05)
-
-Two feel/onboarding requests the owner raised while reviewing T-198's pacing brief. Independent
-of the M17 dawn-hand arc and of R2/R3 — both are eligible now, not gated behind T-198.
-
-### T-251 · Build the dawn-hand roll — the ceremony T-201 only designed — `status: TODO` · `coder: opus` · `after: —`
-
-The dawn-hand roll itself is UNBUILT. T-201 delivered only the proposal
-(`docs/design/T-201-dawn-hand-roll.md`); its Accept reserves the follow-up `code`-type task for the
-owner's pick, and no such task existed anywhere in `TASKS.md` until this one. The owner picks a
-treatment first — the doc recommends **Option C, "built as Option B first"**: ship B's full form and
-A's short form in one task with the predicate stubbed to "always full" behind a dev toggle, then set
-the predicate. The screenshot loop (`tabletop-ui` §7: build → screenshot → self-critique, 2–3 full
-variants, "never self-approve aesthetics") is owed by THIS task, not by T-201.
-[harvested: T-201/dawn-roll-implementation]
-
-**Accept:** the owner's treatment pick is recorded before implementation starts; the ceremony ships in
-`packages/ui` against that pick, with the doc's §7 open questions either already ruled (see the
-`docs/design/T-201-dawn-hand-roll.md` §7 entry in `TODO.md`) or ruled inside this task and written back
-into the doc; the `tabletop-ui` §7 screenshot loop is actually run — 2–3 full variants, screenshots
-attached, self-critique recorded, no self-approved aesthetics; the doc's file:line pins are re-verified
-against HEAD at the START of the task rather than trusted (they were pinned to commit `b8343150` and
-have drifted); the hand renders N dice, not a hard-coded 5, with a 6- and 7-die render covered by a
-test; the beat respects the motion model in force and does not ship cinematic-only; if nothing but UI
-moves, state that no capstone or `balance:extract` is owed; gate green.
-
-### T-252 · The third motion tier — SpacerQuest ships a binary motion model against a three-tier rule — `status: TODO` · `coder: opus` · `after: —`
-
-Q4 / §3.6 of `docs/design/T-201-dawn-hand-roll.md`: SpacerQuest ships a BINARY motion model
-(`reducedMotion` OR'd with the OS query at `App.tsx:931` driving `data-motion` at `:933`, with two CSS
-rails — `theme.css:2567–2595` and the `:root[data-motion='reduced'] *` kill-switch at
-`theme.css:2601–2605`), while `tabletop-ui` §8's standing rule mandates **Cinematic / Snappy /
-Instant** and "never ship cinematic-only". The divergence exists TODAY and was deliberately not fixed
-by T-201, whose doc recommends a separate task that retrofits every existing beat (`.sweep`, `om-*`,
-`ld-settle`, the Liar's Dice timeline, `.die.bloom`) and warns that T-201's implementation should not
-ship a cinematic-only beat while this is unanswered.
-[harvested: T-201/motion-tier-third-rail]
-
-**Accept:** either the three-tier motion model (Cinematic / Snappy / Instant) is implemented — the
-setting, the `data-motion` values, the CSS rails, and the OS-query mapping — and every existing beat
-named above (`.sweep`, `om-*`, `ld-settle`, the Liar's Dice timeline, `.die.bloom`) is retrofitted with
-a Snappy form, or the divergence from `tabletop-ui` §8 is ruled deliberate for this product with the
-reason recorded where a future UI task will read it; the retrofit list is proven complete by a scan of
-the animation rails rather than by inspection; each tier is screenshotted/recorded per the
-`tabletop-ui` §7 loop; no beat is left cinematic-only; UI-only change, so no rule fingerprint moves —
-state that explicitly; gate green.
-
-### T-253 · F-204-1: `wireStories.ts`'s "VERBATIM PRD §6 sample" no longer matches the PRD — `status: TODO` · `coder: opus` · `after: —`
-
-**F-204-1 (OPEN, carried forward from T-204).** `wireStories.ts`'s "VERBATIM PRD §6 sample — do not
-reword" contract now diverges from the PRD. `wireStories.ts:49` declares index 0 is the verbatim PRD §6
-sample and it is pinned exactly at `wire.test.ts:132`; that line now says "Cantina" while
-`docs/PRD-REIMAGINED.md:113` still says "Hangout" (as do §7.3/§7.5 at lines 145/163/167/177/195/217/223).
-The PRD was not in T-204's IN-SCOPE list, so updating it is its own scoped decision. Related and
-deliberate: the comment at `wireStories.ts:16-17` quoting the old sample and the one at
-`hangout.test.ts:373-374` ("The gamble templates all name the Hangout") were left UNEDITED to keep
-T-204's out-of-scope comment-count proof clean; both are knowingly stale pending the PRD decision and
-should be corrected by whichever task takes it. [harvested: T-204/F-204-1]
-
-**Accept:** the PRD decision is taken explicitly — either `docs/PRD-REIMAGINED.md:113` and the §7.3/§7.5
-occurrences (lines 145/163/167/177/195/217/223) are updated to "Cantina" so `wireStories.ts:49`'s
-verbatim contract holds again, or the sample is de-designated as verbatim and `wire.test.ts:132`'s exact
-pin is re-shaped, with the reason recorded either way; the two knowingly-stale comments
-(`wireStories.ts:16-17` and `hangout.test.ts:373-374`) are corrected in the same change; the "VERBATIM
-PRD §6 sample — do not reword" contract is left either genuinely true or explicitly retired, never
-half-true; content/doc-only change, so no rule fingerprint moves — state that explicitly; gate green.
-
 ### T-254 · F-204-2: the internal vocabulary is split — Hangout in code, Cantina on screen — `status: TODO` · `coder: opus` · `after: —`
 
 **F-204-2 (OPEN, carried forward from T-204).** The rename stops at the player's eye, so the internal
@@ -2039,39 +2200,6 @@ that is tested against a pre-bump save fixture; if it does not, the split is rul
 is left where a future reader meets it first (the module docblocks and
 `docs/HANGOUT_REDESIGN.md`); either way no partial rename ships; `rulesFingerprint` movement is
 predicted up front and any moved pins are named before the run; gate green.
-
----
-
-## M19 — Captain voice: table talk, battle catchphrases, and quest-captain pinning (owner, 2026-08-05)
-
-Two owner requests from reviewing the cast content-authoring survey. Both are about the 30 named
-captains (`NPC_PROFILES`, `packages/content/src/cast.ts`) and the 11 quest captains
-(`QUEST_PROFILES`, same file) specifically — NOT the 42-seat Liar's Dice roster (already has its
-own `lines`) and NOT the 65-entry anonymous pirate/patrol pool (explicitly out of scope here; the
-owner confirmed the gambler ladder and dropped the random-gambler idea with no further action).
-
-### T-255 · The four captain-voice surfaces have unit coverage only — prove them in real DOM — `status: TODO` · `coder: opus` · `after: —`
-
-T-207's four new player-visible surfaces have UNIT coverage only and no real-DOM proof. T-207's block
-states "No e2e change was needed or made" because `packages/ui/e2e/combat.spec.ts`'s two seeds are both
-ANONYMOUS encounters, and `packages/ui/e2e/liars-dice-roster.spec.ts`'s `dare-table-talk` /
-`dare-dealer-history` assertions are on the ROSTER seat. VERIFIED: grepping `packages/ui/e2e/` finds NO
-assertion on `dare-dealer-table-talk` (the roaming captain's line, `packages/ui/src/App.tsx:3017`) nor on
-`combat-enemy-bark` / `combat-enemy-battle-bark` / `combat-aftermath-bark`
-(`App.tsx:1818 · 1823 · 2041`). It needs an e2e seed that deals a ROAMING named captain's hand and one
-that draws a NAMED interceptor, so the copy a player can actually see is proved where
-`packages/ui/src/__tests__/liars-dice-pane.test.ts`'s own T-221 header says such a claim can be proved.
-[harvested: T-207/t207-e2e-bark-dom]
-
-**Accept:** `packages/ui/e2e` gains a seed that deals a ROAMING named captain's Liar's Dice hand and a
-seed that draws a NAMED combat interceptor, and asserts all four surfaces in real DOM —
-`dare-dealer-table-talk` (`App.tsx:3017`), `combat-enemy-bark`, `combat-enemy-battle-bark` and
-`combat-aftermath-bark` (`App.tsx:1818 · 1823 · 2041`); the seeds are found and pinned deterministically
-rather than left to chance, and each assertion is shown to fail with the bark rendering suppressed, so
-none is vacuous; the existing anonymous-encounter seeds in `combat.spec.ts` and the ROSTER-seat
-assertions in `liars-dice-roster.spec.ts` are left intact; the specs declare their first-run walkthrough
-stance per the suite convention; UI/test-only change, no fingerprint moves — state that explicitly;
-gate green.
 
 ### T-256 · Should a quest captain be a regular anywhere? — the content-design question T-208 raised — `status: TODO` · `coder: opus` · `after: —`
 
@@ -2115,6 +2243,85 @@ measured effects (gambler `hangoutPlay.visits` 281 → 301, credits 127,628 → 
 `campaign-degraded.test.ts` ENTRY 34's greedy control divergence) are recorded as accepted; either way the
 ENTRY 34 control-row consequence is re-read rather than absorbed; gate green.
 
+### T-251 · Build the dawn-hand roll — the ceremony T-201 only designed — `status: TODO` · `coder: opus` · `after: T-252`
+
+The dawn-hand roll itself is UNBUILT. T-201 delivered only the proposal
+(`docs/design/T-201-dawn-hand-roll.md`); its Accept reserves the follow-up `code`-type task for the
+owner's pick, and no such task existed anywhere in `TASKS.md` until this one. The owner picks a
+treatment first — the doc recommends **Option C, "built as Option B first"**: ship B's full form and
+A's short form in one task with the predicate stubbed to "always full" behind a dev toggle, then set
+the predicate. The screenshot loop (`tabletop-ui` §7: build → screenshot → self-critique, 2–3 full
+variants, "never self-approve aesthetics") is owed by THIS task, not by T-201.
+[harvested: T-201/dawn-roll-implementation]
+
+**Sequenced `after: T-252` at the 2026-08-06 re-order.** `docs/design/T-201-dawn-hand-roll.md` (Q4/§3.6, restated in T-252's block) warns that this
+ceremony must not ship a cinematic-only beat while the motion-tier question is unanswered. That
+gate existed only as prose — the exact failure class the harvested `after-field-gate-check`
+lesson names (`/orchestrate` selects on `after:` and never reads prose) — so it is now encoded.
+
+**Accept:** the owner's treatment pick is recorded before implementation starts; the ceremony ships in
+`packages/ui` against that pick, with the doc's §7 open questions either already ruled (see the
+`docs/design/T-201-dawn-hand-roll.md` §7 entry in `TODO.md`) or ruled inside this task and written back
+into the doc; the `tabletop-ui` §7 screenshot loop is actually run — 2–3 full variants, screenshots
+attached, self-critique recorded, no self-approved aesthetics; the doc's file:line pins are re-verified
+against HEAD at the START of the task rather than trusted (they were pinned to commit `b8343150` and
+have drifted); the hand renders N dice, not a hard-coded 5, with a 6- and 7-die render covered by a
+test; the beat respects the motion model in force and does not ship cinematic-only; if nothing but UI
+moves, state that no capstone or `balance:extract` is owed; gate green.
+
+### T-181 · D7's not-built alternative: a per-port interest-rate multiplier on `LOAN_DAILY_RATE` — `status: TODO` · `coder: opus` · `after: T-198`
+
+The per-port INTEREST RATE multiplier on `LOAN_DAILY_RATE` — the alternative logged under owner
+ruling D7 and explicitly NOT built by T-133 ("the previously-logged interest-rate-multiplier
+alternative was not built") — is still open. Revisit after this playtest if Arcturus-6's tight
+principal band alone doesn't read as enough per-port distinction, or if a later port wants to vary
+predatory/generous terms rather than just loan size. It was not ruled out, only deferred because the
+principal band reuses the `wager`-band pattern byte-for-byte (lowest engine risk).
+[harvested: T-133/loan-interest-rate-axis]
+
+**Accept:** the UAT/playtest read on whether the principal band alone gives enough per-port
+distinction is recorded first; then either a per-port `LOAN_DAILY_RATE` multiplier ships as content
+(read through an accessor, never an `if (systemId === ...)` branch in the engine, per T-133's
+standing rule) with its band pinned by accessor rather than literal, or the alternative is closed
+with the reason recorded in the D7 log; gate green.
+
+### T-232 · The R1/R2 revisit the owner deferred behind the UI iteration is now DUE — `status: TODO` · `coder: opus` · `after: —`
+
+The owner's 2026-08-03 rulings on **R1 (Combat's chosen `executeCombat` branch)** and **R2 (F-150-1
+— the 0.25 named-pool interceptor gate in `packages/engine/src/actions/travel.ts`, read together
+with `DISPOSITION_DECAY_INTERVAL_DAYS = 3` in `packages/engine/src/content/disposition.ts`)** were
+both DEFER-and-revisit-after-UI-iteration, naming **T-186, T-188, T-189, T-190 and T-191** as the
+work they were deferred behind. All five are now `status: DONE`, so the revisit is DUE — and
+neither ruling has been re-asked. The deferral text lives in `TASKS.md`'s "Deliberately deferred"
+`executeCombat` bullet and in the **F-150-1** row of the "Findings filed BY T-150" table, and is
+mirrored at `packages/sim/src/balance/coverage.ts`'s `ACKNOWLEDGED_COVERAGE_GAPS.fighter.owner`, in
+`docs/NPC_REDESIGN.md`'s `| Combat |` PARITY LEDGER row, and in `docs/HANGOUT_REDESIGN.md` §11.3's
+STATUS line. [harvested: T-158/r1-r2-revisit-now-due]
+
+**Accept:** (human-gated) both R1 and R2 are re-asked against the post-UI tree and carry a fresh
+dated owner ruling — "unchanged" counts as a ruling for each — recorded in
+`docs/HANGOUT_REDESIGN.md` §11.3 and `docs/NPC_REDESIGN.md`'s PARITY LEDGER; the deferral text in
+`TASKS.md`'s "Deliberately deferred" section, `ACKNOWLEDGED_COVERAGE_GAPS.fighter.owner` and
+§11.3's STATUS line are updated so none of them still names the completed T-186/T-188/T-189/T-190/
+T-191 gate as pending; any constant the ruling moves is paid with its capstone; the task halts
+`BLOCKED` for the owner and is never self-approved.
+
+### T-234 · No start-to-finish career UAT pass exists — schedule it or rule the two feel-level sessions sufficient — `status: TODO` · `coder: opus` · `after: T-233`
+
+T-158 closed with the owner giving both rulings directly and "choosing not to prolong the checkpoint
+into a full scripted career playthrough", so NO start-to-finish career pass exists.
+`docs/VERSIONING.md:137`'s alpha criterion is "the owner's own UAT passes — played start to finish,
+holds together", which the two feel-level sessions (feedback filed as **M14** and **M15**) do not
+obviously meet. Schedule the start-to-finish pass, or record an explicit ruling that passes 1 and 2
+discharge the criterion. [harvested: T-158/uat-start-to-finish-remainder]
+
+**Accept:** (human-gated) either a start-to-finish career UAT pass is run and its outcome recorded
+against `docs/VERSIONING.md:137`'s alpha criterion, or a dated owner ruling records that the M14 and
+M15 feel-level sessions discharge that criterion and says why; whichever way it goes,
+`docs/VERSIONING.md`'s stage table and `docs/RELEASE-CHECKLIST.md` are left consistent with the
+decision (coordinate with T-233 so the two do not contradict each other); the task halts `BLOCKED`
+for the owner and is never self-approved.
+
 ---
 
 ## M20 — Admin/balance authoring panel: the "Tier 2 levers dashboard" (owner, 2026-08-05)
@@ -2131,131 +2338,10 @@ rewards — eventually most of `packages/content`), run against a **cloned** con
 overwrites the committed source, click a test button that runs the real balance sweep, and see
 results — ideally visualized — before deciding whether to actually make the change for real.
 
-### T-215 · Build: the 3D lat/long globe Starmap, replacing the flat 2D projection — `status: TODO` · `coder: opus` · `after: T-188`
-
-T-188's ruling (2026-08-05): build candidate 4B, the rotatable 3D globe, as the live Starmap in
-`App.tsx` — not a prototype, not a toggle-able alternative to the existing flat SVG projection,
-a full replacement of it. Real geometry already exists and is committed: `coordinates3D`,
-`distance3D`, `orbitalLayout2D` in `packages/content/src/systems.ts` (from T-188). This task is
-the drag/zoom interaction, the render (dotted lat/long graticule wireframe, no bright emphasis
-ring), and the lane/label behaviour the ruling specified:
-
-- **Lanes:** dim by default from the player's current (docked) system to every reachable system;
-  the lane to a set course renders bright. Hub is the current system, not always Sol — Sol only
-  looks like the hub today because the sample game state happens to be docked there.
-- **Label collision suppression is required, not optional.** The ruling's own measurement (90
-  sampled rotation angles, same bounding-box method as `starmap-label-overlap.test.ts`) found
-  97.8% of rotations produce at least one label collision among the 20 charted systems — spinning
-  to a "clean" angle is not a reliable fallback. Priority order for which label wins a collision:
-  current system, then the set-course target, then nearest-to-camera (by rotated `z`); losers
-  keep their dot but drop their label until hovered/selected. Use real rendered text metrics for
-  the collision boxes, not a fixed-character-width approximation (the T-188 mockup used one and
-  it visibly under-measured — do not carry that shortcut into the shipped build).
-- **Mobile/cross-platform risk, named and open:** the T-188 interactive HTML prototype failed to
-  open correctly on the owner's mobile device, and this was never root-caused (out of scope at
-  the time — screenshots were the actual basis for that ruling). This task inherits that open
-  risk and must root-cause and resolve it before considering the globe done, since the shipped
-  build (unlike the prototype) is not optional to open correctly.
-- **Retire, don't leave dead:** the existing flat SVG `starmapProjection`/2D rendering path in
-  `App.tsx` is removed once the globe ships, not kept as unreachable code.
-
-**Accept:** the live Starmap renders the rotatable 3D globe (real drag/zoom, not a static frame);
-`starmap-label-overlap.test.ts` (or its 3D-projection successor) passes across a representative
-sample of rotations, not just one; the current-system/course-lane brightness behaviour matches
-the ruling; the mobile-open failure is root-caused and fixed or explicitly re-scoped with a
-reason recorded; the old flat 2D projection code is deleted; gate green.
-
-### T-216 · BUG: `theme.css`'s "one phosphor colour" law is already broken in two live UI spots — `status: TODO` · `coder: opus` · `after: —`
-
-**Found incidentally** during the T-186 visual-identity bake-off (2026-08-05), by the engineering-feasibility reviewer, while establishing the ground truth that "there is currently no second hue anywhere in the shipped UI" — that premise turned out to be false, and this is filed per the Bug Discovery Policy rather than held for later. Confirmed against source directly, not taken on the reviewer's word:
-
-- `packages/ui/src/theme.css:4929,4938,4947` — `color: var(--accent, #4fd1c5)` (teal). `--accent` is **never defined** anywhere in the repo (`grep -n "\-\-accent:" packages/ui/src/theme.css` → no match), so the fallback is what actually renders. Live: `.ship-honor` (the Top Gun Honor List) is rendered at `App.tsx:4381` (`data-testid="honor-list"`) — the player's own row and any held-rank row render teal, not amber.
-- `packages/ui/src/theme.css:4891,4911` — `border: 1px solid var(--line, #2b3a44)` (blue-grey). `--line` is likewise **never defined**; same `.ship-honor` component, so its borders are blue-grey, not amber.
-- `packages/ui/src/theme.css:3217` — `.as-hostile .as-value { color: #e0562a; }` (orange-red), not a broken variable but a hardcoded second hue that bypasses the token system entirely. Live: `App.tsx:3462` builds `` `as-row as-${s.tone}` `` dynamically, so a hostile-attitude row renders orange-red in production right now.
-
-**SEVERITY AMENDMENT (2026-08-05), the T-186 bake-off's legibility/accessibility reviewer,
-independently:** the `.as-hostile` leak is not just a one-phosphor-law consistency violation —
-it is a functional accessibility defect. Simulated via Viénot matrices against the two live
-attitude colors (`#e0562a` hostile vs. `#c0781a` neutral `--amber`): under deuteranopia both
-resolve to hue ≈52° within 3 units on every channel; protanopia is the same collapse. **A
-deuteranope or protanope cannot currently distinguish a hostile captain from a neutral one by
-this color alone.** This raises the Accept bar: closing the leak by giving `.as-hostile` an
-amber-family value does not fully discharge the finding if hostile/neutral then collapse to the
-same *luminance* too — the fix must leave hostile distinguishable from neutral by some
-non-hue-dependent channel (e.g. luminance step, reverse-video, or an icon/glyph), not just move
-the bug from "wrong hue" to "right hue, still indistinguishable."
-
-None of this is dead CSS — both class families are confirmed rendered, not just declared. Whatever T-186 rules (monochrome-only vs. per-instrument accents vs. a harder break), this needs a decision on its own terms: either these three sites get real amber-family values (closing the accidental leak and making "one phosphor" true again), or they get formally adopted as the second/third hue the law already has in production, with `theme.css`'s header law rewritten to say so honestly instead of asserting something the shipped code already contradicts.
-
-**Accept:** `--accent` and `--line` are either defined (as amber-family values, closing the leak) or deliberately promoted to real, documented tokens with `theme.css`'s header comment updated to no longer claim zero second hues; `.as-hostile`'s hardcoded `#e0562a` is resolved the same way — token-ized amber or deliberately kept and documented; a screenshot of `.ship-honor` (Records → ship honors) and an attitude-hostile row confirms the fix; gate green.
-
-### T-217 · BUG: the Galactic Wire ticker scrolls underneath the LOG button — `status: TODO` · `coder: opus` · `after: —`
-
-**Found incidentally** during the T-186 visual-identity bake-off (2026-08-05), by the visual-design
-reviewer, and confirmed independently against a screenshot taken earlier the same session (not
-just the reviewer's word) — visible right now on a live boot: the Galactic Wire band reads
-`GALACTIC WIRE [LOG]uiet. Roll the day and make some news.` instead of `GALACTIC WIRE [LOG]  The
-wire is quiet. Roll the day and make some news.` — the ticker text scrolls in **underneath** the
-LOG button rather than starting clear of it.
-
-**Root cause, confirmed against source.** `packages/ui/src/theme.css:1883-1885` — `.ticker` has a
-hardcoded `padding-left: 138px`, sized to clear the original `.cap` contents (the "GALACTIC WIRE"
-label + pulse dot). `theme.css:1912-1923`'s own comment marks the `.wire-log-btn` as a LATER
-addition ("T-306"), and `App.tsx:5492-5504` confirms it's rendered *inside* the same
-absolutely-positioned `.cap` element, after the label. Adding the button widened `.cap` beyond the
-138px the ticker reserves for it — a magic number that was never updated when T-306 shipped, so
-`.cap`'s real rendered width and the ticker's clearance have silently drifted apart.
-
-**Accept:** the ticker's left clearance tracks `.cap`'s actual rendered width (e.g. measured via
-`ResizeObserver`/`getBoundingClientRect`, or `.cap` reserves its own space via normal flow instead
-of `position: absolute` + a magic-number sibling offset) rather than a hardcoded pixel value that
-can drift again the next time something is added to `.cap`; a screenshot of the Galactic Wire band
-confirms `GALACTIC WIRE [LOG]` and the ticker text no longer overlap; gate green.
-
-### T-218 · Build: ship the "one phosphor, two materials" visual identity — `status: TODO` · `coder: opus` · `after: T-186`
-
-T-186's ruling (2026-08-05): implement candidate D — amber stays the only hue and the only thing
-that emits light; every structural/inert surface (panel chassis, bezels, frames, dividers)
-becomes unlit, near-achromatic steel instead of the current amber-on-amber haze. The owner's
-reference build is the bake-off's visual-director mockup, not the subsequent synthesis attempt
-that layered in the legibility reviewer's stricter interaction rules — that synthesis was
-rejected on sight. Real work: `packages/ui/src/theme.css` (new neutral/steel token family
-alongside the existing five amber tokens, which keep their exact current values per the bake-off
-engineering reviewer's finding — this is additive, not a re-hue), `packages/ui/src/App.tsx` call
-sites for structural chrome, and `docs/PRD-REIMAGINED.md` §4 gets the one added sentence the
-bake-off named (the amber-phosphor commitment survives unchanged in hue-count; the fiction shifts
-from "a monochrome tube" to "amber CRT readouts set into machined metal" — write that sentence,
-don't silently leave §4 undescriptive of what ships).
-
-**RULED (owner, 2026-08-05) — the scope question:** D, plus exactly one interaction rule layered
-in — reverse video reserved to real urgency only. The owner rejected a fuller synthesis attempt
-that also changed D's materials/palette toward the legibility reviewer's flatter, colder steel
-("terrible for a lot of reasons"); the follow-up isolated the single rule from that rejected
-attempt and re-tested it as a minimal diff against D's own unmodified source
-(`chassis-rvrule.html`, built from the bake-off's own `chassis.html` by editing exactly two
-selectors) — approved on sight ("go with this version"). **The two concrete edits, and nothing
-else changes from the ruled D reference build:**
-- `.slot.ready` (the "which die clears this check" badge on Manifest Board rows): was solid
-  `background: var(--ember)` + dark text: now an outlined `var(--well)` fill with an `--ember`
-  border, text and inset glow — no longer a reverse-video fill.
-- `.die.sel` (the armed die in the Dawn Hand tray): was a solid light-amber gradient fill with
-  dark text: now the die's own dark steel gradient stays, with an `--ember` inset ring + glow and
-  `--ember` text — selected reads as "lit," not "inverted."
-- Everything else in the reference build — `.chip.rev` (DEBT), `.flag.urgent`, `.due-soon b`,
-  `.ship-region.damaged .rg-v`, all chassis/steel materials, the manifest "paper," the ledger
-  rail, the wire slot, the dawn-hand tray — is **unchanged** from D as ruled. The button-body and
-  locked-row questions raised when this scope call was first opened are **not** part of this
-  ruling — D's own existing button/lock treatment ships as built, nothing added from the
-  legibility reviewer's build beyond the one rule above.
-
-**Accept:** the live UI renders candidate D's material treatment (steel chassis + amber-only
-light) matching the ruled reference build, with the one reverse-video-discipline edit above
-applied to the die-armed and check-clearing-badge states and nothing else changed from D;
-`docs/PRD-REIMAGINED.md` §4 carries its one added sentence; a live screenshot pass (same
-six-panel board used throughout T-186's bake-off) confirms it reads as the ruled direction, not a
-redrift back toward either the pre-T-186 baseline or the rejected fuller-synthesis attempt; T-216
-and T-217 (both filed during the bake-off) are either fixed in the same pass or explicitly left
-to their own tasks with a reason recorded; gate green.
+**Corrected at the 2026-08-06 re-order:** T-215, T-216, T-217 and T-218 had been appended
+under this header ABOVE the T-209 checkpoint. None is admin-panel work — all four are the
+M14/M15 visual arc, the owner's stated priority — so they were re-homed to those milestones.
+This milestone is now exactly what its header says: the checkpoint, then T-210 → T-214.
 
 ### T-209 · CHECKPOINT — do not start M20 until the owner says so — `status: TODO` · `coder: —` · `after: —` · `[BLOCKED BY = Owner priority — resume after visual/core-loop work]`
 
