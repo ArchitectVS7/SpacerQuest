@@ -186,8 +186,22 @@ const TRADER_CLEAR_DAY_MAX = 30;
 // headline (fleet tourOneClearRate 0.6329 -> 0.6348, fleet finalCredits.median 49,839 ->
 // 49,687). Gate PASS, 0 invariant violations. THE BANDS BELOW ARE UNTOUCHED — nothing was
 // tuned to meet a number.
+// RE-PINNED AT T-168 (2026-08-05) to `baseline-t168-effective-band.json` — F-148-4's fix:
+// `planDare` and the UGT enumerator now size the Dare wager domain off the engine's
+// `preHandWagerBand` (the tier's EFFECTIVE band) instead of the port's raw tier-0 band, so a
+// career can at last REQUEST into the raised tier-4 ceiling and tier 5's removed clamp. BOTH
+// fingerprints move — `rulesFingerprint` 2f93098dc9ab15f0 -> f264d7f4a2d56fde (the new
+// `preHandWagerBand` accessor in `engine/liarsDiceRules.ts`), `instrumentFingerprint`
+// 5c230e99648cddee -> b8894cb6c678fce6 (`sim/index.ts`: `planDare` plus three additive
+// `HangoutPlayStats` fields) — so the attribution is NOT single-arm and the write-up says so.
+// TWO OF TEN ROWS MOVED (fleet, gambler; explorer, fighter, greedy, smuggler, trader,
+// trader-degraded and veteran all byte-identical) — PREDICTED IN WRITING BEFORE THE RUN
+// (`TASKS.md` T-168), because `planDare` is called by `gamblerPolicy` and by nothing else and
+// `fleet` pools it. Gambler `finalCredits.median` 80,244 -> 115,612; ONE shape change reported
+// and not suppressed (`byPolicy[gambler].renownRanks.GIGA_HERO`, a bucket the richer gambler
+// now reaches). Gate PASS, 0 invariant violations. THE BANDS BELOW ARE UNTOUCHED.
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
-  new URL('../../../../docs/balance/baseline-t208-quest-captain-ports.json', import.meta.url),
+  new URL('../../../../docs/balance/baseline-t168-effective-band.json', import.meta.url),
 );
 const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
   label: string;

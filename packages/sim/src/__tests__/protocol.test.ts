@@ -26,6 +26,10 @@ import {
 } from '@spacerquest/engine';
 import {
   DEMO_FINAL_DAY,
+  // T-168 · the ladder's own numbers, read from CONTENT so a rung literal here
+  // cannot drift from the table it is checking.
+  LIARS_DICE_RAISED_CEILING_MULT,
+  LIARS_DICE_UNLOCK_GAMES,
   LOAN_MAX_PRINCIPAL,
   LOAN_MIN_PRINCIPAL,
   NEMESIS_SYSTEM_ID,
@@ -1570,6 +1574,62 @@ describe('legal-actions enumerator', () => {
     expect(hangout?.params.wager).toEqual({ kind: 'int', min: band.min, max: band.max });
     // NON-VACUITY: as above, the port band must differ from the global one.
     expect(JSON.stringify(band)).not.toBe(JSON.stringify(wagerBandFor(1)));
+  });
+
+  // -------------------------------------------------------------------------
+  // T-168 · THE WAGER DOMAIN IS THE **EFFECTIVE** BAND (F-148-4, §4.6a item 3).
+  //
+  // The two tests above are the TIER-0 CONTROL and are deliberately unchanged:
+  // `createInitialState` starts a captain at `liarsDiceGamesPlayed = 0`, so they
+  // assert that nothing below tier 4 moved. These two assert that something above
+  // it now can. Before T-168 the enumerator sized this domain off raw
+  // `wagerBandFor`, so no UGT career could ever REQUEST a tier-4 or tier-5 stake
+  // and the raised ceiling was unmeasurable as played.
+  // -------------------------------------------------------------------------
+
+  it('T-168 · at TIER 4 the advertised wager ceiling is the RAISED one, not the port band', () => {
+    const ARCTURUS_6 = 12;
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.currentSystemId = ARCTURUS_6;
+    state.npcs[0].currentSystemId = ARCTURUS_6;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+    // Rung 4 opens at `LIARS_DICE_UNLOCK_GAMES[3]` — the index is the off-by-one
+    // §4.1 pins, and it is read from content rather than written as `40`.
+    state.player.liarsDiceGamesPlayed = LIARS_DICE_UNLOCK_GAMES[3];
+
+    const hangout = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    const band = wagerBandFor(ARCTURUS_6);
+    expect(hangout?.params.wager).toEqual({
+      kind: 'int',
+      min: band.min,
+      max: band.max * LIARS_DICE_RAISED_CEILING_MULT,
+    });
+    // NON-VACUITY, and it is the point of the whole task: the tier-4 domain is
+    // STRICTLY wider than the tier-0 one the two tests above pin.
+    const ceiling = hangout?.params.wager;
+    expect(ceiling?.kind).toBe('int');
+    if (ceiling?.kind === 'int') expect(ceiling.max).toBeGreaterThan(band.max);
+  });
+
+  it('T-168 · at TIER 5 the band is gone and the harness advertises the player’s own solvency', () => {
+    const ARCTURUS_6 = 12;
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.currentSystemId = ARCTURUS_6;
+    state.npcs[0].currentSystemId = ARCTURUS_6;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+    state.player.liarsDiceGamesPlayed = LIARS_DICE_UNLOCK_GAMES[4];
+    state.player.credits = 250_000;
+
+    const hangout = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    // §4.8 removes the clamp at BOTH ends, so the floor is 0 and the only ceiling
+    // the enumerator can honestly advertise before an opponent is chosen is the
+    // player's purse. The engine re-clamps against the DEALER's at open.
+    expect(hangout?.params.wager).toEqual({ kind: 'int', min: 0, max: 250_000 });
+    // NON-VACUITY against tier 4: the tier-5 domain is wider at both ends.
+    const band = wagerBandFor(ARCTURUS_6);
+    expect(250_000).toBeGreaterThan(band.max * LIARS_DICE_RAISED_CEILING_MULT);
   });
 });
 

@@ -169,27 +169,40 @@ export const DARE_MAX_FACE = 6;
 // them. There is no `if (` deciding an outcome in `packages/content` and no
 // threshold literal in this file.
 //
-// **`liarsDiceTier` IS CALLED IN EXACTLY TWO PLACES IN THE WHOLE REPO** (§4.6):
-//   1. `actions/hangout.ts`'s `case 'dare'` open arm — the one site that FREEZES a
-//      tier's effects onto a hand.
-//   2. `packages/ui/src/format.ts`'s `dareWagerBounds` — the pre-hand stake input,
-//      legitimate precisely because there is no hand yet to read a frozen field
-//      off. Display only; the engine re-clamps at open.
-// A THIRD CALL SITE IS A BUG. If a site has a hand, it reads the frozen field
-// (`hand.maxQuantity`, `hand.dicePerSide`, `hand.bandMax`) — that ruling is what
-// collapses "every validation site must read the live tier" into a finite set of
-// constant-to-field substitutions.
+// THE LIVE-TIER READ, AS AMENDED AT T-168 (§4.6a, 2026-08-05; `LD-24`). The
+// ruling is about HANDS, not about a count of textual call sites:
 //
-// T-197 · THE RULING IS ABOUT HANDS, AND THIS IS THE AMENDMENT THAT SAYS SO.
-// `liarsDiceRoundsRemaining` (below) adds a third `liarsDiceTier` call, and it is
-// NOT the bug the paragraph above forbids — the forbidden third is a site that HAS
-// a hand and re-reads the live tier instead of the hand's frozen field. This one
-// has no hand and cannot: it answers "may another hand be OPENED today", a
-// question about the day whose only honest input is the live tier. The rule the
-// paragraph actually protects is unchanged and still true — `actions/hangout.ts`'s
-// open arm remains the ONE site that freezes a tier's effects onto a hand, and
-// §4b's rounds cap is evaluated THERE, from THAT read, rather than by calling this
-// accessor from inside the resolver.
+//   A site that HAS a hand reads that hand's FROZEN fields (`hand.maxQuantity`,
+//   `hand.dicePerSide`, `hand.bandMax`, `hand.ante`, `hand.systemId`) and may
+//   NEVER re-read the live tier. That is what collapses "every validation site
+//   must read the live tier" into a finite set of constant-to-field
+//   substitutions, and it is unchanged and absolute.
+//
+//   A site that has NO hand — because it answers a question about the DAY, or
+//   about a STAKE NOT YET PLACED — has no frozen field to read, and the live tier
+//   is its only honest input. Such sites are legitimate, but they must live INSIDE
+//   `packages/engine/src` as named accessors, so the tier→effect mapping is
+//   derived in one place and never re-derived by a caller.
+//
+// THE LICENSED LIVE-TIER READS, ENUMERATED AND CLOSED (§4.6a). Adding a fifth
+// requires amending that list in the spec, before the code:
+//   1. `actions/hangout.ts`'s `case 'dare'` open arm — the ONE site that FREEZES a
+//      tier's effects onto a hand.
+//   2. `liarsDiceRoundsRemaining` (below, T-197) — "may another hand be OPENED
+//      today" (`docs/DAWN-HAND-REDESIGN.md` §4b).
+//   3. `preHandWagerBand` (below, T-168) — "what band may a stake be REQUESTED
+//      inside, before any hand exists".
+//   4. `packages/ui/src/format.ts`'s `preHandTier` — display only, and narrowed at
+//      T-168 to the tier ≥ 3 "Read the Table" unlock alone. The cockpit's stake
+//      input reads (3).
+//
+// THE BUG THIS REPLACES "A THIRD CALL SITE IS A BUG" WITH: any caller OUTSIDE
+// `packages/engine/src` that sizes a Dare STAKE DOMAIN off raw `wagerBandFor(...)`
+// instead of `preHandWagerBand(state)`, or that re-derives
+// `band.max * LIARS_DICE_RAISED_CEILING_MULT` for itself. That is F-148-4 exactly:
+// `sim/index.ts`'s `planDare` and `sim/protocol.ts` sized off the tier-0 band and
+// never called `liarsDiceTier` at all, so the old grep-count rule could not see
+// them — while forbidding the only fix. The new rule is strictly stronger.
 // ---------------------------------------------------------------------------
 
 /**
@@ -243,17 +256,51 @@ export function liarsDiceRoundsPerDay(tier: number): number {
  * click), by `sim/protocol.ts` (to stop advertising an open the engine will
  * refuse) and by `sim/index.ts`'s gambler loop (to stop planning one).
  *
- * A RULE ACCESSOR, NOT A THIRD `liarsDiceTier` CALL SITE IN THE SENSE §4.6
- * FORBIDS. The ruling at the header above is about the RESOLVER: a site that has a
- * HAND must read the hand's frozen fields rather than the live tier. This function
- * has no hand — it answers "may another hand be opened at all", which is a
- * question about the day, not about a hand in progress, and the live tier is the
+ * A LICENSED HAND-FREE LIVE-TIER READ — §4.6a item 2, and NOT the bug §4.6's
+ * superseded paragraph forbade. The ruling is about the RESOLVER: a site that has
+ * a HAND must read the hand's frozen fields rather than the live tier. This
+ * function has no hand — it answers "may another hand be opened at all", which is
+ * a question about the day, not about a hand in progress, and the live tier is the
  * only honest input to it. The resolver still reads the tier exactly once, at the
  * open site, and re-derives this bound there rather than trusting a caller.
  */
 export function liarsDiceRoundsRemaining(state: GameState): number {
   const cap = liarsDiceRoundsPerDay(liarsDiceTier(state.player.liarsDiceGamesPlayed));
   return Math.max(0, cap - state.player.dareRoundsToday);
+}
+
+/**
+ * T-168 · THE BAND A STAKE MAY BE REQUESTED INSIDE, BEFORE ANY HAND EXISTS.
+ * §4.6a item 3 (`docs/LIARS-DICE-PROGRESSION_SPEC.md`, amended 2026-08-05; `LD-24`).
+ *
+ * The SECOND hand-free live-tier accessor, and it sits next to
+ * `liarsDiceRoundsRemaining` because they are the same shape and the same licence:
+ * neither has a hand to read a frozen field off, so the live tier is the only
+ * honest input, and both live HERE — inside the engine — so that the tier→band
+ * mapping is derived in exactly one place.
+ *
+ * IT TAKES `GameState`, NOT `(systemId, tier)`, DELIBERATELY. A caller that could
+ * supply its own tier could supply the wrong one, which is the entire defect this
+ * function exists to close: F-148-4 measured `sim/index.ts`'s `planDare` and
+ * `sim/protocol.ts` sizing their stake domain off raw `wagerBandFor(...)` — the
+ * TIER-0 band — so no sweep row and no UGT career could ever REQUEST into the
+ * raised ceiling, and the ×3 multiplier plus tier 5's removed clamp were worth
+ * +43.7% bids per hand and nothing else.
+ *
+ * THE THREE READERS: the cockpit's stake input (`ui/format.ts`'s
+ * `dareWagerBounds`), the sim's `planDare`, and the UGT protocol enumerator.
+ *
+ * `max === null` IS TIER 5 and is the engine's only encoding of "unlimited"
+ * (§4.8) — every reader must branch on it rather than print or arithmetic over a
+ * blank. THE SOLVENCY CLAMP IS NOT THIS FUNCTION'S BUSINESS: the open arm still
+ * mins the request against both sides' live credits, and `chargedAnte` still mins
+ * against the actor's purse. This answers what the BAND permits, nothing else.
+ */
+export function preHandWagerBand(state: GameState): { min: number; max: number | null } {
+  return effectiveWagerBand(
+    state.player.currentSystemId,
+    liarsDiceTier(state.player.liarsDiceGamesPlayed),
+  );
 }
 
 /**

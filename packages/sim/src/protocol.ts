@@ -48,7 +48,13 @@ import {
   startDay,
   loanBandFor,
   venueOffered,
-  wagerBandFor,
+  // T-168 · THE PRE-HAND STAKE BAND (§4.6a item 3), replacing the raw
+  // `wagerBandFor` this enumerator used to advertise. Sizing the `wager` domain
+  // off the port's tier-0 band meant no UGT career could ever REQUEST into the
+  // raised bounded-betting ceiling (F-148-4) — the harness was advertising a
+  // narrower domain than the engine would accept, which is the same class of drift
+  // as advertising a venue the house does not run.
+  preHandWagerBand,
   liarsDiceOpponentsAt,
   // T-197 · the two daily Hangout caps, read through the ENGINE's own accessors so
   // the enumerator cannot drift from the refusals it is mirroring.
@@ -944,7 +950,7 @@ export function legalActions(state: GameState): LegalActions {
     // A port that offers none of the currently-possible beats is not advertised at
     // all rather than advertised with an empty domain.
     if (venueChoices.length > 0) {
-      const wagerBand = wagerBandFor(player.currentSystemId);
+      const wagerBand = preHandWagerBand(state);
       // T-133 · the PRINCIPAL domain is the port's too (owner ruling D7), read
       // through the same `loanBandFor` accessor the resolver clamps with. A
       // harness that advertised the global 250–5,000 at the garrison mess would
@@ -956,10 +962,20 @@ export function legalActions(state: GameState): LegalActions {
         params: {
           venue: { kind: 'enum', choices: venueChoices },
           opponentId: { kind: 'enum', choices: [...inSystemNpcIds, ...rosterOpponentIds] },
-          wager: { kind: 'int', min: wagerBand.min, max: wagerBand.max },
+          // T-168 · Tier 5 removes the band ceiling entirely (§4.8), so the only
+          // ceiling this harness can honestly advertise before an opponent is
+          // chosen is the player's OWN solvency — the same shape `pay-debt` and
+          // `buy-fuel` already use for a credit-bounded domain. The engine
+          // re-clamps against the DEALER's purse at open, which is knowledge the
+          // enumerator does not have at this point.
+          wager: {
+            kind: 'int',
+            min: wagerBand.min,
+            max: wagerBand.max ?? Math.max(wagerBand.min, player.credits),
+          },
           amount: { kind: 'int', min: loanBand.min, max: loanBand.max },
         },
-        note: "opponentId required for dare/meet/befriend/insult; omitted for rumor/borrow/repay. The choices span BOTH pools: an in-system roaming NPC, or one of the port's three fixed Liar's Dice roster opponents (the 'ld-' ids, listed only while their purse is above zero). A roster id is valid for 'dare' ONLY — meet/befriend/insult need a roaming NPC. wager applies to 'dare' only (clamped to the port's band and to what both sides can cover). amount applies to borrow (principal, clamped to the port's loan band) and repay (credits to pay, default = full outstanding, clamped to credits). Every venue is a FREE ACTION — no die. Two DAILY caps bound them instead and this enumerator already applies both: meet/befriend/insult disappear from the venue domain once the day's social pool is spent, and 'dare' disappears once the day's Liar's Dice rounds (which scale with your unlock tier) are used up.",
+        note: "opponentId required for dare/meet/befriend/insult; omitted for rumor/borrow/repay. The choices span BOTH pools: an in-system roaming NPC, or one of the port's three fixed Liar's Dice roster opponents (the 'ld-' ids, listed only while their purse is above zero). A roster id is valid for 'dare' ONLY — meet/befriend/insult need a roaming NPC. wager applies to 'dare' only (clamped to your unlock tier's EFFECTIVE band for this port — tier 4 raises the ceiling, tier 5 removes it and leaves your own credits as the only bound — and to what both sides can cover). amount applies to borrow (principal, clamped to the port's loan band) and repay (credits to pay, default = full outstanding, clamped to credits). Every venue is a FREE ACTION — no die. Two DAILY caps bound them instead and this enumerator already applies both: meet/befriend/insult disappear from the venue domain once the day's social pool is spent, and 'dare' disappears once the day's Liar's Dice rounds (which scale with your unlock tier) are used up.",
       });
     }
   }

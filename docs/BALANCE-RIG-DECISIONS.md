@@ -121,9 +121,24 @@ read at runtime, and therefore the authoritative one), amendment 1's own pointer
 `docs/NPC_REDESIGN.md`'s status banner, `docs/balance/smoke/README.md`'s "current
 baseline" line, and — added at T-182 — **this rule's own "current baseline of record"
 sentence below** — with the smoke fixture re-extracted FROM the new capstone file. The current
-baseline of record is `docs/balance/baseline-t208-quest-captain-ports.json` (8,000 rows, 8
-one-indexed shards, spreads harvested, `sweepLabel t208-quest-captain-ports`; re-pinned at
-T-208 2026-08-05 — the M19 MILESTONE CLOSER, a CONTENT-AND-ENGINE capstone that gives the 11
+baseline of record is `docs/balance/baseline-t168-effective-band.json` (8,000 rows, 8
+one-indexed shards, spreads harvested, `sweepLabel t168-effective-band`; re-pinned at T-168
+2026-08-05 — F-148-4's fix, which makes `planDare` and the UGT protocol enumerator size the
+Dare wager domain off the engine's new `preHandWagerBand` (the unlock tier's EFFECTIVE band)
+instead of the port's raw tier-0 band, so a career can at last REQUEST into the raised tier-4
+ceiling and tier 5's removed clamp. It moves BOTH fingerprints — `rulesFingerprint`
+f264d7f4a2d56fde (was 2f93098dc9ab15f0; the new accessor is an engine rule source) and
+`instrumentFingerprint` b8894cb6c678fce6 (was 5c230e99648cddee; `sim/index.ts`'s `planDare`
+plus three additive `HangoutPlayStats` fields) — so it is deliberately NOT a single-arm
+attribution, and `sim/protocol.ts`'s half of the fix contributes to neither hash. TWO OF THE
+TEN ROWS MOVED — fleet and gambler — with explorer, fighter, greedy, smuggler, trader,
+trader-degraded and veteran byte-identical. PREDICTED IN WRITING BEFORE THE RUN (`TASKS.md`
+T-168): `planDare` is called by `gamblerPolicy` and by nothing else, and fleet pools it.
+Gambler `finalCredits.median` 80,244 -> 115,612. ONE shape change reported and not suppressed:
+`byPolicy[gambler].renownRanks.GIGA_HERO`, a previously-empty bucket the richer gambler now
+reaches. Gate PASS, 0 invariant violations, nothing tuned in response. Before that:
+`baseline-t208-quest-captain-ports.json` at T-208 — the M19 MILESTONE CLOSER, a
+CONTENT-AND-ENGINE capstone that gives the 11
 `QUEST_PROFILES` captains a DECLARED HOME PORT (`NpcProfile.homePortSystemId`) instead of the
 arbitrary `(index % 20) + 1` seed that had parked six of them at rim systems with no Cantina
 for an entire career. It moves `rulesFingerprint` (cbb087860825aa35 -> 2f93098dc9ab15f0 —
@@ -511,3 +526,38 @@ the same game.
   banner and still prints "Instrument version unknown", which half-answers the question). The
   report's `productVersion` column continues to read `unknown` for an aggregate; that is a
   follow-up, not this decision.
+
+---
+
+**BR-59 — The raised-ceiling measurement rides on `HangoutPlayStats`, on the report, and not
+in a forked `.scratch/` probe.** (T-168, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.11.)
+
+Three additive fields — `handsAboveBaseCeiling`, `handsAboveRaisedCeiling`, `maxSeedWager` —
+folded from `DareHandStarted` in `accumulateMetricEvents`, carried onto `SeedRow.hangout` for
+free by the whole-object copy `aggregate.ts` already does, and therefore answerable off any
+sweep's own rows for the rest of the project's life.
+
+**Why not a probe.** The T-173 note under BR-13 retires that lineage explicitly: four
+measurements in a row (T-125, T-137, T-148, T-150) descended from a gitignored two-arm probe
+*only because* the fields could not ride in on a capstone, and T-173 discharged that objection
+for exactly this family of Hangout questions. A fifth fork would be a step backwards, and the
+question here — "does any career ever stake above the port ceiling?" — is a **population**
+question about the sweep's own 8,000 rows, which is the shape a probe is worst at.
+
+**Why the fields land in the SAME commit as a capstone, which BR-13 normally forbids.** BR-13's
+objection is that adding instrument fields moves `instrumentFingerprint` in the commit that takes
+the capstone, so the fixture would record numbers measured under a different instrument. That
+failure mode cannot occur here, for two reasons stated rather than assumed. First, T-168 moves
+`rulesFingerprint` regardless — it adds `preHandWagerBand` to `packages/engine/src` — so a
+capstone is owed by the rules change whether or not a field is added, and BR-12's "one capstone
+per milestone" makes splitting it into two capstones the actual violation. Second, the outgoing
+baseline **cannot** carry these fields under any ordering: they measure a behaviour
+(`planDare` requesting above the tier-0 ceiling) that did not exist before this commit, so a
+"measure first, then change" split would record three zeros and answer nothing. The honest
+pre-fix column is *"structurally unmeasurable, and 0 by construction"*, and that is what §12.11
+records.
+
+**What they are NOT.** They are not a gate, a threshold or a target. Nothing asserts a bound on
+them in `balance/gate.ts`; the only assertions are `> 0` existence proofs in
+`campaign-smuggler-gambler.test.ts`, which is a claim about the instrument being wired, not
+about the game being balanced.

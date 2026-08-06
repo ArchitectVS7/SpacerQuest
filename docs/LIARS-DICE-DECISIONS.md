@@ -244,3 +244,40 @@ owner before implementation and no answer had arrived at ship time; the numbers 
 array is the only place they exist. **Retuning them is a CONTENT edit and must be measured
 by a capstone, not argued from a fingerprint** — T-197's own capstone measured the shipped
 table and is the baseline any revision diffs against.
+
+---
+
+## 7. The live-tier read (M19)
+
+**LD-24 — §4.6's "`liarsDiceTier` is called in exactly TWO places; a third is a bug" is AMENDED:
+the ruling is about HANDS, not about a grep count.** (T-168,
+`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.6a, 2026-08-05.)
+
+The invariant §4.6 was always protecting is this, and it is unchanged:
+
+> **A site that HAS a hand reads that hand's FROZEN fields** (`maxQuantity`, `dicePerSide`,
+> `bandMax`, `ante`, `systemId`) **and never the live tier.** A site that has NO hand — because it
+> answers a question about the *day*, or about a *stake not yet placed* — has no frozen field to
+> read, and the live tier is its only honest input. Those sites are legitimate, but they must live
+> **inside `packages/engine/src` as named accessors**, so the tier→effect mapping exists in exactly
+> one place and is never re-derived by a caller.
+
+**Why the old formulation had to go.** It named a *count of textual call sites* instead of the
+invariant, and a count cannot tell the two cases apart. So it did both of the wrong things at once:
+it FORBADE the only correct fix for F-148-4 (teaching the sim's stake planner the effective band),
+and it PERMITTED the bug — `planDare` and `packages/sim/src/protocol.ts` sized the `wager` domain
+off raw `wagerBandFor(...)` and never called `liarsDiceTier` at all, so no grep for a forbidden
+third site could ever have found them. Two shipped tasks (T-197's `liarsDiceRoundsRemaining`,
+T-168's `preHandWagerBand`) each had to argue around the paragraph in a source comment because
+there was no rule to read; T-197's amendment lived in the `liarsDiceRules.ts` header and never
+reached the spec at all, and §4.6a folds it in retroactively.
+
+**The licensed live-tier reads are now ENUMERATED AND CLOSED** (§4.6a): the `actions/hangout.ts`
+freeze site; `liarsDiceRoundsRemaining`; `preHandWagerBand`; and `format.ts`'s `preHandTier`, now
+narrowed to the tier ≥ 3 "Read the Table" unlock alone. **Adding a fifth requires amending that
+list**, in the spec, before the code.
+
+**The NEW bug, replacing the old one:** any caller outside `packages/engine/src` that sizes a Dare
+**stake domain** off raw `wagerBandFor(...)` instead of `preHandWagerBand(state)` — or that
+re-derives `band.max × LIARS_DICE_RAISED_CEILING_MULT` for itself. That is a *stricter* rule than
+the one it replaces: it catches the F-148-4 defect, which the old one could not see.

@@ -95,8 +95,10 @@ import {
   liarsDiceOpponentFor,
   liarsDiceOpponentsAt,
   // T-146 · the UNLOCK LADDER. `liarsDiceTier` is read in exactly one place in
-  // this package (`dareWagerBounds`), for the reason stated there.
-  effectiveWagerBand,
+  // this package (`preHandTier`), for the reason stated there. T-168: the STAKE
+  // INPUT no longer derives its own band — it asks the engine's `preHandWagerBand`
+  // (§4.6a item 3), so this package no longer imports `effectiveWagerBand` at all.
+  preHandWagerBand,
   liarsDiceTier,
   readTheTableLine,
   dawnDiceModifiers,
@@ -548,14 +550,19 @@ export interface HangoutRosterOpponent {
 }
 
 /**
- * T-146 · THE ONE LIVE-TIER READ IN THIS PACKAGE (§4.6). Both of its callers are
- * PRE-HAND projections — the stake input and the opponent picker — which is
- * exactly what makes a live read legitimate here: there is no hand yet to read a
- * frozen field off. Every reader that HAS a hand reads the hand's frozen fields.
+ * T-146 · THE ONE LIVE-TIER READ IN THIS PACKAGE (§4.6a item 4). A PRE-HAND
+ * projection, which is exactly what makes a live read legitimate here: there is no
+ * hand yet to read a frozen field off. Every reader that HAS a hand reads the
+ * hand's frozen fields.
  *
- * Kept as one function so `liarsDiceTier` has exactly two call sites in the whole
- * repo (this and `actions/hangout.ts`'s open arm), which is the invariant §4.6
- * states and the one a reviewer greps for.
+ * T-168 · NARROWED TO ONE CALLER. It now serves ONLY the tier ≥ 3 "Read the Table"
+ * unlock in `hangoutRosterOpponents` (§4.5). The stake input used to derive its
+ * bounds from this tier plus `effectiveWagerBand`; it now asks the engine's
+ * `preHandWagerBand` for the answer whole, so the tier→band mapping is derived in
+ * exactly one place in the repo. Behaviour-identical by construction — that
+ * accessor is the same two calls, moved inside the engine.
+ *
+ * DISPLAY ONLY, and it decides nothing: the unlock it gates adds one string.
  */
 function preHandTier(game: GameState): number {
   return liarsDiceTier(game.player.liarsDiceGamesPlayed);
@@ -695,9 +702,10 @@ export function hangoutRumorLines(game: GameState): string[] {
 /** The Dare wager band — the same bounds the engine clamps a requested wager into.
  *  T-120: the band is the PORT's, so a high table and a dockside room show
  *  different limits; the UI reads the engine's accessor rather than a bare
- *  constant. T-146: that accessor is now `effectiveWagerBand`, which layers the
- *  live unlock tier over the port's authored band — this file no longer imports
- *  `wagerBandFor` at all, because a raw port band is never the right answer here.
+ *  constant. T-146: that accessor layers the live unlock tier over the port's
+ *  authored band — this file no longer imports `wagerBandFor` at all, because a
+ *  raw port band is never the right answer here. T-168: the accessor is now
+ *  `preHandWagerBand`, which does the layering inside the engine.
  *  Reader: the pane's wager input + its label. */
 export interface DareWagerBounds {
   min: number;
@@ -708,17 +716,23 @@ export interface DareWagerBounds {
 }
 
 /**
- * T-146 · THE SECOND AND LAST LEGITIMATE `liarsDiceTier` CALL SITE IN THE REPO
- * (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.6, §8 row 51). Every other reader with
- * a hand reads the hand's FROZEN `bandMax`; this one is legitimate precisely
- * because there is no hand yet — the player is choosing a stake before the hand
- * exists, so there is no frozen field to read off. A THIRD CALL SITE IS A BUG.
+ * T-146 · The pre-hand stake bounds (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §8 row
+ * 51). Every reader that HAS a hand reads the hand's FROZEN `bandMax`; this one is
+ * legitimate precisely because there is no hand yet — the player is choosing a
+ * stake before the hand exists, so there is no frozen field to read off.
+ *
+ * T-168 · IT NO LONGER DERIVES THE BAND, it asks for it. `preHandWagerBand` (§4.6a
+ * item 3) is the ONE place the tier→band mapping is computed pre-hand, and the
+ * cockpit, the sim's `planDare` and the UGT protocol enumerator all read it. This
+ * function is now a pass-through and is BEHAVIOUR-IDENTICAL BY CONSTRUCTION — the
+ * accessor is `effectiveWagerBand(currentSystemId, liarsDiceTier(gamesPlayed))`,
+ * the same two calls this line used to make, moved inside the engine.
  *
  * DISPLAY ONLY. It decides nothing: the engine re-clamps the requested wager at
  * open, against this same effective band AND against both sides' live credits.
  */
 export function dareWagerBounds(game: GameState): DareWagerBounds {
-  return effectiveWagerBand(game.player.currentSystemId, preHandTier(game));
+  return preHandWagerBand(game);
 }
 
 // ---- T-136 · THE LIAR'S DICE FOG PROJECTION ------------------------------

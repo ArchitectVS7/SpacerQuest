@@ -1519,7 +1519,7 @@ Orchestration: graphify=none — no graphify-out/graph.json in the repo root · 
 
 ## M9 — Harvested: Liar's Dice, roster and ladder
 
-### T-168 · F-146-1 / F-148-4: the raised tier-4/5 ceiling is never staked into — amend §4.6 first, then fix — `status: TODO` · `coder: opus` · `after: T-198`
+### T-168 · F-146-1 / F-148-4: the raised tier-4/5 ceiling is never staked into — amend §4.6 first, then fix — `status: DONE` · `coder: opus` · `after: T-198`
 
 The sim and the UGT protocol can never request a tier-4/tier-5 stake. `planDare`
 (`packages/sim/src/index.ts:3524`, seating logic at `:3487-3513`) and
@@ -1540,6 +1540,163 @@ no-third-read rule) committed BEFORE the code change; `planDare` and `packages/s
 size the wager domain off the *effective* tier band; a sweep arm demonstrably requests tier-4 and
 tier-5 stakes with the measurement recorded; the `dealer.credits < band.min` gate is re-derived
 against the effective band; fingerprint discipline stated and the expected rows named; gate green.
+
+**Delivered.** Two commits, in the order the Accept requires.
+
+**COMMIT 1 — DOCS ONLY, no code.** `docs/LIARS-DICE-PROGRESSION_SPEC.md` **§4.6a**, the amendment,
+dated 2026-08-05, and `docs/LIARS-DICE-DECISIONS.md` **LD-24** carrying it as a standing ruling.
+The superseded paragraph is kept verbatim above the amendment, because the amendment is only
+intelligible next to what it replaces. **The ruling is about HANDS, not about a grep count:** a site
+that HAS a hand reads that hand's frozen fields and never the live tier (unchanged, absolute); a
+site that has NO hand — because it answers a question about the DAY or about a STAKE NOT YET
+PLACED — has no frozen field to read, and the live tier is its only honest input, but it must live
+**inside `packages/engine/src` as a named accessor**. Why the old form failed is recorded rather
+than glossed: it named a *count of textual call sites* instead of the invariant, so it
+simultaneously FORBADE the only correct fix and PERMITTED the bug — `planDare` and `protocol.ts`
+never called `liarsDiceTier` at all, so no grep for a forbidden third site could ever have found
+them. **T-197's amendment is folded in retroactively and marked as such** ("recorded here at T-168;
+shipped at T-197 in source only") — it had lived only in a `liarsDiceRules.ts` header. The licensed
+live-tier reads are now **enumerated and CLOSED** at four, and adding a fifth requires amending that
+list in the spec first. **The new bug, replacing the old one:** any caller outside
+`packages/engine/src` that sizes a Dare *stake domain* off raw `wagerBandFor(...)` instead of
+`preHandWagerBand(state)`, or that re-derives `band.max × LIARS_DICE_RAISED_CEILING_MULT` itself —
+strictly stronger than the rule it replaces, since it catches the F-148-4 defect the old one could
+not see.
+
+**COMMIT 2 — the code, its tests, the capstone and the write-ups.** One commit, deliberately: the
+engine edit moves `rulesFingerprint` and the `sim/index.ts` edit moves `instrumentFingerprint`, and
+either alone would stale `docs/balance/smoke/tiers.json` and ship a RED gate (`assertFixtureFresh`
+runs inside `npm test`). Paying two capstones for one task is what the batching constraint forbids.
+
+- **ENGINE.** `preHandWagerBand(state)` in `packages/engine/src/liarsDiceRules.ts:301`, placed
+  beside `liarsDiceRoundsRemaining` because they are the same shape and the same licence. **It
+  takes `GameState`, not `(systemId, tier)`** — a caller that could supply its own tier could
+  supply the wrong one, which is the entire defect. The file's "exactly two places" header block
+  was replaced with §4.6a's wording and the closed four-item list.
+- **UI.** `dareWagerBounds` collapsed to `return preHandWagerBand(game);` — behaviour-identical by
+  construction (the accessor is the same two calls, moved inside the engine). `preHandTier` stays
+  but is narrowed to the tier ≥ 3 Read-the-Table unlock alone, per §4.6a item 4; `format.ts` no
+  longer imports `effectiveWagerBand`.
+- **SIM · `planDare`** (`packages/sim/src/index.ts:4269`): `const band = preHandWagerBand(state)`,
+  with `ceiling = band.max ?? MAX_SAFE_INTEGER` (§4.8: tier 5 has no band ceiling) and
+  `floor = Math.max(1, band.min)`. **That `floor` discharges the Accept's "the
+  `dealer.credits < band.min` gate is re-derived against the effective band"** — the old gate was
+  wrong at tier 5, where §4.8 removes the band's FLOOR too and a raw `band.min` of 0 would seat FREE
+  hands. The 1-credit floor is named in the source as a POLICY choice of the instrument, not a game
+  rule, with its reason (a zero stake still counts as a dare and drags `expectedValuePerDare`
+  toward 0). `GAMBLER_RESERVE`'s doc comment was corrected: "larger than a full day of dares
+  (2 × 1,000)" is false past tier 4, and what actually bounds exposure there is
+  `GAMBLER_BANKROLL_FRACTION` plus the resolver's solvency clamp.
+- **SIM · the UGT protocol** (`packages/sim/src/protocol.ts:953`): the same accessor, with
+  `max: wagerBand.max ?? Math.max(wagerBand.min, player.credits)` — at tier 5 the only ceiling the
+  enumerator can honestly advertise before an opponent is chosen is the player's own solvency, the
+  shape `pay-debt`/`buy-fuel` already use. The action `note` now says so. **This half contributes to
+  NEITHER fingerprint** — `protocol.ts` is classified `SIM_NON_INSTRUMENT_SOURCES`.
+- **THE MEASUREMENT.** Three additive `HangoutPlayStats` fields with READERS lines —
+  `handsAboveBaseCeiling`, `handsAboveRaisedCeiling`, `maxSeedWager` — folded in
+  `accumulateMetricEvents` from a new `DareHandStarted` arm (`HangoutEvent` carries no `systemId`;
+  `DareHandStarted` carries both it and the SEATED `seedWager`). The tier-4 ceiling is read through
+  `effectiveWagerBand(systemId, 4)`, never by restating `LIARS_DICE_RAISED_CEILING_MULT`. They ride
+  onto `SeedRow.hangout` for free (`aggregate.ts:336` copies the object whole) — **no `aggregate.ts`
+  edit was made or owed.** Recorded as **BR-59** in `docs/BALANCE-RIG-DECISIONS.md`, including why
+  BR-13's "a capstone commit changes zero source lines" cannot apply here.
+
+**INERT-FIRST, discharged by evidence rather than by a commit.** After part A (engine + UI) and
+BEFORE part B (sim): `npm test -w @spacerquest/engine` **1,359 green / 50 files** and
+`npm test -w @spacerquest/ui` **449 green / 27 files**, with every golden hash unmoved —
+including `liars-dice-pane.test.ts` and the day-loop goldens, unchanged. The accessor has **zero
+engine callers**, so no seeded career can move from part A; `dareWagerBounds` is behaviour-identical
+by construction.
+
+**TESTS.** Engine `liarsDiceLadder.test.ts` — a new `T-168 · preHandWagerBand` describe: the
+composition identity at every rung, at TWO ports with different authored bands (Sol-3 and system 11
+— non-vacuity); tiers 0–3 equal `wagerBandFor` exactly (the inertness proof); tier 4 equals
+`{min, max × MULT}` and is STRICTLY wider; tier 5 is `{min: 0, max: null}`; and totality over `NaN`
+/ negative / `Infinity` / fractional `liarsDiceGamesPlayed`. Rungs are driven off
+`LIARS_DICE_UNLOCK_GAMES`, never a literal. Sim `protocol.test.ts` — the two existing tier-0 tests
+kept UNCHANGED as the inertness control, plus a tier-4 arm (ceiling = port max × MULT, strictly
+greater than tier 0) and a tier-5 arm (`min` 0, `max` = the player's credits). Sim
+`campaign-smuggler-gambler.test.ts` — four `planDare` arms (a tier-0–3 control asserting today's
+value unchanged, tier 4 above the port ceiling and no further than ×3, tier 5 above the tier-4
+ceiling, and tier 5 never seating a FREE hand) plus two instrument arms (three careers × 120 days
+prove both counters non-zero; three non-gambling policies prove all three fields 0). **`:508` was
+RE-DERIVED, not weakened** — `wagerBandFor(...).min` is false past tier 5 *by design* (§4.8), so it
+became `Math.max(1, preHandWagerBand(dayState).min)`, the same expression `planDare` derives, with
+the reason written above it. The fixture gained two OPTIONAL parameters defaulting to what every
+pre-T-168 caller already got, so the F-123-3 arms are byte-identical fixtures. No test asserts the
+exact key set of `HangoutPlayStats` (checked).
+
+**FINGERPRINT DISCIPLINE, and the rows named in advance.** `npm run format` ran BEFORE the sweep
+(BR-11). **BOTH** fingerprints move and each is attributable: `rulesFingerprint`
+`2f93098dc9ab15f0 → f264d7f4a2d56fde` (the new accessor, an engine rule source);
+`instrumentFingerprint` `5c230e99648cddee → b8894cb6c678fce6` (`sim/index.ts`). `protocol.ts`
+contributes to neither. **Predicted in writing before the run: `gambler` moves, `fleet` moves
+because it pools the gambler, and the other seven policy rows are byte-identical.** `balance:diff`
+came back **MOVED ROWS (2): fleet, gambler / UNCHANGED: explorer, fighter, greedy, smuggler,
+trader, trader-degraded, veteran** — exactly the prediction. **ONE SHAPE CHANGE, reported and not
+suppressed:** `+ byPolicy[gambler].renownRanks.GIGA_HERO`, a previously-empty bucket the richer
+gambler now reaches (the T-148 §12.7 precedent). `CURRENT_SAVE_VERSION` is **UNMOVED at 17**,
+re-read live at `packages/engine/src/save.ts:627` — **no save-shape change is owed by this task**,
+so no migration and no round-trip test are owed either.
+
+**THE CAPSTONE.** `--label t168-effective-band --seeds 1000 --days 120 --milestone-days
+21,29,30,41,60,120 --policies explorer,fighter,gambler,greedy,smuggler,trader,trader-degraded,veteran`,
+eight ONE-INDEXED shards then `--merge`. **The merge reported 8,000 rows** and the gate came back
+**PASS on all eight shards and on the merged set**, 0 invariant violations, every rate inside its
+band. Baseline of record re-pinned to `docs/balance/baseline-t168-effective-band.json` and **all
+five BR-14 pointers moved in this commit** (`balance-targets.test.ts`, `NPC_REDESIGN.md` ×2,
+`docs/balance/smoke/README.md`, BR-14 itself); `balance:extract --aggregate` re-extracted
+`docs/balance/smoke/tiers.json`.
+
+**THE MEASUREMENT — the Accept's "a sweep arm demonstrably requests tier-4 and tier-5 stakes".**
+Folded from the 8,000 merged rows' `hangout` objects. Gambler, n = 1,000 careers × 120 days:
+**174,013 dares; 120,275 (69.12%) SEATED above the port's tier-0 ceiling; 70,274 (40.38%) above the
+TIER-4 ceiling** (only tier 5's removed clamp reaches there); largest single seated stake
+**74,591**; mean stake **3,935.51**; `expectedValuePerDare` **+875.72**. The seven control policies
+play **0 dares** over 1,000 careers each, so their share is written **`< 1/1,000`**, never `0.00%`.
+**The pre-fix column is a MEASURED CONTROL ARM, not a construction argument:** the one-line
+pre-T-168 `planDare` was re-run over the IDENTICAL 1,000 seeds × 120 days with the new fields
+present and returned **`handsAboveBaseCeiling` 0 and `handsAboveRaisedCeiling` 0**, max seated stake
+3,000, mean stake 903.97, `expectedValuePerDare` +210.57. So mean stake ×4.35 and EV/dare ×4.16,
+while the dare COUNT barely moves (176,554 → 174,013, −1.44% — career re-phasing, not throughput).
+Recorded as **§12.11** of `docs/LIARS-DICE-PROGRESSION_SPEC.md`.
+
+**NOTHING WAS TUNED.** `LIARS_DICE_RAISED_CEILING_MULT` is still 3 and `LIARS_DICE_UNLOCK_GAMES` is
+still `[5,10,20,40,80]` — §12.9's levers table forbids touching either here. §12.9's note against
+the multiplier row is now settled in its favour: the ×3 was never the problem, and with the seed
+unpinned the mean stake rises ×4.35. **Two numbers are HANDED ON rather than acted on**, per the
+same house discipline: `expectedValuePerDare` is +875.72 and the gambler's median purse rises 44%,
+and `renownRanks.GIGA_HERO` appears on that row for the first time. Filed below as **F-168-1**.
+
+**Docs:** `docs/LIARS-DICE-PROGRESSION_SPEC.md` (§4.6a the amendment; §12.9 F-148-4 → FIXED with
+the figures; the levers table's `planDare` row → LEVER TAKEN and the multiplier row's vindication;
+§12.10 item 3 → RESOLVED; new **§12.11**), `docs/LIARS-DICE-DECISIONS.md` (**LD-24**),
+`docs/BALANCE-RIG-DECISIONS.md` (**BR-59**, plus BR-14's pointer), `docs/NPC_REDESIGN.md` (status
+banner + amendment 1 pointer), `docs/balance/smoke/README.md` (pointer). **Gate:** root `npm test`,
+`npx tsc -b`, `npm run lint`, `npm run format:check` all green.
+
+**DONE-gate greps, run and confirmed:** `preHandWagerBand` at `packages/sim/src/index.ts:4269` and
+`packages/sim/src/protocol.ts:953`; `grep -rn "liarsDiceTier(" packages/ --include="*.ts" | grep -v
+dist | grep -v __tests__` returns exactly the four licensed non-test sites —
+`engine/actions/hangout.ts:416`, `engine/liarsDiceRules.ts:268` (`liarsDiceRoundsRemaining`),
+`engine/liarsDiceRules.ts:302` (`preHandWagerBand`) and `ui/src/format.ts:568` (`preHandTier`) —
+all four named in §4.6a's closed list.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
+
+**F-168-1 · The high-tier tables are a strong faucet, and the number is now measurable.** Status:
+REPORTED, NOT FIXED, per §12.9's house discipline. With the effective band reachable, the gambler's
+`expectedValuePerDare` is **+875.72** over 1,000 careers × 120 days (was +210.57 on the pre-fix
+control arm), its `finalCredits.median` rises 80,244 → 115,612 (+44.1%), and
+`renownRanks.GIGA_HERO` appears on that row for the first time (134 careers reach it; fleet
+214 → 348). Mechanism: `preHandWagerBand` removes the tier-0 pin, so a veteran stakes ×4.35 more per
+hand at a **measured 61.99% win rate** (107,862 won / 66,151 lost over the same 174,013 hands) — a
+win rate this task did not touch and whose cause is the still-open archetype inversion, F-160-1
+(`docs/LIARS-DICE_REDESIGN.md` §17.8). **Recommendation: do NOT retune `LIARS_DICE_RAISED_CEILING_MULT`
+or `LIARS_DICE_UNLOCK_GAMES` off this** — §12.9 already ruled both untouchable here, and the win
+rate that makes the faucet hot is F-160-1's, not the ceiling's. The honest lever is the archetype
+inversion. **Left for the same owner call as F-148-1 / F-148-3 / F-160-1.**
+[found: T-168 capstone, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.11.3]
+
 
 ### T-169 · F-148-2: the 42-seat gauntlet is played but never completed — `liars_dice_grand_slam` is unreachable — `status: TODO` · `coder: opus` · `after: T-198`
 

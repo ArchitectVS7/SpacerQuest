@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 // T-197 · the unlock thresholds are CONTENT; the fixture reads them rather than
 // restating a rung number (docs/DAWN-HAND-REDESIGN.md §4b).
-import { LIARS_DICE_UNLOCK_GAMES } from '@spacerquest/content';
+// T-168 · and the tier-4 ceiling multiplier, for the same reason.
+import { LIARS_DICE_RAISED_CEILING_MULT, LIARS_DICE_UNLOCK_GAMES } from '@spacerquest/content';
 import {
   DARE_MAX_MOVES_PER_HAND,
   gamblerPolicy,
@@ -21,6 +22,9 @@ import {
   isLatticeMove,
   legalDareMoves,
   minOpeningQuantity,
+  // T-168 · the pre-hand EFFECTIVE band (§4.6a item 3), so the F-123-3 property
+  // below is re-derived against the band the planner actually sizes off.
+  preHandWagerBand,
   SeededRng,
   startDay,
   wagerBandFor,
@@ -416,7 +420,16 @@ describe('T-1601b smuggler & gambler policies', () => {
  *  seat, every roster purse at that port zeroed, and the player's bankroll sized
  *  so the wager lands on the port's `band.min` — which makes the dealer's purse
  *  the only thing that can decide whether a second hand is planned. */
-function oneRoamingDealerDawn(seed: number, dealerCredits: number): GameState {
+function oneRoamingDealerDawn(
+  seed: number,
+  dealerCredits: number,
+  // T-168 · Both OPTIONAL and both defaulting to the values every pre-T-168 caller
+  // already got, so the F-123-3 arms above are byte-identical fixtures. They exist
+  // so the tier-4 / tier-5 arms below can move the captain up the ladder and give
+  // them a purse without forking a second fixture.
+  gamesPlayed: number = LIARS_DICE_UNLOCK_GAMES[0],
+  playerCredits: number = 3_200,
+): GameState {
   const fresh = createInitialState(seed);
   const port = fresh.player.currentSystemId;
   // T-197 · THE CAPTAIN IS SEATED AT UNLOCK TIER 1, AND THAT IS LOAD-BEARING RATHER
@@ -428,12 +441,12 @@ function oneRoamingDealerDawn(seed: number, dealerCredits: number): GameState {
   // LIARS_DICE_UNLOCK_GAMES[0]`) buys two rounds, which restores the purse rule as
   // the only binding constraint — which is exactly what this fixture's docstring
   // has always claimed. The threshold is READ from content, never restated.
-  fresh.player.liarsDiceGamesPlayed = LIARS_DICE_UNLOCK_GAMES[0];
+  fresh.player.liarsDiceGamesPlayed = gamesPlayed;
   // bankroll = credits − GAMBLER_RESERVE (3,000); wager = max(band.min,
   // min(band.max, ⌊bankroll × 0.1⌋)). At 3,200 credits that is ⌊20⌋ → clamped up
   // to band.min, and the purse still funds a SECOND hand — so the player's side
   // is never the binding constraint in either arm.
-  fresh.player.credits = 3_200;
+  fresh.player.credits = playerCredits;
   fresh.player.ship.fuel = fresh.player.ship.maxFuel;
   let seated = false;
   for (const npc of fresh.npcs) {
@@ -505,7 +518,17 @@ describe('T-150 · F-123-3 · the gambler never queues a hand its dealer cannot 
         const dawn = startDay(state);
         let dayState = dawn.state;
         const actions = gamblerPolicy({ state: dayState, dayIndex, rng });
-        const floor = wagerBandFor(dayState.player.currentSystemId).min;
+        // T-168 · RE-DERIVED AGAINST THE EFFECTIVE BAND, not weakened. The old
+        // `wagerBandFor(...).min` is FALSE PAST TIER 5 BY DESIGN: §4.8 removes the
+        // band's floor as well as its ceiling ("a veteran may sit at Regulus-6 for
+        // 10 credits"), so a career that crosses rung 5 inside these 120 days would
+        // fail an assertion about a floor the game no longer has. The floor the
+        // PLANNER promises is its own — `Math.max(1, band.min)`, the same
+        // expression `planDare` derives — and that is what F-123-3's property is
+        // about: never asking for a worthless stake. Same criterion the task
+        // applies to `planDare`'s own `dealer.credits < floor` gate; not a moved
+        // threshold.
+        const floor = Math.max(1, preHandWagerBand(dayState).min);
         for (const dare of dareActions(actions)) {
           queued += 1;
           expect(dare.wager ?? 0).toBeGreaterThan(0);
@@ -529,6 +552,125 @@ describe('T-150 · F-123-3 · the gambler never queues a hand its dealer cannot 
     // NON-VACUOUS: hands must actually have been queued, or the loop above asserts
     // nothing at all.
     expect(queued).toBeGreaterThan(0);
+  }, 180000);
+});
+
+// ---------------------------------------------------------------------------
+// T-168 · F-148-4 · THE RAISED CEILING IS STAKED INTO
+// (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.6a, §4.8).
+//
+// `planDare` used to size its `wager` off `wagerBandFor(...)` — the TIER-0 band —
+// so no career it drove could ever REQUEST a tier-4 or tier-5 stake. Tiers 4 and 5
+// were therefore unmeasurable as PLAYED: the ×3 multiplier and the removed clamp
+// were worth +43.7% bids per hand and nothing else (§12.9). These four arms are the
+// local, deterministic proof; the sweep row in §12.11 is the population one.
+//
+// All four drive the REAL `gamblerPolicy` against a dawn state built by the real
+// `startDay`, and assert on what the policy ASKS for. The engine re-clamps the ask
+// against both purses at open, which is why the fixture makes the dealer rich.
+// ---------------------------------------------------------------------------
+describe('T-168 · F-148-4 · planDare sizes its stake off the EFFECTIVE band', () => {
+  const wagerOfFirstDare = (state: GameState, seed: number): number => {
+    const plan = gamblerPolicy({
+      state,
+      dayIndex: 0,
+      rng: new SeededRng(seed).fork('policy').fork(`day-${state.day}`).fork('index-0'),
+    });
+    const dares = dareActions(plan);
+    expect(dares.length).toBeGreaterThan(0);
+    return dares[0].wager ?? 0;
+  };
+
+  it('TIER 0–3 CONTROL · nothing below rung 4 moved — the stake is still the port band’s', () => {
+    // THE INERTNESS PROOF for this file. The fixture's default captain sits at rung
+    // 1 with 3,200 credits, so ⌊(3,200 − 3,000) × 0.1⌋ = 20 clamps UP to the port
+    // floor — exactly the value this fixture produced before T-168, unchanged.
+    for (let seed = 1; seed <= 3; seed += 1) {
+      const band = wagerBandFor(createInitialState(seed).player.currentSystemId);
+      const wager = wagerOfFirstDare(oneRoamingDealerDawn(seed, 500_000), seed);
+      expect(wager).toBe(band.min);
+      expect(wager).toBeLessThanOrEqual(band.max);
+    }
+  });
+
+  it('TIER 4 · the ask goes ABOVE the port ceiling, and no further than ×3', () => {
+    for (let seed = 1; seed <= 3; seed += 1) {
+      const band = wagerBandFor(createInitialState(seed).player.currentSystemId);
+      // Rung 4 opens at `LIARS_DICE_UNLOCK_GAMES[3]`, read from content. The purse
+      // is sized well above `GAMBLER_RESERVE` so the BANKROLL is never the binding
+      // constraint and the BAND is — which is the thing under test.
+      const dawn = oneRoamingDealerDawn(seed, 500_000, LIARS_DICE_UNLOCK_GAMES[3], 500_000);
+      const wager = wagerOfFirstDare(dawn, seed);
+      // STRICTLY greater: this is the assertion that was structurally impossible
+      // before T-168, and it is the whole of F-148-4.
+      expect(wager).toBeGreaterThan(band.max);
+      expect(wager).toBeLessThanOrEqual(band.max * LIARS_DICE_RAISED_CEILING_MULT);
+    }
+  });
+
+  it('TIER 5 · the band ceiling is gone, so the ask clears even the tier-4 one (§4.8)', () => {
+    for (let seed = 1; seed <= 3; seed += 1) {
+      const band = wagerBandFor(createInitialState(seed).player.currentSystemId);
+      const dawn = oneRoamingDealerDawn(seed, 500_000, LIARS_DICE_UNLOCK_GAMES[4], 500_000);
+      const wager = wagerOfFirstDare(dawn, seed);
+      expect(wager).toBeGreaterThan(band.max * LIARS_DICE_RAISED_CEILING_MULT);
+    }
+  });
+
+  it('TIER 5 · the ask still clears the instrument’s own 1-credit floor, never a FREE hand', () => {
+    // §4.8 removes the band's FLOOR as well as its ceiling, so a veteran's
+    // `band.min` is 0. `planDare` supplies `Math.max(1, band.min)` of its own
+    // rather than seating a zero stake: a free hand still counts as a dare and
+    // would drag `expectedValuePerDare` toward 0, which is the one number this
+    // instrument exists to measure. A POLICY choice, not a game rule.
+    for (let seed = 1; seed <= 3; seed += 1) {
+      // A pauper one credit above the reserve: the bankroll, not the band, decides.
+      const dawn = oneRoamingDealerDawn(seed, 500_000, LIARS_DICE_UNLOCK_GAMES[4], 3_001);
+      expect(wagerOfFirstDare(dawn, seed)).toBeGreaterThanOrEqual(1);
+    }
+  });
+});
+
+describe('T-168 · the instrument MEASURES the raised ceiling it can now reach', () => {
+  it('records hands above BOTH the port ceiling and the tier-4 ceiling over real careers', () => {
+    // SEEDS 1..3 × 120 DAYS (n = 3 careers). Small deliberately: this is the
+    // existence proof that the three `HangoutPlayStats` fields are wired and
+    // non-zero, not the population measurement — that is the 1,000-seed sweep row
+    // recorded in `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.11.
+    let aboveBase = 0;
+    let aboveRaised = 0;
+    let maxSeed = 0;
+    let dares = 0;
+    for (let seed = 1; seed <= 3; seed += 1) {
+      const play = runCampaign(seed, 120, 'gambler').hangoutPlay;
+      dares += play.dares;
+      aboveBase += play.handsAboveBaseCeiling;
+      aboveRaised += play.handsAboveRaisedCeiling;
+      maxSeed = Math.max(maxSeed, play.maxSeedWager);
+    }
+    expect(dares).toBeGreaterThan(0);
+    // BOTH must fire. `handsAboveBaseCeiling` is a tier-4-or-better stake; only
+    // tier 5's REMOVED clamp can put a hand above `handsAboveRaisedCeiling`.
+    expect(aboveBase).toBeGreaterThan(0);
+    expect(aboveRaised).toBeGreaterThan(0);
+    expect(aboveRaised).toBeLessThanOrEqual(aboveBase);
+    expect(maxSeed).toBeGreaterThan(0);
+  }, 180000);
+
+  it('CONTROL · a career pinned below rung 4 records ZERO of them', () => {
+    // The non-vacuity control for the arm above, and the pre-fix column T-168 could
+    // not otherwise report: the outgoing baseline has no such fields, so "0 before"
+    // is a claim about construction rather than a measurement. Here it is measured.
+    // A policy cannot be pinned to a tier, so this drives the seven CONTROL policies
+    // instead — none of them ever sits at a table, which is the same structural
+    // reason the sweep predicts them byte-identical.
+    for (const policy of ['trader', 'explorer', 'smuggler'] as const) {
+      const play = runCampaign(1, 120, policy).hangoutPlay;
+      expect(play.dares, policy).toBe(0);
+      expect(play.handsAboveBaseCeiling, policy).toBe(0);
+      expect(play.handsAboveRaisedCeiling, policy).toBe(0);
+      expect(play.maxSeedWager, policy).toBe(0);
+    }
   }, 180000);
 });
 

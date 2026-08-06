@@ -131,6 +131,35 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > one shared path moved. The `.scratch/t125-hangout.ts` lineage is retired
 > (`docs/HANGOUT_REDESIGN.md` §10.7 carries the counter → field map).
 >
+> **BASELINE OF RECORD RE-PINNED AT T-168 (2026-08-05)** to
+> `docs/balance/baseline-t168-effective-band.json` — **F-148-4's fix**: `planDare`
+> (`packages/sim/src/index.ts`) and the UGT protocol enumerator now size the Dare **wager
+> domain** off the engine's new `preHandWagerBand` — the unlock tier's **EFFECTIVE** band —
+> instead of the port's raw tier-0 band, so a career can at last *request* into the raised
+> tier-4 ceiling and tier 5's removed clamp. Before this, tiers 4 and 5 were unmeasurable as
+> played. Same shape as the outgoing capstone: 1,000 seeds × 120 days × 8 policies = 8,000
+> rows, eight one-indexed shards then `--merge`, `--milestone-days 21,29,30,41,60,120`,
+> spreads harvested. Gate PASS, **0 invariant violations**. **BOTH fingerprints move, so the
+> attribution is NOT single-arm and this banner says so rather than implying otherwise:**
+> `rulesFingerprint` `2f93098dc9ab15f0` → `f264d7f4a2d56fde` (the new `preHandWagerBand`
+> accessor in `packages/engine/src/liarsDiceRules.ts`) and `instrumentFingerprint`
+> `5c230e99648cddee` → `b8894cb6c678fce6` (`packages/sim/src/index.ts` — `planDare` plus three
+> additive `HangoutPlayStats` fields). `packages/sim/src/protocol.ts`'s half of the fix
+> contributes to NEITHER (it is classified `SIM_NON_INSTRUMENT_SOURCES`).
+> `CURRENT_SAVE_VERSION` is **UNMOVED at 17** (re-read live at
+> `packages/engine/src/save.ts:627`) — no persisted shape changed, so no migration is owed.
+> **`balance:diff` = TWO OF TEN ROWS MOVED** — `fleet` and `gambler`; `explorer`, `fighter`,
+> `greedy`, `smuggler`, `trader`, `trader-degraded` and `veteran` all byte-identical. **THE
+> MOVE WAS PREDICTED IN WRITING BEFORE THE RUN** (`TASKS.md` T-168) with its containment
+> argument: the engine accessor has zero engine callers, `planDare` is called by
+> `gamblerPolicy` and by nothing else, and `fleet` pools it. Gambler `finalCredits.median`
+> 80,244 → 115,612 (+44.1%), `deedCount.median` 25 → 28, `survival.shipsLost` 26 → 18; fleet
+> `finalCredits.median` 49,687 → 50,094. **ONE SHAPE CHANGE, REPORTED AND NOT SUPPRESSED:**
+> `+ byPolicy[gambler].renownRanks.GIGA_HERO` — a previously-empty renown bucket the richer
+> gambler now reaches (the T-148 §12.7 precedent). **NOTHING WAS TUNED IN RESPONSE**; the two
+> numbers this capstone hands on rather than acts on are filed as F-168-1
+> (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.11.3).
+>
 > **BASELINE OF RECORD RE-PINNED AT T-208 (2026-08-05)** to
 > `docs/balance/baseline-t208-quest-captain-ports.json` — the **M19 MILESTONE CLOSER**, and a
 > **CONTENT-AND-ENGINE** capstone: the 11 `QUEST_PROFILES` captains now sit at a **DECLARED
@@ -2609,7 +2638,22 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t208-quest-captain-ports.json`** (1,000
+   > **Baseline of record is `docs/balance/baseline-t168-effective-band.json`** (1,000
+   > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-168 2026-08-05 — F-148-4's
+   > fix: `planDare` and the UGT protocol enumerator size the Dare wager domain off the
+   > engine's new `preHandWagerBand` (the unlock tier's EFFECTIVE band) instead of the port's
+   > raw tier-0 band, so a career can at last REQUEST into the raised tier-4 ceiling and tier
+   > 5's removed clamp. BOTH fingerprints move — `rulesFingerprint` `2f93098dc9ab15f0` →
+   > `f264d7f4a2d56fde` and `instrumentFingerprint` `5c230e99648cddee` → `b8894cb6c678fce6` —
+   > so the attribution is NOT single-arm. TWO OF TEN ROWS MOVED — fleet and gambler; the
+   > other seven policy rows byte-identical — PREDICTED IN WRITING BEFORE THE RUN
+   > (`TASKS.md` T-168): `planDare` is called by `gamblerPolicy` and by nothing else, and
+   > fleet pools it. Gambler `finalCredits.median` 80,244 → 115,612. One shape change
+   > reported and not suppressed (`byPolicy[gambler].renownRanks.GIGA_HERO`). Gate PASS,
+   > 0 invariant violations, nothing tuned in response. `CURRENT_SAVE_VERSION` unmoved at 17
+   > (re-read live at `packages/engine/src/save.ts:627`); no persisted shape changed, so no
+   > migration is owed.
+   > Before that: **`docs/balance/baseline-t208-quest-captain-ports.json`** (1,000
    > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-208 2026-08-05 — the M19
    > milestone closer, giving the 11 `QUEST_PROFILES` captains a DECLARED HOME PORT
    > (`NpcProfile.homePortSystemId`) in place of the arbitrary `(index % 20) + 1` seed that

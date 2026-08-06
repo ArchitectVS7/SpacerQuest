@@ -42,12 +42,20 @@ import {
   tributeForRound,
   loanBandFor,
   venueOffered,
+  // T-168 · `wagerBandFor` survives here as the MEASUREMENT's tier-0 reference
+  // ceiling only (`accumulateMetricEvents`' `DareHandStarted` arm). It is NO
+  // LONGER what sizes a stake — see `preHandWagerBand` below and §4.6a.
   wagerBandFor,
+  effectiveWagerBand,
   liarsDiceOpponentsAt,
   // T-197 · §4b's rounds cap, read through the engine's own accessor (never
   // re-derived from the tier table) — the planner mirror and the gambler's loop
   // bound are the two readers.
   liarsDiceRoundsRemaining,
+  // T-168 · THE PRE-HAND STAKE BAND (§4.6a item 3). `planDare` sizes its wager off
+  // THIS, never off the raw port band — sizing off `wagerBandFor` is what F-148-4
+  // measured as "no career can ever request into the raised ceiling".
+  preHandWagerBand,
   legalDareMoves,
   minOpeningQuantity,
   applyPlayerAction,
@@ -306,6 +314,23 @@ export interface HangoutPlayStats {
    *  (the bid lattice bounds a hand at ~15 player actions), which is exactly why a
    *  non-zero count is a bug to fail on rather than a number to swallow. */
   dareGuardHits: number;
+  /** T-168 · Hands whose SEATED stake (`DareHandStarted.seedWager`, i.e. after the
+   *  resolver's band AND solvency clamps) exceeded the port's TIER-0 authored
+   *  ceiling `wagerBandFor(systemId).max` — a tier-4-or-better stake that both
+   *  sides could actually cover. STRUCTURALLY 0 BEFORE T-168: `planDare` sized its
+   *  request off the tier-0 band, so the raised ceiling was unreachable by
+   *  construction (F-148-4). This is the field that makes it measurable.
+   *  READERS: the tier-4 assertions in `campaign-smuggler-gambler.test.ts`, the
+   *  `npm run sim` CLI JSON, and `SeedRow.hangout` in the sweep. */
+  handsAboveBaseCeiling: number;
+  /** T-168 · ...and above the TIER-4 ceiling, read as
+   *  `effectiveWagerBand(systemId, 4).max` rather than by restating
+   *  `LIARS_DICE_RAISED_CEILING_MULT` here. Only tier 5's REMOVED band clamp can
+   *  reach above it, so this counts tier-5 stakes specifically. Same readers. */
+  handsAboveRaisedCeiling: number;
+  /** T-168 · The largest single SEATED stake over the run, in credits. The scale
+   *  reading that the two counters above give as frequencies. */
+  maxSeedWager: number;
 }
 
 /** T-173 · The engine's own `DispositionChanged.reason` union, taken FROM the
@@ -1403,6 +1428,21 @@ function accumulateMetricEvents(
           hangoutPlay.socialBeats += 1;
         }
       }
+    } else if (event.type === 'DareHandStarted') {
+      // T-168 · THE RAISED-CEILING MEASUREMENT (F-148-4). It folds `DareHandStarted`
+      // and not `HangoutEvent` for one structural reason: `HangoutEvent` carries no
+      // `systemId`, so there is no band to compare its `wager` against, while
+      // `DareHandStarted` carries BOTH `systemId` and the SEATED `seedWager` —
+      // post-clamp, which is what "was actually staked" means.
+      //
+      // The tier-4 ceiling is read through the engine's `effectiveWagerBand`, NOT by
+      // restating `LIARS_DICE_RAISED_CEILING_MULT` here. That is an ordinary rule
+      // accessor call and not a live-tier read, so §4.6a's closed list is untouched.
+      const base = wagerBandFor(event.systemId).max;
+      const raised = effectiveWagerBand(event.systemId, 4).max ?? base;
+      if (event.seedWager > base) hangoutPlay.handsAboveBaseCeiling += 1;
+      if (event.seedWager > raised) hangoutPlay.handsAboveRaisedCeiling += 1;
+      hangoutPlay.maxSeedWager = Math.max(hangoutPlay.maxSeedWager, event.seedWager);
     }
   }
 }
@@ -4037,21 +4077,32 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
 // and wagers on opposed-GUILE Dares while it is standing there.
 //
 // Policy tuning, not game data (same justification as the smuggler's constants
-// above): the Dare's own band is CONTENT, and after T-120/T-121 it is PER-PORT —
-// read through the engine's `wagerBandFor` accessor, never restated and no longer
-// even read as a global constant, exactly as planLoanBorrow treats the (still
-// global, §2.2 ruling 5) lending band.
+// above): the Dare's own band is CONTENT, and after T-120/T-121 it is PER-PORT and
+// after T-146 it is PER-TIER — read through the engine's `preHandWagerBand`
+// accessor (T-168, §4.6a item 3), never restated and no longer even read as a
+// global constant, exactly as planLoanBorrow treats the (still global, §2.2 ruling
+// 5) lending band.
 // ---------------------------------------------------------------------------
 
-/** The working float the gambler never stakes into. Mirrors TRADER_RESERVE, and
- *  is deliberately larger than a full day of dares (GAMBLER_MAX_DARES_PER_DAY ×
- *  the default band's max = 1,000) so that even a total wipeout at the tables leaves the
- *  day's refuel/repair budget intact — which is what makes it safe to settle the
- *  stakes FIRST in the day's plan. */
+/** The working float the gambler never stakes into. Mirrors TRADER_RESERVE.
+ *
+ *  T-168 · WHAT THIS RESERVE ACTUALLY BOUNDS, restated honestly. It was
+ *  documented as "deliberately larger than a full day of dares
+ *  (GAMBLER_MAX_DARES_PER_DAY × the default band's max = 1,000)", and that stopped
+ *  being true the moment the planner could request into the raised ceiling: at
+ *  tier 4 the ceiling is ×3, and at tier 5 the band has no ceiling at all (§4.8),
+ *  so two hands can exceed 3,000. What bounds exposure past tier 4 is
+ *  GAMBLER_BANKROLL_FRACTION — 10% of the surplus above this reserve — together
+ *  with the resolver's solvency clamp, which §4.8 names as the SOLE ceiling at
+ *  tier 5. The reserve still does its original job at tiers 0-3, and it is still
+ *  what makes it safe to settle the stakes FIRST in the day's plan: the fraction
+ *  is taken of the surplus, so the float itself is never staked. */
 const GAMBLER_RESERVE = 3000;
 /** Share of the bankroll ABOVE the reserve the gambler is willing to put on one
- *  hand. The engine clamps the request into the content band regardless, so this
- *  only decides where inside that band a given day's stake lands. */
+ *  hand. The engine clamps the request into the effective band regardless, so at
+ *  tiers 0-4 this only decides where inside that band a given day's stake lands.
+ *  T-168 · At tier 5 there is no band ceiling to land inside, so this fraction
+ *  becomes the instrument's own exposure bound. */
 const GAMBLER_BANKROLL_FRACTION = 0.1;
 /** Dice budget guard: at most two hands a day, so a Hangout dawn still has dice
  *  left for the sign/travel pair that keeps the day an income day. */
@@ -4207,19 +4258,42 @@ function planDare(
   // (`docs/HANGOUT_REDESIGN.md` §4.2). Arithmetically inert today — all fourteen
   // rows inherit `DEFAULT_PORT_HANGOUT`'s band — and that is the point: it lands
   // while it is provably inert, ahead of the authored bands at T-123.
-  const band = wagerBandFor(state.player.currentSystemId);
+  //
+  // T-168 · ...AND THE BAND IS THE TIER'S EFFECTIVE BAND, not the port's raw one
+  // (§4.6a item 3, F-148-4). Sizing off `wagerBandFor` meant this planner could
+  // never REQUEST a stake above the tier-0 ceiling, so no sweep row and no UGT
+  // career ever exercised the raised bounded-betting ceiling or tier 5's removed
+  // clamp — the ×3 multiplier was worth +43.7% bids per hand and nothing else.
+  // Read through the engine's own accessor, which takes the whole state precisely
+  // so this file cannot supply a tier of its own.
+  const band = preHandWagerBand(state);
+  // Tier 5 removes the band ceiling entirely (§4.8); the solvency clamps below and
+  // in the resolver are what bound the stake there.
+  const ceiling = band.max ?? Number.MAX_SAFE_INTEGER;
+  // THE INSTRUMENT'S OWN FLOOR, and a POLICY CHOICE rather than a game rule. At
+  // tiers 0-4 this IS the port's authored floor and is byte-identical to the
+  // pre-T-168 `band.min`. At tier 5 the band has no floor (§4.8 — "a veteran may
+  // sit at Regulus-6 for 10 credits"), so the planner supplies a 1-credit floor of
+  // its own rather than seating a FREE hand: a zero stake still counts as a dare
+  // and drags `expectedValuePerDare` toward 0, which is the one number this
+  // instrument exists to measure.
+  const floor = Math.max(1, band.min);
   // A dealer who cannot cover the minimum stake makes a zero-EV hand — skip it.
   // F-123-3 · with `dealer.credits` now carrying the day's committed stakes, this
   // ONE pre-existing guard closes BOTH halves of the finding for free: the zero
   // stake (34 of 1,319 hands) and the sub-floor stake (3 more) it also measured.
   // No new downstream guard is owed.
-  if (dealer.credits < band.min) return null;
+  //
+  // T-168 · RE-DERIVED AGAINST THE EFFECTIVE BAND (F-148-4's last clause). Against
+  // the raw port band this gate was wrong at tier 5, where the band's floor is 0
+  // and the only honest floor is the instrument's own.
+  if (dealer.credits < floor) return null;
 
   const bankroll = credits - GAMBLER_RESERVE;
-  if (bankroll < band.min) return null;
+  if (bankroll < floor) return null;
   const wager = Math.max(
-    band.min,
-    Math.min(band.max, Math.floor(bankroll * GAMBLER_BANKROLL_FRACTION)),
+    floor,
+    Math.min(ceiling, Math.floor(bankroll * GAMBLER_BANKROLL_FRACTION)),
   );
 
   return { type: 'VisitHangout', venue: 'dare', opponentId: dealer.id, wager };
@@ -5983,6 +6057,9 @@ export function runCampaign(
     socialBeats: 0,
     failedVisits: 0,
     dareGuardHits: 0,
+    handsAboveBaseCeiling: 0,
+    handsAboveRaisedCeiling: 0,
+    maxSeedWager: 0,
   };
   // T-1603a balance-baseline instrumentation (see the interface doc comments).
   const survival: SurvivalStats = {

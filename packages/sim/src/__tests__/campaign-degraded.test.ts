@@ -1319,6 +1319,60 @@ const UNCHANGED_POLICIES = [
 // which is the answer to the obvious worry that this row's delta means the hook
 // got harder to fire. It did not. NOTHING WAS TUNED IN RESPONSE to either number.
 //
+// ENTRY 35 (T-168 — THE RAISED TIER-4/5 CEILING IS FINALLY STAKED INTO, F-148-4).
+// ALL SEVEN ROWS MOVE, AND SIX OF THEM MOVE FOR A REPORT-SHAPE REASON ONLY —
+// entries 11, 12, 23 and 30's form for the fifth time, and as there the claim is
+// PROVEN below rather than asserted.
+//
+// TWO CHANNELS, SEPARATED BY MEASUREMENT RATHER THAN BY ARGUMENT.
+//   (a) SHAPE. `HangoutPlayStats` gained THREE keys — `handsAboveBaseCeiling`,
+//       `handsAboveRaisedCeiling`, `maxSeedWager` — folded from `DareHandStarted`
+//       (the only event carrying both a `systemId` and the SEATED stake). This
+//       fingerprint hashes the whole report JSON, shape included, so three keys at
+//       0 move every hash on their own.
+//   (b) WORLD. `planDare` now sizes its stake off the engine's `preHandWagerBand`
+//       (§4.6a item 3) instead of raw `wagerBandFor` — the TIER-0 band — so a
+//       gambler past rung 4 can at last REQUEST into the raised ceiling. Only a
+//       policy that sits at a table can feel this, and `planDare` is called by
+//       `gamblerPolicy` and by nothing else (`packages/sim/src/index.ts`, one call
+//       site).
+//
+// THE STRIP PROOF, run locally over these exact 35 careers rather than claimed.
+// Removing `,"handsAboveBaseCeiling":N,"handsAboveRaisedCeiling":N,"maxSeedWager":N`
+// from the hashed JSON reproduces the entry-34 pin BYTE FOR BYTE on six of seven:
+//   trader   415c1e1225f8f63d -> stripped 4b4115a7c2486def (= entry 34)
+//   fighter  79a7cfe6a1012fe7 -> stripped 57afc68979f9ae48 (= entry 34)
+//   explorer c3f5d6d237147058 -> stripped d5f410e252951823 (= entry 34)
+//   veteran  38fc08a73fcbe506 -> stripped d43d2c45794576e7 (= entry 34)
+//   smuggler 1a7bc4df42683373 -> stripped ea0faad190ef6152 (= entry 34)
+//   greedy   fbcbcbe637e127b9 -> stripped 18404cd9bdb2257e (= entry 34)
+// So for those six the ONLY delta is a report key, and channel (b) provably did not
+// reach them. Their `hangoutPlay.visits` is 0 before and after, which is the same
+// fact measured a second way.
+//
+// THE GAMBLER IS THE ONE REAL MOVE, and correctly so: stripped it is
+// b88a50aa25a4a918, still not the entry-34 value. Measured over these exact five
+// seeds x 40 days: 299 dares (unchanged in COUNT — the rounds cap and
+// `GAMBLER_MAX_DARES_PER_DAY` still bound how many hands are played, and this task
+// changed only how big they are), 221,225 wagered, +63,923 net, and **64 of the 299
+// hands SEATED above the port's tier-0 ceiling** against a structural 0 before.
+// `maxSeedWager` 4,785. `hangoutPlay.failedVisits` is 0 on every row before and
+// after — the mechanical proof that the wider ask is still an ask the resolver
+// accepts, not a stake it clamps into a refusal.
+//
+// `handsAboveRaisedCeiling` IS 0 IN THIS WINDOW, AND THAT IS EXPECTED RATHER THAN A
+// MISS. It counts stakes above the TIER-4 ceiling, which only tier 5's removed
+// clamp can reach, and rung 5 opens at 80 settled hands (`LIARS_DICE_UNLOCK_GAMES`)
+// — roughly 60 are played in 40 days. The 120-day arms in
+// `campaign-smuggler-gambler.test.ts` are where that field is proven non-zero, and
+// the 1,000-seed capstone is where it is measured.
+//
+// NO BAND, THRESHOLD, GOLDEN OR CONSTANT WAS EDITED. Both `rulesFingerprint` (the
+// new `preHandWagerBand` accessor in `engine/liarsDiceRules.ts`) and
+// `instrumentFingerprint` (`sim/index.ts`) move, so this task owes a capstone;
+// `sim/protocol.ts`'s half of the fix is classified non-instrument and contributes
+// to neither.
+//
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
   // so the trader borrows and repays on the day it needs to rather than on the day
@@ -1339,7 +1393,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // `ledger.remaining() >= 1` instead of `>= 2`, and `planRefuel` /
   // `planCrippledRepair` / `planCaptainOverhead` take no die at all (see the
   // header's entry 32). Credits over these five seeds RISE, 108,267 -> 131,747.
-  trader: '4b4115a7c2486def',
+  // ENTRY 35 (T-168): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 35 for the strip proof against the value above).
+  trader: '415c1e1225f8f63d',
   // Entry 27 (T-159): re-derived — and the ONLY row that moves, which is the
   // cross-check that this was a fighter change and nothing else: `trader`,
   // `explorer`, `veteran`, `smuggler`, `gambler` and `greedy` all came back byte
@@ -1384,7 +1440,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // tiers over the five seeds fall 44 -> 37 and credits 55,035 -> 49,399: the yard
   // buys are no longer double-funded out of the same dawn balance, which is the
   // netting working, not a lost capability.
-  fighter: '57afc68979f9ae48',
+  // ENTRY 35 (T-168): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 35 for the strip proof against the value above).
+  fighter: '79a7cfe6a1012fe7',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
   // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4
@@ -1434,7 +1492,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // per-sweep credit charge on the Explore loop below it — the loop's REAL bound
   // finally applied per iteration instead of once (see the finding in TASKS.md). It
   // caps no iteration count and moves no floor.
-  explorer: 'd5f410e252951823',
+  // ENTRY 35 (T-168): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 35 for the strip proof against the value above).
+  explorer: 'c3f5d6d237147058',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   //
   // Entry 29 (T-161): re-derived, and the ONLY row that moves — which is the
@@ -1478,7 +1538,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // credits. Its broker_shark gate also falls `>= 3` to `>= 2` (sign is free, so
   // only haggle and travel still cost dice). Credits RISE, 34,032 -> 39,414, and
   // deeds 64 -> 68 — a grinder that can shop and fly on the same day earns more.
-  veteran: 'd43d2c45794576e7',
+  // ENTRY 35 (T-168): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 35 for the strip proof against the value above).
+  veteran: '38fc08a73fcbe506',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
   // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
   // through the shorter hand on a band-3/4 board rather than through the payout.
@@ -1516,7 +1578,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // there. A SMALL move, and honestly so: credits 67,246 -> 67,190 over the five
   // seeds, deeds unchanged at 115. The tables are untouched on this row — the
   // smuggler never opens a Dare.
-  smuggler: 'ea0faad190ef6152',
+  // ENTRY 35 (T-168): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 35 for the strip proof against the value above).
+  smuggler: '1a7bc4df42683373',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sol-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
@@ -1619,7 +1683,12 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // dealer without asking whether they are simulated — so there are simply more
   // tables. `hangoutPlay.visits` 281 -> 301, credits 127,628 -> 147,288, deeds
   // UNCHANGED at 93 (the extra hands pay, they do not unlock anything new).
-  gambler: 'a608c24db00513cd',
+  // ENTRY 35 (T-168): re-derived, and THE ONE REAL MOVE in this entry —
+  // `planDare` sizes its stake off the EFFECTIVE band, so 64 of these 299 hands now
+  // seat above the port's tier-0 ceiling (structurally 0 before, F-148-4). Its
+  // stripped hash is b88a50aa25a4a918, still not the entry-34 value, which is what
+  // separates it from the six shape-only rows. See the header's entry 35.
+  gambler: '14648e63aaebf2a9',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).
@@ -1631,7 +1700,10 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // bond hook rather than through anything it does itself. See the header's entry
   // 34 for the day-7 / 50-fuel isolation that pins the cause to Doc Salvage's move
   // off Antares-5. Credits 7,280 -> 7,640, deeds 36 -> 37.
-  greedy: '18404cd9bdb2257e',
+  // ENTRY 35 (T-168): re-derived — REPORT SHAPE ONLY, and the control row is BACK
+  // to being a control: it never sits at a table, so channel (b) cannot reach it
+  // (see the header's entry 35 for the strip proof against the value above).
+  greedy: 'fbcbcbe637e127b9',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

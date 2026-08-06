@@ -401,9 +401,13 @@ export function resolveVisitHangout(
         : { dealerId: dealer!.id, opponentKind: 'roaming' };
 
       // T-146 · THE ONE SITE THAT READS A LIVE TIER AND FREEZES ITS EFFECTS ONTO A
-      // HAND (§8 row 16b, §4.6). There is exactly one other `liarsDiceTier` call in
-      // the repo — `format.ts`'s pre-hand `dareWagerBounds`, which has no hand to
-      // read a frozen field off. A THIRD IS A BUG.
+      // HAND (§8 row 16b, §4.6 / §4.6a item 1). The other live-tier reads in the
+      // repo are HAND-FREE by construction and enumerated in §4.6a: the engine's
+      // `liarsDiceRoundsRemaining` and `preHandWagerBand`, and `format.ts`'s
+      // display-only `preHandTier`. T-168 amended the ruling from "a third call
+      // site is a bug" to what it was always about: a site that HAS a hand reads
+      // the hand's FROZEN fields and never the live tier. That is this site's
+      // obligation to the rest of the file, and it is unchanged.
       //
       // The hand stores the tier's EFFECTS, never the tier: `dicePerSide`,
       // `maxQuantity` and `bandMax` are written once, below, and never recomputed.

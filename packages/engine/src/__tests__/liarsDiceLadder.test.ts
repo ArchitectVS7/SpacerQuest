@@ -15,6 +15,7 @@ import {
   legalDareMoves,
   liarsDiceTier,
   maxQuantityForDice,
+  preHandWagerBand,
   readTheTableLine,
   minOpeningQuantity,
 } from '../liarsDiceRules.js';
@@ -203,6 +204,82 @@ describe('T-146 · effectiveWagerBand is the port band until tier 4 moves it', (
     for (const systemId of PORTS) {
       expect(effectiveWagerBand(systemId, 5)).toEqual({ min: 0, max: null });
     }
+  });
+});
+
+describe('T-168 · preHandWagerBand is the ONE pre-hand answer, and it is derived not restated', () => {
+  // The same WIDE/NARROW pair `effectiveWagerBand` is proven against, so a band
+  // that happens to match at Sol-3 cannot pass by luck.
+  const PORTS = [SUN_3, 11];
+  const TIERS = [0, T1, T2, T3, T4, T5];
+
+  it('equals effectiveWagerBand(currentSystemId, liarsDiceTier(gamesPlayed)) at every rung', () => {
+    // The DEFINITION, asserted rather than assumed: this accessor exists so that a
+    // caller cannot supply a tier of its own (§4.6a item 3), and the proof that it
+    // did not quietly become a different function is that it still equals the
+    // composition it replaced — the exact two calls `ui/format.ts` used to make.
+    for (const systemId of PORTS) {
+      for (const games of TIERS) {
+        const state = ladderState(games, 1, systemId);
+        expect(preHandWagerBand(state), `system ${systemId} @ ${games} games`).toEqual(
+          effectiveWagerBand(systemId, liarsDiceTier(games)),
+        );
+      }
+    }
+  });
+
+  it('is the port’s AUTHORED band verbatim at tiers 0–3 — the inertness proof', () => {
+    // Nothing below tier 4 may move. This is what licenses the claim that seven of
+    // the eight sweep policies are byte-identical across T-168.
+    for (const systemId of PORTS) {
+      for (const games of [0, T1, T2, T3]) {
+        expect(preHandWagerBand(ladderState(games, 1, systemId))).toEqual(wagerBandFor(systemId));
+      }
+    }
+  });
+
+  it('raises ONLY the ceiling at tier 4, off the port’s own number', () => {
+    for (const systemId of PORTS) {
+      const band = wagerBandFor(systemId);
+      expect(preHandWagerBand(ladderState(T4, 1, systemId))).toEqual({
+        min: band.min,
+        max: band.max * LIARS_DICE_RAISED_CEILING_MULT,
+      });
+      // Non-vacuity: the tier-4 domain is STRICTLY wider than the tier-0 one, which
+      // is the whole of F-148-4 — a planner sized off the tier-0 band could never
+      // request into this gap.
+      expect(preHandWagerBand(ladderState(T4, 1, systemId)).max!).toBeGreaterThan(band.max);
+    }
+  });
+
+  it('removes both ends at tier 5 — `max === null` is the only "unlimited" encoding', () => {
+    for (const systemId of PORTS) {
+      expect(preHandWagerBand(ladderState(T5, 1, systemId))).toEqual({ min: 0, max: null });
+    }
+  });
+
+  it('is total over the garbage a hand-edited save could carry', () => {
+    // Same contract as `liarsDiceTier` and for the same reason: a corrupt
+    // `liarsDiceGamesPlayed` must produce a band, never a throw and never a NaN.
+    for (const bad of [
+      Number.NaN,
+      -1,
+      -1000,
+      Number.NEGATIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER,
+      1.5,
+    ]) {
+      const band = preHandWagerBand(ladderState(bad));
+      expect(Number.isFinite(band.min), String(bad)).toBe(true);
+      expect(band.max === null || Number.isFinite(band.max), String(bad)).toBe(true);
+    }
+    // The two ends of the garbage range land on the two ends of the ladder.
+    expect(preHandWagerBand(ladderState(Number.NaN))).toEqual(wagerBandFor(SUN_3));
+    expect(preHandWagerBand(ladderState(Number.POSITIVE_INFINITY))).toEqual({
+      min: 0,
+      max: null,
+    });
   });
 });
 

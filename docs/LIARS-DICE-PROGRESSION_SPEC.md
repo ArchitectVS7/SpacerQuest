@@ -644,6 +644,59 @@ than a plumbing change.
 
 A third call site is a bug. If a site has a hand, it reads the frozen field.
 
+#### 4.6a AMENDMENT (T-168, 2026-08-05) — the ruling is about HANDS, not about a grep count
+
+**The paragraph above is superseded by this subsection.** It is kept verbatim because the
+amendment is only intelligible next to what it replaces, and because two shipped tasks (T-197,
+T-168) were each forced to argue their way around it in a source comment instead of reading a rule.
+
+**Why the old formulation failed.** It stated the invariant as a *count of textual call sites*
+rather than as the invariant itself. A count cannot distinguish the two cases it was actually
+about, so it simultaneously (a) forbade the only correct fix for F-148-4 — teaching the sim's
+stake planner the effective band — and (b) permitted the bug itself, because `planDare` and
+`packages/sim/src/protocol.ts` sized their `wager` domain off raw `wagerBandFor(...)` and never
+called `liarsDiceTier` at all, so no grep for the forbidden third site could ever have found them.
+It was, in other words, a rule that pointed at the wrong noun.
+
+**The rule, restated as the invariant it was always about:**
+
+> A site that **HAS a hand** must read that hand's frozen fields (`hand.maxQuantity`,
+> `hand.dicePerSide`, `hand.bandMax`, `hand.ante`, `hand.systemId`) and may **never** re-read the
+> live tier. That is the ruling, and it is unchanged and absolute — it is what makes save/reload, a
+> content edit, or a settlement crossing a threshold mid-scene unable to move a hand in progress.
+>
+> A site that has **NO hand** — because it is answering a question about the *day*, or about a
+> *stake not yet placed* — has no frozen field to read, and the live tier is its only honest input.
+> Such sites are legitimate. They must live **inside `packages/engine/src` as named accessors**, so
+> that the tier→effect mapping is derived in exactly one place and never re-derived by a caller.
+
+**The licensed live-tier reads, enumerated and CLOSED. Adding one requires amending this list.**
+
+1. `packages/engine/src/actions/hangout.ts`'s `case 'dare'` open arm — the ONE site that freezes a
+   tier's effects onto a hand. Unchanged by this amendment.
+2. `packages/engine/src/liarsDiceRules.ts` `liarsDiceRoundsRemaining` — *"may another hand be
+   opened today?"* (`docs/DAWN-HAND-REDESIGN.md` §4b). **Recorded here at T-168; shipped at T-197
+   in source only** — T-197 wrote its amendment into the `liarsDiceRules.ts` header block and never
+   amended this section, which is exactly the failure mode this subsection exists to end.
+3. `packages/engine/src/liarsDiceRules.ts` `preHandWagerBand` (T-168) — *"what band may a stake be
+   requested inside, before any hand exists?"* Its readers are the cockpit's stake input, the sim's
+   `planDare`, and the UGT protocol enumerator.
+4. `packages/ui/src/format.ts` `preHandTier` — display only, and now narrowed: it serves ONLY the
+   tier ≥ 3 "Read the Table" unlock in `hangoutRosterOpponents`. The stake input reads (3).
+
+**THE NEW BUG, replacing the old one.** Any caller **outside `packages/engine/src`** that sizes a
+Dare **stake domain** off raw `wagerBandFor(...)` instead of `preHandWagerBand(state)` is a bug.
+That is the exact defect §12.9's F-148-4 recorded: `planDare` (`packages/sim/src/index.ts`) and
+`packages/sim/src/protocol.ts` sized off the tier-0 band, so no sweep row and no UGT career could
+ever *request* into the raised ceiling — and the ×3 multiplier plus tier 5's removed clamp were, in
+play, worth **+43.7% bids per hand and nothing else**. A re-derivation of the tier→band mapping by
+a caller (i.e. a caller that computes `band.max × LIARS_DICE_RAISED_CEILING_MULT` itself) is the
+same bug wearing different clothes and is equally forbidden.
+
+**What did NOT change.** The hand still freezes effects, not the tier. `actions/hangout.ts` remains
+the one freeze site. The solvency clamp is still not the band's business (§4.8). §8's ripple table
+is still a list of constant-to-frozen-field substitutions, and nothing in it moves.
+
 ### 4.7 The ante at high tiers
 
 `anteFor` currently reads `wagerBandFor(systemId).max × DARE_ANTE_BAND_FRACTION`. It must take the
@@ -2038,7 +2091,15 @@ reads as the *challenge* content; it currently measures as the *easy* content. T
 seen through the wallet and shares its recommendation. **Left for the same owner call.**
 
 **F-148-4 · F-146-1 confirmed, with its scope now exact: the raised ceiling is never staked into.**
-Status: REPORTED, NOT FIXED. `planDare` and `protocol.ts:869` both size the wager domain off
+Status: **FIXED AT T-168 (2026-08-05).** Both call sites now size the wager domain off the engine's
+`preHandWagerBand` (§4.6a item 3). Measured over 1,000 gambler careers × 120 days: **120,275 of
+174,013 hands (69.12%) now seat above the port's tier-0 ceiling and 70,274 (40.38%) above the
+tier-4 ceiling, against 0 and 0 on a re-run pre-fix control arm over the identical seeds**; mean
+stake 903.97 → 3,935.51 (×4.35) and `expectedValuePerDare` +210.57 → +875.72. Full table, the
+predicted-and-confirmed moved rows, and the two numbers handed on rather than tuned: **§12.11**.
+The original filing follows verbatim.
+
+Status at filing: REPORTED, NOT FIXED. `planDare` and `protocol.ts:869` both size the wager domain off
 `wagerBandFor(...)` — the tier-0 band — so no sweep row and no UGT career ever *requests* a tier-4
 or tier-5 stake. What the ladder does exercise is the frozen `bandMax` and the tier-scaled `ante`,
 both measured in §12.4. Consequence: **the ×3 ceiling and the removed clamp are, in play today,
@@ -2062,9 +2123,9 @@ point: a capstone that reports a bad number and quietly moves a constant has fai
 | Lever | Where | The number that tempted it | Why it was left |
 | --- | --- | --- | --- |
 | `LIARS_DICE_UNLOCK_GAMES` `[5,10,20,40,80]` | `content/liarsDice.ts:89` | Rung 5 opens at median day 55 and carries 53% of all hands — the top rung is the *default* state, not the endgame | Widening it would be tuning to the maximal playstyle, the only one the rig can see (§12.0 limitation 1). Owner call. |
-| `LIARS_DICE_RAISED_CEILING_MULT` = 3 | `content/liarsDice.ts:93` | ×3 buys only +43.7% bids/hand, less than §4.4 predicted | The shortfall is F-148-4's (the seed is never raised), not the multiplier's. Fixing the wrong one first would hide the real gap. |
+| `LIARS_DICE_RAISED_CEILING_MULT` = 3 | `content/liarsDice.ts:93` | ×3 buys only +43.7% bids/hand, less than §4.4 predicted | The shortfall is F-148-4's (the seed is never raised), not the multiplier's. Fixing the wrong one first would hide the real gap. **Vindicated at T-168:** with F-148-4 fixed the mean stake rises ×4.35 (§12.11). The multiplier was never the problem, and it is STILL not touched. |
 | `planDare`'s richest-candidate rule | `sim/index.ts:3487-3513` | Drives both the 57%/43% pool split (§12.3) and F-148-2's zero grand slams | It is the *instrument's* policy, not the game's rule; changing it re-bases every baseline in the same commit that measures it. |
-| `planDare`'s tier-0 band sizing | `sim/index.ts:3524` | F-148-4 / F-146-1 | Needs a third `liarsDiceTier` call site, which §4.6 forbids. Amendment first, edit second. |
+| `planDare`'s tier-0 band sizing | `sim/index.ts:3524` | F-148-4 / F-146-1 | ~~Needs a third `liarsDiceTier` call site, which §4.6 forbids. Amendment first, edit second.~~ **LEVER TAKEN AT T-168**, in that order: §4.6a's amendment landed in its own docs-only commit, then `preHandWagerBand` and the two call-site substitutions. What it moved is §12.11's table. |
 | `dealerMove`'s F-137-1 opener + all `DARE_AI_*` | `engine/liarsDiceRules.ts` | 100.00% of openers still guaranteed true; it is the root cause under F-148-1 and F-148-3 | §3.9 and §10.5 both explicitly scope it out of M4e. It is an owner call and always was. |
 | `BAD_CREDULITY` = 1 and `archetypeMove` | `engine/liarsDiceRules.ts:761` | The inverted ordering, z = −30.76 | The policies do what they are specified to do. Retuning them would paper over F-137-1. |
 | The four tone mixes | `content/liarsDice.ts:97-100` | `random` is only 6.45% of hands and `bad` 8.88% | Reweighting toward the *harder* seat means reweighting toward `bad`, which is only harder *because* of F-137-1. Circular. |
@@ -2084,8 +2145,13 @@ point: a capstone that reports a bad number and quietly moves a constant has fai
    reachable deliberately and merely invisible to this instrument — that distinction needs either a
    set-seeking probe arm or an explicit spec sentence saying the fifteen deeds are deliberate-play
    content.
-3. **F-148-4 needs a §4.6 amendment before it needs code.** The raised ceiling cannot be staked
-   into without a third `liarsDiceTier` read, which §4.6 rules a bug.
+3. ~~**F-148-4 needs a §4.6 amendment before it needs code.** The raised ceiling cannot be staked
+   into without a third `liarsDiceTier` read, which §4.6 rules a bug.~~ **RESOLVED AT T-168.**
+   §4.6a is the amendment, and it took the second of the two routes this item allowed — "a rule
+   that hands the effective band out without a third read": `preHandWagerBand` in
+   `packages/engine/src/liarsDiceRules.ts`. The amendment shipped in its own docs-only commit
+   BEFORE any code, and it also folded in T-197's amendment, which had lived only in a source
+   header. The measurement is §12.11.
 4. **No playstyle sits between "1.4 hands a day" and "zero".** Seven of eight policies never sit at
    a table, so every pacing number here is an upper bound with nothing to interpolate against. A
    casual-dice policy would make §12.1's read-across a measurement instead of an extrapolation.
@@ -2096,3 +2162,97 @@ point: a capstone that reports a bad number and quietly moves a constant has fai
 7. **§10's item 4 — whether the 42 get `VisitHangout` cast parity — is still D2's deferred row and
    is T-150's to re-ask** against the finished system, now with §12.3's numbers underneath it.
 
+
+---
+
+## §12.11 · T-168 — the raised ceiling, MEASURED as played (2026-08-05)
+
+**What this section closes.** F-148-4 / F-146-1. §4.6a is the amendment it required, and it shipped
+in its own docs-only commit before any code, per that finding's own instruction.
+
+### 12.11.0 Method, and what it can and cannot say
+
+**The arm.** `--label t168-effective-band --seeds 1000 --days 120 --milestone-days 21,29,30,41,60,120
+--policies explorer,fighter,gambler,greedy,smuggler,trader,trader-degraded,veteran`, eight
+1-indexed shards then `--merge`. **8,000 rows verified at merge**, gate `PASS` on all eight shards
+and on the merged set (0 invariant violations; every rate inside its band). Baseline of record
+re-pinned from `baseline-t208-quest-captain-ports.json` to `baseline-t168-effective-band.json`.
+
+**The pre-fix column is a MEASURED CONTROL ARM, not a construction argument.** The outgoing
+baseline carries none of the three new fields, so the honest fallback would have been *"structurally
+unmeasurable, and 0 by construction"*. Instead the pre-T-168 `planDare` (one line: `const band =
+wagerBandFor(state.player.currentSystemId)`) was re-run over the **identical 1,000 seeds × 120 days**
+with the new measurement fields present, and the two counters came back **0 and 0 — measured**.
+That is the strongest form the "before" column can take, and it is what the table below reports.
+
+**The three limitations of §12.0 all still bind**, unchanged: this rig sees only the maximal
+dice playstyle; `planDare` seats by bankroll rather than by set; and the gambler is the only policy
+that ever sits at a table.
+
+### 12.11.1 The measurement — gambler, n = 1,000 careers × 120 days
+
+| | before (pre-T-168 `planDare`) | after (T-168) | delta |
+| --- | ---: | ---: | ---: |
+| dares played | 176,554 | 174,013 | −1.44% |
+| **hands seated ABOVE the port's tier-0 ceiling** | **0** | **120,275** | **69.12% of dares** |
+| **...and above the TIER-4 ceiling (tier 5's removed clamp)** | **0** | **70,274** | **40.38% of dares** |
+| largest single seated stake (`maxSeedWager`) | 3,000 | **74,591** | ×24.9 |
+| total staked | 159,599,764 | 684,835,536 | ×4.29 |
+| mean stake per hand | 903.97 | **3,935.51** | **×4.35** |
+| net credits at the tables | +37,177,467 | +152,386,577 | ×4.10 |
+| **`expectedValuePerDare`** | **+210.57** | **+875.72** | **×4.16** |
+
+**The seven control policies — explorer, fighter, greedy, smuggler, trader, trader-degraded,
+veteran — play 0 dares over 1,000 careers each**, so all three counters are 0 and the honest share
+is written `< 1/1,000` rather than `0.00%`. None of them ever sits at a table; that is the same
+structural fact that makes them byte-identical in the diff below, measured a second way.
+
+**The dare COUNT barely moved, and that is the right shape.** T-168 changed how big a stake is,
+not how many hands are played — the rounds-per-day cap (§4b) and `GAMBLER_MAX_DARES_PER_DAY` still
+bound the count. The −1.44% is career re-phasing (a richer gambler travels and fights differently),
+not a change to the table's throughput.
+
+### 12.11.2 What the diff moved, predicted before the run
+
+Predicted in writing before the sweep, and confirmed exactly:
+
+- **`byPolicy.gambler` — MOVED.** `finalCredits.median` 80,244 → 115,612 (+44.1%);
+  `deedCount.median` 25 → 28; `portOwnershipRate` 0.9700 → 0.9850; `survival.shipsLost` 26 → 18
+  (−30.8%). 388 changed fields.
+- **`fleet` — MOVED**, because it pools the gambler. `finalCredits.median` 49,687 → 50,094 (+0.8%),
+  which is the gambler's move divided by eight. 270 changed fields.
+- **`explorer`, `fighter`, `greedy`, `smuggler`, `trader`, `trader-degraded`, `veteran` —
+  BYTE-IDENTICAL**, all seven, as predicted. The engine accessor has zero engine callers and none
+  of these policies plans a `VisitHangout{venue:'dare'}`.
+- **ONE SHAPE CHANGE, reported and not suppressed:** `+ byPolicy[gambler].renownRanks.GIGA_HERO` —
+  a previously-empty renown bucket that the richer gambler now reaches. Exactly the T-148 §12.7
+  precedent (a bucket appearing is a shape change, not a regression), and `fleet.renownRanks`
+  `GIGA_HERO` 214 → 348 is the same fact pooled.
+- **Both fingerprints moved**, and each is attributable: `rulesFingerprint`
+  `2f93098dc9ab15f0 → f264d7f4a2d56fde` (the new `preHandWagerBand` accessor in
+  `packages/engine/src/liarsDiceRules.ts`) and `instrumentFingerprint`
+  `5c230e99648cddee → b8894cb6c678fce6` (`packages/sim/src/index.ts` — `planDare` plus the three
+  `HangoutPlayStats` fields). **`packages/sim/src/protocol.ts` contributes to NEITHER** — it is
+  classified `SIM_NON_INSTRUMENT_SOURCES`, so the UGT half of this fix is invisible to both hashes
+  and is covered by `protocol.test.ts`'s tier-4 / tier-5 arms instead.
+
+### 12.11.3 Nothing was tuned, and the levers stay where §12.9 left them
+
+`LIARS_DICE_RAISED_CEILING_MULT` is still 3 and `LIARS_DICE_UNLOCK_GAMES` is still `[5,10,20,40,80]`
+— §12.9's levers table forbids touching either here, and this task deliberately does not. What
+changed is that both are now *reachable*, which is the precondition for anyone ever judging them.
+§12.9's own note against the multiplier row — *"×3 buys only +43.7% bids/hand, less than §4.4
+predicted; the shortfall is F-148-4's, not the multiplier's"* — is now settled in the multiplier's
+favour: with the seed no longer pinned to the tier-0 band, the mean stake rises **×4.35**.
+
+**Two numbers this section deliberately does NOT act on**, and they are handed on rather than
+tuned:
+
+1. **`expectedValuePerDare` is +875.72 and the gambler's median purse rises 44%.** The tables are
+   a strong faucet at high tier. That is a *balance* question about the ladder's payoff curve, not
+   a bug in this fix, and §12.9's own house discipline applies — *"a bad number is reported, not
+   tuned around"*, the same rule that kept `LIARS_DICE_RAISED_CEILING_MULT` untouched at T-148. It
+   is filed as **F-168-1** in `TASKS.md`.
+2. **`renownRanks.GIGA_HERO` appears for the first time on the gambler row.** A new terminal rank
+   reached by one policy is a pacing observation for the same owner call, and §6.6's "report, do
+   not retune" governs it.

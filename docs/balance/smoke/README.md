@@ -107,8 +107,21 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t208-quest-captain-ports.json`, re-pinned at
-T-208 2026-08-05 — the M19 milestone closer, giving the 11 `QUEST_PROFILES` captains a
+exactly like drift. The current baseline (`baseline-t168-effective-band.json`, re-pinned at
+T-168 2026-08-05 — F-148-4's fix, which makes `planDare` and the UGT protocol enumerator size
+the Dare wager domain off the engine's new `preHandWagerBand` (the unlock tier's EFFECTIVE
+band) instead of the port's raw tier-0 band, so a career can at last REQUEST into the raised
+tier-4 ceiling and tier 5's removed clamp. It moves BOTH fingerprints — `rulesFingerprint`
+2f93098dc9ab15f0 -> f264d7f4a2d56fde and `instrumentFingerprint` 5c230e99648cddee ->
+b8894cb6c678fce6 — so it is deliberately NOT a single-arm attribution. TWO OF THE TEN ROWS
+MOVED — fleet and gambler; explorer, fighter, greedy, smuggler, trader, trader-degraded and
+veteran came back byte-identical — which was PREDICTED IN WRITING BEFORE THE RUN with its
+containment argument (`planDare` is called by `gamblerPolicy` and by nothing else, and fleet
+pools it). Gambler `finalCredits.median` 80,244 -> 115,612. One shape change reported and not
+suppressed: `byPolicy[gambler].renownRanks.GIGA_HERO`. Gate PASS, 0 invariant violations,
+nothing tuned in response. The one before it was
+`baseline-t208-quest-captain-ports.json` (T-208), the M19 milestone closer, giving the 11
+`QUEST_PROFILES` captains a
 DECLARED HOME PORT (`NpcProfile.homePortSystemId`) instead of the arbitrary
 `(index % 20) + 1` seed that had frozen six of them at rim systems with no Cantina for a whole
 career. It moves `rulesFingerprint` (cbb087860825aa35 -> 2f93098dc9ab15f0 — content is hashed
