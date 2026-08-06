@@ -73,6 +73,14 @@ contract.
 **SF-9 — Sim-policy-only fixes move no save shape — and the absence of a migration is
 stated as a CLAIM, not left as an omission.** (T-150)
 
+**SF-11 — An ENGINE RULE change that moves `rulesFingerprint` but changes no persisted shape
+owes no migration either — and says so.** (T-160) T-160 shipped
+`minOpeningQuantity(own) = own + 1` in `packages/engine/src/liarsDiceRules.ts` and
+`CURRENT_SAVE_VERSION` stayed at 15. This extends SF-9 from sim-policy-only fixes to engine
+legality rules: a moved rules fingerprint is evidence about *behaviour*, never about *shape*,
+and the two are decided separately. The claim is written down, because "no bump" and "nobody
+thought about the bump" look identical in a diff.
+
 ---
 
 ## 3. Schema drift protection
@@ -81,3 +89,13 @@ stated as a CLAIM, not left as an omission.** (T-150)
 compile-time guards.** (T-134) `GameEventSchema`'s variants are deliberately non-strict,
 which makes the `AssertEventKeys` guards in `packages/engine/src/schema.ts` the *only*
 drift protection an event variant has. Every new `GameEvent` variant owes one.
+
+**SF-12 — A helper that returns a "new" persisted record returns a COMPLETE copy of its
+input.** (T-182, closing F-156-1) `spendDie` (`packages/engine/src/dice.ts`) spreads the input
+`DawnHand` and overrides, never a field-by-field `{ dice, spent }` literal — which is precisely
+how `rerollsRemaining` came to be dropped the moment a later task added it. Two details are
+load-bearing and are contracted at the definition site: `rerollsRemaining` is carried across
+**preserving TRUE ABSENCE** rather than coerced to `0`, per SF-4's absent-means-none rule, and it
+is spread **LAST** so key order matches `rollDawnHand` and the serialized-hand golden hashes do
+not move. Any future field added to `DawnHand` inherits this contract for free; reintroducing the
+explicit literal reintroduces F-156-1.

@@ -68,6 +68,14 @@ ENFORCED, not remembered: `packages/sim/src/__tests__/smoke-reextraction.test.ts
 it against `3468ef5f`'s own diff and against a live re-extraction, so the next miscopy
 goes red instead of sitting in a doc.)**
 
+**BR-60 — The Tier-2 pilot is NON-INSTRUMENT, so a pilot-only change moves no fingerprint and
+owes no capstone.** (T-154) `pilot.ts`, `pilot-anthropic.ts` and `pilot-cli.ts` are classified in
+`SIM_NON_INSTRUMENT_SOURCES` (`packages/sim/src/balance/rules-fingerprint.ts`, ~lines 150–167)
+with their reasons written down on BR-5's terms — **never called by `runCampaign`, never exported
+by `index.ts`** — so no sweep, gate or smoke number can descend from them. An instance of BR-5,
+recorded here because the pilot is the largest non-instrument surface in `packages/sim` and the
+temptation to let it grow into the measured path is correspondingly larger.
+
 ---
 
 ## Part B — Capstones, re-extraction and the baseline of record
@@ -205,6 +213,26 @@ pointer — so a sixth pointer cannot appear unnoticed the way the fifth did. Th
 re-pin — never converted, never deleted — and the re-pin is explicitly re-read against it in
 the delivery note.** (T-125) The baseline is never selected to move a number into band.
 
+**BR-61 — A rules-directory edit owes a FULL capstone even when the predicted delta is ZERO.**
+(T-182) T-182 touched `packages/engine/src/dice.ts`, inside `ENGINE_RULE_DIRECTORIES['']`, so
+`rulesFingerprint` moved and a fresh 8,000-row sweep was taken —
+`docs/balance/baseline-t182-reroll-fix.json`, `sweepLabel t182-reroll-fix` — even though
+`balance:diff` against `n13-shipped` reported **NOTHING MOVED** across all 8,000 careers. This is
+the complement to BR-9/BR-10: a behaviour-inert EXTRACTION is remedied by re-extraction, but a
+behaviour-CHANGING rules edit with a zero predicted delta still buys the sweep, because "I
+predicted zero" and "the rig measured zero" are different claims and only the second one is
+evidence. The zero was pre-committed with its mechanism per BR-1/BR-26: the sim's `withReroll`
+prepends its `Reroll` to the dawn batch and no sim policy reads `rerollsRemaining` after a die is
+spent, which is the only window the bug lived in.
+
+**BR-62 — A baseline filename written into a task block is ADVISORY and may have rotted before
+the task runs.** (T-160) T-160's block named `baseline-t148-roster-ladder.json`, which was two
+capstones stale at HEAD. Diff for attribution against the **actual** baseline of record —
+`BASELINE_OF_RECORD_PATH` in `packages/sim/src/__tests__/balance-targets.test.ts`, the only
+pointer read at runtime and the one `packages/sim/src/__tests__/baseline-pointers.test.ts` holds
+the other four against (BR-14) — and quote the older, task-named baseline separately for the
+economic read only, as T-160 did with `baseline-t182-reroll-fix.json` against `t148`.
+
 ---
 
 ## Part C — Measurement discipline
@@ -289,6 +317,34 @@ rejected so the veteran's errand does not vary underneath the measurement.
 enumeration — verified, with response counts and all three session `rngState`s unchanged.
 This CONTRADICTS `docs/HANGOUT_REDESIGN.md` §4.2's prediction and is recorded so no future
 task re-derives the wrong blast radius from it.
+
+**BR-63 — N13 is graded WITHIN ARCHETYPE, not fleet-wide, and its hypothesis is recorded as
+DISPROVED AS STATED even though the change was ACCEPTED.** (T-156) The SHIPPED−CONTROL
+fleet-wide `skillShare` gap is +0.0045 (0.7527 → 0.7407 → 0.7452 across
+`baseline-n13-{pre,control,shipped}.json`), which sits inside the 8-shard noise floor — the
+dominant effect of the NPC virtual hand is that it is a variance REDUCER. Within archetype the
+gap is positive in 8 of 8 independent shards for `explorer` (+0.0432), `fighter` (+0.0306) and
+`veteran` (+0.0165), and a coin flip for `trader`/`smuggler`/`gambler`. Any successor step on
+this lever (N5) reuses N13's three-arm control design and grades on the within-archetype axis.
+Recorded because the honest write-up of an accepted change is the one that says which half of
+the hypothesis the rig actually supported.
+
+**BR-64 — Widening a coverage seed range is a WIDENING only if every number in the file stays
+byte-identical.** (T-160, extending BR-17) `deed-coverage.test.ts` went 1..65 → 1..76: the union
+stayed 44/44, the `>= 2` bar stayed byte-identical, and 1..76 is the SHORTEST contiguous range
+holding two individually-total careers. It is a re-phasing, not harder dice, and that was proven
+rather than asserted — a 160-seed re-sweep found ten total careers where T-115's found two, so
+the slate got easier, with the long pole still `slipped_the_scan` and no dice deed anywhere near
+the margin. Widen to the shortest range that still clears the UNMOVED bar, and show the move is
+re-phasing.
+
+**BR-65 — A candidate fix that trades one measured instrument against another does not land on
+its headline number alone.** (T-161) F-161-1's storylet split buys `assertNoIncomeStall` seeds
+≥ 5 from 197 → 18, but costs `deed-coverage.test.ts` its full slates, 2 → 0. It is therefore
+deferred to a task that OWNS the deed-hunter instrument and is permitted to re-pin that test —
+the same scope shape T-159 used when it left F-159-1 to T-161. A fix is not free because the
+number it was aimed at moved; the price is whatever it did to the rig's other instruments, and
+that price is measured before the fix is graded.
 
 ---
 
@@ -387,6 +443,27 @@ silent gap.
 (T-153) Acceptance rests on a verbatim quoted runner log plus a local dry run of the exact
 CI invocation, with any un-run half filed as a finding rather than asserted green.
 
+**BR-66 — `veteran` stays EXEMPT from `GATE_COMPETENT_POLICIES` after T-161's fix, and the
+exemption note is RE-NUMBERED against a live measurement rather than inherited.** (T-161,
+qualifying BR-41) On seeds 1..200 × 35 days the worst zero-income streak fell **31 → 13** (the
+nine seeds holding the 31-day strand drop to 5–10), but 197 of 200 seeds still sit at or over the
+`INCOME_STALL_LIMIT` of 5, and seeds 1..60 — the exact CI `gate` sample — still hold five
+stalling veteran seeds (1, 18, 26, 34, 58). The prior note claimed "6–8 consecutive zero-income
+days" from dice-banking; both halves were wrong (the real figure was 31 days, the real cause was
+the un-relaxed contract filter F-159-1), so the exemption was re-justified against the
+measurement, not merely re-worded. When F-161-1 is closed, RE-MEASURE and revisit membership —
+do not assume either way.
+
+**BR-67 — `Crew` and `Reroll` are EXCLUDED from NPC verb parity by owner ruling, not open
+gaps.** (Owner ruling 2026-07-31, shipped at N13 / T-156.) The exclusion is recorded in three
+places that must stay in sync: `docs/NPC_REDESIGN.md`'s PARITY LEDGER (the literal
+`**EXCLUDED (owner ruling 2026-07-31, shipped at N13 / T-156)**`), `'excluded'` in
+`VERB_PARITY` (`packages/sim/src/balance/coverage.ts`), and `docs/TESTING-STRATEGY.md` Part C.
+`packages/sim/src/__tests__/archetype-coverage.test.ts` enforces all three **in both
+directions**, and the doc is never edited to match the code. `Reroll`'s exclusion is
+STRUCTURAL rather than conventional: the NPC virtual hand is dealt with `rerolls: 0`, so there
+is no charge for a captain to spend.
+
 ---
 
 ## Part F — Archetype and policy norms
@@ -416,6 +493,14 @@ it.
 reads the dealer's purse net of stakes already queued against them, the same worst-case
 convention applied to the player's own purse. Option B (moving `GAMBLER_MAX_DARES_PER_DAY`)
 was rejected as a pacing change by fiat. (T-150)
+
+**BR-68 — The fighter's anti-idle homeward-burn is REJECTED for `veteranPolicy`, on a
+measurement rather than on symmetry.** (T-161) Per BR-46 there are exactly two accepted fallback
+shapes, and the brief required measuring before assuming one suffices. The second branch was
+tried: it moved the worst zero-income streak 13 → 11 but moved seeds at or over the limit the
+WRONG way, 18 → 19, so it was reverted. Only the T-1104 full-tank `signableWithin(cap)` two-pass
+relaxation landed — the same shape the other five gated policies carry. A fallback branch that
+helps the tail and hurts the population is not a fallback.
 
 ---
 

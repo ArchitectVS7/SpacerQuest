@@ -4,7 +4,7 @@
 playtest telemetry, the balance report generator and the dev control panel — harvested
 2026-08-02 from the 0.5.2/0.5.3 task log. Design records:
 `docs/BALANCE-TELEMETRY_SPEC.md`, `docs/PLAYTEST-TELEMETRY_SPEC.md`,
-`docs/TELEMETRY-REPORT_SPEC.md`, `docs/DEV-CONTROL-PANEL_SPEC.md`.
+`docs/TELEMETRY-REPORT_SPEC.md`, `docs/DEV-CONTROL-PANEL_SPEC.md`, `packages/sim/PILOT.md`.
 
 The common thread: **none of this ships to a player, and none of it may change what it
 measures.** Fingerprint classification for these files is ruled in
@@ -147,3 +147,47 @@ UNMASKED on stdout and on artifacts** (raw `Buffer.equals`); only stderr is comp
 elapsed-time masking, because `sweep.ts` writes `… elapsed` and so its stderr is not
 byte-stable against itself. **That is a property of the instrument and explicitly not licence
 to widen the stdout/artifact comparisons.** (T-143)
+
+---
+
+## 5. The Tier-2 LLM pilot
+
+Design record: `packages/sim/PILOT.md`. Fingerprint classification: BR-60 — the pilot sources are
+non-instrument, so nothing here can move a measured number.
+
+**DT-24 — No-fabrication is STRUCTURAL, not conventional.** (T-154) `resolveDecision` in
+`packages/sim/src/pilot.ts` maps a model answer onto an ENUMERATED candidate or rejects it —
+`unknown-candidate-id`, `unparseable`, `refusal`, `brain-error`, `illegal-candidate` — and **no
+code path builds a `PlayerAction` field out of a model-supplied value**. `assertCandidateIsLegal`
+re-checks every filled parameter against the live spec immediately before dispatch. Any future
+LLM-driven seat keeps this shape: the model chooses among moves the engine already offered, and
+never authors one.
+
+**DT-25 — The pilot CLI's defaults are chosen for COST and against silence.** (T-154)
+`npm run pilot -- --seed 1 --days 30` defaults to the free offline `first-legal` brain, so an
+accidental invocation costs nothing; an unrecognised `--brain` is a hard error, never a silent
+fall-back to a default; and after `maxBrainRetries` the driver falls back to a deterministic
+legal candidate but marks the step `fellBack: true`. A fallback that is not recorded is a
+fabricated result — this applies T-1604a's P4 finding before it could recur here.
+
+**DT-26 — A determinism claim STATES ITS BOUNDARY rather than glossing it.** (T-154) Pinned and
+tested (`packages/sim/src/__tests__/pilot.test.ts`, plus `--brain recorded` byte-for-byte
+replay): the seed and rng in `state.rngState`, candidate enumeration order, the day loop, and
+the fallback rule. Explicitly NOT pinned: LLM sampling itself. Both halves are written into
+`packages/sim/PILOT.md`'s pinned/not-pinned table, because a run described as "deterministic"
+without that table invites its output to be read as a repeatable measurement.
+
+**DT-27 — The pilot ships NO stdio-subprocess transport, rejected on evidence rather than
+convenience.** (T-154, `packages/sim/PILOT.md` §7) stdio and WebSocket are the same reducer
+behind bytes per `packages/sim/PROTOCOL.md` § Transports, and `runStdioAdapter` already has
+coverage in `packages/sim/src/__tests__/protocol.test.ts`, so spawning a subprocess would add
+flake and prove nothing new. The transport stays an INJECTED interface — a five-line addition if
+it is ever wanted, and that injectability is what makes the "nothing illegal was dispatched"
+test possible in the first place.
+
+**DT-28 — Tier 2 is protocol/state-level BY CONSTRUCTION and can never see a UI-only bug.**
+(T-154, `packages/sim/PILOT.md` §2) This is the bridge blind spot recorded in
+`/Users/vs7/Dev/Games/_UGT Universal Game Tester/AFTER-ACTION-REPORT.md` § Addendum. A green
+deterministic pilot run is evidence the driver is sound; it is never evidence about the cockpit.
+The browser/DOM tier is a separate mechanism (shipped by T-162, shape (b)), and a pilot result
+may not be quoted in its place.

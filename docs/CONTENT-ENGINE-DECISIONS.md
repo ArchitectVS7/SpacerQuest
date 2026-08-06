@@ -83,6 +83,29 @@ the roll, never around it.
 string in it that asserts a venue or facility is gated on the same content flag the UI
 reads.
 
+**CE-25 — The NPC virtual hand models only the PICK, and that is THE ONE SANCTIONED
+ABSTRACTION.** (T-156) The deal is the player's own `rollDawnHand` at `DAWN_BASE_HAND_SIZE`
+and the spend is the player's own `spendDie`; only the allocation — which die a captain
+puts where — is modelled rather than played. It is flagged at its definition site in
+`packages/engine/src/npcHand.ts` with the exact string `THE ONE SANCTIONED ABSTRACTION`,
+the same string `npc.ts` already carried, so **one grep finds both**. The deal is LAZY by
+design: an Idle day, a FlawOverride or a broke captain rolls nothing at all. A second
+abstraction may not be added to the NPC path without the same marker and its own argued
+definition-site note — the marker is what stops "the cast approximates the player" from
+becoming an unbounded licence.
+
+**CE-26 — A shared-state defect is fixed at the DEFINITION site, and divergent call-site
+conventions are proved equivalent rather than unified.** (T-182, closing F-156-1)
+`spendDie`'s single rebuild was the fix; the six assign-the-returned-hand call sites were
+not touched individually, and the four mutate-`spent`-in-place callers
+(`actions/crew.ts`, `actions/port.ts`, `actions/hangout.ts`, `actions/dare.ts`) were left
+alone and pinned equivalent by a `toStrictEqual` test. **Rejected alternative:** refactoring
+the mutate family to match the assign family for uniformity — that adds churn to
+already-correct code inside a `rulesFingerprint`-moving commit, which is exactly what BR-13
+and BR-61 make expensive. The divergence is instead documented in the CONTRACT comment at
+`spendDie`'s definition site, so the next reader learns it from the code rather than from a
+bug.
+
 ---
 
 ## 2. What may be added to a content table
@@ -144,6 +167,17 @@ explicitly transitional member marked at its declaration *and* its resolver arm 
 bend existing behaviour into a settled kind. **Rejected alternative:** routing the
 contraband flag through `lore.effects`, which would have emitted the wrong event and moved
 the replay goldens. The `{ kind: 'contraband' }` member was duly retired at T-117.
+
+**CE-27 — A calibration constant is content, and its criterion is DISTRIBUTIONAL
+NEUTRALITY, not a number that looked right.** (T-156) The virtual hand's allocation
+calibration lives in `packages/content/src/ideals.ts` as two measured constants:
+`NPC_ALLOCATION_PIVOT_STAT = 2` (the roster's measured median stat) and
+`NPC_ALLOCATION_SHARPNESS_PER_STAT = 0.1`, chosen so a median-stat captain's allocation is
+distributionally neutral — E[middle of 5 sorted d20s] = 10.5, which is a plain d20's mean.
+The step is therefore designed to move outcome SPREAD without moving the fleet economy.
+Re-tuning either constant must **re-establish that neutrality**, not just pick a new number:
+a knob whose criterion is forgotten becomes a tuning lever aimed at whichever metric is
+currently embarrassing.
 
 ---
 

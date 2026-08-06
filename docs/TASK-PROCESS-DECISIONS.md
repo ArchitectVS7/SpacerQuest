@@ -114,6 +114,13 @@ it.** (T-102) A comment that lies is a defect, not a follow-up.
 a doc that closes on a dated §16 capstone; the parent got a short cross-reference addendum
 and its capstone stayed untouched.
 
+**TP-28 — A Delivered note found to be FALSE is corrected by an appended, dated CORRECTION
+naming the finding; the wrong sentence is left standing.** (T-154 / F-155-3) It is not
+rewritten and not deleted. The grounds: a Delivered note describing something that is not in
+the tree is exactly the drift class the task file's audits exist to catch, so erasing it
+erases the evidence that the drift happened. This is the delivery-note analogue of TP-12's
+rule for Accept clauses — the correction goes *beside* the original text, never *over* it.
+
 ---
 
 ## 4. Refactors, deletions and deferred defects
@@ -148,6 +155,15 @@ leaving the coach dark for real players.
 (T-147) A threshold rescale mid-milestone is not a hook task's business; measurement stays
 in its own capstone task.
 
+**TP-29 — A defect found mid-task whose fix moves `rulesFingerprint` does NOT ride along in
+the capstone commit.** (T-156, on F-156-1, deferred to T-182) It is filed as its own task with
+its own inert-extraction commit, golden regeneration and capstone. The reason is attribution,
+not tidiness: `dice.ts` sits inside `ENGINE_RULE_DIRECTORIES['']`, so folding the fix in would
+put two rule changes under one capstone and make N13's variance decomposition unattributable —
+the exact confound N4's control arm exists to prevent. The deferral still owes the written
+both-limbs risk analysis on the RECEIVING task, per the Bug Discovery Policy; a fingerprint
+argument buys the split, it does not buy silence.
+
 ---
 
 ## 5. Versioning ceremony
@@ -161,3 +177,22 @@ the first (`alpha`) waits on the UAT pass per `docs/VERSIONING.md`'s stage table
 declares a version in `package-lock.json`; a private, never-published dev tool has no
 product version to state. When a repo-wide invariant test fires on a new file, remove the
 offending declaration rather than loosening the invariant.
+
+---
+
+## 6. Sequencing in `TASKS.md`
+
+**TP-30 — Sequencing lives in BOTH the `after:` field and the block's POSITION in file
+order.** (T-154) The orchestrator picks the first eligible TODO in file order, so a
+resequencing recorded only in `after:` is inert, and a gate stated only in prose is not a gate
+at all. T-154's split was dead until the block was physically moved above T-158, and T-155's
+`after:` was corrected to name T-158 explicitly rather than lean on T-154's prose note. A build
+block is never moved back below a halting `[BLOCKED BY = Human UAT]` block.
+
+**TP-31 — A prioritization argument constrains the RUN task, not the BUILD task.** (T-154) A
+predecessor belongs in `after:` only when the task's own Accept criteria reference something
+that predecessor PRODUCES. "Run the pilot after the first human UAT" is an argument about when
+results are worth having, not about what the builder needs: T-154 (build) stayed at
+`after: T-130` while T-155 (run) took `after: T-154, T-158`, because neither Accept clause
+referenced anything T-158 produces. Over-gating a build task on a human-blocked predecessor
+stalls work that could have shipped.

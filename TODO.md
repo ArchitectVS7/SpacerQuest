@@ -114,6 +114,39 @@ item, put it in the section where comparable work already lives.
   `packages/sim/src/balance/coverage.ts` and `docs/TESTING-STRATEGY.md` Part G were fixed; the
   ledger prose was not. [harvested: T-157/npc-redesign-stale-magnitudes]
 
+- **The live `--brain anthropic` leg has never been run**, so `packages/sim/src/pilot-anthropic.ts`
+  — the only file T-154 shipped that talks to the real API — is unvalidated: its
+  `output_config: { effort, format: { type: 'json_schema', schema } }` request shape, its
+  `enum`-of-candidate-ids schema, its `cache_control: { type: 'ephemeral' }` prompt-cache claim and
+  its per-step `usage` cost ledger. A 400 on any of them is a **T-154 defect, not an environment
+  problem**. OWNER-GATED — needs an `ANTHROPIC_API_KEY`: re-run
+  `npm run pilot -- --brain anthropic --seed 1 --days 30`, then a second run at the same seed to
+  characterise divergence, and confirm `cache_read_input_tokens` goes non-zero from ~step 2. Still
+  live per `packages/sim/PILOT.md` §8 and as finding **F-155-1**.
+  [harvested: T-154/f-155-1-live-anthropic-leg]
+
+- **T-160's `quantity.max` fix is asserted only at the one tier where the fix is invisible.**
+  `packages/sim/src/protocol.ts:611` now advertises the dare `quantity.max` as `hand.maxQuantity`
+  instead of a hardcoded `8`, but the sole assertion
+  (`packages/sim/src/__tests__/protocol.test.ts:710`) runs against `openDareHand()` (line 171,
+  `createInitialState(9)`, tier 0, `dicePerSide = 4`) where `hand.maxQuantity` **is** 8 — a
+  regression to the literal `8` passes it unchanged, so the guard is vacuous against the exact
+  defect it was written for (`docs/LESSONS.md` L-016). The only tier ≥ 1 protocol-domain tests in
+  that file (`protocol.test.ts:1590` and `:1613`, T-168) cover the VisitHangout wager band, not the
+  dare quantity ceiling. Needs an advertised-bounds assertion on a hand at a tier where
+  `maxQuantity` is 10 or 12. [harvested: T-160/protocol-quantity-max-vacuous-at-tier-0]
+
+- **The advertised opening-floor refusal branch in the same test NEVER EXECUTES.** The "…and the
+  advertised floor is REAL: a claim one under it is refused" check is guarded by
+  `if (minOpeningQuantity(leanestFaceCount) > 1)` at
+  `packages/sim/src/__tests__/protocol.test.ts:714`; `leanestFaceCount` is the min over all six
+  faces of the player's dice count, and the tier-0 fixture holds 4 dice over 6 faces, so by
+  pigeonhole some face always has count 0, `minOpeningQuantity(0) === 1`, and the branch is dead.
+  The opening floor's refusal is therefore unasserted **at the protocol seam** (it IS covered
+  engine-side by the T-160 block in `packages/engine/src/__tests__/liarsDice.test.ts`). Either
+  drive the check from a hand that covers all six faces, or assert the branch's non-vacuity.
+  [harvested: T-160/protocol-opening-floor-refusal-branch-unreachable]
+
 ---
 
 ## Gaps — checks, coverage and measurements that do not exist
@@ -308,6 +341,25 @@ item, put it in the section where comparable work already lives.
   30704784303 (which was RED) plus a local dry run of the exact CI invocation. A real green push
   run of the `gate` job on the post-T-159 tree is still unobserved.
   [harvested: T-153/no-fresh-ci-run-post-T-159]
+
+- **The cast wealth FLOOR did not move for the FOURTH consecutive step** — at N13/T-156
+  `npcCredits.p10` at day 120 reads **126 → 127**, and N10, N11 and N13 each left it where it was.
+  N13's named structural cause is **N4's verb payout asymmetry**: in `NPC_CHECK_DCS` the Trade
+  check carries no credit consequence, i.e. the poorest captains are exactly the ones whose verb
+  outcomes a die cannot reach. `docs/NPC_REDESIGN.md`'s N13 Result calls this "the sharpened
+  question N13 hands on" and says it should be read beside N12's before either is graded. No task
+  carries it. [harvested: T-156/npc-p10-floor-fourth-time]
+
+- **`SWEEP_INVARIANT_DISPOSITIONS` still names pruned task ids as the owner of three invariants.**
+  In `packages/sim/src/balance/gate.ts` the three `disposition: 'not-observable'` entries
+  (`inv_blocked_from_legal_non_increasing`, `inv_protocol_errors_non_increasing`, `inv_dice_bounds`)
+  carry `why` strings reading "OWNED BY T-154/T-155" — blocks about to be deleted. T-154 in fact
+  DISCHARGED them (`blockedFromLegal`, `protocolErrors` and `diceBoundsViolations` are measured off
+  the pilot JSONL and the CLI exits non-zero if any is nonzero), so the `why` strings should be
+  rewritten to name the shipped mechanism (`npm run pilot`, `packages/sim/src/pilot-cli.ts`) rather
+  than a task id, and the matching entry above
+  (`[harvested: T-152/protocol-seam-invariants-unowned]`) closed or re-pointed at the same time.
+  [harvested: T-154/sweep-invariant-ownership-pointer]
 
 ---
 
@@ -507,7 +559,9 @@ item, put it in the section where comparable work already lives.
   over seeds 1..76 × 300 days, because the Liar's Dice ROSTER TOUR errand in
   `__tests__/support/deed-hunter.ts` needs idle days. So it needs a task that owns the
   deed-hunter instrument and may re-pin `deed-coverage.test.ts`. Full record, including the
-  16-of-18 credit-starvation residual behind it, at `docs/BALANCE-POLICY.md` D.2a.
+  16-of-18 credit-starvation residual behind it, at `docs/BALANCE-POLICY.md` D.2a. **Now owned by
+  `TASKS.md` T-231**, which carries this finding's provenance marker — this entry is the earlier
+  filing, not a second one.
 
 - **Write the check that catches stale CI-state claims in docs:** `docs/TESTING-STRATEGY.md`
   Part D carried "the `gate` job is **red until it lands**" for a day after T-159 landed the fix,
@@ -521,6 +575,27 @@ item, put it in the section where comparable work already lives.
   `ACKNOWLEDGED_COVERAGE_GAPS`. The Explore ledger row's fresh owner ruling is F-150-1, and the
   T-158 block already names both it and Combat's chosen branch — recorded here so pruning T-157
   does not orphan the pointer. [harvested: T-157/explore-parity-warn]
+
+- **Accepted, measured boundary from T-156: the NPC virtual hand runs dry ~3% of the time.**
+  **3.09%** of rolling captain-days exhaust the hand and **3.48%** of all allocations are served by
+  the documented raw `rng.d20()` fallback (40 seeds × 120 days; 82,393 captain-days, 118,606
+  allocations). It is named as **boundary 2** at `packages/engine/src/npcHand.ts`'s definition site.
+  Never worse than the pre-N13 draw, but it is a real 3.5% and must be RE-MEASURED if the hand size
+  (`DAWN_BASE_HAND_SIZE`) or the per-day check count (`NPC_ENCOUNTER_MAX_ROUNDS`) ever changes.
+  [harvested: T-156/npc-hand-exhaustion-fallback]
+
+- **Four entries in this file describe T-160 as a still-open carrier and will dangle the moment its
+  block is deleted:** the F-137-1/F-137-2 provenance anchor
+  (`[harvested: T-137/F-137-1-F-137-2]`, "**Already carried verbatim by the open TODO block
+  T-160**"), the F-148-1 entry (`[harvested: T-148/F-148-1]` — "**T-160** carries the post-fix
+  archetype-ordering re-check in its Accept clause … but F-148-1 itself is closed by no task"), the
+  F-148-3 entry (`[harvested: T-148/F-148-3]` — "named in NO task's Accept, including T-160's"),
+  and the unmeasured-channels entry (`[harvested: T-137/liars-dice-unmeasured-channels]` — "§16.8
+  items 2, 5 and 6 are already carried by T-160; 3 and 4 are not", the Peek `DARE_PEEK_DC = 12` and
+  player-side RAISE BOTH channels). F-137-1/F-137-2, F-148-1 and §16.8 items 2/5/6 are now
+  DISCHARGED (T-160, T-175, T-177); §16.8 items 3 and 4 and F-148-3 are NOT. Re-point or retire
+  those four entries when the T-160 block goes.
+  [harvested: T-160/todo-md-t160-anchors-go-stale-on-prune]
 
 ---
 

@@ -308,315 +308,6 @@ disjoint failure classes by construction, which is exactly why T-162 exists. **(
 not fully pass**: its live `--brain anthropic` leg never ran for want of credentials
 (**F-155-1**), so it stands at `BLOCKED`, not `DONE`. **M7 stays open on both counts.**
 
-### T-156 · Build: N13 dawn-hand parity — the algorithmic virtual hand — `status: DONE` · `coder: opus` · `after: T-130`
-Owner ruling recorded 2026-07-31 (`NPC_REDESIGN.md` N13 section and STATUS BOARD): design **(b)**, the algorithmic equivalent. Keep the NPC's one-verb day; derive the day's quality from a virtual hand drawn under the same RNG discipline the player's hand uses, with N5's proficiency lever (`PilotDegradationProfile`, once N5 lands) expressed as allocation noise on that virtual hand. Flag the virtual-hand function at its definition site as the one sanctioned abstraction in the parity design — a comment or doc-block making clear it is a MODEL of the decision, not the decision itself, so it doesn't get mistaken for real parity later. `Crew` and `Reroll` stay player-only as a **ruled exclusion**: update THE PARITY LEDGER in `NPC_REDESIGN.md` to record both rows as excluded-by-ruling rather than open gaps. This task is **not gated on N12** (port-buying) — the run order in `NPC_REDESIGN.md` sequences N12 before N13 for measurement-sequencing reasons, not a technical dependency; the virtual-hand mechanism doesn't read NPC port state. Simulate per the doc's own spec: full sweep + per-captain outcome variance decomposition (verb-weight luck vs. skill).
-**Accept:** the virtual-hand function exists, is grep-able, and is flagged at its definition site as the sanctioned abstraction; `NPC_REDESIGN.md`'s PARITY LEDGER records `Crew`/`Reroll` as ruled exclusions (not TODO/gap rows); a sweep-based capstone reports the variance decomposition per the doc's "Simulate/Proves/Disproves" spec, with the result (proved or disproved) reported plainly either way; gate green.
-
-**DONE 2026-08-02.** `packages/engine/src/npcHand.ts` — `npcVirtualHand()` built once per captain-day in `resolveNpcDay`, `allocateVirtualDie()` spent at BOTH check sites (`rollNpcCheck`, `rollEncounterCheck`), dealt through the player's own `rollDawnHand` and spent through the player's own `spendDie`, flagged at its definition site under the marker `THE ONE SANCTIONED ABSTRACTION` (the same string `npc.ts` already carried, so one grep finds both). PARITY LEDGER `Crew` and `Reroll` now read `**EXCLUDED (owner ruling 2026-07-31, shipped at N13 / T-156)**`, transcribed as `'excluded'` in `coverage.ts` and mirrored in `TESTING-STRATEGY.md` Part C — the drift test enforces all three in both directions. Reroll's exclusion is STRUCTURAL: the hand is dealt with `rerolls: 0`.
-**Result: CHANGE ACCEPTED · HYPOTHESIS DISPROVED AS STATED**, reported plainly in `NPC_REDESIGN.md`'s N13 Result. Three 8,000-row arms (`baseline-n13-pre` / `-control` / `-shipped`, `--merge` reporting `wrote aggregate for 8000 rows` on each, both flags honoured); fleet-wide skillShare 0.7527 → 0.7407 → 0.7452, so the SHIPPED−CONTROL gap (+0.0045) is inside the 8-shard noise floor and the dominant effect is that the HAND ITSELF is a variance reducer. WITHIN archetype — the axis standing amendment 4 named — the gap is positive in 8/8 independent shards for explorer (+0.0432), fighter (+0.0306) and veteran (+0.0165) and a coin flip for trader/smuggler/gambler, and the structural cause is N4's verb payout asymmetry (`NPC_CHECK_DCS`: the Trade check carries no credit consequence). Cast median wealth +8.7% attributably, mean unmoved (+0.0%), ships lost −6.8%, player clear rate unmoved; **the p10 floor did not move for the FOURTH time (126 → 127)**. Hand exhaustion measured at 3.48% of allocations. Baseline of record re-pinned to `baseline-n13-shipped.json` in all four places, smoke fixture re-extracted FROM it with `spreads harvested`. N5 is UN-GATED and its lever list rewritten at N13's close as its own section instructed. **OI-9 stays open.** No save-shape change. Gate green: 2,149 passing / 0 failing.
-**Found and filed, not fixed here: F-156-1 → T-182** (`spendDie` drops `rerollsRemaining`), with the written risk analysis on that task.
-
-**Delivered (2026-08-02):** `packages/engine/src/npcHand.ts` — `npcVirtualHand()` (lazily-dealt so a day that rolls nothing consumes nothing) and `allocateVirtualDie()`, spent at both NPC check sites (`rollNpcCheck`, `rollEncounterCheck` in `npc.ts`), dealt through the player's own `rollDawnHand` and spent through the player's own `spendDie`. `resolveNpcEncounter` and `executeTrade`/`executeCombat`'s stance checks now thread the day's `NpcVirtualHand` instead of drawing a bare `rng.d20()`, and `npc.ts`'s definition-site comment (`THE DIE GAP, CLOSED AT N13`) records what N13 closed and what remains open (`executeCombat`'s branch choice). Calibration lives in `packages/content/src/ideals.ts` as two measured constants, `NPC_ALLOCATION_PIVOT_STAT` (2, the roster's measured median stat) and `NPC_ALLOCATION_SHARPNESS_PER_STAT` (0.1), chosen so a median-stat captain's allocation is distributionally neutral (E[middle of 5 sorted d20s] = 10.5, a plain d20's mean) and the step moves outcome SPREAD without moving the fleet economy. PARITY LEDGER `Crew`/`Reroll` recorded as ruled exclusions in `NPC_REDESIGN.md`, transcribed as `'excluded'` in `packages/sim/src/balance/coverage.ts`, and mirrored in `docs/TESTING-STRATEGY.md` Part C with a drift test enforcing all three in both directions. Sweep capstone: three 8,000-row arms (`docs/balance/baseline-n13-{pre,control,shipped}.json`) show the SHIPPED−CONTROL fleet-wide skillShare gap (+0.0045) inside the 8-shard noise floor — HYPOTHESIS DISPROVED AS STATED — while the gap is positive in 8/8 shards within explorer/fighter/veteran, reported plainly in `NPC_REDESIGN.md`'s N13 Result section; baseline-of-record and the balance smoke fixture (`docs/balance/smoke/tiers.json`, `docs/balance/smoke/README.md`) re-pinned/re-extracted from `baseline-n13-shipped.json`. Test coverage added in `packages/engine/src/__tests__/npc-virtual-hand.test.ts` plus updates to `npc.test.ts`, `recovery.test.ts`, and the affected `packages/sim` suites (`alliance-arcs`, `archetype-coverage`, `balance-report`, `balance-targets`, `campaign-degraded`, `campaign-reach`, `era-storylet-coverage`) and both golden fixtures (`day-loop-golden.ts`, `replay-golden.ts`) regenerated against the shipped hand. **Deliberate scope boundary:** F-156-1, the `spendDie`/`rerollsRemaining` bug found while building this, is filed to T-182 and NOT fixed here — it is a player-side die-spending defect the virtual hand never reads, and folding it in would move `rulesFingerprint` and confound N13's variance decomposition with a second, unrelated rule change (written risk analysis on T-182 itself).
-
-Orchestration: attempts=1/4.
-
-### T-182 · Fix F-156-1: `spendDie` silently destroys the day's re-roll charges — `status: DONE` · `coder: opus` · `after: —`
-
-**Delivered (2026-08-02):** `packages/engine/src/dice.ts` `spendDie` now returns a complete copy of the input `DawnHand` — `rerollsRemaining` is carried across (preserving true absence rather than coercing to `0`, and spread last to keep key order matching `rollDawnHand` for the serialized-hand golden hashes) instead of the old `{ dice, spent }` rebuild that silently dropped it. A definition-site contract comment documents both call-site families (assign-the-returned-hand vs. mutate-`spent`-in-place) and why the invariant reconciles them without rewriting either. Coverage: `packages/engine/src/__tests__/dice.test.ts` pins the contract directly (charge survives every spend, absence stays absent, the two call-site families produce `toStrictEqual` hands); `packages/engine/src/__tests__/crew.test.ts` adds the end-to-end player path (hire the reroll role → sleep to next dawn → spend a die on a real assign-family action → `Reroll` still succeeds); and the new `packages/engine/src/__tests__/spend-die-rerolls.test.ts` drives every one of the six assign-family call sites through `applyPlayerAction` to guard the site list against drift. Because the fix touches `dice.ts` (inside `ENGINE_RULE_DIRECTORIES['']`), `rulesFingerprint` moved and a full capstone was owed regardless of whether any balance number moved: a fresh 8,000-row sweep (`docs/balance/baseline-t182-reroll-fix.json`, `sweepLabel t182-reroll-fix`) was taken and `balance:diff` against `n13-shipped` reports **NOTHING MOVED** across all 8,000 careers — predicted in advance, not just discovered, because the sim's `withReroll` prepends its `Reroll` to the dawn batch and no sim policy ever reads `rerollsRemaining` after a die is spent, the only window the bug lived in. All five baseline-of-record pointers (BR-14 now names five, not four — this task added the rule's own "current baseline of record" sentence as the fifth after it was found to be a fifth untracked copy) were re-pinned in this commit: `packages/sim/src/__tests__/balance-targets.test.ts`, `docs/BALANCE-RIG-DECISIONS.md` BR-14's own text, `docs/NPC_REDESIGN.md`'s status banner and Result-section pointer, and `docs/balance/smoke/README.md` plus the re-extracted `docs/balance/smoke/tiers.json`. **Deliberate scope boundary:** the six call sites were fixed by correcting `spendDie`'s single rebuild, not individually; the four already-safe mutate-in-place call sites (`crew.ts`, `port.ts`, `hangout.ts`, `dare.ts`) were left untouched by design and proven equivalent by test rather than refactored to match the assign family, per the Accept criteria's "reconciled or documented" clause.
-
-Orchestration: attempts=1/4.
-
-**Found at T-156 (2026-08-02) while reading `dice.ts` for the virtual hand's RNG discipline. PLAYER-SIDE bug, not an NPC one.** `spendDie` (`packages/engine/src/dice.ts:188`) rebuilds the hand as `{ dice, spent }` and **drops `rerollsRemaining`**:
-
-```ts
-const newHand = {
-  dice: [...hand.dice],
-  spent: [...hand.spent],
-};
-```
-
-Six call sites assign that returned hand straight back onto the save — `actions/trade.ts:23,76,122,163`, `actions/travel.ts:586`, `actions/shipyard.ts:629`, `actions/exploration.ts:115`, `actions/combat.ts:267`, `storylets.ts:238` — so **the first die a player spends on any of those actions wipes the day's re-roll charges**. `actions/crew.ts` `resolveReroll` then reads `(hand.rerollsRemaining ?? 0) <= 0` and refuses with `no-rerolls-left`. The charge is reachable and paid for: `packages/content/src/crew.ts:97` ships a crew role whose benefit is `{ kind: 'reroll' }`, and `EXPLORE_MODULE_DICE_BENEFITS['module-marked-ephemeris']` (`crew.ts:240`) grants a second. The call sites that mutate in place instead (`crew.ts:138,161`, `port.ts:66`, `hangout.ts:319`, `dare.ts:380`) are accidentally safe, which is why this survived — the two families disagree and only one of them is right.
-
-**Why it is deferred out of T-156 rather than fixed inside it (the written risk analysis the Bug Discovery Policy requires, both limbs):**
-(a) **Out of scope.** T-156 is NPC parity. The defect is in the PLAYER's die-spending path; the virtual hand deals with `rerollsRemaining: 0` by ruling and never reads the field back, so nothing T-156 ships depends on the broken behaviour or on the fix.
-(b) **It does not roll up debt — and folding it in would create some.** `dice.ts` is inside `ENGINE_RULE_DIRECTORIES['']`, so the fix moves `rulesFingerprint`; restoring a charge the sim's `legalActions` advertises (`Reroll` is offered only while `rerollsRemaining > 0`) can change seeded careers. Landing it in T-156's commit would put **two** rule changes under one capstone and make N13's variance decomposition unattributable — precisely the confound N4's control arm exists to prevent. It needs its own inert-extraction commit, its own golden regeneration and its own capstone, which is a task, not a rider.
-
-**Accept:** `spendDie` preserves `rerollsRemaining` on the hand it returns; a test spends a die on each of the six assign-the-returned-hand call sites and asserts a crew-granted charge survives, and a second test drives hire-reroll-role → spend a die → `Reroll` end to end and sees it succeed; the two call-site families (assign vs. mutate-in-place) are reconciled or the divergence is documented at `spendDie`'s definition site; capstone re-taken and the four baseline-of-record pointers re-pinned if the sweep moves; gate green.
-
-### T-154 · Build: native LLM pilot policy for the player seat — `status: DONE` · `coder: opus` · `after: T-130`
-
-**RESEQUENCED (owner, 2026-08-01):** originally `after: T-158`, matching Part G recommendation #6
-("run the pilot after the first human UAT, not before"). On review, that reasoning is a
-*prioritization* argument about the pilot **run** (T-155) — don't spend a cold Tier-2 pass before you
-know what the owner finds by hand — not a technical or data dependency of the **driver build** itself.
-Neither this task's Accept criteria nor T-155's reference anything T-158 produces. Split accordingly:
-T-154 (build only) now runs as soon as its real prerequisites (T-130) are met, so the driver exists
-before UAT rather than after it; **T-155 stays gated on T-158**, preserving the actual intent — the
-pilot's first real run still waits so it can reproduce/extend what the owner's own UAT surfaces
-instead of running cold.
-
-**BLOCK MOVED ABOVE T-158 (2026-08-02) — the resequencing above was inert until this.** The split was
-recorded in the `after:` fields but not in block ORDER, and the orchestrator picks the first eligible
-TODO *in file order*. T-158 carries `[BLOCKED BY = Human UAT]` and HALTS the entire run — so with T-154
-sitting below it, this task was unreachable and the driver would not have existed at UAT time, which is
-the exact outcome the split was written to prevent. Do not move this block back below T-158. The
-companion fix is on T-155, whose `after:` now names T-158 explicitly rather than relying on prose.
-
-Implement a `SimPolicy` (or a driver against `packages/sim/src/protocol-stdio.ts`) that has an LLM pick the player's actions each day from the real legal-actions list, in-repo — no dependency on the external UGT package. Reuse the adapter discipline from `packages/sim/PROTOCOL.md`: an unmapped/illegal action must be rejected, never fabricated. Log state deltas per action (mirroring T-1604a's JSONL shape) so a run's findings are reviewable after the fact. Note the bridge-blind-spot risk recorded in the UGT after-action report (`/Users/vs7/Dev/Games/_UGT Universal Game Tester/AFTER-ACTION-REPORT.md` §Addendum): a protocol/state-level driver like this one cannot see UI-only bugs (a real browser/DOM-level check is a separate, still-open need, not covered by this task). This task builds the driver only — T-155 proves it's trustworthy before it's relied on.
-**Accept:** the driver runs against the real engine via the protocol seam and produces a reviewable action/state-delta log; illegal-action attempts are rejected and logged, never silently applied; a short README documents how to invoke a run and states plainly that this covers protocol/state-level behaviour only, not the UI.
-
-**Delivered (2026-08-02):** A `SimPolicy`-shaped native pilot driving the player's seat over the real protocol seam (`packages/sim/src/protocol.ts`, `handleMessage`), split pure/IO per the repo's own discipline: `src/pilot.ts` (candidate enumeration off the live `legal-actions` response, the decision gate, the day loop, the JSONL emitter, and three deterministic brains — `first-legal`, `random`, `recorded`-replay), `src/pilot-anthropic.ts` (the sole file that talks to the Anthropic API — a `json_schema`-constrained `actionId` enum of exactly the enumerated candidates, zero-arg client construction so an `ant auth login` profile works with no key hardcoded), and `src/pilot-cli.ts` (argv, transport wiring, JSONL file, exit code). No-fabrication is structural, not a convention: `resolveDecision` maps a model answer to a candidate or rejects it (`unknown-candidate-id` / `unparseable` / `refusal` / `brain-error` / `illegal-candidate`), there is no code path that builds a `PlayerAction` field from a model-supplied value, and `assertCandidateIsLegal` re-checks every filled parameter against the live spec immediately before dispatch. After `maxBrainRetries` the driver falls back to a deterministic legal candidate and marks the step `fellBack: true`, recorded rather than silent (T-1604a's P4 finding, applied here before it could recur). Three counters the sweep cannot observe (`balance/gate.ts`'s `SWEEP_INVARIANT_DISPOSITIONS` names T-154/T-155 as owner) are now measured directly off the JSONL: `blockedFromLegal`, `protocolErrors`, `diceBoundsViolations` — the CLI exits non-zero if any of these or `illegalAttempts` is nonzero. `npm run pilot -- --seed 1 --days 30` runs the free `first-legal` brain by default so an accidental invocation costs nothing; an unrecognised `--brain` is a hard error rather than a silent fall-back. Determinism is pinned and tested: seed/rng inside `state.rngState`, candidate enumeration order, the day loop and fallback rule, and `--brain recorded` replays a prior run's JSONL byte-for-byte against the same seed; LLM sampling itself is explicitly NOT pinned, documented rather than glossed over. Coverage: `src/__tests__/pilot.test.ts`, including a spy-transport test proving four hostile brains (unknown id, prose, thrown error, out-of-domain candidate) each produce a logged rejection and zero `apply-action` requests reaching the engine, plus the byte-identical-JSONL determinism test. `packages/sim/PILOT.md` documents invocation, the schema, the pinned/not-pinned table, and states plainly in its own §2 that this is a protocol/state-level driver that cannot see UI-only bugs by construction, citing the UGT after-action report's addendum on exactly that bridge-blind-spot risk — a real browser/DOM tier remains a separate, still-open need. `rules-fingerprint.ts` records `pilot.ts` / `pilot-anthropic.ts` / `pilot-cli.ts` as non-instrument sources (never called by `runCampaign`, never exported by `index.ts`) so no sweep or smoke number depends on them; no `rulesFingerprint` move, no capstone owed. **Deliberate scope boundary:** this task builds the driver only. Proving it trustworthy at volume — a real multi-seed live run, illegal/crash/hang confirmation, and the twice-run determinism check — is T-155, which stays gated on T-158 and must not be treated as satisfied by this task's own unit tests. The stdio-subprocess transport and the browser/DOM-level tier are both named-and-deferred in `PILOT.md` §7/§2 as distinct, still-open needs, not gaps in this task's Accept criteria.
-
-**CORRECTION (2026-08-04, T-155) — finding F-155-3: the note above claimed a brain that did not
-exist.** The Delivered text says the pure core shipped *"three deterministic brains — `first-legal`,
-`random`, `recorded`-replay"*. What `pilot.ts` actually exported was `firstLegalBrain`,
-`scriptedBrain` and `recordedBrain`, and `pilot-cli.ts`'s `BRAIN_NAMES` was
-`['first-legal', 'anthropic', 'recorded']` — **there was no `random` brain, and no way to ask for
-one.** The sentence is left standing rather than rewritten, because a Delivered note that describes
-something absent is the exact drift class this file's own audits exist to catch, and it was caught
-by the validate task rather than by the build task's own gate. T-155 shipped the brain the note
-described (`randomBrain(seed)` in `packages/sim/src/pilot.ts`, seeded off `SeededRng` and wired into
-`resolveBrain` in `pilot-cli.ts`), so the claim is now true — and it turned out to matter, not to be
-a naming quibble: `first-legal` reaches **3 verbs at seed 1** and the volume leg T-155 owed would
-have been hollow without a breadth brain. See `docs/playtests/T-155-pilot-validation.md` §2a.
-
-Orchestration: attempts=1/4.
-
-### T-160 · Fix F-137-1: the dealer's certain-loss structure — bakeoff the two sanctioned shapes, ship the winner — `status: DONE` · `coder: opus` · `after: T-148`
-
-**Scheduled 2026-08-02 (owner-directed): runs BEFORE the T-158 UAT halt**, because UAT's whole
-purpose is the owner's first honest read of pacing and dice-tension, and the bar as shipped
-distorts that read — playing it now means paying for a second UAT pass on the game's biggest new
-system after the fix lands anyway.
-
-**The finding** (`docs/LIARS-DICE_REDESIGN.md` §16.2, filed at T-137; still live at T-148 per
-`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12 — win rate 80.07% post-roster, 100.00% of pool-B openers
-still guaranteed true): the defect is the *conjunction* of two individually-defensible choices.
-`planDareMove` branch (b) (`packages/sim/src/index.ts:~3593-3607`) opens at
-`quantity = own(bestFace)`, which `resolveChallenge`'s eight-dice count makes guaranteed true; and
-`dealerMove`'s terminal fallback (`packages/engine/src/liarsDiceRules.ts:~345-350`) is CHALLENGE —
-so the dealer challenged a true claim on 90.48% of its decisions and lost 94.68% of those. Result
-at T-137: 94.66% player win rate, +737.53cr EV/hand, gambler `finalCredits.median` +67.2%. §16.2's
-own verdict: "a bidding game in which the opening claim can be made risk-free, against an opponent
-whose default answer is to call it, has no bluffing in it at all."
-
-**The two candidates are §16.2's first two shapes, verbatim — no third:** (a) **the dealer's
-fallback** — terminal fallback becomes the cheapest legal *raise*, CHALLENGE reserved for the
-surplus test; (b) **the opening lattice** — an opening claim must exceed what the bidder holds
-(`quantity > own(face)`), removing the risk-free claim at its source. §16.2's third shape (teach
-the baseline planner to lie) is explicitly NOT a candidate — it moves the measurement without
-moving the game. Bakeoff both per the /bakeoff discipline: implement each candidate in isolation,
-simulate, and judge on named criteria — the conjunction is broken (openers no longer risk-free, or
-the dealer no longer auto-calls them); the win rate lands in a defensible band; the challenger-won
-split is no longer 5.32%-vs-94.92% lopsided; **F-137-2's wronged share is EXPECTED TO FALL and
-must not be read as a regression** (§16.8 item 2, pre-committed here); FOLD and the player-side
-clamp re-measured (§16.8 items 5-6 — if FOLD is still dead post-fix, that is a finding to FILE for
-the owner, not a license to redesign FOLD in this task). If the numbers cannot arbitrate between
-the shapes — i.e. both close the defect and the residual difference is player-experience taste —
-HALT and escalate to the owner rather than picking; log the not-chosen shape either way, per the
-D1/D7 precedent.
-
-**Cost discipline:** shape (b), and possibly (a), edits `packages/engine/src` — `rulesFingerprint`
-MOVES, so this task takes its own capstone (implement + 8,000-row re-pin in ONE task, per the
-batch rule; `npm run format` BEFORE extraction). Predict the moved rows before the run: expect
-`gambler` and `fleet`, expect the gambler median to FALL from t148's level, and expect the
-archetype ordering re-check to come back un-inverted (F-148-1 traced the `optimal`-softer-than-
-`bad` inversion to F-137-1; if it survives the fix, that is a distinct finding to file). Also
-restate `liars_dice_grand_slam` reachability (0 in 720 careers at T-148) on the post-fix arm — a
-harder dealer makes it *less* reachable, and the owner should get that number next to the ruling
-it will eventually need.
-
-**Accept:** the shipped shape is grep-able at its named site (`dealerMove`'s fallback or the
-opening-lattice rule); a capstone re-measures win rate, EV/hand, dealer-challenge share and the
-challenger-won split against `baseline-t148-roster-ladder.json`, with moved rows predicted before
-the run; F-137-2 re-read with the expected fall-back stated as such; FOLD and clamp restated
-post-fix (fixed or filed); the archetype-ordering re-check reported either way;
-`docs/LIARS-DICE_REDESIGN.md` §16.2's status updated to fixed-at-T-160 with the not-chosen shape
-logged; gate green.
-
-**Delivered (2026-08-02):** **Shipped §16.2 shape (b), THE OPENING LATTICE.** New engine rule
-`minOpeningQuantity(own) = own + 1` in `packages/engine/src/liarsDiceRules.ts`, enforced in
-`isLatticeMove`'s `bid` arm through a new **required** `ownOfClaimedFace` parameter (the T-146
-`maxQuantity` precedent — a required parameter turns the call-site sweep into compile errors). All
-four sites threaded: `engine/actions/dare.ts` (the refusal, still `illegal-dare-move`, still spends
-nothing — asserted byte-for-byte on credits, both escrow pots and the dawn hand),
-`sim/protocol.ts` (the advertised `quantity.min`, derived as `1 + min over faces of own(face)`
-since the params are advertised independently), `ui/App.tsx` (`claimOk` + the opening composer's
-seed, so the pane does not open on a claim the engine refuses), `sim/index.ts` (`planDareMove`
-branch (b) opens at the floor — the *rule* moved under the planner, which is why this is **not**
-§16.2's banned third shape; the code comment says so at the site). **Extraction before addition:**
-the signature widening landed first with the `bid` arm unchanged, whole engine suite green and
-every behavioural golden unmoved, before the predicate flipped.
-
-**The bakeoff** (`docs/LIARS-DICE_REDESIGN.md` §17.3): three **git worktrees** off the same
-commit — `control` / `cand-a` / `cand-b` — each with isolated `node_modules/@spacerquest` links, so
-the main tree stayed byte-clean throughout (`git status` verified before and after). Identical
-seeds, one harness, `gambler` 1..200 × 120 days per arm (33.6k–34.0k hands each). The rig was
-validated on predictions it did not produce: the control reproduced T-148's **100.00%** openers-
-guaranteed-true exactly and its sampled figures within ~0.5 pp (80.30% vs 80.07% win rate,
-`optimal` 84.51% vs 84.69%, `bad` 69.13% vs 68.78%, wronged lift 2.933× vs 2.875×, 0 grand slams).
-Fidelity gates asserted to **zero on every arm**: `dareGuardHits`, hands left open,
-`timeout-fold`, unresolved hands, per-`handId` join misses, interceptor reconstruct misses; plus a
-six-channel `runCampaign` check on 5 (seed, policy) pairs.
-
-**Shape (a), the dealer's fallback, was implemented in full and LOST on two pre-committed
-criteria** (logged per D1/D7 in `docs/LIARS-DICE-DECISIONS.md` **LD-21**): it leaves openers
-**100.00% guaranteed true on both pools** — it changes the answer to the claim, never the claim —
-and its **73.04%** win rate fell outside the pre-committed 55–70% band. Scoped to `dealerMove`, it
-also leaves pool A (57% of hands played) untouched. It is not dead: it is an independent lever
-still available on top of (b), noted under F-160-2. §16.2's third shape was never a candidate.
-**The HALT rule did not fire** — the numbers arbitrated on two named criteria, not on taste.
-
-**The four owed numbers, Arm 2 (`gambler`, 600 careers, n = 101,616 hands):** openers guaranteed
-true **100.00% → 0.00%** (both pools); player win rate **80.30% → 61.07%**; EV/hand **+565.8 →
-+197.3 cr**; dealer challenge share of its own decisions 60.18% → 81.81%; **challenger-won split
-18.46%/70.84% → 40.73%/82.43%** — the dealer's own challenge-win rate is off T-137's 5.32% and
-close to a coin flip. Diffed against **`baseline-t182-reroll-fix.json`** (the actual baseline of
-record at HEAD — the task block's `baseline-t148-roster-ladder.json` was two capstones stale) for
-attribution, and against `t148` for the economic read.
-
-**Predictions, written down before the first run** (§17.1) — five of six correct: moved rows
-`gambler` + `fleet` only ✅ (`balance:diff` reports exactly those two, seven rows byte-identical);
-`gambler.finalCredits.median` 97,930 → **67,716** (−30.9%) ✅, `tourOneClearRate` 0.9690 → 0.9020 ✅,
-`portOwnershipRate` 0.9870 → 0.9100 ✅, `survival.shipsLost` 22 → 16 ✅; F-137-2's share falls ✅;
-grand slam less reachable ✅. **Prediction 6 was WRONG** — see F-160-1.
-
-**F-137-2 re-read, with the fall stated as pre-committed** (§17.6): wronged share fell (gambler
-26.63% → **19.82%**, fleet 8.87% → **7.66%**), which §16.8 item 2 pre-committed as EXPECTED and NOT
-a regression. The number that measures the weighting rather than the roster's mood did **not**
-collapse: the lift over uniform ROSE on the gambler arm (2.933× → **2.985×**, above T-148's 2.875×
-and T-125's 2.956×) and is flat on the fleet arm (2.455× → 2.416×, above T-148's 2.379×).
-Reconstruct misses **0 / 4,491** and **0 / 5,756** — the copied `chooseWeighted` arithmetic
-validated, not assumed. No disposition constant touched.
-
-**FOLD and the clamp restated** (§17.7): FOLD's legality is still 100.00% and its take rate rose
-0.32% → **3.51%** of post-bid decision points, but §16.3's dominance derivation is untouched by
-this fix, so it is still never the better credit play — **FILED as F-160-3**, not redesigned. The
-clamp's §16.5 premise inverted: shape (b) makes hands **shorter** (1.980 → 1.301 bids/hand), and
-the measured clamp rate is **0 on both sides** (player 0/11,950, dealer 0/18,678) — a cleaner
-statement than §16.5's, with the F-137-1 confound gone. `liars_dice_grand_slam` restated on the
-post-fix arm: **0 / 600 and 0 / 960 careers**, seats-beaten median 29 → 26, ports-cleared median
-3 → 1 — harder, as predicted.
-
-**Capstone gate.** `npm run format` BEFORE extraction; `npm test` + `npx tsc -b` + `npm run lint` +
-`npm run format:check` all exit 0 with **zero failing tests**; 8 shards **1-indexed** with
-`--milestone-days 21,29,30,41,60,120` and the full eight-policy list, `--merge` reporting exactly
-**8000 rows**, gate **PASS** with 0 invariant violations, `balance:extract --aggregate`.
-`rulesFingerprint` `d0388cb50b0f9a11` → `fbcfe11ab7772555`, `instrumentFingerprint`
-`e81bc730c94b1fce` → `70d2ccbad279ff08`, `docsFingerprint` → `e2efb468b7e8bcba`. Baseline of record
-re-pinned in all four sites (`balance-targets.test.ts`, `docs/NPC_REDESIGN.md` ×2,
-`docs/balance/smoke/README.md`). **`CURRENT_SAVE_VERSION` does NOT move (15)** — no persisted shape
-changed, so no migration is owed; stated rather than left unaddressed.
-
-**Two re-derivations, both with their containment proved rather than asserted, and NO threshold,
-band, fingerprint or golden edited to make anything pass.** (1) `campaign-degraded.test.ts`'s
-gambler fingerprint, entry **28**: exactly ONE of seven rows moves, because the rule is reachable
-only through an open Liar's Dice hand and `planDare` is queued by `gamblerPolicy` alone — the six
-unmoved rows are the proof. (2) `deed-coverage.test.ts` **WIDENED 1..65 → 1..76**, which is a
-widening and not a re-pin: every number in the file is byte-identical, the union is still 44/44,
-and a 160-seed re-sweep found **ten** individually-total careers where T-115's found two (the slate
-got *easier* to complete in one life); 1..76 is the shortest contiguous range holding two. The long
-pole is still `slipped_the_scan`, and **no dice deed is a near-miss pole** — the direct check that
-this is trajectory re-phasing, not harder dice.
-
-**Test re-authoring, done the way the plan required — derived from state, never seed-chasing.**
-Every hardcoded opening claim across `liarsDice.test.ts` (22 sites), `liarsDiceLadder.test.ts`,
-`liarsDiceAchievements.test.ts`, `protocol.test.ts` and `liars-dice-pane.test.ts` now derives its
-quantity from the hand the seed actually rolled via `minOpeningQuantity`. The two dealer-blindness
-experiments needed real thought rather than a literal bump: a claim derived from the varied hidden
-dice would change the dealer's INPUT, and a claim tall enough to clear every variant gets CALLED on
-move one and makes the experiment vacuous — so the variant table now spans the five faces that are
-NOT the claimed one (30 variants, up from 20), `own(3) = 0` on every one, and the public claim is
-both fixed and minimal, with `assertBlindOpenIsLegal` proving both properties so a later edit
-cannot quietly re-break it. `liarsDiceAchievements.test.ts`'s header claim that "seed 1 wins" was
-true only *because of* F-137-1, so the win is now DERIVED (`playWonHand` searches and throws if no
-seed wins) rather than hoped for. New T-160 block in `liarsDice.test.ts`: the floor's arithmetic,
-refusal-at-or-under / acceptance-at-own+1 across `dicePerSide` 4/5/6, the **totality** proof
-executed on a six-dice all-distinct hand and a four-of-a-kind hand, the resolver's refusal spending
-nothing, **the defect gone at its source** over 2,000 sampled hands (guaranteed-true = 0, false-
-opener rate > 0), and the dealer-never-opens property asserted rather than argued.
-
-**Also fixed, because the fix was free on a line already being edited** (Bug Discovery Policy):
-`sim/protocol.ts` advertised the dare `quantity.max` as a hardcoded `8` instead of
-`hand.maxQuantity`, under-advertising the domain at every tier ≥ 1 (where it is 10 or 12). It sat
-on the same object literal the opening floor had to be threaded through. `protocol.test.ts` now
-derives both bounds from the hand.
-
-**Three findings filed** (§17.8, and as backlog rows T-175/T-176/T-177 below): **F-160-1** the
-archetype inversion SURVIVES the fix (prediction 6 was wrong — `optimal` 64.48% vs `bad` 51.98%,
-z = −21.02 at n = 52,021; narrowed from −15.38 pp to −12.50 pp but neither closed nor flipped, so
-it is only partly downstream of F-137-1 and `archetypeMove`/`BAD_CREDULITY` were NOT touched);
-**F-160-2** the challenger-won split does not reach the pre-committed ≤20 pp under either shape
-(41.7 pp; the criterion did not price the player planner's selectivity — reported as a miss, no
-threshold edited); **F-160-3** FOLD is still never the better credit play.
-
-**Delivered (2026-08-02):** Shape (b), the opening lattice (`minOpeningQuantity(own) = own + 1`),
-was chosen from the two sanctioned bakeoff candidates after shape (a) — the dealer's fallback —
-lost on both pre-committed criteria (openers still 100% guaranteed true; win rate outside the
-55–70% band); the fix threads through `liarsDiceRules.ts`, `dare.ts`, `sim/protocol.ts`,
-`sim/index.ts`, and `App.tsx`, closes F-137-1 at its source (openers guaranteed-true 100.00% →
-0.00%), and re-pins the full capstone (`rulesFingerprint`/`instrumentFingerprint`/`docsFingerprint`,
-diffed against `baseline-t182-reroll-fix.json` for attribution). **Deliberate scope boundary:**
-shape (a) was implemented and measured but not shipped — it is logged as an independent lever
-(F-160-2) rather than discarded, and FOLD's dominance/clamp behavior and the archetype-ordering
-inversion (F-160-1) were restated post-fix but explicitly not redesigned, per the task's own Accept
-criteria.
-
-Orchestration: attempts=1/4.
-
-### T-161 · Fix F-159-1: veteranPolicy's un-relaxed contract filter — the last of the class — `status: DONE` · `coder: opus` · `after: T-159`
-
-**Scheduled 2026-08-02 (owner-directed).** F-159-1 (filed at T-159, recorded at
-`docs/BALANCE-POLICY.md` D.2a): `veteranPolicy` (`packages/sim/src/index.ts:~4903-4909`) is the
-last un-relaxed contract filter in the file, structurally identical to the fighter defect T-159
-fixed — measured at 31-day stalls on **197 of 200 seeds ≥ 5**, materially worse than the "6-8
-days" its exemption note in `gate.ts` `GATE_COMPETENT_POLICIES` claims. Sim-side only, so it does
-not gate UAT (T-158's `after:` deliberately omits it); it sits above T-158 for run order, and if
-ever reordered below the halt it simply runs post-UAT — acceptable, documented here.
-
-Port the T-1104 full-tank relaxation (the same two-pass pattern all five other gated policies now
-carry). **Measure before assuming one branch suffices** — T-159's brief was one branch short and
-its commit says so; check whether veteran also needs the anti-idle homeward-burn second branch on
-the same seeds-1..200 × 35-day rig. Then correct the stale "6-8 days" exemption comment in
-`gate.ts` to post-fix measured reality, and decide WITH the measurement whether veteran now joins
-`GATE_COMPETENT_POLICIES` or keeps a re-justified, re-numbered exemption — either is fine; an
-exemption whose stated number is off by 4x is not. Fingerprint discipline per T-159's precedent
-exactly: `instrumentFingerprint`/`docsFingerprint`/`provenance.gitCommit` move, `rulesFingerprint`
-must NOT (sim only); expect exactly the veteran row of `campaign-degraded.test.ts`
-`PINNED_FINGERPRINTS` to move, all other archetypes byte-identical as the containment cross-check.
-**Do NOT touch** F-150-2 (`smugglerPolicy`/`planPacifistCombat`, pinned by tripwire) — same
-out-of-scope reason as at T-159.
-
-**Accept:** the relaxation (and, if measurement demands it, the second branch) is grep-able in
-`veteranPolicy`; seeds 1..200 × 35 days re-measured with the streak table restated against the
-before-numbers (31 days / 197 of 200 ≥ 5); the `gate.ts` exemption comment matches post-fix
-reality, with veteran either joining the gate or carrying a re-justified exemption; F-159-1's
-record in `docs/BALANCE-POLICY.md` updated to fixed; the exact CI sweep-gate invocation PASS on
-all legs; only the veteran fingerprint row moves; gate green.
-
-**Delivered (2026-08-02):** ported the T-1104 full-tank relaxation into `veteranPolicy`
-(`packages/sim/src/index.ts`) — the same `signableWithin(cap)` two-pass pattern the other five
-gated policies already carry — closing F-159-1, the last un-relaxed contract filter in the file.
-Re-measured seeds 1..200 × 35 days: worst zero-income streak fell 31 → 13 (the nine seeds that
-held the 31-day strand drop to 5-10), and the count at ≥ 5 barely moved, 198 → 197, because a
-second candidate branch (the fighter's anti-idle homeward burn) was tried and measured, not
-assumed, and rejected — it moved the worst streak 13 → 11 but seeds ≥ 5 the wrong way, 18 → 19,
-so it was reverted. `balance/gate.ts`'s exemption comment was corrected from the stale,
-unmeasured "6-8 days" to the re-measured pre-/post-fix figures, and the veteran deliberately
-stays exempt rather than joining `GATE_COMPETENT_POLICIES` — the residual 197-of-200 is a
-second, separately-filed defect (F-161-1: the un-split storylet branch takes every offered
-storylet as a standalone day, eating dawns before the contract block is ever reached), recorded
-in `docs/BALANCE-POLICY.md` D.2a as open rather than folded into this fix. **Deliberate scope
-boundary:** a trial fix for F-161-1 (porting the gambler's die-free-inline split) was measured
-and explicitly NOT landed — it closes seeds ≥ 5 197 → 18 but costs the deed slate
-(`deed-coverage.test.ts` full slates 2 → 0 over seeds 1..76), so closing it is left to a task
-that owns the deed-hunter instrument, per this task's own scope line. Fingerprint discipline
-held: only the veteran row of `campaign-degraded.test.ts` `PINNED_FINGERPRINTS` moved (the
-extract-then-relax step was proven inert first, byte-identical at `8db1029399f20ed8`); all
-other archetypes byte-identical.
-
-Orchestration: attempts=1/4.
-
 ### T-158 · CHECKPOINT — human UAT, plus recorded rulings on Combat's chosen branch and F-150-1 — `status: DONE` · `coder: sonnet` · `after: T-150, T-153, T-157, T-140, T-141, T-160`
 **`after:` gained T-160 (2026-08-02, owner-directed):** UAT must be played against the fixed
 Liar's Dice dealer, not the F-137-1 one that volunteers a certain loss on nine decisions in ten —
@@ -1514,6 +1205,42 @@ still belongs to **T-174**, whose Accept now names this predicate returning zero
 its fixed rig's arms as the exit check — so no reader can mistake a shipped detector for a fixed
 instrument.
 Orchestration: attempts=1/4.
+
+### T-229 · Write the check that a task's file ORDER in TASKS.md agrees with its `after:` field — `status: TODO` · `coder: opus` · `after: —`
+
+Write the check that a task's ORDER in `TASKS.md` agrees with its `after:` field. T-154's
+resequencing (originally `after: T-158`, split so the build could precede UAT) was recorded ONLY in
+the `after:` fields, and was INERT for a day: the orchestrator picks the first eligible `TODO` in
+FILE order, and T-158 carries `[BLOCKED BY = Human UAT]` and HALTS the run — so T-154 sitting below
+it in the file was unreachable no matter what its `after:` said. No test or script audits `TASKS.md`
+ordering against `after:` today, so this class recurs silently: a task can be correctly unblocked on
+paper and still never be picked up. [harvested: T-154/write-tasks-order-vs-after-check]
+
+**Accept:** an automated check (test or script, wired into `npm test` or the gate) parses
+`TASKS.md`'s task headers and fails when a `TODO` task appears in the file BEFORE a task it depends
+on via `after:`, and also flags a `TODO` task sitting below a halting/`BLOCKED` task it does not
+depend on; the T-154/T-158 case is used as the regression fixture and provably fails the check as
+written before the fix; whether the fix is re-ordering the file or teaching the runner to look past
+a halt is recorded either way; gate green.
+
+### T-230 · Write the check that symbols and paths named in a Delivered note actually resolve — `status: TODO` · `coder: opus` · `after: —`
+
+Write the check that symbols/paths named in a **Delivered** note actually resolve in the tree.
+T-154's Delivered note claimed "three deterministic brains — `first-legal`, `random`,
+`recorded`-replay" when `packages/sim/src/pilot.ts` exported `firstLegalBrain` / `scriptedBrain` /
+`recordedBrain` and `pilot-cli.ts`'s `BRAIN_NAMES` was `['first-legal', 'anthropic', 'recorded']` —
+no `random` brain existed at all (**F-155-3**). It was caught by the VALIDATE task, not by the build
+task's own gate. The only check that exists today is instance-level
+(`packages/sim/src/__tests__/pilot.test.ts` "accepts --brain random", line 496); nothing audits the
+CLASS, so any Delivered note can name a symbol or path that is not in the tree and no gate notices.
+[harvested: T-154/write-delivered-note-claim-audit]
+
+**Accept:** an automated check extracts backticked path- and symbol-shaped tokens from `Delivered`
+notes in `TASKS.md` and fails when a named path does not exist or a named exported symbol does not
+resolve in the workspace, with a documented ignore convention for prose tokens that are
+deliberately not code; T-154's `random`-brain claim is used as the regression fixture and provably
+fails the check; false-positive rate on the existing Delivered notes is measured and stated, and
+the check is wired where it will actually run; gate green.
 
 ---
 
@@ -3576,6 +3303,33 @@ recorded; `docs/BALANCE-POLICY.md` D.2a and the `sweep-gate.yml` header updated 
 seed range is revisited so the class is measurable rather than merely outside CI; fingerprint
 discipline stated; gate green.
 
+### T-231 · F-161-1: `veteranPolicy` takes EVERY offered storylet as a standalone day — `status: TODO` · `coder: opus` · `after: —`
+
+F-161-1 was OPENED by T-161 and deliberately NOT fixed. `veteranPolicy`
+(`packages/sim/src/index.ts:4936`) takes every offered storylet as a STANDALONE DAY, where
+`smugglerPolicy` (`index.ts:3026`), `gamblerPolicy` (`index.ts:3795`) and `explorerPolicy`
+(`index.ts:4455`) each resolve a die-free choice INLINE and let the trade day continue. On a port
+with a live storylet queue the veteran never reaches its contract block at all — which is why
+**197 of 200 seeds still stall at ≥ 5** even after F-159-1's fix. A trial fix — porting the
+gambler's three-line die-free-inline split verbatim — was MEASURED and deliberately NOT LANDED: it
+moves seeds ≥ 5 over 1..200 × 35 days from **197 → 18**, but costs the deed slate —
+`deed-coverage.test.ts`'s "the slate is earnable by a single career" goes **2 → 0** full slates over
+seeds 1..76 × 300 days (`liars_dice_grand_slam` missed 19 → 63, `ray_s_ledger` 27 → 54) because the
+Liar's Dice ROSTER TOUR errand in `packages/sim/src/__tests__/support/deed-hunter.ts` needs idle
+days. Closing it therefore belongs to a task that OWNS the deed-hunter instrument and may re-pin
+`deed-coverage.test.ts`. Full record, including the 16-of-18 credit-starvation residual behind it,
+at `docs/BALANCE-POLICY.md` D.2a; also filed in `TODO.md`. [harvested: T-161/F-161-1]
+
+**Accept:** the veteran's storylet handling is brought into line with the other three policies (or
+the asymmetry is ruled deliberate with a recorded reason), with seeds 1..200 × 35 days re-measured
+and the ≥ 5-stall count stated against the 197 baseline and the 18 trial figure; the deed-slate
+consequence is OWNED, not absorbed — `deed-coverage.test.ts`'s single-career slate count is
+re-measured over seeds 1..76 × 300 days and either held at ≥ 2 or re-pinned with the deed-hunter
+errand's idle-day requirement adjusted and the change justified (`liars_dice_grand_slam` and
+`ray_s_ledger` named explicitly); the 16-of-18 credit-starvation residual is re-read and filed as
+its own finding if it survives; `docs/BALANCE-POLICY.md` D.2a updated; fingerprint discipline
+stated; gate green.
+
 ---
 
 ## M13 — Harvested: owner rulings and unscheduled builds
@@ -3637,6 +3391,24 @@ distinction is recorded first; then either a per-port `LOAN_DAILY_RATE` multipli
 (read through an accessor, never an `if (systemId === ...)` branch in the engine, per T-133's
 standing rule) with its band pinned by accessor rather than literal, or the alternative is closed
 with the reason recorded in the D7 log; gate green.
+
+### T-228 · N5 — NPC proficiency spread, un-gated at N13 but unscheduled — `status: TODO` · `coder: opus` · `after: —`
+
+N5 — NPC proficiency spread — was UN-GATED by N13/T-156 (2026-08-02) and its lever list rewritten
+at N13's close, but unlike N8 (which has T-180) it has NO task in `TASKS.md`. The seam is already
+wired and INERT: `npcVirtualHand(rng, dullDieChance?)` in `packages/engine/src/npcHand.ts` takes
+R1's `PilotDegradationProfile.dullDieChance` directly, so the build is a parameterisation rather
+than a new mechanism. Per the STATUS BOARD row and `docs/NPC_REDESIGN.md` §"N5 — NPC proficiency
+spread", it must be graded **WITHIN archetype** and must reuse **N13's control arm**.
+[harvested: T-156/n5-proficiency-unscheduled]
+
+**Accept:** the proficiency spread is driven through the existing
+`npcVirtualHand(rng, dullDieChance?)` seam (no second mechanism), with `dullDieChance` sourced from
+R1's `PilotDegradationProfile`; the result is graded WITHIN archetype against N13's control arm,
+not across archetypes; the measurement states what the spread moved and what it did not (the
+`npcCredits.p10` floor named explicitly, since it has been flat for four steps);
+`docs/NPC_REDESIGN.md`'s STATUS BOARD N5 row and its §"N5 — NPC proficiency spread" lever list are
+updated with the outcome; fingerprint discipline stated and any baseline re-pin paid; gate green.
 
 ---
 
@@ -7152,3 +6924,8 @@ Retrieve any block with `git log --grep="^<ID>:" -1 -p -- TASKS.md`.
 | T-159 | Fix: fighterPolicy's missing T-1104 relaxation, plus an archetype fallback-spread audit | M7 | 2026-08-01 | `b93a7af7` | F-159-2, F-159-1, d2a-check-for-gate-excluded-policies, lesson, lesson |
 | T-153 | Validate: prove the sweep gate catches known regressions | M7 | 2026-08-02 | `3ec39470` | F-153-1, no-fresh-ci-run-post-T-159, doc-ci-state-staleness-check, lesson, lesson, lesson |
 | T-157 | Coverage-matrix gate: cross-check sweep archetypes against verb parity | M7 | 2026-08-02 | `75004d33` | n8-visithangout-parity, npc-redesign-stale-magnitudes, explore-parity-warn, lesson, lesson, lesson |
+| T-156 | Build: N13 dawn-hand parity — the algorithmic virtual hand | M7 | 2026-08-02 | `7f113934` | n5-proficiency-unscheduled, npc-p10-floor-fourth-time, npc-hand-exhaustion-fallback, lesson |
+| T-182 | Fix F-156-1: `spendDie` silently destroys the day's re-roll charges | M7 | 2026-08-02 | `70fe9341` | lesson, lesson |
+| T-154 | Build: native LLM pilot policy for the player seat | M7 | 2026-08-02 | `d9b3a1bc` | f-155-1-live-anthropic-leg, sweep-invariant-ownership-pointer, write-tasks-order-vs-after-check, write-delivered-note-claim-audit |
+| T-160 | Fix F-137-1: the dealer's certain-loss structure — bakeoff the two sanctioned shapes, ship the winner | M7 | 2026-08-02 | `345870d1` | protocol-quantity-max-vacuous-at-tier-0, protocol-opening-floor-refusal-branch-unreachable, todo-md-t160-anchors-go-stale-on-prune, lesson |
+| T-161 | Fix F-159-1: veteranPolicy's un-relaxed contract filter — the last of the class | M7 | 2026-08-02 | `bf95ac80` | F-161-1, lesson |
