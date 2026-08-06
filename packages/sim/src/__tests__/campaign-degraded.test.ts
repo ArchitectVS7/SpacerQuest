@@ -1373,6 +1373,110 @@ const UNCHANGED_POLICIES = [
 // `sim/protocol.ts`'s half of the fix is classified non-instrument and contributes
 // to neither.
 //
+// ENTRY 36 (T-175 PHASE A — THE ARCHETYPE-ORDERING INSTRUMENT, F-160-1). ALL SEVEN
+// ROWS MOVE, AND ALL SEVEN MOVE FOR A REPORT-SHAPE REASON ONLY — entries 11, 12,
+// 23, 30 and 35's form for the sixth time, and as there the claim is PROVEN below
+// rather than asserted. This is the "extract behaviour-preserving BEFORE adding
+// behaviour" step: NO RULE CHANGED IN THIS ENTRY.
+//
+// THE CAUSE, STATED BEFORE THE NUMBERS. F-160-1 needs Liar's Dice hands split by
+// `pool × archetype × tier`, and none of the three rode any event: they lived only
+// on `state.dareHand`, which is gone by the time a reader sees the stream. Two
+// additive changes:
+//   (a) ENGINE. `DareHandResolved` gains three OPTIONAL fields — `opponentKind`,
+//       `opponentArchetype`, `dicePerSide` — each a copy of an ALREADY-FROZEN hand
+//       field, emitted at the one existing emission site (`actions/dare.ts`). No
+//       dice, cost, legality or probability is touched. Optional for the STRIP-mode
+//       reason `DareHandStarted.dicePerSide` and `opponentRead` are optional, so
+//       `CURRENT_SAVE_VERSION` does NOT move (`docs/VERSIONING.md` §2).
+//   (b) INSTRUMENT. `HangoutPlayStats` gains `dareCells` (48 zero-filled cells) and
+//       `dareTierDisagreements`. This fingerprint hashes the whole report JSON,
+//       shape included, so a new key moves every hash on its own.
+//
+// THE STRIP PROOF, RUN LOCALLY over these exact 35 careers rather than claimed.
+// Deleting `dareCells` and `dareTierDisagreements` from the hashed `hangoutPlay`
+// reproduces the entry-35 pin BYTE FOR BYTE on ALL SEVEN — including `gambler`,
+// the one row that actually sits at a table, which is the strongest available
+// statement that the three new event fields are mathematically inert:
+//   trader   9ec397b9c42bffd7 -> stripped 415c1e1225f8f63d (= entry 35)
+//   fighter  895057933d261134 -> stripped 79a7cfe6a1012fe7 (= entry 35)
+//   explorer 523aaca0e611dbfb -> stripped c3f5d6d237147058 (= entry 35)
+//   veteran  4759d8528de00678 -> stripped 38fc08a73fcbe506 (= entry 35)
+//   smuggler a6b263d9a730db48 -> stripped 1a7bc4df42683373 (= entry 35)
+//   gambler  060e8c648721135a -> stripped 14648e63aaebf2a9 (= entry 35)
+//   greedy   ab18b51b762e4367 -> stripped fbcbcbe637e127b9 (= entry 35)
+// Unlike entry 35, there is no "one real move": zero careers changed, which is what
+// "prove it inert first" means here.
+//
+// NO BAND, THRESHOLD, GOLDEN OR CONSTANT WAS EDITED. `rulesFingerprint` MOVES (the
+// three event fields land in hashed engine sources) even though nothing behaves
+// differently — inertness is proved by ROWS, not by a hash, exactly as
+// `baseline-t206-captain-voice.json` proved it when prose alone moved the same
+// fingerprint. `instrumentFingerprint` moves too (`sim/index.ts`).
+//
+// ENTRY 37 (T-175 PHASE C — `optimal` READS THE CLAIM, F-160-1). EXACTLY ONE ROW
+// MOVES: `gambler`. This is the REAL behaviour change entry 36 was the inert
+// preparation for.
+//
+// WHAT MOVED, IN ONE LINE. `archetypeMove`'s `optimal` branch computed its belief
+// that the standing claim is true as `probAtLeast(q - own(face), dicePerSide)` —
+// the UNCONDITIONED Binomial, i.e. as though the claimant had said nothing. It had.
+// `probClaimTrue` now reads the claimant's support off the claim through
+// `creditedClaimSupport`, which is `minOpeningQuantity` read backwards and carries
+// no free parameter. The raise valuations are UNCHANGED.
+//
+// WHY THE OTHER SIX CANNOT MOVE, and this is the containment claim — entry 28's
+// shape exactly, because it is the same reachability argument: `archetypeMove` is
+// called from ONE site (`packages/engine/src/actions/dare.ts`, the roster arm of
+// the policy dispatch), reachable only through an OPEN Liar's Dice hand; a hand
+// only opens on `VisitHangout{venue:'dare'}`; and `planDare` is queued by
+// `gamblerPolicy` and by nothing else (one call site in `packages/sim/src/index.ts`).
+// No other policy ever sits at a table. THE SIX UNMOVED ROWS ARE THE PROOF, NOT THE
+// ASSUMPTION — this suite was run before the re-pin and reported exactly one
+// failing row.
+//
+// MEASURED over these exact five seeds × 40 days, before -> after:
+//     dares played              299  ->    285
+//     player win rate at the table  63.21%  ->  51.58%
+//     hangoutPlay.netCredits    +63,923  ->     -263
+//     wagered                   221,225  ->  110,896
+//     credits at day 40         154,027  ->   74,088
+//     deeds                          93  ->       95
+// The wager total falls BECAUSE the win rate did, not independently: a poorer
+// gambler seats smaller stakes (the engine clamps every stake to what both sides
+// can cover), so `wagered` is a consequence and not a second change.
+//
+// THE TABLES STOP BEING A MONEY PRINTER, AND THAT IS THE POINT RATHER THAN A
+// REGRESSION. F-160-1's whole finding is that the archetype labelled `optimal` was
+// the SOFTEST seat in the game; a policy that stops losing on purpose necessarily
+// takes credits off the only policy that plays it. Nothing was tuned toward a
+// target — see `docs/LIARS-DICE-DECISIONS.md` LD-25 for the five candidate reads
+// that were measured and the four that were rejected.
+//
+// NO BAND, THRESHOLD, GOLDEN OR CONSTANT WAS EDITED. `rulesFingerprint` moves
+// again (a rule changed, which is the honest name for it), so this task owes a
+// capstone and predicted `gambler` + `fleet` as its only movers before the run.
+//
+// A SECOND, SMALLER CHANGE RIDES IN THIS ENTRY, AND IT IS NAMED RATHER THAN
+// FOLDED IN SILENTLY: `gamblerPolicy` gained T-199's two shared anti-idle rungs
+// (`planHomewardBurn`, `planStrandedExplore`). It was the ONLY competent policy
+// without them, and the rule change above re-phased two of the 1,000 capstone
+// seeds onto a rim strand it could not leave — seed 819 at system 17 for days
+// 45-49 and seed 485 at system 18 for days 80-84, both on a FULL TANK and the
+// second on 67,913 credits, which is not a poverty trap and was never about
+// money. `assertNoIncomeStall` caught both. `smugglerPolicy`'s own note states the
+// precedent this follows verbatim — "a defect this change moved rather than
+// caused, but moved INTO the sample, which makes it this change's to close" — so
+// it was closed here rather than filed and gated around. The gate is green on its
+// own terms, not on a widened one: no invariant, band or limit was touched.
+//
+// THE WIRING IS INERT OVER THIS FINGERPRINT'S OWN WINDOW, measured rather than
+// assumed: with it added and the rule change already in, `gambler` came back at
+// `34553710b65b777a` — byte-identical to the value measured before the wiring.
+// Neither rung fires inside seeds 1..5 × 40 days, because neither seed strands.
+// So the number below attributes to the RULE alone, and the wiring's effect is
+// visible only at capstone scale.
+//
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
   // so the trader borrows and repays on the day it needs to rather than on the day
@@ -1395,7 +1499,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // header's entry 32). Credits over these five seeds RISE, 108,267 -> 131,747.
   // ENTRY 35 (T-168): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 35 for the strip proof against the value above).
-  trader: '415c1e1225f8f63d',
+  // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 36 for the strip proof against the value above).
+  trader: '9ec397b9c42bffd7',
   // Entry 27 (T-159): re-derived — and the ONLY row that moves, which is the
   // cross-check that this was a fighter change and nothing else: `trader`,
   // `explorer`, `veteran`, `smuggler`, `gambler` and `greedy` all came back byte
@@ -1442,7 +1548,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // netting working, not a lost capability.
   // ENTRY 35 (T-168): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 35 for the strip proof against the value above).
-  fighter: '79a7cfe6a1012fe7',
+  // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 36 for the strip proof against the value above).
+  fighter: '895057933d261134',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
   // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4
@@ -1494,7 +1602,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // caps no iteration count and moves no floor.
   // ENTRY 35 (T-168): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 35 for the strip proof against the value above).
-  explorer: 'c3f5d6d237147058',
+  // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 36 for the strip proof against the value above).
+  explorer: '523aaca0e611dbfb',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   //
   // Entry 29 (T-161): re-derived, and the ONLY row that moves — which is the
@@ -1540,7 +1650,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // deeds 64 -> 68 — a grinder that can shop and fly on the same day earns more.
   // ENTRY 35 (T-168): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 35 for the strip proof against the value above).
-  veteran: '38fc08a73fcbe506',
+  // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 36 for the strip proof against the value above).
+  veteran: '4759d8528de00678',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
   // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
   // through the shorter hand on a band-3/4 board rather than through the payout.
@@ -1580,7 +1692,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // smuggler never opens a Dare.
   // ENTRY 35 (T-168): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 35 for the strip proof against the value above).
-  smuggler: '1a7bc4df42683373',
+  // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 36 for the strip proof against the value above).
+  smuggler: 'a6b263d9a730db48',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sol-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
@@ -1688,7 +1802,12 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // seat above the port's tier-0 ceiling (structurally 0 before, F-148-4). Its
   // stripped hash is b88a50aa25a4a918, still not the entry-34 value, which is what
   // separates it from the six shape-only rows. See the header's entry 35.
-  gambler: '14648e63aaebf2a9',
+  // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 36 for the strip proof against the value above).
+  // ENTRY 37 (T-175): re-derived — THE ONE REAL MOVE. `optimal` reads the standing
+  // claim instead of ignoring it, so the only policy that sits at a table plays a
+  // different game (see the header's entry 37 for the six-figure before/after).
+  gambler: '34553710b65b777a',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).
@@ -1703,7 +1822,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // ENTRY 35 (T-168): re-derived — REPORT SHAPE ONLY, and the control row is BACK
   // to being a control: it never sits at a table, so channel (b) cannot reach it
   // (see the header's entry 35 for the strip proof against the value above).
-  greedy: 'fbcbcbe637e127b9',
+  // ENTRY 36 (T-175): re-derived — REPORT SHAPE ONLY, no career changed (see
+  // the header's entry 36 for the strip proof against the value above).
+  greedy: 'ab18b51b762e4367',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

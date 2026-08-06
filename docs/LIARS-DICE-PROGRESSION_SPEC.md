@@ -377,6 +377,54 @@ testable, and it is a genuinely strong policy: it will not over-challenge a clai
 which requires `pTrue` to be very high *and* every raise to be unaffordable or worse. It is rare
 but reachable, and it must not be special-cased away.
 
+#### 3.3a AMENDMENT (T-175, 2026-08-06) — `pTrue` READS THE CLAIM (F-160-1)
+
+**The last two paragraphs of §3.3 are superseded by this subsection.** They are kept verbatim,
+because the amendment is only intelligible next to what it replaces and because the sentence it
+overturns — *"it will not over-challenge a claim that `probAtLeast` says is likely true"* — was the
+whole trouble: it was **true about the model and false about play**, and four tasks quoted it as
+though it settled the question.
+
+**What was wrong, measured rather than argued.** `pTrue` was
+`probAtLeast(bid.quantity − ownOf(bid.face), dicePerSide)` — the unconditioned Binomial over the
+claimant's half of the table, i.e. **the probability the claim would be true if the claimant had
+said nothing.** It had. Measured at n ≈ 42,000 dealer decisions per tier against the shipped
+planner, `optimal`'s predicted-`pTrue` band `[0.1, 0.3)` realised **60.89% / 85.34% / 95.50%**
+actually-true at 4 / 5 / 6 dice. It therefore challenged **91–94%** of its decisions and won
+**51% / 41% / 34%** of them, against `bad`'s **70% / 57% / 48%** on a rule one comparison long.
+That is F-148-1 → F-160-1's whole residual.
+
+**The rule, and it carries no free parameter.** `minOpeningQuantity(m) = m + 1` (§5.2 / T-160)
+forbids a claim at or under what the claimant holds of the claimed face. Read backwards, a standing
+claim of `q` on `F` is the claim of a claimant holding `q − 1` of `F`, capped at the `dicePerSide`
+dice it has:
+
+```
+creditedClaimSupport(q, u) = min(max(q - 1, 0), u)
+pTrue(bid)                 = ownOf(bid.face) + creditedClaimSupport(bid.quantity, u) >= bid.quantity
+```
+
+Move `minOpeningQuantity` and this moves with it. **No hidden information is added:** the bid is
+public (it rides every `DareBidPlaced`) and `ownOf` is the house's own hand, so §3.2's anti-cheat
+discipline is untouched — the function still cannot express the player's dice.
+
+**What did NOT change.** The raise valuations (`pOurs`) still use the unconditioned `probAtLeast`,
+and the "as if the opponent challenges it immediately" model assumption is untouched — that is
+F-160-2 / T-176's, and applying the credited read to `optimal`'s own prospective raises was
+**measured and rejected** (it re-uses the read from the ORIGINAL claim at a higher quantity, and
+cost −72.76 credits/hand at six dice against +9.28 for the shipped shape). See
+`docs/LIARS-DICE-DECISIONS.md` **LD-25** for the five candidates measured and the four rejected.
+The dominance proof, the three-candidate search, the tie-break order and §3.7's draw ruling are all
+untouched.
+
+**One restriction genuinely narrows, and it is stated rather than discovered later.** The credited
+support is a POINT read, so `pTrue` is now 0 or 1. With `pTrue = 1` a challenge scores exactly
+`−potDealer`, which TIES fold and wins the tie-break; with `pTrue = 0` it scores `+potPlayer` and
+beats it outright. **`optimal`'s fold branch is therefore provably unreachable**, where §3.3 above
+called it "rare but reachable". This costs nothing measurable — `optimal`'s fold share was already
+**0.00%** of ~42,000 decisions per tier BEFORE the change — but it is a real narrowing and it is
+filed as **F-175-2** against T-177 (F-160-3), which owns FOLD.
+
 ### 3.4 BAD — a specified leak, not "worse random"
 
 `bad` plays as though the other side of the table were blank — it reasons only from its own dice
@@ -402,6 +450,34 @@ Note the deliberate asymmetry with `optimal`: with 4 dice per side the unknown s
 `4/6 ≈ 0.67` expected matches, so `bad`'s threshold of "more than 1 over my own count" makes it
 challenge true claims constantly at low quantities. That is the leak. It is worth roughly the
 `unknownExpectation` term, every hand, which is what makes seat 1 the easy seat.
+
+#### 3.4a `BAD_CREDULITY` RE-DERIVED AGAINST MEASURED DATA AND LEFT AT 1 (T-175, 2026-08-06)
+
+F-160-1 named `BAD_CREDULITY` as a co-suspect with `archetypeMove`, and T-175's plan required the
+derivation above to be re-run against the **post-F-137-1** opening distribution rather than
+restated. It was, and **the constant did not move.** This subsection records why, so that "we
+looked and left it" is auditable rather than asserted.
+
+**The derivation's premise still holds, measured.** The paragraph above derives `1` from the
+unknown half contributing `4/6 ≈ 0.67` expected matches. Measured on the shipped planner's actual
+openings — the face it holds MOST of, which is the case where the premise is most at risk — the
+unknown half contributed **0.6654** matches at 4 dice against the unconditioned **0.6667**, and
+**0.8349 vs 0.8333** at 5 dice. The opening face-choice does not bias the other side of the table,
+so the arithmetic the constant rests on survives T-160's opening floor untouched.
+
+**And `1` still expresses "the classic beginner error", it is not accidentally correct.** Measured
+over ~48,000 decisions per tier: `bad`'s rule fires on **76.5% / 79.7% / 79.9%** of decisions, and
+when it fires the claim is actually FALSE only **63.5% / 50.0% / 40.8%** of the time — i.e. it
+over-challenges, exactly as specified, and increasingly so as the ladder adds dice. When it is
+QUIET the claim is TRUE **95.6% / 98.9% / 100.0%** of the time, so the leak is entirely on the
+challenging side, which is what the paragraph above says it is.
+
+**Post-fix opening distribution, for the record** (the thing the old derivation was written before
+T-160 and could not have used): 4 dice `q=2` 27.79%, `q=3` 62.45%, `q=4` 9.34%, `q=5` 0.42%;
+5 dice `q=3` 69.64%, `q=4` 19.22%; 6 dice `q=3` 62.15%, `q=4` 31.16%. Openings sit at
+`own(bestFace) + 1` by construction, as §5.2's floor forces.
+
+**So the whole residual of F-160-1 was `optimal`'s, and nothing here was tuned.** See §3.3a.
 
 ### 3.5 RANDOM — uniform over the legal set
 
@@ -1607,7 +1683,11 @@ does not fork this file again**). The M5 interceptor
 block is kept **verbatim** through both generations, which is what makes §12.6 like-for-like
 against §16.6 rather than a new number off a new instrument. Its structural additions over T-137
 are four, all counters: a hand-open snapshot joined by `handId` (the pool and the resolved
-archetype exist **only** on `state.dareHand`; `DareHandResolved` carries neither), a tier derived
+archetype exist **only** on `state.dareHand`; `DareHandResolved` carries neither — **NO LONGER TRUE
+AS OF T-175 (2026-08-06): it now carries `opponentKind`, `opponentArchetype` and `dicePerSide`, all
+optional, and the whole pool × archetype × tier cut ships as `HangoutPlayStats.dareCells` on
+`SeedRow.hangout`. A measurement that needs this split reads the sweep's own rows; do not
+reconstruct it**), a tier derived
 two independent ways, day-loop purse/ladder/deed tracking, and one fix — T-137's probe read
 `wagerBandFor(hand.systemId).max` at each decision point, which stopped being the hand's ceiling
 when T-146 froze `bandMax`.
@@ -1616,6 +1696,15 @@ when T-146 froze `bandMax`.
 derives the tier arithmetically from the **imported** `LIARS_DICE_UNLOCK_GAMES` and cross-checks it
 against the hand's frozen `dicePerSide`/`bandMax`, which turns the constraint into a free
 correctness check on the freeze-at-open behaviour.
+
+> **T-175 SHIPPED THIS PRECEDENT ONTO THE INSTRUMENT (2026-08-06).** `derivedDareTier` /
+> `dicePerSideAgreesWithTier` (`packages/sim/src/index.ts`) do exactly what this paragraph
+> describes, in committed code rather than in a gitignored probe: the tier is arithmetic over the
+> run's own settled-hand count against the imported thresholds, cross-checked against the hand's
+> frozen `dicePerSide` on EVERY hand, and the disagreement count ships as
+> `HangoutPlayStats.dareTierDisagreements` with `campaign-dare-cells.test.ts` asserting it is zero.
+> §4.6a's closed list of licensed live-tier reads is therefore still four, and the constraint is
+> still buying a free correctness check — now on 8,000 careers instead of on a probe run.
 
 **Fidelity: 5/5 MATCH on SIX channels** against `runCampaign` on (1,`gambler`), (2,`gambler`),
 (3,`gambler`), (4,`smuggler`), (5,`veteran`) — final credits, deed count, `hangoutPlay.dares`,
@@ -2070,6 +2159,29 @@ right place to look. **Left for an owner call — the same one F-137-1 is waitin
 > §3.8 both forbid touching those two here. One thing did change qualitatively: `optimal`
 > (64.48%) is no longer softer than the roaming dealer by the old margin (56.94% post-fix), but it
 > is still softer.
+
+> **RESOLVED / RE-MEASURED AT T-175 (2026-08-06) — FIXED, AND THE ORDERING FLIPPED.** This
+> finding's own instruction was followed to the end: F-137-1 was closed first (T-160), the
+> inversion survived, and the archetypes turned out to be the right place to look. **The residual
+> was `optimal`'s alone; `BAD_CREDULITY` was re-derived against measured data and LEFT AT 1** — see
+> §3.4's amendment.
+>
+> `optimal` priced the standing claim with the UNCONDITIONED Binomial, i.e. as though the claimant
+> had said nothing. Measured calibration (n ≈ 42,000 dealer decisions per tier): its `[0.1, 0.3)`
+> predicted-truth band realised **60.89% / 85.34% / 95.50%** actually-true at 4 / 5 / 6 dice, so it
+> challenged **91–94%** of decisions and won only **51% / 41% / 34%** of them — worse than `bad`'s
+> one-comparison rule. §3.3a's `probClaimTrue` reads the claimant's support off the claim instead
+> (`minOpeningQuantity` read backwards; no free parameter). Re-measured over 1,000 seeds × 120 days:
+>
+> | arm | `optimal` | `bad` | bad − optimal | SE | z |
+> | --- | --- | --- | --- | --- | --- |
+> | before (control: final instrument, old rule) | 64.65% (n=56,433) | 58.01% (n=10,528) | −6.64 pp | 0.52 | −12.74 |
+> | **after (shipped, off the capstone's own rows)** | **39.61%** (n=59,814) | **55.72%** (n=9,205) | **+16.11 pp** | 0.56 | **+29.02** |
+> | after, WIDENED to 1,600 gambler careers | 39.83% (n=95,580) | 55.63% (n=14,680) | +15.79 pp | 0.44 | +35.93 |
+>
+> Positive at every tier (t1 +9.47 … t5 +18.72), and the whole ladder now orders `optimal` 39.63% <
+> `bad` 55.71% < roaming 58.51% < `random` 78.33% player-win. **This finding is CLOSED.** The
+> not-chosen candidate reads are logged as `docs/LIARS-DICE-DECISIONS.md` **LD-25**.
 
 **F-148-2 · The gauntlet is played but never completed; `liars_dice_grand_slam` is unreachable
 through play.** Status: REPORTED, NOT FIXED. A maximal dice career beats **29 of 42** seats and

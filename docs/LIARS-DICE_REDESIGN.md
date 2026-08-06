@@ -2365,6 +2365,58 @@ ordering the owner now has what it asked for: F-137-1 is closed and the archetyp
 Note the one thing that *did* change qualitatively: `optimal` (64.48%) is no longer softer than the
 roaming dealer (56.94%) by nearly the old margin, but it is still softer.
 
+> **CLOSED AT T-175 (2026-08-06) — THE INVERSION IS FIXED AND FLIPPED, AND THE MECHANISM WAS
+> MEASURED BEFORE ANYTHING WAS CHANGED.** The residual belonged to `archetypeMove`'s `optimal`
+> branch, exactly where F-148-1 and this finding both said to look — and **not** to
+> `BAD_CREDULITY`, which was re-derived against measured data and **left at 1**.
+>
+> **THE MECHANISM, measured at n ≈ 42,000 dealer decisions per tier on a to-termination rig against
+> the shipped planner (temporary probe; the headline table below is off the SHIPPED instrument).**
+> `optimal` priced the standing claim with `probAtLeast(q − own(face), dicePerSide)` — the
+> unconditioned Binomial, i.e. **as though the claimant had said nothing.** Its calibration was
+> catastrophic in exactly the band where the decision is made:
+>
+> | `optimal`'s predicted `pTrue` | realised TRUE, 4 dice | 5 dice | 6 dice |
+> | --- | --- | --- | --- |
+> | `[0.0, 0.1)` | 9.73% | 20.02% | 31.73% |
+> | `[0.1, 0.3)` | **60.89%** | **85.34%** | **95.50%** |
+> | `[0.5, 0.7)` | 94.57% | 98.54% | 100.00% |
+> | `[0.9, 1.0)` | 100.00% | 100.00% | 100.00% |
+>
+> A policy that believes a claim is 13% likely when it is 95% likely will call it, and `optimal`
+> did: it challenged **91–94%** of its decisions and won **51% / 41% / 34%** of those, against
+> `bad`'s **70% / 57% / 48%** on a rule that is one comparison long. *`bad`'s crude classifier was
+> beating `optimal`'s expected-value argmax, because the argmax was fed a wrong number.*
+>
+> **THE FIX, one line and no free parameter.** `probClaimTrue` /
+> `creditedClaimSupport` (`packages/engine/src/liarsDiceRules.ts`) read the claimant's support off
+> the claim: `minOpeningQuantity` forbids a claim at or under what the claimant holds, so a claim of
+> `q` is the claim of someone holding `q − 1`, capped at `dicePerSide`. The RAISE valuations are
+> untouched (they are T-176/F-160-2's). Four other reads were measured and rejected — see
+> `docs/LIARS-DICE-DECISIONS.md` **LD-25**.
+>
+> **THE ORDERING, RE-MEASURED, BOTH ARMS.** The AFTER row is read off the **SHIPPED INSTRUMENT**
+> — `HangoutPlayStats.dareCells` on the 8,000-row capstone's own sweep rows, no probe involved
+> (`docs/HANGOUT_REDESIGN.md` §10.7). The BEFORE row is the same instrument with the RULE alone
+> reverted, so the comparison is single-variable:
+>
+> | arm | `optimal` | `bad` | bad − optimal | SE | z |
+> | --- | --- | --- | --- | --- | --- |
+> | BEFORE (control: final instrument, old rule) | 64.65% (n=56,433) | 58.01% (n=10,528) | −6.64 pp | 0.52 | −12.74 |
+> | **AFTER (shipped, off the capstone rows)** | **39.61%** (n=59,814) | **55.72%** (n=9,205) | **+16.11 pp** | 0.56 | **+29.02** |
+> | AFTER, WIDENED to 1,600 gambler careers | 39.83% (n=95,580) | 55.63% (n=14,680) | +15.79 pp | 0.44 | +35.93 |
+>
+> The third row exists because `roster|random` landed at n = 7,868 on the capstone, under the
+> Accept criterion's **n ≥ 10,000 per archetype cell**. The sample was **WIDENED** (to
+> n = 12,560 for `random`) rather than the claim softened or the bar moved. `dareTierDisagreements`
+> is **0** across all 279,857 hands, so freeze-at-open is confirmed as a side effect.
+>
+> and it flips at EVERY tier, not just in the pool: t1 +9.47 (z 2.90), t2 +9.64 (z 4.69), t3 +12.35
+> (z 8.06), t4 +12.65 (z 10.59), t5 +18.72 (z 24.82). **The full difficulty ladder is now ordered
+> the way the labels claim:** `optimal` 39.63% < `bad` 55.71% < roaming dealer 58.51% < `random`
+> 78.33% player-win. LD-20's reading — "the 14 `optimal` rows are the easiest opponents in the
+> game" — is now false in both degree and kind: they are the hardest.
+
 **F-160-2 · The challenger-won split does not reach the pre-committed ≤20 pp under either shape.**
 Shipped: dealer-as-challenger 40.73%, player-as-challenger 82.43% — 41.7 pp apart at Arm 2. The
 mechanism is named and is not the dealer's: the *player's* planner challenges selectively

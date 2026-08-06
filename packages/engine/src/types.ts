@@ -970,6 +970,49 @@ export type GameEvent =
        *  `lines.lose` when they lost; present iff pool A (§8 row 20c). Optional for
        *  the same strip-mode reason as `DareHandStarted.dicePerSide`. */
       opponentLine?: string;
+      /**
+       * T-175 · WHICH POOL ANSWERED THIS HAND — the hand's FROZEN `opponentKind`.
+       *
+       * OPTIONAL, for exactly the reason `DareHandStarted.dicePerSide` and
+       * `DareHandStarted.opponentRead` are optional on the sibling event above:
+       * `GameEventSchema` runs in Zod **STRIP** mode, which drops unknown keys but
+       * does NOT tolerate a missing REQUIRED one, so a required field here would
+       * make every already-written `DareHandResolved` in an older save's `eventLog`
+       * fail to parse at load. An optional field added to an existing event variant
+       * is NOT a schema change (`docs/VERSIONING.md` §2), so
+       * `CURRENT_SAVE_VERSION` does not move and no migration is owed.
+       *
+       * WHY IT IS HERE AT ALL: F-160-1's archetype-ordering measurement needs the
+       * pool and the archetype per SETTLED hand, and they live only on
+       * `state.dareHand`, which is gone by the time any reader sees the event
+       * stream (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12's probe paragraph names
+       * this exact gap as the reason four measurements had to descend from a
+       * gitignored `.scratch/` probe). Copying three ALREADY-FROZEN fields onto the
+       * settlement event is what retires that lineage (`docs/HANGOUT_REDESIGN.md`
+       * §10.7, retired at T-173).
+       *
+       * MATHEMATICALLY INERT, and it must stay that way: three copies of frozen
+       * values on one event, touching no dice, cost, legality or probability.
+       */
+      opponentKind?: 'roaming' | 'roster';
+      /**
+       * T-175 · The CONCRETE archetype that answered, for a pool-A hand; `null` on
+       * a roaming hand, which has no archetype at all. A `'mixed'` content row was
+       * resolved to a concrete arm ONCE at open by `resolveMixedArchetype`, so this
+       * is never `'mixed'` — it is the arm actually played. Optional for the same
+       * strip-mode reason as {@link opponentKind}.
+       */
+      opponentArchetype?: 'optimal' | 'bad' | 'random' | null;
+      /**
+       * T-175 · The hand's FROZEN dice-per-side (§5.3) — the event-log copy of
+       * `DareHandState.dicePerSide`, mirroring `DareHandStarted.dicePerSide`. A
+       * settled hand's tier is not otherwise recoverable from the settlement event,
+       * and this is the field the sim cross-checks its arithmetic tier against
+       * (4 → tier 0, 5 → tier 1, 6 → tier ≥ 2) rather than opening a fifth live
+       * `liarsDiceTier` read, which §4.6a's CLOSED list forbids. Optional for the
+       * same strip-mode reason as {@link opponentKind}.
+       */
+      dicePerSide?: number;
     }
   | {
       /**

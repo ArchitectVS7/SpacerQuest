@@ -1837,7 +1837,7 @@ still read `f264d7f4a2d56fde` / `b8894cb6c678fce6` (comments are stripped by `ha
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
-### T-175 · F-160-1: the archetype ordering SURVIVES the F-137-1 fix — `optimal` is still the softest seat — `status: TODO` · `coder: opus` · `after: T-160, T-198`
+### T-175 · F-160-1: the archetype ordering SURVIVES the F-137-1 fix — `optimal` is still the softest seat — `status: DONE` · `coder: opus` · `after: T-160, T-198`
 
 **Filed at T-160 (2026-08-02), `docs/LIARS-DICE_REDESIGN.md` §17.8.** F-148-1 traced the inversion
 to F-137-1 and instructed: "close F-137-1 … and re-measure; if the inversion survives that, the
@@ -1861,6 +1861,260 @@ re-measured with SE and z on both arms and reported either way; `rulesFingerprin
 task takes its own capstone with the moved rows predicted before the run;
 `docs/LIARS-DICE-PROGRESSION_SPEC.md` F-148-1 and `docs/LIARS-DICE_REDESIGN.md` §17.8 both updated
 with the outcome; gate green.
+
+**F-175-1 (filed 2026-08-06, in-scope and fixed inside T-175) — the `optimal`-beats-`bad`
+head-to-head was SELF-CONFIRMING.** `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts`'s
+`it('beats BAD head-to-head over 4,000 simulated hands (seed 20260731)')` is the only shipped
+instrument that asserts the archetype ordering — the very ordering F-160-1 disputes — and it graded
+`optimal` against `optimal`'s OWN objective on both of its premises. (a) A raise is scored "the
+other side challenges immediately", which is exactly the model assumption `archetypeMove`'s
+`optimal` branch optimises, so a policy that maximises that quantity necessarily wins a contest
+scored by it. (b) The opening claim is drawn UNIFORMLY (`quantity = 1..5`, `face = 1..6`) and
+answered for exactly ONE PLY. Both premises are false in play: since T-160 the shipped planner opens
+at `minOpeningQuantity(own(bestFace))` on the face it holds most of, and it is a SELECTIVE
+challenger (`SIM_DARE_CHALLENGE_MARGIN`, F-160-2) that otherwise raises back. The test therefore
+could not have detected the inversion the sweep measures, which is why the two disagreed for four
+tasks. FIXED at T-175: hands are played TO TERMINATION against a counterparty using the shipped
+planner's move rule, with openers drawn the way the engine now forces; the one-ply version is kept
+beside it, renamed to say what it actually proves. [filed: T-175/F-175-1]
+
+**Delivered (2026-08-06).** F-160-1 is **CLOSED**: the inversion is fixed and FLIPPED, at every
+tier, and the mechanism was measured before anything was changed. **The residual was `optimal`'s
+alone.** `BAD_CREDULITY` was re-derived against measured data and **left at 1**; the four tone mixes
+were not touched (`git diff packages/content/src/liarsDice.ts` is EMPTY). Two commits' worth of
+work in one change set, in the required order: **inert instrument first, then the rule.**
+
+**PHASE A — THE INSTRUMENT, AND IT WAS PROVEN INERT BY ROWS.** `docs/HANGOUT_REDESIGN.md` §10.7
+retired the gitignored-probe lineage at T-173, so this measurement ships on the sweep.
+`DareHandResolved` (`packages/engine/src/types.ts`) gains `opponentKind`, `opponentArchetype` and
+`dicePerSide` — three copies of ALREADY-FROZEN hand fields, emitted at the one existing site
+(`packages/engine/src/actions/dare.ts:206`), all **optional** for the Zod STRIP-mode reason
+`DareHandStarted.opponentRead` is optional; mirrored `.optional()` in
+`packages/engine/src/schema.ts:1057`, where `AssertEventKeys<'DareHandResolved'>` makes a
+disagreement a compile error. `HangoutPlayStats` (`packages/sim/src/index.ts`) gains `dareCells` —
+48 zero-filled `{hands, playerWon, netCredits, bids}` cells keyed `pool|archetype|tN` — and
+`dareTierDisagreements`; both arrive on `SeedRow.hangout` with **no `aggregate.ts` edit**, because
+that block is carried whole. **The tier is DERIVED, not read:** `docs/LIARS-DICE-PROGRESSION_SPEC.md`
+§4.6a closes the licensed live-`liarsDiceTier` list at four, so `derivedDareTier` follows T-148's
+precedent (arithmetic over the imported `LIARS_DICE_UNLOCK_GAMES`) and cross-checks itself against
+the hand's frozen `dicePerSide` on every hand — **zero disagreements** over every arm.
+
+*The inertness proof is ROWS, not a hash.* `rulesFingerprint` moves on the three event fields even
+though nothing behaves differently (the `baseline-t206-captain-voice.json` precedent). What proves
+inertness is `campaign-degraded.test.ts` **entry 36**: with `dareCells`/`dareTierDisagreements`
+stripped from the hashed report, **all seven** policy fingerprints come back BYTE-IDENTICAL to their
+entry-35 values — including `gambler`, the only row that sits at a table. Zero careers changed.
+
+**PHASE B — THE MECHANISM, MEASURED (this was the acceptance criterion, not a preamble).**
+`optimal` priced the standing claim with `probAtLeast(q − own(face), dicePerSide)` — the
+unconditioned Binomial, i.e. **as though the claimant had said nothing.** Calibration, n ≈ 42,000
+dealer decisions per tier on a to-termination rig against the shipped planner (temporary probe,
+uncommitted — T-169's precedent; the HEADLINE table below is off the SHIPPED instrument):
+
+| predicted `pTrue` | realised TRUE, 4 dice | 5 dice | 6 dice |
+| --- | --- | --- | --- |
+| `[0.0, 0.1)` | 9.73% | 20.02% | 31.73% |
+| `[0.1, 0.3)` | **60.89%** | **85.34%** | **95.50%** |
+| `[0.5, 0.7)` | 94.57% | 98.54% | 100.00% |
+
+It therefore challenged **93.6% / 92.6% / 91.5%** of decisions and won **51.2% / 41.3% / 34.2%**,
+against `bad`'s **69.7% / 56.5% / 47.8%** on a one-comparison rule. *`bad`'s crude classifier was
+beating `optimal`'s expected-value argmax because the argmax was fed a wrong number.* Its raise
+valuation was also measured (modelled +52.62/raise vs realised −53.26/raise at six dice) and
+**deliberately left alone** — that is T-176 / F-160-2's.
+
+**`BAD_CREDULITY` RE-DERIVED AND LEFT AT 1** (spec §3.4a). Its docblock derives `1` from the unknown
+half contributing `4/6 ≈ 0.67` expected matches; measured on the shipped planner's actual openings
+that is **0.6654** (vs 0.6667 unconditioned) at four dice and **0.8349** (vs 0.8333) at five — the
+premise survives T-160's opening floor. And `1` is not accidentally correct: the rule fires on
+76.5–79.9% of decisions and the claim is FALSE only 63.5% / 50.0% / 40.8% of those, i.e. it
+over-challenges exactly as specified. **Nothing was tuned.**
+
+**PHASE C — THE CHANGE, ONE LINE, PICKED BY MEASUREMENT (LD-25).** `probClaimTrue` /
+`creditedClaimSupport` in `packages/engine/src/liarsDiceRules.ts`, called from `archetypeMove`'s
+`optimal` branch (`:1189`), reachable from `packages/engine/src/actions/dare.ts:511`.
+`minOpeningQuantity(m) = m + 1` forbids a claim at or under what the claimant holds, so a claim of
+`q` is the claim of someone holding `q − 1`, capped at `dicePerSide`. **No free parameter, no hidden
+information** (the bid is public; `ownOf` is the house's own hand — §3.2's anti-cheat discipline is
+untouched, and `resolveMixedArchetype`'s key order and `archetypeMove`'s signature are unchanged).
+
+*Five candidate reads were measured on the same rig, n = 40,000 hands per candidate per tier; house
+credits/hand, `bad` is the bar:*
+
+| shape | 4 dice | 5 dice | 6 dice | verdict |
+| --- | --- | --- | --- | --- |
+| shipped BEFORE | +3.42 | −17.00 | −31.17 | the defect |
+| **CHOSEN — full credited support** | **+48.52** | **+25.99** | **+9.28** | beats `bad` at every tier |
+| credit exactly ONE die | +40.72 | +17.49 | +0.78 | rejected — loses at tier 0, z = −18 |
+| lattice bound alone (`X ≤ q−1`) | +3.93 | −15.45 | −29.12 | rejected — near-inert; a clean NEGATIVE result showing the missing evidence is behavioural |
+| modal-face read (soft) + lattice bound | +43.27 | +19.35 | +11.28 | rejected — loses at tier 0 by 1.41 |
+| credited read applied to own raises too | +40.19 | −31.16 | −72.76 | rejected — stale evidence at a higher quantity |
+| `bad`, reference | +44.68 | +16.94 | −1.31 | — |
+
+**WHY THIS WAS NOT ESCALATED.** Two shapes narrowed the inversion, which is the plan's halt
+condition *if the residual is taste*. It is not: the pre-committed criterion — **the ordering must
+un-invert at EVERY tier on the shipped planner** — is met by exactly one, and the tier-0 arm was
+**WIDENED to n = 400,000** (never re-thresholded) to show the runner-up's 1.41-credit shortfall is
+z = −6.4 rather than noise. The one objection to the chosen shape (a point read is maximally
+credulous, so in principle bluff-exploitable — something the sim's planner cannot test, since it
+opens at the engine's floor by construction) was **measured too**: re-run with the counterparty
+opening +1 / +2 over the floor, the chosen shape takes +66.74 / +55.70 / +45.70 and +95.47 / +92.52
+/ +87.26 credits per hand. It is 8–10 behind the runner-up there, but bluffing is a catastrophically
+losing line against every candidate, so the exposure is real in direction and worth nothing in play.
+
+**THE ORDERING, RE-MEASURED, BOTH ARMS, REPORTED EITHER WAY.** The AFTER row comes off the
+**SHIPPED INSTRUMENT** — `dareCells` on the capstone's own 8,000 sweep rows, no probe — and the
+BEFORE row is that same instrument with the RULE ALONE reverted, so the comparison is
+single-variable:
+
+| arm | `optimal` | `bad` | bad − optimal | SE | z |
+| --- | --- | --- | --- | --- | --- |
+| BEFORE (control: final instrument, old rule) | 64.65% (n=56,433) | 58.01% (n=10,528) | −6.64 pp | 0.52 | −12.74 |
+| **AFTER (shipped, off the capstone rows)** | **39.61%** (n=59,814) | **55.72%** (n=9,205) | **+16.11 pp** | 0.56 | **+29.02** |
+| AFTER, WIDENED to 1,600 gambler careers | 39.83% (n=95,580) | 55.63% (n=14,680) | +15.79 pp | 0.44 | +35.93 |
+
+Positive at **every** tier: t1 +9.47 (z 2.90), t2 +9.64 (z 4.69), t3 +12.35 (z 8.06), t4 +12.65
+(z 10.59), t5 +18.76 (z 24.86). The whole ladder now orders `optimal` 39.61% < `bad` 55.72% <
+roaming dealer 58.50% < `random` 78.32% player-win. **LD-20's "the 14 `optimal` rows are the easiest
+opponents in the game" is now false in kind, not merely in degree.**
+
+**THE SAMPLE WAS WIDENED, NOT THE CLAIM SOFTENED.** The capstone put `roster|random` at
+**n = 7,868**, under the Accept criterion's **n ≥ 10,000 per archetype cell** — checked explicitly
+rather than glossed. A third arm re-ran the SHIPPED instrument over 1,600 gambler careers, putting
+every archetype cell over the bar (`optimal` 95,580 / `bad` 14,680 / `random` 12,560) and moving
+the headline by 0.32 pp. The bar was never moved. Across all 279,857 hands of that arm and all
+174,908 of the capstone, **`dareTierDisagreements` is 0**, and `Σ dareCells.hands` equals
+`hangout.dares` exactly — so the tier derivation and the join are both confirmed on the capstone
+itself, not only in unit tests.
+
+**THE CAPSTONE.** `npm run format` ran **BEFORE** extraction (never after; `format:check` clean at
+HEAD). Eight **1-indexed** shards then `--merge`, both `--milestone-days` and `--aggregate` present:
+
+```
+npm run balance:sweep -- --label t175-archetype-ordering --seeds 1000 --days 120 \
+  --policies trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy \
+  --milestone-days 21,29,30,41,60,120 --shard i/8          # i = 1..8
+npm run balance:sweep -- --label t175-archetype-ordering --merge --milestone-days 21,29,30,41,60,120
+npm run balance:diff  -- docs/balance/baseline-t168-effective-band.json docs/balance/baseline-t175-archetype-ordering.json
+npm run balance:extract -- --aggregate docs/balance/baseline-t175-archetype-ordering.json
+```
+
+The merge printed **`merged aggregate for 8000 rows`**, `stamped rules cabd2112ccf4cefb /
+instrument e84d8e074fde0b98`, and **`merged · 8000 rows · PASS` with `invariants: 0 violations`**;
+all eight shards individually PASS with 0 violations. The extract printed **`spreads harvested`**,
+which is the proof `--aggregate` took (F-146-0: omitting it silently falls back to `baseline-n1.json`
+and flips `spreadSource` to `estimated`).
+
+**`balance:diff`, verbatim head — AND THE PREDICTION SCORED.** Predicted in writing before the run:
+*exactly two rows move, `gambler` and `fleet`, plus one reported shape change.* Observed:
+
+```
+MOVED ROWS (2): fleet, gambler
+UNCHANGED ROWS: header, explorer, fighter, greedy, smuggler, trader, trader-degraded, veteran
+
+SHAPE CHANGES (4) — the two aggregates are not the same measurement.
+  - byPolicy[gambler].milestones[0..2].npcRenownRanks.ADMIRAL
+  + byPolicy[gambler].renownRanks.ADMIRAL
+```
+
+Gambler `finalCredits.median` 115,612 → 63,653 (−44.9%), `tourOneClearRate` 0.9610 → 0.9360,
+`deedCount.median` 28 → 25, `debtClearedDay.median` 22 → 23; fleet `finalCredits.median` 50,094 →
+46,916. **The tables stop being a money printer, and that is the finding rather than a
+regression** — a seat labelled `optimal` that measured as the SOFTEST in the game now does not.
+The one shape change is reported and NOT suppressed. **Nothing was tuned in response and no band,
+threshold or golden was edited.**
+
+**FINGERPRINTS, before → after, and the attribution is NOT single-arm — stated rather than
+implied.** `rulesFingerprint` `f264d7f4a2d56fde` → **`cabd2112ccf4cefb`** (the new rule plus the
+three optional event fields); `instrumentFingerprint` `b8894cb6c678fce6` → **`e84d8e074fde0b98`**
+(the `dareCells` split plus the gambler's anti-idle wiring); `docsFingerprint` `63a781c9be9b8b6a` →
+**`b0175998edc9cbe1`**. `productVersion` 0.5.3 and `saveSchemaVersion` 17 both unmoved.
+
+**THE FIVE POINTER SITES, all re-pinned in this change set** to
+`docs/balance/baseline-t175-archetype-ordering.json`: `balance-targets.test.ts`'s
+`BASELINE_OF_RECORD_PATH`, `docs/NPC_REDESIGN.md` standing amendment 1, `docs/NPC_REDESIGN.md`'s
+status banner (new block inserted at the TOP, where the banner-ordering check looks),
+`docs/balance/smoke/README.md`'s current-baseline line, and BR-14's own sentence in
+`docs/BALANCE-RIG-DECISIONS.md`. `packages/sim/src/__tests__/baseline-pointers.test.ts` is green.
+
+**F-175-1 FILED AND FIXED (Bug Discovery Policy, written into this file the moment it was
+confirmed).** `liarsDiceArchetypes.test.ts`'s `beats BAD head-to-head` was the ONLY shipped
+instrument asserting the archetype ordering and it was **self-confirming**: it scored a raise with
+`optimal`'s own model (the objective `optimal` argmaxes) and answered a UNIFORM opener for exactly
+ONE ply, neither of which is true in play. That is why it stayed green through four tasks of a
+measured inversion. It is renamed to say what it actually proves (model coherence) and joined by a
+**play-level** head-to-head at 4/5/6 dice that plays 20,000 hands per archetype per tier to
+TERMINATION against the shipped planner's move rule, settling on the engine's own showdown rule.
+**That test was RED on arrival** (optimal +3.58 vs bad +43.75 at four dice) and is green now.
+
+**F-175-2 FILED against T-177** (which owns FOLD): the point read makes `pTrue` 0-or-1, so
+`optimal`'s FOLD branch is now provably unreachable where §3.3 called it "rare but reachable". It
+costs nothing measurable — `optimal`'s fold share was already **0.00%** of ~42,000 decisions per
+tier before the change — but §3.3's old sentence is no longer true of `optimal` and T-177 must state
+the arm explicitly rather than inherit it.
+
+**F-175-3 FOUND BY THE CAPSTONE'S OWN GATE, AND CLOSED HERE.** The first full sweep came back
+**FAIL, 2 invariant violations** — `assertNoIncomeStall` on `gambler`, seeds 819 and 485, five
+consecutive zero-income days each. Investigated rather than dismissed: seed 819 sat at system 17
+for days 45-49 and seed 485 at system 18 for days 80-84, both on a **FULL TANK**, the second on
+**67,913 credits**. Not a poverty trap and never about money — it is the F-199 RIM STRAND, and
+`gamblerPolicy` turned out to be **the only competent policy T-199 never wired** with the two
+shared anti-idle rungs (`planHomewardBurn`, `planStrandedExplore`; grep shows them at
+`planTraderDay`, `smugglerPolicy` and `fighterPolicy` only). Its own "go where the tables are"
+fallback cannot close it, because that move only considers `hangoutSystemIds()` and from the deep
+rim every Hangout can be out of tank range at once — the exact corner `planHomewardBurn`'s docblock
+describes. **`smugglerPolicy`'s own T-199 note states the governing precedent verbatim** — *"a
+defect this change moved rather than caused, but moved INTO the sample, which makes it this
+change's to close"* — so it was wired here, placed AFTER the Hangout search so it cannot switch a
+better out off, and both rungs return `null` once any income action is queued so neither can
+displace a run. **Both stalls verified closed (streak 5 → 1 on both seeds); no invariant, band or
+limit was touched.** The wiring is provably inert over the `campaign-degraded` window (`gambler`
+came back byte-identical at `34553710b65b777a` with the wiring added), and it moves
+`instrumentFingerprint` only — `rulesFingerprint` stayed at `cabd2112ccf4cefb` across it, so the
+before/after ordering table above still attributes to the RULE alone. That was checked, not
+assumed: the control arm re-run on the FINAL instrument reproduces −6.64 pp / z = −12.74 against
+the earlier −6.65 pp / z = −12.76.
+
+**TESTS.** New `packages/sim/src/__tests__/campaign-dare-cells.test.ts` (22 tests): the lossless
+join (`Σ hands === dares`, `Σ playerWon === daresWon` — **two independent derivations**, the cells
+off `DareHandResolved.outcome` and `daresWon` off `HangoutEvent.playerWon`, asserted to agree rather
+than assumed — and `Σ netCredits === netCredits`) on eight gambler seeds; the 48-key zero-fill and
+policy-sensitivity against an `explorer` control; **zero tier disagreements** on every seed;
+`derivedDareTier` at and around every rung; and the ordering itself as a **live regression detector**
+that goes red if the inversion returns, sized on the sign with both rates, both `n` and the SE in the
+failure message. `packages/engine/src/__tests__/save.test.ts` gains the two round-trips the
+optionality exists for: an event carrying all three fields survives save→load intact, and one
+WITHOUT them still parses **and keeps the absence an absence** (not silently defaulted, which would
+make a pre-T-175 hand indistinguishable from a roaming one). `campaign-smuggler-gambler.test.ts`'s
+scalar sweep over `hangoutPlay` destructures `dareCells` out by name rather than being weakened.
+
+**`CURRENT_SAVE_VERSION` IS UNMOVED AT 17**, re-read live at `packages/engine/src/save.ts:627` (re-read live, not copied). No
+persisted shape changed — three OPTIONAL fields on an existing event variant are not a schema change
+(`docs/VERSIONING.md` §2, the `opponentRead` precedent) — so **no migration is owed**, and that
+conclusion is stated rather than left unaddressed.
+
+**DOCS.** `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3a (the amendment that rewrites `optimal`'s
+derivation rather than annotating it), §3.4a (`BAD_CREDULITY` re-derived and left), §12.9's F-148-1
+gains a dated `RESOLVED / RE-MEASURED AT T-175` blockquote below T-160's, both left verbatim, and
+§12's probe paragraph now points at the shipped fields; `docs/LIARS-DICE_REDESIGN.md` §17.8's
+F-160-1 gains the closure with the post-change table beside the original four-row one;
+`docs/LIARS-DICE-DECISIONS.md` LD-20 gains T-175's discharge of step 2 and the new **LD-25** records
+the chosen and the four not-chosen shapes; `docs/HANGOUT_REDESIGN.md` §10.7's retirement note is
+extended with the Liar's Dice counter → shipped-field map. No new source file, so
+`packages/sim/src/balance/rules-fingerprint.ts` needs no new classification.
+
+**Delivered (2026-08-06):** F-160-1 closes CONFIRMED-AND-FIXED — the archetype ordering survived
+the F-137-1 fix (as F-148-1 warned it might) because `optimal`'s claim-pricing was measured, not
+assumed, and found unconditioned on the standing bid; `probClaimTrue` now credits that bid
+(LD-25), and the ordering FLIPS at every tier on the shipped planner (bad − optimal +16.11 pp,
+z = +29.02, vs the pre-fix −6.64 pp), measured off a new zero-cost `dareCells` instrument proven
+inert by byte-identical fingerprints before the rule changed. Deliberately out of scope and left
+untouched: `BAD_CREDULITY` (re-derived, confirmed correct, not retuned), the four tone mixes, and
+the challenger-selectivity gap (F-160-2, filed to T-176) and the FOLD design call (F-160-3 plus the
+newly-filed F-175-2, both left to T-177) — this task closed only the claim-pricing defect it was
+scoped to measure.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
 
 ### T-176 · F-160-2: the challenger-won split is still 41.7 pp apart — price the planner's selectivity or re-derive the criterion — `status: TODO` · `coder: opus` · `after: T-160, T-198`
 
@@ -1900,6 +2154,20 @@ and no cross-hand memory, so there is no channel through which a past reveal cou
 decision. **Whether a move that is never the better credit play is acceptable is a design
 question, not a constant**, and T-160 was explicitly forbidden from redesigning it.
 [harvested: T-137/§16.8-6] [filed: T-160/F-160-3]
+
+**F-175-2 (filed 2026-08-06 by T-175, IN SCOPE FOR THIS TASK) — `optimal`'s FOLD branch is now
+provably UNREACHABLE.** T-175 closed F-160-1 by giving `archetypeMove`'s `optimal` branch a
+credited read of the standing claim (`probClaimTrue`, LD-25). The credited support is a POINT read,
+so `pTrue` is now exactly 0 or 1: at `pTrue = 1` a challenge scores `−potDealer`, which TIES fold
+and wins `OPTIMAL_TIE_BREAK`; at `pTrue = 0` it scores `+potPlayer` and beats fold outright. §3.3's
+"rare but REACHABLE, and it must not be special-cased away" is therefore no longer true of
+`optimal`. **This cost nothing measurable** — `optimal`'s fold share was already **0.00%** of
+~42,000 dealer decisions per tier BEFORE the change, measured on T-175's own control arm — so it is
+a narrowing of an unobserved branch rather than a lost behaviour, which is why T-175 shipped over it
+rather than blocking. It belongs to THIS task because T-177 is the FOLD ruling: whichever of the
+three options the owner takes, the `optimal` arm now needs stating explicitly rather than inheriting
+§3.3's old sentence. Recorded at `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3a and LD-25.
+[filed: T-175/F-175-2]
 
 **Accept:** an owner ruling is recorded in `docs/LIARS-DICE-DECISIONS.md` (accept FOLD as a
 disposition/flavour move and say so in the spec, OR give concealment a real channel, OR change

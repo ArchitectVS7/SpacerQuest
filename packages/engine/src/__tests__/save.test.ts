@@ -1167,6 +1167,81 @@ describe('save envelope — an ended career round-trips with no migration (T-150
     expect(CURRENT_SAVE_VERSION).toBe(17);
   });
 
+  // -------------------------------------------------------------------------
+  // T-175 · THE THREE OPTIONAL `DareHandResolved` MEASUREMENT FIELDS (F-160-1).
+  //
+  // `opponentKind`, `opponentArchetype` and `dicePerSide` are OPTIONAL, and this
+  // is the pair of tests that optionality exists for. `GameEventSchema` runs in
+  // Zod STRIP mode: it drops unknown keys but does NOT tolerate a missing REQUIRED
+  // one, so a REQUIRED field here would make every already-written
+  // `DareHandResolved` in an older save's `eventLog` fail to parse at load. An
+  // optional field added to an existing event variant is not a schema change
+  // (`docs/VERSIONING.md` §2) — the `DareHandStarted.opponentRead` precedent — so
+  // `CURRENT_SAVE_VERSION` does not move and NO MIGRATION IS OWED.
+  // -------------------------------------------------------------------------
+  it('T-175 · a DareHandResolved carrying the three new fields survives the round trip', () => {
+    const state = drive50Days(155);
+    const event = {
+      type: 'DareHandResolved' as const,
+      day: state.day,
+      handId: 'hand-t175',
+      opponentId: 'ld-1-2',
+      outcome: 'challenge-win' as const,
+      bid: { quantity: 3, face: 5 },
+      actualCount: 4,
+      playerDice: [5, 5, 2, 1],
+      dealerDice: [5, 5, 3, 6],
+      creditsDelta: 250,
+      dispositionDelta: 0,
+      opponentKind: 'roster' as const,
+      opponentArchetype: 'optimal' as const,
+      dicePerSide: 4,
+    };
+    state.eventLog.push(event);
+
+    const loaded = loadSave(createSave(state, 155));
+
+    expect(loaded.state).toEqual(state);
+    // Field-by-field, so a strip of ONE of the three cannot hide behind a deep
+    // equality that a strip of all three would also pass.
+    expect(loaded.state.eventLog).toContainEqual(event);
+    // ...and no version moved for any of it.
+    expect(CURRENT_SAVE_VERSION).toBe(17);
+  });
+
+  it('T-175 · a DareHandResolved WITHOUT the three new fields still parses (the older-save property)', () => {
+    const state = drive50Days(156);
+    // Exactly the shape an event written before T-175 has: no `opponentKind`, no
+    // `opponentArchetype`, no `dicePerSide`. Under STRIP mode a REQUIRED field
+    // would reject this outright, which is the whole reason the three are optional.
+    const legacy = {
+      type: 'DareHandResolved' as const,
+      day: state.day,
+      handId: 'hand-pre-t175',
+      opponentId: 'npc-3',
+      outcome: 'player-fold' as const,
+      bid: { quantity: 2, face: 4 },
+      playerDice: [4, 1, 6, 2],
+      creditsDelta: -120,
+      dispositionDelta: -1,
+    };
+    state.eventLog.push(legacy);
+
+    const loaded = loadSave(createSave(state, 156));
+
+    expect(loaded.state.eventLog).toContainEqual(legacy);
+    // And the absence is preserved as an ABSENCE — not silently filled with a
+    // default, which would make a pre-T-175 hand indistinguishable from a roaming
+    // one in every downstream split.
+    const restored = loaded.state.eventLog.find(
+      (e) => e.type === 'DareHandResolved' && e.handId === 'hand-pre-t175',
+    );
+    expect(restored).toBeDefined();
+    expect(Object.keys(restored!)).not.toContain('opponentKind');
+    expect(Object.keys(restored!)).not.toContain('opponentArchetype');
+    expect(Object.keys(restored!)).not.toContain('dicePerSide');
+  });
+
   it('strict schema still rejects an unknown ActionBlocked reason (drift protection)', () => {
     const state = drive50Days(54);
     // A reason literal the union does not carry — cast through `unknown` (the

@@ -107,8 +107,21 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t168-effective-band.json`, re-pinned at
-T-168 2026-08-05 — F-148-4's fix, which makes `planDare` and the UGT protocol enumerator size
+exactly like drift. The current baseline (`baseline-t175-archetype-ordering.json`, re-pinned at
+T-175 2026-08-06 — F-160-1's close, which makes `archetypeMove`'s `optimal` branch READ the
+standing claim (`probClaimTrue` / `creditedClaimSupport`, `minOpeningQuantity` read backwards,
+no free parameter) instead of pricing it with the unconditioned Binomial. The archetype
+ordering un-inverts at every tier: bad − optimal −6.64 pp (z −12.74) -> +16.09 pp (z +28.99).
+BOTH fingerprints move — `rulesFingerprint` f264d7f4a2d56fde -> cabd2112ccf4cefb and
+`instrumentFingerprint` b8894cb6c678fce6 -> e84d8e074fde0b98 — so it is deliberately NOT a
+single-arm attribution. TWO OF THE TEN ROWS MOVED — fleet and gambler; the other seven came
+back byte-identical — PREDICTED IN WRITING BEFORE THE RUN with its containment argument
+(`archetypeMove` has one call site, reachable only through an open Liar's Dice hand, and
+`planDare` is queued by `gamblerPolicy` and by nothing else). Gambler `finalCredits.median`
+115,612 -> 63,653. One shape change reported and not suppressed:
+`byPolicy[gambler].renownRanks.ADMIRAL`. Gate PASS, 0 invariant violations, nothing tuned in
+response. The one before it was `baseline-t168-effective-band.json` (T-168) — F-148-4's fix,
+which makes `planDare` and the UGT protocol enumerator size
 the Dare wager domain off the engine's new `preHandWagerBand` (the unlock tier's EFFECTIVE
 band) instead of the port's raw tier-0 band, so a career can at last REQUEST into the raised
 tier-4 ceiling and tier 5's removed clamp. It moves BOTH fingerprints — `rulesFingerprint`

@@ -195,8 +195,23 @@ describe('T-1601b smuggler & gambler policies', () => {
       for (const value of Object.values(report.smuggling)) {
         expect(typeof value).toBe('number');
       }
-      for (const value of Object.values(report.hangoutPlay)) {
+      // T-175 · `dareCells` is the one NON-scalar member of `hangoutPlay` (the
+      // pool × archetype × tier split, F-160-1), so it is destructured out and
+      // checked on its own shape rather than weakening the scalar sweep over the
+      // rest. Named explicitly — a blanket `typeof value === 'object' && continue`
+      // would let a future non-scalar in unnoticed.
+      const { dareCells, ...hangoutScalars } = report.hangoutPlay;
+      for (const value of Object.values(hangoutScalars)) {
         expect(typeof value).toBe('number');
+      }
+      // All 48 cells present and numeric, on every career — the zero-fill property
+      // (`a missing key and a zero must not be the same reading`).
+      expect(Object.keys(dareCells)).toHaveLength(48);
+      for (const cell of Object.values(dareCells)) {
+        expect(typeof cell.hands).toBe('number');
+        expect(typeof cell.playerWon).toBe('number');
+        expect(typeof cell.netCredits).toBe('number');
+        expect(typeof cell.bids).toBe('number');
       }
       expect(Number.isFinite(report.hangoutPlay.expectedValuePerDare)).toBe(true);
 

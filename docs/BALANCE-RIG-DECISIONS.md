@@ -121,9 +121,18 @@ read at runtime, and therefore the authoritative one), amendment 1's own pointer
 `docs/NPC_REDESIGN.md`'s status banner, `docs/balance/smoke/README.md`'s "current
 baseline" line, and — added at T-182 — **this rule's own "current baseline of record"
 sentence below** — with the smoke fixture re-extracted FROM the new capstone file. The current
-baseline of record is `docs/balance/baseline-t168-effective-band.json` (8,000 rows, 8
-one-indexed shards, spreads harvested, `sweepLabel t168-effective-band`; re-pinned at T-168
-2026-08-05 — F-148-4's fix, which makes `planDare` and the UGT protocol enumerator size the
+baseline of record is `docs/balance/baseline-t175-archetype-ordering.json` (8,000 rows, 8
+one-indexed shards, spreads harvested, `sweepLabel t175-archetype-ordering`; re-pinned at T-175
+2026-08-06 — F-160-1's close, which makes `archetypeMove`'s `optimal` branch READ the standing
+claim (`probClaimTrue` / `creditedClaimSupport`) instead of pricing it with the unconditioned
+Binomial, un-inverting the archetype ordering at every tier: bad − optimal −6.64 pp (z −12.74)
+-> +16.09 pp (z +28.99). It moves BOTH fingerprints — `rulesFingerprint` cabd2112ccf4cefb (was
+f264d7f4a2d56fde; the new rule plus three optional `DareHandResolved` fields) and
+`instrumentFingerprint` e84d8e074fde0b98 (was b8894cb6c678fce6; `sim/index.ts`'s `dareCells`
+split plus `gamblerPolicy`'s two shared anti-idle rungs) — so it is deliberately NOT a
+single-arm attribution. TWO OF TEN ROWS MOVED (fleet, gambler), predicted before the run; gate
+PASS, 0 invariant violations. The one it replaces was
+`docs/balance/baseline-t168-effective-band.json` — F-148-4's fix, which makes `planDare` and the UGT protocol enumerator size the
 Dare wager domain off the engine's new `preHandWagerBand` (the unlock tier's EFFECTIVE band)
 instead of the port's raw tier-0 band, so a career can at last REQUEST into the raised tier-4
 ceiling and tier 5's removed clamp. It moves BOTH fingerprints — `rulesFingerprint`

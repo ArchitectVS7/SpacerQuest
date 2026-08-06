@@ -131,6 +131,42 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > one shared path moved. The `.scratch/t125-hangout.ts` lineage is retired
 > (`docs/HANGOUT_REDESIGN.md` §10.7 carries the counter → field map).
 >
+> **BASELINE OF RECORD RE-PINNED AT T-175 (2026-08-06)** to
+> `docs/balance/baseline-t175-archetype-ordering.json` — **F-160-1's close**, the second and
+> last step of LD-20's fixed order. `archetypeMove`'s `optimal` branch priced the standing
+> claim with `probAtLeast(q − own(face), dicePerSide)` — the unconditioned Binomial, i.e. **as
+> though the claimant had said nothing.** Measured calibration at n ≈ 42,000 dealer decisions
+> per tier: its `[0.1, 0.3)` predicted-truth band realised **60.89% / 85.34% / 95.50%**
+> actually-true at 4 / 5 / 6 dice, so it challenged 91–94% of decisions and won 51% / 41% / 34%
+> — worse than `bad`'s one-comparison rule. `probClaimTrue` / `creditedClaimSupport` read the
+> claimant's support off the claim instead (`minOpeningQuantity` read backwards; **no free
+> parameter**). The ordering flips: bad − optimal **−6.64 pp (z −12.74) → +16.09 pp (z +28.99)**,
+> positive at every tier. Same shape as the outgoing capstone: 1,000 seeds × 120 days × 8
+> policies = 8,000 rows, eight one-indexed shards then `--merge`,
+> `--milestone-days 21,29,30,41,60,120`, spreads harvested. Gate PASS, **0 invariant
+> violations**. **BOTH fingerprints move, so the attribution is NOT single-arm and this banner
+> says so rather than implying otherwise:** `rulesFingerprint` `f264d7f4a2d56fde` →
+> `cabd2112ccf4cefb` (the new rule in `packages/engine/src/liarsDiceRules.ts` plus three
+> optional `DareHandResolved` fields) and `instrumentFingerprint` `b8894cb6c678fce6` →
+> `e84d8e074fde0b98` (`packages/sim/src/index.ts` — the `dareCells` pool × archetype × tier
+> split, plus `gamblerPolicy` gaining T-199's two shared anti-idle rungs).
+> `CURRENT_SAVE_VERSION` is **UNMOVED at 17** (re-read live at
+> `packages/engine/src/save.ts:627`) — three OPTIONAL fields on an existing event variant are
+> not a schema change (`docs/VERSIONING.md` §2), so no migration is owed.
+> **`balance:diff` = TWO OF TEN ROWS MOVED** — `fleet` and `gambler`; `explorer`, `fighter`,
+> `greedy`, `smuggler`, `trader`, `trader-degraded` and `veteran` all byte-identical. **THE
+> MOVE WAS PREDICTED IN WRITING BEFORE THE RUN** (`TASKS.md` T-175) with its containment
+> argument: `archetypeMove` has ONE call site, reachable only through an open Liar's Dice hand,
+> and `planDare` is queued by `gamblerPolicy` and by nothing else. Gambler
+> `finalCredits.median` 115,612 → 63,653 (−44.9%), `tourOneClearRate` 0.9610 → 0.9360,
+> `deedCount.median` 28 → 25; fleet `finalCredits.median` 50,094 → 46,916. **THE TABLES STOP
+> BEING A MONEY PRINTER, AND THAT IS THE FINDING RATHER THAN A REGRESSION** — a seat labelled
+> `optimal` that was measurably the SOFTEST in the game now is not. **ONE SHAPE CHANGE,
+> REPORTED AND NOT SUPPRESSED:** `+ byPolicy[gambler].renownRanks.ADMIRAL` (and the matching
+> three `milestones[i].npcRenownRanks.ADMIRAL` dropping out) — a rank bucket the re-phased
+> gambler now reaches. **NOTHING WAS TUNED IN RESPONSE.** The four not-chosen candidate reads
+> are logged as `docs/LIARS-DICE-DECISIONS.md` LD-25.
+>
 > **BASELINE OF RECORD RE-PINNED AT T-168 (2026-08-05)** to
 > `docs/balance/baseline-t168-effective-band.json` — **F-148-4's fix**: `planDare`
 > (`packages/sim/src/index.ts`) and the UGT protocol enumerator now size the Dare **wager
@@ -2638,8 +2674,16 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t168-effective-band.json`** (1,000
-   > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-168 2026-08-05 — F-148-4's
+   > **Baseline of record is `docs/balance/baseline-t175-archetype-ordering.json`** (1,000
+   > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-175 2026-08-06 — F-160-1's
+   > close: `archetypeMove`'s `optimal` branch now READS the standing claim
+   > (`probClaimTrue`) instead of pricing it with the unconditioned Binomial, so the
+   > archetype ordering un-inverts at every tier. BOTH fingerprints move —
+   > `rulesFingerprint` `f264d7f4a2d56fde` → `cabd2112ccf4cefb` and
+   > `instrumentFingerprint` `b8894cb6c678fce6` → `e84d8e074fde0b98` — so the attribution
+   > is NOT single-arm. TWO OF TEN ROWS MOVED — fleet and gambler; the other seven
+   > byte-identical — PREDICTED IN WRITING BEFORE THE RUN (`TASKS.md` T-175). Gate PASS,
+   > 0 invariant violations. The T-168 pin it replaces was — F-148-4's
    > fix: `planDare` and the UGT protocol enumerator size the Dare wager domain off the
    > engine's new `preHandWagerBand` (the unlock tier's EFFECTIVE band) instead of the port's
    > raw tier-0 band, so a career can at last REQUEST into the raised tier-4 ceiling and tier

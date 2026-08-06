@@ -932,6 +932,65 @@ export function resolveMixedArchetype(
   return 'random';
 }
 
+/**
+ * T-175 · **HOW MANY OF THE CLAIMED FACE A STANDING CLAIM CREDITS ITS CLAIMANT
+ * WITH** (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3a, finding F-160-1).
+ *
+ * THE DERIVATION, AND IT IS AN ENGINE RULE READ BACKWARDS RATHER THAN A NUMBER
+ * PICKED. {@link minOpeningQuantity} forbids a claim at or under what the claimant
+ * holds of the claimed face — "a claim of dice you are HOLDING is risk-free" — so
+ * the smallest claim a claimant holding `m` can make is `m + 1`. Read in reverse:
+ * a standing claim of `q` is the claim of a claimant holding `q - 1`, capped at
+ * the `dicePerSide` dice it actually has. There is no free parameter here; move
+ * `minOpeningQuantity` and this moves with it.
+ *
+ * WHY IT EXISTS (the measured defect). `probAtLeast(q - own, u)` prices a standing
+ * claim as though the claimant's dice were a fresh Binomial — i.e. **as though the
+ * claimant had said nothing.** It has. F-160-1's calibration table, measured at
+ * n ≈ 42,000 dealer decisions per tier against the shipped planner, is the proof:
+ * the shipped model's `[0.1, 0.3)` predicted-truth band realised **60.89%**
+ * (4 dice), **85.34%** (5) and **95.50%** (6) actually-true. A policy that believes
+ * a claim is 13% likely when it is 95% likely will call it, and `optimal` did — it
+ * challenged 91-94% of its decisions and won 51%/41%/34% of those.
+ */
+export function creditedClaimSupport(claimQuantity: number, dicePerSide: number): number {
+  return Math.min(Math.max(claimQuantity - 1, 0), dicePerSide);
+}
+
+/**
+ * T-175 · **IS THE STANDING CLAIM TRUE?** — the belief `optimal` challenges on,
+ * with {@link creditedClaimSupport} applied to the claimant's half of the table.
+ *
+ * DEGENERATE BY CONSTRUCTION, AND THAT IS THE READ RATHER THAN A SHORTCUT. The
+ * credited support is a POINT read off the claim, so once it is granted there is
+ * nothing left to be uncertain about: the claim is true iff the house's own count
+ * plus the credited support reaches it. Two consequences, both stated rather than
+ * discovered later:
+ *   1. `optimal` remains an EXPECTED-VALUE ARGMAX. What changed is one INPUT to
+ *      it. Every RAISE it scores is still priced with {@link probAtLeast} on the
+ *      unconditioned Binomial, because a raise is a claim `optimal` is
+ *      CONSIDERING MAKING and the opponent has said nothing about it — evidence
+ *      attaches to the claim that was actually made. Applying the read to
+ *      `optimal`'s own prospective raises was MEASURED AND REJECTED (it re-uses
+ *      the read from the ORIGINAL claim at a higher quantity, and it cost
+ *      -72.76 credits/hand at six dice against +9.28 for the shipped shape) — see
+ *      `docs/LIARS-DICE-DECISIONS.md` LD-25.
+ *   2. `optimal`'s FOLD branch becomes provably UNREACHABLE, where §3.3 previously
+ *      called it "rare but REACHABLE". With `pTrue = 1` a challenge scores exactly
+ *      `-potDealer`, which TIES fold and wins {@link OPTIMAL_TIE_BREAK}; with
+ *      `pTrue = 0` a challenge scores `+potPlayer` and beats it outright. This
+ *      costs nothing measurable — `optimal`'s fold share was already 0.00% of
+ *      ~42,000 decisions per tier BEFORE this change — but it is a real narrowing
+ *      and it is filed as F-175-2 against T-177 (F-160-3), which owns FOLD.
+ *
+ * NO HIDDEN INFORMATION. `bid` is PUBLIC — it rides every `DareBidPlaced` — and
+ * `ownOfClaimedFace` is the house's own hand. The §3.2 anti-cheat discipline is
+ * untouched: this function cannot express the player's dice.
+ */
+export function probClaimTrue(bid: DareBid, ownOfClaimedFace: number, dicePerSide: number): number {
+  return ownOfClaimedFace + creditedClaimSupport(bid.quantity, dicePerSide) >= bid.quantity ? 1 : 0;
+}
+
 /** The three cheapest lattice steps, with their nominal cost (§3.3's table). */
 interface RaiseCandidate {
   move: 'raise-quantity' | 'raise-face' | 'raise-both';
@@ -1098,9 +1157,18 @@ export function archetypeMove(input: {
   // OPPONENT CHALLENGES IT IMMEDIATELY. This is a conservative, model-free
   // valuation — it needs no belief about how the player plays, which is exactly
   // why "optimal" here means "optimal against the information it has" and not
-  // "solves the game". It is honest, it is testable, and it is a genuinely strong
-  // policy: it will not over-challenge a claim `probAtLeast` says is likely true,
-  // which is the specific failure F-137-1 named on the roaming path.
+  // "solves the game". T-176 (F-160-2) owns whether that assumption should price
+  // the shipped planner's SELECTIVITY instead; T-175 deliberately left it alone,
+  // and the measurement below is why (see `probClaimTrue`).
+  //
+  // T-175 · WHAT MOVED, AND IT IS ONE LINE (F-160-1, §3.3a). The sentence this
+  // block used to end on — "it will not over-challenge a claim `probAtLeast` says
+  // is likely true" — was TRUE ABOUT THE MODEL AND FALSE ABOUT PLAY, because
+  // `probAtLeast` was answering the wrong question. It priced the standing claim
+  // as though the claimant had said nothing, so `optimal` over-challenged
+  // constantly and F-160-1 measured it as the SOFTEST seat at the table.
+  // {@link probClaimTrue} reads the claimant's support off the claim instead. The
+  // raise valuations below are UNCHANGED.
   //
   // THE DOMINANCE PROOF, so nobody "improves" this by searching the whole lattice:
   // a `raise-quantity` to any `q' > q` costs exactly `ante`, FLAT in `q'`, while
@@ -1110,7 +1178,9 @@ export function archetypeMove(input: {
   // to the quantity component of `raise-both`. The face component is already
   // pinned to exactly `+1` by §5.2's exploit fix. The search space is PROVABLY
   // THREE candidates, not O(maxQuantity), and the policy is O(1).
-  const pTrue = probAtLeast(bid.quantity - own(bid.face), dicePerSide);
+  // T-175 · THE ONE CHANGED LINE. Was `probAtLeast(bid.quantity - own(bid.face),
+  // dicePerSide)` — the unconditioned Binomial, which ignored the claim.
+  const pTrue = probClaimTrue(bid, own(bid.face), dicePerSide);
   const scored: Array<{ move: DareMove; ev: number }> = [
     { move: { move: 'challenge' }, ev: (1 - pTrue) * potPlayer - pTrue * potDealer },
     // A fold is legal while the hand is open, always. `optimal` folds only when

@@ -3,6 +3,9 @@ import {
   EXPLORATION_FUEL_COST,
   FENCE_REP_FLAG,
   FLAWS,
+  // T-175 · The five unlock thresholds, IMPORTED rather than restated, so the
+  // sim's derived tier moves with content (see `derivedDareTier`).
+  LIARS_DICE_UNLOCK_GAMES,
   NPC_PROFILES,
   SPECIAL_EQUIPMENT,
   STAR_SYSTEMS,
@@ -56,6 +59,9 @@ import {
   // THIS, never off the raw port band — sizing off `wagerBandFor` is what F-148-4
   // measured as "no career can ever request into the raised ceiling".
   preHandWagerBand,
+  // T-175 · The tier→dice mapping, read through the engine's own accessor so the
+  // cell split's tier cross-check never restates it (see `derivedDareTier`).
+  dicePerSideForTier,
   legalDareMoves,
   minOpeningQuantity,
   applyPlayerAction,
@@ -331,6 +337,138 @@ export interface HangoutPlayStats {
   /** T-168 · The largest single SEATED stake over the run, in credits. The scale
    *  reading that the two counters above give as frequencies. */
   maxSeedWager: number;
+  /**
+   * T-175 · **THE ARCHETYPE-ORDERING SPLIT** (F-160-1) — settled Liar's Dice hands
+   * cut by `pool × archetype × unlock tier`, keyed by {@link DareCellKey}.
+   *
+   * WHY IT IS HERE AND NOT ON A PROBE. `docs/HANGOUT_REDESIGN.md` §10.7 retired the
+   * gitignored-`.scratch/`-probe lineage at T-173: "a new measurement reads the
+   * sweep's own rows instead of descending from this file". `SeedRow.hangout`
+   * carries this block WHOLE off the report (`balance/aggregate.ts`), so the cells
+   * reach the 8,000-row sweep with no aggregator edit at all.
+   *
+   * RAW COUNTERS, NOT RATES, deliberately — `aggregate.ts`'s own philosophy. A
+   * later re-cut (by pool only, by archetype only, EV per hand, bids per hand) is
+   * arithmetic over what is already here and needs no new sweep.
+   *
+   * EVERY KEY IS PRESENT AND ZERO-FILLED (T-173's `movesByReason` rule: *a missing
+   * key and a zero must not be the same reading*). The product is small and totally
+   * enumerable — 2 pools × 4 archetype slots × 6 tiers = 48 — so a cell that was
+   * never reached reads `hands: 0` rather than `undefined`.
+   */
+  dareCells: Record<DareCellKey, DareCellStats>;
+  /**
+   * T-175 · Settled hands whose ARITHMETIC tier disagreed with their own frozen
+   * `dicePerSide`. **MUST BE 0** — see {@link derivedDareTier}. Shipped as a
+   * counter rather than a `throw` for the same reason `dareGuardHits` is: a
+   * non-zero is a finding to file, and a sweep that dies mid-run reports nothing.
+   */
+  dareTierDisagreements: number;
+}
+
+/**
+ * T-175 · The pool of a settled hand, taken FROM the engine event rather than
+ * restated, so the sim can never carry a pool the engine does not emit.
+ */
+export type DarePool = NonNullable<
+  Extract<GameEvent, { type: 'DareHandResolved' }>['opponentKind']
+>;
+/** T-175 · ...and the concrete archetype, same discipline. `null` on a roaming hand. */
+export type DareArchetype = NonNullable<
+  NonNullable<Extract<GameEvent, { type: 'DareHandResolved' }>['opponentArchetype']>
+>;
+
+/** T-175 · The archetype SLOT a cell key uses — the three concrete arms plus the
+ *  explicit `'none'` a roaming hand occupies. `'none'` is a value, not a gap. */
+export type DareArchetypeSlot = DareArchetype | 'none';
+
+/** T-175 · `pool|archetype|tN`. A template-literal type, so a typo in a key is a
+ *  compile error and the 48 cells are enumerable at the type level. */
+export type DareCellKey = `${DarePool}|${DareArchetypeSlot}|t${0 | 1 | 2 | 3 | 4 | 5}`;
+
+/** T-175 · One (pool × archetype × tier) cell. Raw counts only; every rate the
+ *  write-up reports is derived from these four numbers. */
+export interface DareCellStats {
+  /** Settled hands that landed in this cell. `Σ hands === HangoutPlayStats.dares`. */
+  hands: number;
+  /** ...of which the PLAYER took. `Σ playerWon === HangoutPlayStats.daresWon`. */
+  playerWon: number;
+  /** Sum of `DareHandResolved.creditsDelta` (player's view).
+   *  `Σ netCredits === HangoutPlayStats.netCredits`. */
+  netCredits: number;
+  /** `DareBidPlaced` beats attributed to this cell — BOTH sides, the same quantity
+   *  §12 reports as "bids per hand". Joined through `handId`. */
+  bids: number;
+}
+
+/** T-175 · The three concrete arms plus `'none'`, in the FIXED order the write-up
+ *  reports them. Not `resolveMixedArchetype`'s contract order (that one is a rules
+ *  contract and lives in the engine); this is a presentation order and says so. */
+const DARE_ARCHETYPE_SLOTS: readonly DareArchetypeSlot[] = ['optimal', 'bad', 'random', 'none'];
+const DARE_POOLS: readonly DarePool[] = ['roaming', 'roster'];
+const DARE_TIERS: readonly (0 | 1 | 2 | 3 | 4 | 5)[] = [0, 1, 2, 3, 4, 5];
+
+/** T-175 · The one place a cell key is spelled. Every reader and the zero-fill
+ *  below go through it, so the key format cannot drift between them. */
+export function dareCellKey(
+  pool: DarePool,
+  archetype: DareArchetypeSlot,
+  tier: 0 | 1 | 2 | 3 | 4 | 5,
+): DareCellKey {
+  return `${pool}|${archetype}|t${tier}`;
+}
+
+/** T-175 · All 48 cells, zero-filled. See {@link HangoutPlayStats.dareCells}. */
+export function zeroDareCells(): Record<DareCellKey, DareCellStats> {
+  const cells = {} as Record<DareCellKey, DareCellStats>;
+  for (const pool of DARE_POOLS) {
+    for (const archetype of DARE_ARCHETYPE_SLOTS) {
+      for (const tier of DARE_TIERS) {
+        cells[dareCellKey(pool, archetype, tier)] = {
+          hands: 0,
+          playerWon: 0,
+          netCredits: 0,
+          bids: 0,
+        };
+      }
+    }
+  }
+  return cells;
+}
+
+/**
+ * T-175 · THE TIER OF A HAND, DERIVED — never a fifth live `liarsDiceTier` read.
+ *
+ * `docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.6a CLOSES the licensed live-tier-read
+ * list at four and says adding a fifth requires amending the spec FIRST. This
+ * follows T-148's probe precedent instead (§12's "`liarsDiceTier` was NOT called a
+ * third time" paragraph): the tier is arithmetic over the run's OWN settled-hand
+ * count against the imported `LIARS_DICE_UNLOCK_GAMES` thresholds.
+ *
+ * THE OFF-BY-ONE IS THE ENGINE'S, restated here only because there is no hand to
+ * read it off: `player.liarsDiceGamesPlayed` is incremented BY `settleDareHand`
+ * (`packages/engine/src/actions/dare.ts`), so the hand being settled was OPENED
+ * while the counter still read `settledBefore` — the count of hands settled before
+ * it. That is exactly the value passed here.
+ *
+ * IT IS CROSS-CHECKED, NOT TRUSTED: {@link accumulateMetricEvents} compares this
+ * against the hand's FROZEN `dicePerSide` (4 → 0, 5 → 1, 6 → ≥2) on every hand and
+ * `campaign-dare-cells.test.ts` asserts ZERO disagreements — which turns the §4.6a
+ * constraint into a free correctness check on freeze-at-open.
+ */
+export function derivedDareTier(settledBefore: number): 0 | 1 | 2 | 3 | 4 | 5 {
+  const rungs = LIARS_DICE_UNLOCK_GAMES.filter((threshold) => settledBefore >= threshold).length;
+  return rungs as 0 | 1 | 2 | 3 | 4 | 5;
+}
+
+/**
+ * T-175 · The dice-per-side band a tier implies, for the cross-check above. Read
+ * through the ENGINE's `dicePerSideForTier` rather than restated, so the mapping
+ * exists in exactly one place; the comparison is a band because tiers 2..5 all
+ * hold six dice and are therefore not separable from `dicePerSide` alone.
+ */
+export function dicePerSideAgreesWithTier(dicePerSide: number, tier: number): boolean {
+  return dicePerSide === dicePerSideForTier(tier);
 }
 
 /** T-173 · The engine's own `DispositionChanged.reason` union, taken FROM the
@@ -1249,6 +1387,21 @@ interface CampaignMetricAccumulator {
    *  it belongs to no existing block: it is the machine READER for the new
    *  `SubsistenceIncome` event. Surfaced on the report as `subsistenceDays`. */
   subsistenceDays: number;
+  /**
+   * T-175 · Settled Liar's Dice hands SO FAR — the sim's own copy of what
+   * `player.liarsDiceGamesPlayed` reads, used to derive a hand's unlock tier
+   * without opening a fifth live `liarsDiceTier` read (§4.6a). Incremented by the
+   * `DareHandResolved` arm AFTER the hand has been attributed, because the hand
+   * being settled was opened while the counter still read the pre-increment value.
+   */
+  settledDareHands: number;
+  /**
+   * T-175 · Open hands, `handId` → `DareBidPlaced` beats seen so far. Held on the
+   * accumulator rather than in the fold, for the same reason `openStandingDays` is:
+   * a hand spans event batches. The entry is deleted at settlement, so a career
+   * that ends mid-hand leaves at most one live key.
+   */
+  openDareBids: Map<string, number>;
 }
 
 /**
@@ -1443,6 +1596,43 @@ function accumulateMetricEvents(
       if (event.seedWager > base) hangoutPlay.handsAboveBaseCeiling += 1;
       if (event.seedWager > raised) hangoutPlay.handsAboveRaisedCeiling += 1;
       hangoutPlay.maxSeedWager = Math.max(hangoutPlay.maxSeedWager, event.seedWager);
+    } else if (event.type === 'DareBidPlaced') {
+      // T-175 · One beat of the hand, either side. Attributed to a CELL only at
+      // settlement, because the cell key needs the pool/archetype/tier that only
+      // `DareHandResolved` carries — so the count is parked against the `handId`
+      // and joined there. `bid` and every `raise-*` land here alike; that is what
+      // "bids per hand" has always meant in §12's tables.
+      metrics.openDareBids.set(event.handId, (metrics.openDareBids.get(event.handId) ?? 0) + 1);
+    } else if (event.type === 'DareHandResolved') {
+      // T-175 · THE ARCHETYPE-ORDERING SPLIT (F-160-1). Folded off
+      // `DareHandResolved` and NOT off `HangoutEvent`, because the pool, the
+      // archetype and the frozen `dicePerSide` ride only here.
+      //
+      // `playerWon` is derived from the ENGINE's `outcome`, never re-derived from
+      // the paired `HangoutEvent` — one definition, and `campaign-dare-cells.test.ts`
+      // asserts the two agree rather than assuming it.
+      const playerWon = event.outcome === 'challenge-win' || event.outcome === 'dealer-fold';
+      const tier = derivedDareTier(metrics.settledDareHands);
+      // The FREE CORRECTNESS CHECK on freeze-at-open (T-148's precedent): the tier
+      // derived from the run's own settled-hand count must imply the dice-per-side
+      // the hand actually froze. A non-zero here is a FINDING, not a rounding
+      // error, and `campaign-dare-cells.test.ts` asserts it is zero.
+      if (event.dicePerSide !== undefined && !dicePerSideAgreesWithTier(event.dicePerSide, tier)) {
+        hangoutPlay.dareTierDisagreements += 1;
+      }
+      // A pre-T-175 event (or a save replayed through an older engine) carries no
+      // `opponentKind`. It is attributed to `roaming|none`, the only shape such a
+      // stream could have described, and NOT silently dropped — a dropped hand
+      // would break `Σ hands === dares`, which is the identity every split rests on.
+      const pool: DarePool = event.opponentKind ?? 'roaming';
+      const archetype: DareArchetypeSlot = event.opponentArchetype ?? 'none';
+      const cell = hangoutPlay.dareCells[dareCellKey(pool, archetype, tier)];
+      cell.hands += 1;
+      if (playerWon) cell.playerWon += 1;
+      cell.netCredits += event.creditsDelta;
+      cell.bids += metrics.openDareBids.get(event.handId) ?? 0;
+      metrics.openDareBids.delete(event.handId);
+      metrics.settledDareHands += 1;
     }
   }
 }
@@ -4623,6 +4813,33 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
     }
   }
 
+  // T-175 · THE TWO SHARED ANTI-IDLE RUNGS (F-199-1 / F-199-2), AND THE SMUGGLER'S
+  // PRECEDENT APPLIES TO THIS WIRING VERBATIM: "a defect this change moved rather
+  // than caused, but moved INTO the sample, which makes it this change's to close"
+  // (see `smugglerPolicy`'s own note). T-175 changed an ENGINE RULE — `optimal` now
+  // reads the standing claim — which re-phases every gambler career from the first
+  // hand it plays, and two of the 1,000 capstone seeds landed on a rim strand this
+  // policy could not leave: seed 819 sat at system 17 for days 45-49 and seed 485
+  // at system 18 for days 80-84, both on a FULL TANK and **67,913 credits** in the
+  // second case. That is not a poverty trap and it was never about money.
+  //
+  // WHY THE BLOCK ABOVE IS NOT ENOUGH. "Go where the tables are" only ever
+  // considers `hangoutSystemIds()`, and from the deep rim EVERY Hangout can be out
+  // of tank range at once — the exact corner `planHomewardBurn`'s own docblock
+  // describes ("distance 5, so `reachable` is empty most dawns"). The shared rung
+  // takes ANY reachable leg, which is why it closes what the Hangout-seeking move
+  // cannot.
+  //
+  // IT CANNOT DISPLACE A RUN. Both rungs return `null` the moment
+  // `actions.some(isIncomeAction)` is true, so they only ever fill a day the board,
+  // the tank and the Hangout search all left empty — and they are placed AFTER that
+  // search for the same reason `smugglerPolicy` places them last: queueing a Travel
+  // ahead of a better out would switch the better out off.
+  const homewardBurn = planHomewardBurn(state, ledger, actions, refuelCost);
+  if (homewardBurn) actions.push(homewardBurn);
+  const strandedExplore = planStrandedExplore(state, ledger, actions);
+  if (strandedExplore) actions.push(strandedExplore);
+
   // T-1601a's protection: while a Penny Wise balance is live and unpaid today,
   // hold it back from the Guild marker (a default grudge-weights Penny Wise into
   // the interceptor draw and multiplies the encounter chance until cleared).
@@ -6072,6 +6289,9 @@ export function runCampaign(
     handsAboveBaseCeiling: 0,
     handsAboveRaisedCeiling: 0,
     maxSeedWager: 0,
+    // T-175 · all 48 cells present and zero-filled (F-160-1's split).
+    dareCells: zeroDareCells(),
+    dareTierDisagreements: 0,
   };
   // T-1603a balance-baseline instrumentation (see the interface doc comments).
   const survival: SurvivalStats = {
@@ -6102,6 +6322,9 @@ export function runCampaign(
     survival,
     tourOne: null,
     subsistenceDays: 0,
+    // T-175 · the cell split's two running fields (F-160-1).
+    settledDareHands: 0,
+    openDareBids: new Map<string, number>(),
   };
   const balance = newBalanceRecordTracker();
 

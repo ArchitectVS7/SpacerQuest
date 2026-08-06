@@ -1054,6 +1054,17 @@ const GameEventSchema = z.discriminatedUnion('type', [
     // T-145 · the roster opponent's win/lose catchphrase; absent on a roaming
     // hand. Optional for the same strip-mode reason as DareHandStarted's pair.
     opponentLine: z.string().optional(),
+    // T-175 · the three MEASUREMENT COPIES of frozen hand fields (see types.ts).
+    // `.optional()` on all three, so an older save's already-written
+    // DareHandResolved entries still parse under STRIP mode — the property that
+    // keeps this off CURRENT_SAVE_VERSION (`docs/VERSIONING.md` §2).
+    //
+    // KEEPING THE TWO SIDES IN STEP IS A COMPILE ERROR, NOT A CONVENTION:
+    // `AssertEventKeys<'DareHandResolved'>` below fails to typecheck the moment
+    // types.ts and this object disagree on a key, in EITHER direction.
+    opponentKind: z.enum(['roaming', 'roster']).optional(),
+    opponentArchetype: z.enum(['optimal', 'bad', 'random']).nullable().optional(),
+    dicePerSide: z.number().optional(),
   }),
   z.object({
     // T-147 · a Liar's Dice set closed (see types.ts LiarsDiceSetCleared). It is

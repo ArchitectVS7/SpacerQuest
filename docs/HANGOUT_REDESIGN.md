@@ -1841,6 +1841,27 @@ The one thing NOT carried across, deliberately: `interceptWeight` — `chooseWei
 formula. The rows carry the RAW pool dispositions instead, so a future re-cut of the weighting
 reads them off the sweep rather than reading a number some instrument baked in.
 
+**EXTENDED AT T-175 (2026-08-06) — the LIAR'S DICE half of this retirement is now shipped too.**
+T-173 carried `hangoutPlay` across whole (`SeedRow.hangout`), but the block it carried could not
+answer a question split by pool, archetype or unlock tier — the three fields lived only on
+`state.dareHand` and rode no event, which is exactly why F-160-1 had to be measured off a probe at
+T-160. T-175 closed that:
+
+| what a probe used to have to reconstruct | shipped field (T-175) |
+| --- | --- |
+| `hand.opponentKind` at settlement | `DareHandResolved.opponentKind` (optional; strip-mode safe, no save-version move) |
+| `hand.opponentArchetype` at settlement | `DareHandResolved.opponentArchetype` (`null` on a roaming hand — an absent key means a pre-T-175 event, which is a different reading) |
+| `hand.dicePerSide` at settlement | `DareHandResolved.dicePerSide` |
+| the whole pool × archetype × tier cut | `HangoutPlayStats.dareCells` — 48 zero-filled cells of `{hands, playerWon, netCredits, bids}`, arriving on `SeedRow.hangout` with NO `aggregate.ts` edit |
+| "was the tier frozen correctly?" | `HangoutPlayStats.dareTierDisagreements`, asserted zero in `packages/sim/src/__tests__/campaign-dare-cells.test.ts` |
+
+The tier is DERIVED arithmetically from `LIARS_DICE_UNLOCK_GAMES` rather than read live, because
+`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.6a closes the licensed live-`liarsDiceTier` list at four —
+T-148's precedent, and it buys a free correctness check on freeze-at-open as a side effect. Raw
+counts, not rates, so a later re-cut needs no new sweep. T-175's own headline ordering table came
+off these fields; only its PER-DECISION counters (the calibration table) needed a temporary probe,
+and that probe was not committed.
+
 Fenced so the measurement is reproducible without the gitignored file (T-010 / T-116
 precedent). The console formatting is elided; every counter and every sample point is here.
 

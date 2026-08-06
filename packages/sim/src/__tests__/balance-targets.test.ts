@@ -200,8 +200,23 @@ const TRADER_CLEAR_DAY_MAX = 30;
 // `fleet` pools it. Gambler `finalCredits.median` 80,244 -> 115,612; ONE shape change reported
 // and not suppressed (`byPolicy[gambler].renownRanks.GIGA_HERO`, a bucket the richer gambler
 // now reaches). Gate PASS, 0 invariant violations. THE BANDS BELOW ARE UNTOUCHED.
+// RE-PINNED AT T-175 (2026-08-06) to `baseline-t175-archetype-ordering.json` — F-160-1's
+// close: `archetypeMove`'s `optimal` branch now READS THE STANDING CLAIM instead of pricing it
+// with the unconditioned Binomial (`probClaimTrue` / `creditedClaimSupport`, which are
+// `minOpeningQuantity` read backwards and carry no free parameter). `rulesFingerprint`
+// f264d7f4a2d56fde -> cabd2112ccf4cefb; `instrumentFingerprint` b8894cb6c678fce6 ->
+// e84d8e074fde0b98 (the `dareCells` split, plus `gamblerPolicy` gaining T-199's two shared
+// anti-idle rungs) — so the attribution is NOT single-arm and this note says so rather than
+// implying otherwise. TWO OF TEN ROWS MOVED (fleet, gambler; explorer, fighter, greedy,
+// smuggler, trader, trader-degraded and veteran all byte-identical) — PREDICTED IN WRITING
+// BEFORE THE RUN (`TASKS.md` T-175) with its containment argument: `archetypeMove` has one
+// call site, reachable only through an open Liar's Dice hand, and `planDare` is queued by
+// `gamblerPolicy` and by nothing else. Gambler `finalCredits.median` 115,612 -> 63,653 and
+// `tourOneClearRate` 0.9610 -> 0.9360 — the tables stop being a money printer, which IS the
+// finding rather than a regression. Gate PASS, 0 invariant violations. THE BANDS BELOW ARE
+// UNTOUCHED — nothing was tuned to meet a number.
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
-  new URL('../../../../docs/balance/baseline-t168-effective-band.json', import.meta.url),
+  new URL('../../../../docs/balance/baseline-t175-archetype-ordering.json', import.meta.url),
 );
 const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
   label: string;

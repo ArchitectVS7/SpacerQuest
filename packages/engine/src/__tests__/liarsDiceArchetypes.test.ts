@@ -438,15 +438,34 @@ describe('T-145 · obligation 9 — OPTIMAL is a measurably better policy than B
     }
   });
 
-  it('beats BAD head-to-head over 4,000 simulated hands (seed 20260731)', () => {
-    // n = 4,000 hands, SeededRng(20260731), both sides dealt `dicePerSide` dice,
-    // played to a terminal move and settled with the SAME showdown rule the engine
-    // uses. Measured: `optimal` nets materially more per hand than `bad`, at a
-    // margin far outside the 1-sigma noise of 4,000 hands.
+  it('beats BAD on ITS OWN MODEL, one ply, against a uniform opener (seed 20260731)', () => {
+    // ---------------------------------------------------------------------
+    // T-175 · RENAMED, AND THE NAME IS THE FINDING (F-175-1). This test used to be
+    // called "beats BAD head-to-head over 4,000 simulated hands" and was, until
+    // T-175, the ONLY shipped instrument asserting the archetype ordering — the
+    // very ordering F-160-1 measures as INVERTED in play. It could never have
+    // detected that inversion, because it is SELF-CONFIRMING on both premises:
     //
-    // WHY A SIMULATION RATHER THAN A CLOSED FORM: "better policy" is a statement
-    // about a distribution of positions, not about any single one. This is the
-    // "actual behavioral test" the Accept criterion asks for.
+    //   (a) IT SCORES A RAISE WITH `optimal`'S OWN MODEL — "the other side
+    //       challenges immediately" (see the block below). That is precisely the
+    //       objective `archetypeMove`'s `optimal` branch argmaxes, so a policy
+    //       that maximises it necessarily wins a contest scored by it. The line
+    //       below calling that "the honest comparison" is the assumption this
+    //       finding overturns: it is honest as a statement ABOUT THE MODEL, and it
+    //       is silent about play.
+    //   (b) THE OPENER IS UNIFORM (`quantity = 1..5`, `face = 1..6`) AND THE HAND
+    //       IS ONE PLY LONG. Neither is true in play. Since T-160 the engine
+    //       REFUSES an opening claim at or under `own(face)`, and the shipped
+    //       planner opens at `minOpeningQuantity(own(bestFace))` on the face it
+    //       holds most of; it is also a SELECTIVE challenger (F-160-2) that raises
+    //       back rather than calling, so hands run several plies.
+    //
+    // IT IS KEPT, NOT DELETED, because what it proves is still true and still
+    // worth pinning: given `optimal`'s model, `optimal` scores better on that
+    // model than `bad` does. That is a coherence property of the argmax. The
+    // PLAY-LEVEL claim now lives in the test below it, which plays to termination.
+    // ---------------------------------------------------------------------
+    // n = 4,000 hands, SeededRng(20260731), both sides dealt `dicePerSide` dice.
     const N = 4_000;
     const rng = new SeededRng(20_260_731);
     const dicePerSide = dicePerSideForTier(0);
@@ -493,8 +512,9 @@ describe('T-145 · obligation 9 — OPTIMAL is a measurably better policy than B
         return truthOf(bid) ? -potPolicy : potOther;
       }
       // The policy raised. Valued exactly as its own model values it — the other
-      // side challenges immediately — which is the honest comparison, because it
-      // is the model `bad` is being measured against too.
+      // side challenges immediately. T-175 · THIS IS THE SELF-CONFIRMING STEP
+      // (F-175-1): it is `optimal`'s objective, so this test measures coherence
+      // with the model and NOT strength in play. See the header above.
       const cost = move.move === 'raise-both' ? 2 * ANTE : ANTE;
       potPolicy += cost;
       const claim: DareBid = { quantity: move.quantity as number, face: move.face as number };
@@ -518,4 +538,181 @@ describe('T-145 · obligation 9 — OPTIMAL is a measurably better policy than B
     // 100-credit seed stake.
     expect(optimalPerHand - badPerHand).toBeGreaterThan(10);
   });
+
+  // -------------------------------------------------------------------------
+  // T-175 · F-175-1's REPLACEMENT — the PLAY-LEVEL head-to-head.
+  // -------------------------------------------------------------------------
+
+  /**
+   * The shipped baseline planner's move rule, MIRRORED (`planDareMove`,
+   * `packages/sim/src/index.ts`). It is restated here and not imported because
+   * `@spacerquest/sim` depends on `@spacerquest/engine` and not the other way
+   * round — importing it would be a cycle.
+   *
+   * THE MIRROR IS NAMED AND ITS DRIFT RISK IS NAMED WITH IT. This function must
+   * track four things: the OPENING rule (most-held face, ties to the higher face,
+   * at `minOpeningQuantity(own)`), the FOLD guard (`own === 0` and a claim of 5+),
+   * the SELECTIVE challenge criterion (`quantity > own + dicePerSide/6 + 1.5`) and
+   * the raise preference (quantity, then face, then challenge as the terminal
+   * fallback). `legalMovesFrom` is asked for legality, exactly as the planner asks
+   * `legalDareMoves`, so §5.4's one-definition-of-legality survives this consumer
+   * too. If `planDareMove` changes and this does not, this test measures a
+   * counterparty that no longer plays — which is a strictly smaller failure than
+   * F-175-1's, where the test measured no counterparty at all.
+   */
+  const SIM_FOLD_QUANTITY = 5;
+  const SIM_CHALLENGE_MARGIN = 1.5;
+  function shippedPlannerMove(input: {
+    dice: readonly number[];
+    dicePerSide: number;
+    maxQuantity: number;
+    bid: DareBid | null;
+    ante: number;
+    credits: number;
+  }): { move: DareMoveKind; quantity?: number; face?: number } {
+    const own = (face: number) => input.dice.filter((d) => d === face).length;
+    if (input.bid === null) {
+      let bestFace = 1;
+      for (let face = 1; face <= 6; face += 1) if (own(face) >= own(bestFace)) bestFace = face;
+      return { move: 'bid', quantity: own(bestFace) + 1, face: bestFace };
+    }
+    const bid = input.bid;
+    const legal = legalMovesFrom(bid, input.ante, 10_000, input.credits, true, input.maxQuantity);
+    const expected = own(bid.face) + input.dicePerSide / 6;
+    if (own(bid.face) === 0 && bid.quantity >= SIM_FOLD_QUANTITY && legal.includes('fold')) {
+      return { move: 'fold' };
+    }
+    if (bid.quantity > expected + SIM_CHALLENGE_MARGIN && legal.includes('challenge')) {
+      return { move: 'challenge' };
+    }
+    if (legal.includes('raise-quantity')) {
+      return { move: 'raise-quantity', quantity: bid.quantity + 1, face: bid.face };
+    }
+    if (legal.includes('raise-face')) {
+      return { move: 'raise-face', quantity: bid.quantity, face: bid.face + 1 };
+    }
+    return { move: 'challenge' };
+  }
+
+  /**
+   * One hand played TO TERMINATION between `archetype` (the house) and the shipped
+   * planner (the player), settled with the engine's own showdown rule. Returns the
+   * HOUSE's net credits, so a POSITIVE number means the archetype beat the planner.
+   */
+  function playFullHand(
+    archetype: 'optimal' | 'bad' | 'random',
+    rng: SeededRng,
+    dicePerSide: number,
+  ): { houseNet: number; plies: number } {
+    const maxQuantity = maxQuantityForDice(dicePerSide);
+    const ANTE = 30;
+    const SEED_STAKE = 100;
+    const houseDice = Array.from({ length: dicePerSide }, () => rng.d6());
+    const playerDice = Array.from({ length: dicePerSide }, () => rng.d6());
+    const truthOf = (claim: DareBid) =>
+      houseDice.filter((d) => d === claim.face).length +
+        playerDice.filter((d) => d === claim.face).length >=
+      claim.quantity;
+
+    let potHouse = SEED_STAKE;
+    let potPlayer = SEED_STAKE;
+    let bid: DareBid | null = null;
+    /** Who owns the standing claim. Only ever set once a bid exists. */
+    let bidder: 'house' | 'player' = 'player';
+    let plies = 0;
+
+    // The PLAYER always opens — the dealer is never asked to move before the
+    // player's opening bid (§9.9 ruling 1), which is why `archetypeMove` throws on
+    // a null bid.
+    for (let turn = 0; turn < 64; turn += 1) {
+      plies += 1;
+      const houseToAct = turn % 2 === 1;
+      if (!houseToAct) {
+        const move = shippedPlannerMove({
+          dice: playerDice,
+          dicePerSide,
+          maxQuantity,
+          bid,
+          ante: ANTE,
+          credits: 100_000,
+        });
+        if (move.move === 'fold') return { houseNet: potPlayer, plies };
+        if (move.move === 'challenge') {
+          // The player called the HOUSE's claim: the bidder wins iff it is true.
+          return { houseNet: truthOf(bid!) ? potPlayer : -potHouse, plies };
+        }
+        if (move.move !== 'bid') potPlayer += move.move === 'raise-both' ? 2 * ANTE : ANTE;
+        bid = { quantity: move.quantity!, face: move.face! };
+        bidder = 'player';
+      } else {
+        const move = archetypeMove({
+          archetype,
+          dealerDice: houseDice,
+          dicePerSide,
+          maxQuantity,
+          bid: bid!,
+          ante: ANTE,
+          headroom: 10_000,
+          dealerCredits: 100_000,
+          potPlayer,
+          potDealer: potHouse,
+          roll: Math.floor(rng.next() * 100),
+        });
+        if (move.move === 'fold') return { houseNet: -potHouse, plies };
+        if (move.move === 'challenge') {
+          // The house called the PLAYER's claim: the bidder wins iff it is true.
+          return { houseNet: truthOf(bid!) ? -potHouse : potPlayer, plies };
+        }
+        potHouse += move.move === 'raise-both' ? 2 * ANTE : ANTE;
+        bid = { quantity: move.quantity!, face: move.face! };
+        bidder = 'house';
+      }
+    }
+    // Unreachable: every raise strictly increases quantity or face and the lattice
+    // is bounded, so a hand terminates. Named rather than silently returning 0.
+    throw new Error(`hand did not terminate (bidder=${bidder})`);
+  }
+
+  it.each([4, 5, 6])(
+    'T-175 · PLAY-LEVEL head-to-head at %i dice: hands run to termination against the shipped planner',
+    (dicePerSide) => {
+      // F-175-1's replacement. Unlike the test above, NOTHING here is scored with
+      // `optimal`'s own model: every hand is settled by `actualCount >= quantity`
+      // over the dice actually in play, exactly as `resolveChallenge` settles it,
+      // and the counterparty is the shipped planner's rule rather than a uniform
+      // draw answered for one ply.
+      //
+      // n = 20,000 hands per archetype per tier band — sized as a REGRESSION
+      // DETECTOR, not a knife-edge. If it goes red, WIDEN THE SAMPLE; never move
+      // the bar (N4/N10, `docs/VERSIONING.md`).
+      const N = 20_000;
+      const rng = new SeededRng(20_260_806 + dicePerSide);
+      const nets: Record<string, number> = { optimal: 0, bad: 0, random: 0 };
+      let plies = 0;
+      for (let i = 0; i < N; i += 1) {
+        for (const archetype of ['optimal', 'bad', 'random'] as const) {
+          const hand = playFullHand(archetype, rng, dicePerSide);
+          nets[archetype] += hand.houseNet;
+          plies += hand.plies;
+        }
+      }
+      const per = (a: string) => nets[a] / N;
+      const message =
+        `dice=${dicePerSide} optimal=${per('optimal').toFixed(2)} ` +
+        `bad=${per('bad').toFixed(2)} random=${per('random').toFixed(2)} ` +
+        `mean plies=${(plies / (3 * N)).toFixed(2)}`;
+
+      // THE PROPERTY THIS PINS, and it is the one F-160-1 is about: the house's
+      // per-hand take must ORDER `optimal >= bad`. A red here means the archetype
+      // labelled "optimal" is the softer seat IN PLAY — the inversion returning.
+      expect(per('optimal'), message).toBeGreaterThan(per('bad'));
+      // ...and `random` must be the softest of the three, because it is uniform
+      // over the legal set INCLUDING `fold` (§3.5).
+      expect(per('optimal'), message).toBeGreaterThan(per('random'));
+      // A hand that ends on the opening ply for every archetype would mean the
+      // counterparty is not playing; assert the hands are genuinely multi-ply.
+      expect(plies / (3 * N), message).toBeGreaterThan(2);
+    },
+    120_000,
+  );
 });

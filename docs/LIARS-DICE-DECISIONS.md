@@ -183,6 +183,21 @@ which is circular, because `bad` is only harder *because of* F-137-1. (T-148)
 > explicitly rejected as first moves remain rejected: no `BAD_CREDULITY` / `archetypeMove` retune
 > and no reweighting of the four tone mixes happened here.
 
+> **T-175 (2026-08-06) discharged the SECOND step — the archetypes — and F-160-1 is CLOSED.**
+> The residual was `optimal`'s alone. It was **measured before anything was changed** (a
+> calibration table over ~42,000 dealer decisions per tier: `optimal`'s `[0.1, 0.3)` predicted-truth
+> band realised 60.89% / 85.34% / 95.50% actually-true at 4 / 5 / 6 dice), and the fix is a rule
+> read backwards out of `minOpeningQuantity` with no free parameter — see **LD-25**. Re-measured
+> off the SHIPPED instrument's own capstone rows: bad − optimal went **−6.64 pp (z −12.74) →
+> +16.11 pp (z +29.02)**, and **+15.79 pp (z 35.93)** on a sample WIDENED to 1,600 gambler careers
+> because `random` landed under the n ≥ 10,000 bar —
+> positive at every tier, and the ladder now orders `optimal` < `bad` < roaming < `random` by
+> difficulty. **LD-20's two rejections both HELD:** `BAD_CREDULITY` was re-derived against measured
+> data and **left at 1** (spec §3.4a), and `git diff packages/content/src/liarsDice.ts` is empty —
+> the four tone mixes were not reweighted, and LD-20's reason for rejecting that lever survives its
+> own premise: the mixes are CONTENT and the ordering is a RULE. LD-20's remaining step (F-148-3)
+> is still the owner's.
+
 Ladder pacing (`LIARS_DICE_UNLOCK_GAMES`), the `CONQUEROR` renown threshold and the
 instrument's own seating rule are owner-gated and covered in
 `docs/BALANCE-RIG-DECISIONS.md` Part G.
@@ -281,3 +296,60 @@ list**, in the spec, before the code.
 **stake domain** off raw `wagerBandFor(...)` instead of `preHandWagerBand(state)` — or that
 re-derives `band.max × LIARS_DICE_RAISED_CEILING_MULT` for itself. That is a *stricter* rule than
 the one it replaces: it catches the F-148-4 defect, which the old one could not see.
+
+---
+
+**LD-25 — `optimal` READS THE STANDING CLAIM. The chosen shape, and the four measured and
+rejected.** (T-175, closing F-160-1; `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3a.)
+
+**The ruling.** `archetypeMove`'s `optimal` branch computes its belief that the standing claim is
+true from the claim itself, not from an unconditioned Binomial:
+
+```
+creditedClaimSupport(q, u) = min(max(q - 1, 0), u)
+pTrue(bid)                 = ownOf(bid.face) + creditedClaimSupport(bid.quantity, u) >= bid.quantity
+```
+
+**Why this is a rule and not a tuned number.** `minOpeningQuantity(m) = m + 1` (LD-21 / T-160)
+forbids a claim at or under what the claimant holds of the claimed face. Read backwards, a standing
+claim of `q` is the claim of someone holding `q - 1`. There is no free parameter: move
+`minOpeningQuantity` and this moves with it. No hidden information is added — the bid is public and
+`ownOf` is the house's own hand.
+
+**The four shapes MEASURED AND REJECTED**, all on the same to-termination rig against the shipped
+planner, n = 40,000 hands per candidate per tier (n = 400,000 for the tier-0 arbitration). House
+credits per hand, higher is a harder seat; `bad` is the bar the ordering has to clear:
+
+| shape | 4 dice | 5 dice | 6 dice | verdict |
+| --- | --- | --- | --- | --- |
+| SHIPPED BEFORE (`probAtLeast`, no read) | +3.42 | −17.00 | −31.17 | the defect |
+| **CHOSEN — full credited support** | **+48.52** | **+25.99** | **+9.28** | beats `bad` at every tier |
+| credit exactly ONE die (`probAtLeast(q−own−1, u−1)`) | +40.72 | +17.49 | +0.78 | REJECTED — loses to `bad` at tier 0 by 3.96, z = −18 |
+| condition on the LATTICE BOUND alone (`X ≤ q−1`) | +3.93 | −15.45 | −29.12 | REJECTED — near-inert; the engine's own bound pushes the WRONG WAY (it truncates the upper tail, lowering `pTrue`), which is the clean negative result that proves the missing evidence is *behavioural* |
+| MODAL-FACE read (soft, parameter-free) + lattice bound | +43.27 | +19.35 | +11.28 | REJECTED — still loses to `bad` at tier 0 by 1.41, and at n = 400,000 that residual is z = −6.4, i.e. real and not noise |
+| credited support applied to `optimal`'s OWN raises too | +40.19 | −31.16 | −72.76 | REJECTED — re-uses the read from the ORIGINAL claim at a higher quantity (stale evidence) |
+| `bad`, for reference | +44.68 | +16.94 | −1.31 | — |
+
+**Why the residual was NOT taste, so this was not escalated.** Two shapes (the chosen one and the
+modal-face read) both narrow the inversion, and the plan's rule is to halt and escalate when the
+choice between them is taste. It is not: pre-committed criterion — *the ordering must un-invert at
+EVERY tier on the shipped planner* — is met by exactly one of them, and the tier-0 arm was WIDENED
+to n = 400,000 (never re-thresholded) to establish that the runner-up's 1.41-credit shortfall is
+z = −6.4 rather than noise.
+
+**The one objection to the chosen shape was measured too, not waved off.** A point read makes
+`optimal` maximally credulous about a claim, so it should in principle be exploitable by a bluffing
+human — a counterparty the sim's planner cannot be, since it opens at the engine's floor by
+construction. Re-run with the counterparty opening `+1` and `+2` OVER the floor: the chosen shape
+takes +66.74 / +55.70 / +45.70 and +95.47 / +92.52 / +87.26 credits per hand. It is 8–10 credits
+per hand behind the runner-up in that regime, but **bluffing is a catastrophically losing line for
+the player against every candidate including this one**, so the exposure is real in direction and
+worth nothing in play. Recorded rather than assumed.
+
+**What this ruling does NOT do.** It does not touch `optimal`'s RAISE valuation — the "as if the
+opponent challenges it immediately" model assumption is untouched and remains **T-176 / F-160-2's**
+to rule on. It does not move `BAD_CREDULITY`, which was re-derived against measured post-fix data
+and left at `1` (spec §3.4a). It does not reweight the four tone mixes, which LD-20 rejected as
+circular and which are CONTENT besides. And it narrows one thing: `optimal`'s FOLD branch becomes
+provably unreachable (`pTrue` is now 0 or 1, so a challenge always ties or beats a fold), filed as
+**F-175-2** against T-177, which owns FOLD.

@@ -203,6 +203,15 @@ export function settleDareHand(state: GameState, outcome: DareOutcome, events: G
     creditsDelta,
     dispositionDelta,
     ...(opponentLine !== undefined ? { opponentLine } : {}),
+    // T-175 · THREE COPIES OF ALREADY-FROZEN FIELDS, and nothing else. Not a new
+    // read of anything: `opponentKind`, `opponentArchetype` and `dicePerSide` were
+    // all written onto the hand at open (§5.3) and are in scope here. They are
+    // emitted UNCONDITIONALLY (unlike `opponentLine`, whose absence is a rule about
+    // pool B) so that a reader can tell "roaming hand" from "pre-T-175 event" — a
+    // missing key and a null must not be the same reading.
+    opponentKind: hand.opponentKind,
+    opponentArchetype: hand.opponentArchetype ?? null,
+    dicePerSide: hand.dicePerSide,
   });
 
   // §10.3 · THE TERMINAL HangoutEvent STAYS, unchanged in shape. Nine shipped
