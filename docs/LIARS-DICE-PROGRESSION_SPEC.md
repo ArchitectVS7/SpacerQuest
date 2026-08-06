@@ -464,6 +464,80 @@ tie corner at `potPlayer`/`potDealer` `= 0` with the raise set emptied; and — 
 most — **the point-read property of `probClaimTrue` asserted directly**, so a future soft `pTrue`
 trips this test and revives the branch by design rather than in silence.
 
+#### 3.3c AMENDMENT (T-219, 2026-08-06) — the RAISE valuation: the model assumption IS the evidence gate, MEASURED AND KEPT (F-176-1)
+
+**§3.3's paragraph beginning *"The model assumption, stated rather than hidden"* is kept verbatim
+and superseded in place by this subsection**, and so is §3.3a's *"What did NOT change"* paragraph,
+which still names **"F-160-2 / T-176's"** as the owner of the raise valuation. That pointer is
+discharged: T-176 declined it in writing, it was refiled as **F-176-1**, and **T-219 measured it,
+bakeoff'd four replacements and kept the shipped expression.** The full record is
+`docs/LIARS-DICE_REDESIGN.md` **§19**; the binding ruling is `docs/LIARS-DICE-DECISIONS.md`
+**LD-27**.
+
+**THE ASSUMPTION IS WRONG ABOUT THE SHIPPED COUNTERPARTY, AND THAT IS MEASURED, NOT CONCEDED.** The
+raise valuation prices every candidate as if the opponent challenged it immediately. Measured on
+HEAD at n = 13,472 / 14,330 / 15,096 raises per tier, the opponent challenges the house's raise on
+the very next ply **22.62% / 28.01% / 29.86%** of the time — the model asserts 100%. The resulting
+per-raise error is **−126.99 / −84.81 / −47.34** credits (modelled minus realised, SE ≈ 1.2), i.e.
+the model is systematically **pessimistic**. *T-175's quoted +52.62 / −53.26 pair is pre-`probClaimTrue`
+and its sign has since reversed; it may not be argued from.*
+
+**AND THE ASSUMPTION IS LOAD-BEARING, WHICH IS WHAT NOBODY HAD WRITTEN DOWN.** With `pTrue ∈ {0,1}`
+(§3.3a) the argmax collapses to a closed form, derived here rather than observed:
+
+- At **`pTrue = 0`**, `challenge` scores `+potPlayer` and a raise is maximised at exactly
+  `potPlayer` (when `pOurs = 1`), which the tie-break gives to `challenge`. **Every raise `optimal`
+  makes therefore happens at `pTrue = 1`.**
+- At **`pTrue = 1`**, `challenge` and `fold` both score `−potDealer`, so the raise comparison is
+  `EV(raise m) > −potDealer`, which rearranges exactly to
+
+```
+optimal raises  <=>  probAtLeast(k_m, u) * (potPlayer + potDealer + c_m)  >  c_m
+                     where k_m = q_m - ownOf(f_m)
+```
+
+`probAtLeast` is monotone non-increasing in `k`, so the admissible set is a **down-set in `k`**:
+the "wrong" model is the **only term in the expression that is a function of the raise's own truth
+probability**, and it is therefore the only thing making `optimal`'s raise rule an evidence rule at
+all. At the table's own numbers the gate is `k ≤ 2` and **zero** raises at `k ≥ 3` are emitted, at
+every tier, over 200,000 hands per arm.
+
+**THE FOUR REPLACEMENTS, ALL DERIVED FROM NAMED SOURCES, ALL REJECTED** (house credits/hand,
+n = 200,000 hands per arm per tier, identical seeds; `bad` is LD-25's bar):
+
+| shape | 4 dice | 5 dice | 6 dice | verdict |
+| --- | --- | --- | --- | --- |
+| **SHIPPED — kept** | **+48.61** | **+26.42** | **+8.43** | best at every tier |
+| S1a `pCall·EV`, `pCall` from `DARE_AI_CHALLENGE_MARGIN` | +45.41 | +21.06 | +6.75 | rejected — loses at every tier (z 9.9 / 15.0 / 4.6) and collapses to +27.23 / +11.83 against a +1 bluffing opener |
+| S1b S1a + a one-ply continuation off the planner's own (c3) | +17.26 | +12.13 | +1.22 | rejected — re-inverts the ordering at four dice; the leaf re-imports the same model |
+| S1c S1a + the counterparty's FOLD branch (`DARE_AI_FOLD_QUANTITY`) | +13.68 | −3.13 | +6.88 | rejected — below `bad` at four and five, re-inverts at both |
+| S2 `dealerMove`'s own raise gate (`own(f_m) ≥ q_m − u/6`) | −3.00 | −19.08 | −24.98 | rejected — deletes 97% of raises, re-inverts at every tier |
+| `bad`, reference | +44.70 | +17.27 | −2.03 | — |
+
+Every replacement that prices the counterparty correctly **dissolves the `k` gate** — `pCall` is a
+function of the claimed quantity `q_m`, not of `k` — and starts raising on claims with no evidence
+behind them (S1a raises at `k = 3` on 31.8% of its raises at four dice; S1c reaches `k = 7`). S2
+fails from the other side: over the integers its gate is `k ≤ 0` at four and five dice.
+
+**WHAT DID NOT CHANGE, AND THE CONSEQUENCE FOR §3.3b.** `EV(raise m)` is byte-identical to §3.3's
+block above; nothing in `packages/engine/src` moved semantically and `rulesFingerprint` was measured
+unmoved at `cabd2112ccf4cefb` across the change set. Because `pTrue` is still a point read,
+**§3.3b's FOLD ruling stands unamended**: the branch remains unreachable by construction and
+retained, and §3.3b's clause naming *"the raise-valuation work `T-219` owns"* now reads as
+**measured and declined at T-219** — the branch goes live if a *future* task makes `pTrue` soft, not
+because of anything this one did.
+
+**ONE COUPLING THIS EXPOSED, FILED RATHER THAN FIXED (F-219-1 → `T-222`).** The gate's threshold is
+`c_m / (potPlayer + potDealer + c_m)`, both pots are seeded at the player's chosen `seedWager`, and
+`c_m` is the frozen `ante = round(band.max × DARE_ANTE_BAND_FRACTION)`. So the bar is
+`ante / (2·seedWager + ante)` and **the player moves the house's evidence bar by choosing how much
+to stake**. Over every shipped band at tier 0: `k ≤ 3` at every ceiling, and `k ≤ 2` / `k ≤ 1` /
+**`k ≤ 0`** at the floor depending on the port — at the 15–1200, 25–2000 and 10–3000 ports a
+minimum-stake hand faces a dealer that will not raise unless it already holds the claim. That is an
+accident of the ante/pot ratio rather than a design; it is now pinned by a named test computed from
+`probAtLeast` and the imported constants (`liarsDiceArchetypes.test.ts`, describe **`T-219 · F-176-1
+— the immediate-challenge assumption IS optimal's raise evidence gate`**) rather than left to prose.
+
 ### 3.4 BAD — a specified leak, not "worse random"
 
 `bad` plays as though the other side of the table were blank — it reasons only from its own dice

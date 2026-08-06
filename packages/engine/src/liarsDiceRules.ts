@@ -1156,21 +1156,54 @@ export function archetypeMove(input: {
   // ignored (see the input's own note on why it is drawn anyway).
   //
   // THE MODEL ASSUMPTION, STATED RATHER THAN HIDDEN: a raise is valued AS IF THE
-  // OPPONENT CHALLENGES IT IMMEDIATELY. This is a conservative, model-free
-  // valuation — it needs no belief about how the player plays, which is exactly
-  // why "optimal" here means "optimal against the information it has" and not
-  // "solves the game".
+  // OPPONENT CHALLENGES IT IMMEDIATELY. The sentence that used to follow — "this is
+  // a conservative, model-free valuation ... which is exactly why 'optimal' here
+  // means optimal against the information it has and not solves the game" — is kept
+  // verbatim because it is HALF RIGHT, and superseded in place by the block below.
   //
-  // T-176 · THE OWNER OF THAT ASSUMPTION IS NOW **F-176-1**, NOT A TASK. T-175 left
-  // this valuation alone and pointed at T-176; T-176 read the pointer and DECLINED
-  // it, in writing (`docs/LIARS-DICE_REDESIGN.md` §18.0 correction 4, §18.7): it is
-  // outside both branches of T-176's own Accept criterion, it would re-open the
-  // archetype ordering T-175 shipped one task earlier, and it is the same class of
-  // move as §16.2's banned third shape. The defect is REAL and MEASURED — T-175
-  // sized it at a modelled +52.62 credits per raise against a realised −53.26 at
-  // six dice — so it is filed as its own backlog row rather than left pointing at a
-  // task that refused it (backlog row `T-219` in `TASKS.md`). Do not "improve"
-  // this line without that finding's owner.
+  // T-219 · **F-176-1 IS CLOSED: MEASURED, BAKED OFF, AND THE ASSUMPTION IS KEPT —
+  // BECAUSE IT IS THE EVIDENCE GATE.** (`docs/LIARS-DICE_REDESIGN.md` §19,
+  // `docs/LIARS-DICE-DECISIONS.md` LD-27, `docs/LIARS-DICE-PROGRESSION_SPEC.md`
+  // §3.3c. Supersedes T-176's "the owner of that assumption is now F-176-1" note,
+  // whose pointer is now discharged.)
+  //
+  //   * THE ASSUMPTION IS FALSE ABOUT THE SHIPPED COUNTERPARTY, and that is
+  //     measured rather than conceded: the opponent challenges the house's raise on
+  //     the very next ply 22.62% / 28.01% / 29.86% of the time at 4 / 5 / 6 dice
+  //     (n = 13,472 / 14,330 / 15,096 raises), against the 100% this expression
+  //     asserts. T-175's quoted "+52.62 modelled vs −53.26 realised" is PRE-
+  //     `probClaimTrue` and its SIGN HAS SINCE REVERSED — on HEAD the model is
+  //     systematically PESSIMISTIC (−37.05 modelled vs +10.29 realised at six dice).
+  //     Do not argue from the old pair.
+  //   * IT IS ALSO LOAD-BEARING, WHICH IS WHAT NOBODY HAD WRITTEN DOWN. Because
+  //     {@link probClaimTrue} is a point read, `pTrue ∈ {0,1}`; at `pTrue = 0` a
+  //     challenge scores `+potPlayer`, which no raise can beat, so EVERY raise
+  //     happens at `pTrue = 1`, where `challenge` and `fold` both score
+  //     `−potDealer` and the comparison rearranges EXACTLY to
+  //         probAtLeast(k_m, u) * (potPlayer + potDealer + c_m)  >  c_m,   k_m = q_m − own(f_m).
+  //     `probAtLeast` is monotone non-increasing in `k`, so the admissible set is a
+  //     DOWN-SET IN `k`. This term is the only part of the expression that is a
+  //     function of the raise's own truth probability, and it is therefore the only
+  //     thing that makes this an EVIDENCE RULE at all. Over 200,000 hands per tier
+  //     the shipped rule emits ZERO raises at `k >= 3`.
+  //   * FOUR REPLACEMENTS, EACH DERIVED FROM A NAMED SOURCE, ALL LOSE — on identical
+  //     seeds at n = 200,000 hands per arm per tier, scored on REALISED house
+  //     credits/hand off the showdown rule (never on their own EV). Pricing the call
+  //     from {@link DARE_AI_CHALLENGE_MARGIN} +45.41/+21.06/+6.75 against the shipped
+  //     +48.61/+26.42/+8.43 (z = 9.9/15.0/4.6), and −29 to −34 credits/hand worse
+  //     against a bluffing opener; that shape plus a one-ply continuation, or plus
+  //     {@link DARE_AI_FOLD_QUANTITY}'s fold branch, or `dealerMove`'s own raise gate
+  //     (`own(f_m) >= q_m − dicePerSide/6`, which over the integers is `k <= 0` at
+  //     four and five dice) all RE-INVERT the archetype ordering T-175 shipped.
+  //     Every one of them dissolves the `k` gate, because a call probability is a
+  //     function of the claimed QUANTITY and the gate is a function of `k`.
+  //   * SO: DO NOT "IMPROVE" THIS LINE by pricing the counterparty. That has been
+  //     tried four ways and measured. What is NOT settled is F-219-1 (`T-222`): the
+  //     gate's threshold is `ante / (2 · seedWager + ante)`, so the PLAYER moves the
+  //     house's evidence bar by choosing how much to stake — `k <= 1` at the band
+  //     floor, `k <= 3` at the ceiling. That is a wager-band/ante ruling. Guarded by
+  //     `liarsDiceArchetypes.test.ts`, describe `T-219 · F-176-1 — the
+  //     immediate-challenge assumption IS optimal's raise evidence gate`.
   //
   // T-175 · WHAT MOVED, AND IT IS ONE LINE (F-160-1, §3.3a). The sentence this
   // block used to end on — "it will not over-challenge a claim `probAtLeast` says
@@ -1208,7 +1241,9 @@ export function archetypeMove(input: {
     // `pTrue = 0` it scores `+potPlayer` and beats it outright. It is kept anyway,
     // for two reasons: (a) `optimal` is an ARGMAX OVER THE WHOLE LEGAL SET, and the
     // branch goes live again the instant `pTrue` stops being a point read (LD-25's
-    // rejected soft reads, or the raise valuation `T-219` owns) — deleting it would
+    // rejected soft reads — the raise valuation that used to be named here was
+    // MEASURED AND DECLINED at T-219 (LD-27, §19), so it is no longer a route to
+    // reviving this branch, and `pTrue` remains a point read) — deleting it would
     // leave a policy that silently cannot express a legal move; (b) removal is a
     // SEMANTIC edit that moves `rulesFingerprint` and buys a capstone for zero
     // behaviour change. Guarded by `packages/engine/src/__tests__/

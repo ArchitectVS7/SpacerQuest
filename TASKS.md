@@ -2442,7 +2442,7 @@ is a **priced trade, not a dead move**.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
-### T-219 · F-176-1: `optimal`'s RAISE valuation prices a counterparty that does not exist — `status: TODO` · `coder: opus` · `after: T-175, T-176`
+### T-219 · F-176-1: `optimal`'s RAISE valuation prices a counterparty that does not exist — `status: DONE` · `coder: opus` · `after: T-175, T-176`
 
 **Filed at T-176 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §18.0 correction 4 / §18.7.** This
 finding exists because a *task* was named as an owner and that task, reading its own Accept
@@ -2470,6 +2470,122 @@ re-scored and must not re-invert**, and the player win rate is re-scored against
 `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3 and `docs/LIARS-DICE-DECISIONS.md` LD-25 updated;
 `packages/engine/src` is touched so the task takes its own capstone with the moved rows predicted
 first; gate green.
+
+**Delivered (2026-08-06). F-176-1 CLOSES AS MEASURED, BAKED OFF AND DECLINED — the assumption is
+KEPT, because it turned out to BE the evidence gate.** Nothing shipped in `packages/engine/src`
+beyond comments. The finding was right about the counterparty and wrong about what follows from it,
+and both halves are measurements rather than assertions.
+
+- **THE FINDING'S OWN HEADLINE NUMBERS WERE STALE, AND THAT WAS CORRECTED BEFORE ANYTHING RAN**
+  (§19.0). "+52.62 modelled vs −53.26 realised at six dice" was measured by T-175 **on its own
+  pre-`probClaimTrue` control arm**; `probClaimTrue` did not change the raise formula but changed
+  which decisions ever reach a raise (`optimal` challenged 91–94% of decisions before it and
+  challenges from a zero count after it), so the raise population is a different population. On HEAD
+  the **sign has reversed**: the model is systematically PESSIMISTIC. Anything reasoning from the old
+  pair is wrong on arrival.
+- **PHASE 0 — RE-MEASURED ON HEAD BEFORE THE RULE WAS TOUCHED** (probe `.scratch/t219-diag.ts`,
+  T-169/T-175's precedent; N = 40,000 hands/tier). **n = 13,472 / 14,330 / 15,096 RAISES per tier**,
+  every tier clearing the Accept bar of n ≥ 10,000 **on its own count** — checked explicitly, and the
+  sample was never softened. Per-raise gap (modelled − realised) **−126.99 / −84.81 / −47.34**, SE
+  ≈ 1.2, against T-175's own estimand replicated beside it (−78.99/+60.43, −61.15/+34.45,
+  −42.32/+16.44). And the assumption itself, turned into a number: the counterparty challenges the
+  house's raise on the very next ply **22.62% / 28.01% / 29.86%** of the time. **The model asserts
+  100%.**
+- **THE CONTROL WAS PROVEN, NOT ASSUMED.** The bakeoff rig restates `optimal`;
+  `.scratch/t219-fidelity.ts` cross-checks it against the shipped
+  `archetypeMove({archetype:'optimal'})` over **1,200,000 randomised states** at all three widths, on
+  move kind, quantity and face — **zero mismatches**, move mix reported. A drifted restatement would
+  have scored every arm against a straw control, which is F-175-1's premise (a) in a new costume.
+- **FOUR REPLACEMENTS, EACH FROM A NAMED SOURCE, ALL MEASURED, ALL REJECTED** — identical seeds
+  (`SeededRng(20_260_806 + u)`), **n = 200,000 hands per arm per tier**, `n` on every cell, scored on
+  **realised** house credits/hand off the engine's showdown rule and never on their own EV. House
+  credits/hand, `bad` the bar: **SHIPPED +48.61 / +26.42 / +8.43**; S1a (`pCall` from
+  `DARE_AI_CHALLENGE_MARGIN`) +45.41 / +21.06 / +6.75; S1b (S1a + a one-ply continuation off the
+  planner's own ungated (c3)) +17.26 / +12.13 / +1.22; S1c (S1a + the counterparty's fold branch from
+  `DARE_AI_FOLD_QUANTITY`) +13.68 / −3.13 / +6.88; S2 (`dealerMove`'s own raise gate) −3.00 / −19.08
+  / −24.98; `bad` +44.70 / +17.27 / −2.03. **The shipped rule wins at every tier** — against the best
+  alternative by z = 9.9 / 15.0 / 4.6 on the conservative independent-arm SE. The first pass ran at
+  n = 40,000 and **the sample was WIDENED to 200,000** because the six-dice cell was closest; the
+  claim was never softened.
+- **THE REASON, DERIVED RATHER THAN OBSERVED** (§19.6, spec §3.3c, LD-27). `pTrue ∈ {0,1}`, so at
+  `pTrue = 0` a challenge scores `+potPlayer` which no raise can beat — **every raise happens at
+  `pTrue = 1`** — and there `challenge` and `fold` both score `−potDealer`, so the comparison
+  rearranges EXACTLY to `probAtLeast(k_m, u) · (potPlayer + potDealer + c_m) > c_m`. `probAtLeast` is
+  monotone non-increasing in `k`, so the admissible set is a **down-set in `k`**. The
+  immediate-challenge term is the only part of the expression that is a function of the raise's own
+  truth probability, so **it is the only thing making this an evidence rule at all**. Measured: the
+  shipped rule emits **zero** raises at `k ≥ 3` over 200,000 hands at every tier, while S1a raises at
+  `k = 3` on 31.8% of its raises and S1c reaches `k = 7`. A call probability is a function of the
+  claimed QUANTITY; the gate is a function of `k`; multiplying dissolves it.
+- **THE ROBUSTNESS ARM WAS RUN, NOT WAVED OFF.** With the counterparty opening +1 over the engine
+  floor the best alternative **collapses** — +62.62 / +27.23 / +11.83 against the shipped
+  +66.87 / +56.41 / +46.08 — converging only at +2, where both sides get called immediately.
+- **PREDICTIONS SCORED RIGHT *AND* WRONG** (§19.7, §18.5's discipline). 1 RIGHT, 2 RIGHT, **3
+  WRONG** (S1a loses at every tier — the reasoning confused "the realised value of the raises S0
+  selects is positive" with "raising more is better"), **4 WRONG on both halves**, **5 WRONG** (three
+  of four candidates re-invert the ordering), 6 RIGHT and larger than predicted. **And a miss in the
+  criteria themselves is recorded rather than patched over:** K1–K4 were written against `bad` and
+  never said a replacement must beat the incumbent, so read literally they would have licensed
+  shipping S1a. That is a defect in this task's own criteria set, scored as one.
+- **THE ORDERING AND THE WIN RATE, RE-SCORED ON THE SHIPPED INSTRUMENT**, on the SAME arm shape
+  §18.4 used (`--policies gambler --seeds 1600 --days 120`, four 1-indexed shards) and scored with
+  `.scratch/t176-bakeoff.mjs` unchanged: **`bad − optimal` = +15.79 pp, SE 0.44, z 35.93** and
+  **player win rate 52.90%** at n = 279,857, EV **+190.1 cr/hand**, `dareTierDisagreements` **0**,
+  `invariants: 0 violations` on all four shards — reproducing §18.6 to the published decimal, which is
+  what an unchanged rule must do and is the proof that this task moved nothing. **C2's 55–70% band is
+  T-220's and was neither edited nor targeted**; recorded for T-220: every alternative moved the
+  number *away* from the floor.
+- **THE "IF ANYTHING SHIPS" CLAUSE DID NOT FIRE** (the T-177 precedent, verbatim). Accept conditions
+  the capstone on `packages/engine/src` being touched; the only engine lines here are comments, which
+  `hashSemantic` strips. **`rulesFingerprint` MEASURED before and after via
+  `computeRulesFingerprint` — `cabd2112ccf4cefb` → `cabd2112ccf4cefb`, EQUAL** —
+  `instrumentFingerprint` `2d6d1990eaf13031` unmoved, `docsFingerprint` moved (comment bytes only,
+  a NOTE and not a failure by `fixtureDocsDrift`'s own contract, and the fixture already carried that
+  drift from T-177). **No capstone, no 8,000-row sweep, no `balance:diff`, no `balance:extract`, no
+  baseline re-pin.** **`CURRENT_SAVE_VERSION` re-read live at `packages/engine/src/save.ts:627` —
+  17, UNMOVED**; no persisted shape changed, so no migration and no round-trip test is owed.
+- **TESTS.** `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` gains describe **`T-219 ·
+  F-176-1 — the immediate-challenge assumption IS optimal's raise evidence gate`** (5 tests). Every
+  assertion is computed from `probAtLeast`, `probClaimTrue` and the imported constants, with no
+  literal thresholds: at all three `dicePerSideForTier(0|1|2)` widths every raise is emitted at
+  `pTrue = 1` and satisfies the derived inequality; the admissible set is asserted to be a **down-set
+  in `k`** over a 540-cell pot/ante grid with the "the gate actually bites" cells counted; and
+  F-219-1's coupling is pinned across **all 40 system ids**. Non-vacuity counted before it was written
+  down: tier 0 **984 raises / 4,016 challenges / 0 folds**, tier 1 **1,100 / 3,900 / 0**, tier 2
+  **1,182 / 3,818 / 0**, with the raise `k` histograms reaching 4 / 4 / 5 so the derived inequality is
+  a real constraint rather than one satisfied at the trivial corner. The shipped `T-175 · PLAY-LEVEL
+  head-to-head` and the `T-177 · F-175-2` describes are **byte-identical** and green — the restated
+  planner in the first was deliberately not touched (§9's named trap).
+- **DOCS.** `docs/LIARS-DICE_REDESIGN.md` gains **§19** (§19.0 four framing corrections written
+  before anything ran, §19.1 the Phase-0 measurement with the `k`-split and the T-175 replication,
+  §19.2 the candidates with their named sources, §19.3 the pre-committed criteria, §19.4 the
+  predictions — all four written before the first bakeoff number existed — then §19.5 the bakeoff,
+  §19.6 the mechanism, §19.7 the scored predictions, §19.8 the decision, §19.9 the re-score, §19.10
+  the findings); §18.7's F-176-1 entry gains a dated `CLOSED AT T-219` blockquote with its text left
+  verbatim, and §18.0 correction 4 gains a `RESOLVED AT T-219` pointer.
+  `docs/LIARS-DICE-PROGRESSION_SPEC.md` gains **§3.3c** after §3.3b, superseding §3.3's model-
+  assumption paragraph and §3.3a's "What did NOT change" paragraph **in place, both kept verbatim**
+  (the §3.3a/§3.3b house style); §3.3's `EV(raise m)` block is untouched and the new formula lives
+  inside the new subsection. `docs/LIARS-DICE-DECISIONS.md` LD-25's closing "What this ruling does
+  NOT do" paragraph is left verbatim and gains a dated `RULED AT T-219` blockquote, and the new
+  **LD-27** carries the binding ruling. `packages/engine/src/liarsDiceRules.ts`'s
+  `T-176 · THE OWNER OF THAT ASSUMPTION IS NOW F-176-1` block is retargeted at the outcome, and the
+  FOLD branch's `T-219` pointer now reads "measured and declined". **No `docs/HANGOUT_REDESIGN.md`
+  §10.7 change: no shipped-instrument field was added** — `dareCells` already answers the ordering
+  and win-rate questions and the per-raise numbers are legitimately probe-sourced (T-175's
+  calibration table the precedent).
+- **ONE FINDING FILED THE MOMENT IT WAS CONFIRMED, as its own backlog row** (Bug Discovery Policy).
+  **F-219-1 → `T-222`**: the gate's threshold is `ante / (2·seedWager + ante)`, so the PLAYER moves
+  the house's evidence bar by choosing how much to stake. Over every shipped band at tier 0 the gate
+  is `k ≤ 3` at every ceiling and `k ≤ 2` / `k ≤ 1` / **`k ≤ 0`** at the floor — at the 15–1200,
+  25–2000 and 10–3000 ports a minimum-stake hand faces a dealer that will not raise unless it already
+  holds the claim. Out of scope here (it is a wager-band/ante ruling, and touching either inside a
+  measurement task is §16.2's banned third shape), and pinned by the named test above rather than
+  left to prose.
+- **Gate green**: `npm run format`, `npm test`, `npx tsc -b`, `npm run lint`, `npm run format:check`,
+  plus `npm run balance:smoke`.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
 
 ### T-220 · F-176-2: the table's player win rate has fallen through T-160's 55–70% band, unremarked — `status: TODO` · `coder: opus` · `after: T-175, T-176`
 
@@ -2521,6 +2637,42 @@ e2e rather than asserted on a formatter; `docs/LIARS-DICE_REDESIGN.md` §17.7's 
 outcome and LD-26's "what this ruling does NOT do" is amended to say the visibility gap is closed;
 if any engine or content value moves to support it, that task takes its own capstone with the moved
 rows predicted first; gate green.
+
+### T-222 · F-219-1: the house's raise evidence bar is set by the PLAYER's own stake — `status: TODO` · `coder: opus` · `after: T-219`
+
+**Filed at T-219 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §19.10 / `docs/LIARS-DICE-DECISIONS.md`
+LD-27.** T-219 derived `optimal`'s raise rule in closed form: because `probClaimTrue` is a point
+read, every raise happens at `pTrue = 1`, where `challenge` and `fold` both score `−potDealer`, so
+the branch reduces **exactly** to
+
+```
+optimal raises  <=>  probAtLeast(k_m, u) * (potPlayer + potDealer + c_m)  >  c_m
+```
+
+Both pots are seeded at the player's chosen stake (`packages/engine/src/actions/hangout.ts:550-551`)
+and `c_m` is the frozen `ante = round(band.max × DARE_ANTE_BAND_FRACTION)` (`liarsDiceRules.ts:72`,
+`packages/content/src/hangout.ts:144`), so the house's evidence bar is `ante / (2·seedWager + ante)`
+— **a quantity the player controls and the house does not.** Enumerated over every shipped band at
+tier 0 (all 40 system ids): the gate is **`k ≤ 3` at every band ceiling** and `k ≤ 2`, `k ≤ 1` or —
+at the **15–1200, 25–2000 and 10–3000** ports — **`k ≤ 0`** at the floor, where `optimal` will only
+raise a claim it already holds. Every band widens; three span four whole steps of `k`. A player
+therefore makes the dealer measurably looser by betting more, and nothing in the spec, the decisions
+file or any test named this before T-219 pinned it. It is an accident of the ante/pot ratio rather
+than a design, and it is **not** a defect T-219 could fix: it is a wager-band or ante ruling, and
+moving either inside a measurement task is §16.2's banned third shape. [filed: T-219/F-219-1]
+
+**Accept:** the coupling is re-measured on HEAD across every shipped band with `n` on every cell and
+its effect on play quantified (not just its effect on the gate — the gate moving is already proven;
+what is unknown is whether the house plays measurably worse at either end); the owner either rules
+the coupling acceptable and says so in `docs/LIARS-DICE-DECISIONS.md` with the derivation, or
+changes `DARE_ANTE_BAND_FRACTION` / the ante's reference / the bands, in which case the choice is
+**bakeoff'd against at least one alternative on identical seeds rather than tuned**, LD-27's
+`k`-gate derivation is re-run against the new numbers rather than re-sampled, and the archetype
+ordering (`bad − optimal`, +15.79 pp at z = 35.93, §18.4/§19.9) is re-scored and must not
+re-invert; `liarsDiceArchetypes.test.ts`'s `T-219 · F-176-1` describe is updated honestly rather
+than relaxed to pass; `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3c and `docs/LIARS-DICE_REDESIGN.md`
+§19.10 gain the outcome; if `packages/engine/src` or `packages/content/src` moves semantically the
+task takes its own capstone with the moved rows predicted first; gate green.
 
 ---
 

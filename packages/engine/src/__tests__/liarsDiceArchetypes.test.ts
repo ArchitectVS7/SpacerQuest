@@ -5,6 +5,7 @@ import {
   BAD_CREDULITY,
   DARE_DICE_PER_SIDE,
   DARE_MAX_QUANTITY,
+  anteFor,
   archetypeMove,
   dicePerSideForTier,
   legalMovesFrom,
@@ -13,6 +14,7 @@ import {
   probClaimTrue,
   resolveMixedArchetype,
 } from '../liarsDiceRules.js';
+import { wagerBandFor } from '../hangoutRules.js';
 import { DareBid, DareMoveKind } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -859,5 +861,187 @@ describe('T-177 · F-175-2 — OPTIMAL never folds, and that is now a constructi
       roll: 0,
     });
     expect(move.move).toBe('challenge');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-219 · F-176-1 — the immediate-challenge assumption IS `optimal`'s raise
+// evidence gate (`docs/LIARS-DICE_REDESIGN.md` §19,
+// `docs/LIARS-DICE-DECISIONS.md` LD-27,
+// `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3c).
+//
+// F-176-1 said the raise valuation prices a counterparty that does not exist, and
+// it was RIGHT: measured on HEAD the shipped planner challenges the house's raise
+// on the next ply 22.62% / 28.01% / 29.86% of the time, against the 100% the
+// expression asserts. Four replacements derived from named sources
+// (`DARE_AI_CHALLENGE_MARGIN`, `DARE_AI_FOLD_QUANTITY`, `dealerMove`'s own raise
+// gate) were bakeoff'd on identical seeds at n = 200,000 hands per arm per tier
+// and ALL LOSE; three re-invert the archetype ordering T-175 shipped. The reason
+// is what these tests pin: the assumption is the only term in the expression that
+// is a function of the raise's OWN truth probability, so it is the only thing
+// making this an evidence rule at all.
+//
+// NOTHING SHIPPED. These tests exist so that the ruling is guarded mechanically
+// rather than by prose: a future attempt to "price the counterparty" trips them
+// and re-opens LD-27 instead of silently voiding it.
+// ---------------------------------------------------------------------------
+
+describe("T-219 · F-176-1 — the immediate-challenge assumption IS optimal's raise evidence gate", () => {
+  const TIERS = [0, 1, 2] as const;
+
+  /** The nominal cost of a raise, exactly as `raiseCandidates` prices it: the
+   *  lattice's two single steps cost `ante`, `raise-both` costs `2 × ante`. */
+  const costOf = (move: DareMoveKind, ante: number) => (move === 'raise-both' ? 2 * ante : ante);
+
+  it.each(TIERS.map((tier) => [tier, dicePerSideForTier(tier)]))(
+    'tier %i (%i dice/side): every raise is emitted at pTrue = 1 AND satisfies the derived gate (seed 20260806)',
+    (_tier, dicePerSide) => {
+      // THE DERIVATION THIS EXECUTES, in full, from the shipped branch alone:
+      //   * `probClaimTrue` is a POINT read, so `pTrue ∈ {0, 1}` (T-177 / LD-26).
+      //   * At `pTrue = 0` the challenge branch scores `+potPlayer`, and a raise is
+      //     maximised at exactly `potPlayer` (when `pOurs = 1`), which
+      //     `OPTIMAL_TIE_BREAK` awards to `challenge`. So a raise implies
+      //     `pTrue = 1` — asserted below rather than argued.
+      //   * At `pTrue = 1` both `challenge` and `fold` score `−potDealer`, so a
+      //     raise is chosen only if its EV beats `−potDealer`, which rearranges
+      //     EXACTLY (no approximation) to
+      //         probAtLeast(k, u) · (potPlayer + potDealer + cost) > cost.
+      const cases = sweepAtWidth(new SeededRng(20_260_806), 5_000, dicePerSide);
+      let raises = 0;
+      let challenges = 0;
+      let folds = 0;
+      let maxK = Number.NEGATIVE_INFINITY;
+      for (const c of cases) {
+        const move = archetypeMove({
+          archetype: 'optimal',
+          dicePerSide,
+          maxQuantity: maxQuantityForDice(dicePerSide),
+          ...c,
+        });
+        if (move.move === 'fold') {
+          folds += 1;
+          continue;
+        }
+        if (move.move === 'challenge') {
+          challenges += 1;
+          continue;
+        }
+        raises += 1;
+        const own = (face: number) => c.dealerDice.filter((d) => d === face).length;
+        const pTrue = probClaimTrue(c.bid, own(c.bid.face), dicePerSide);
+        const k = move.quantity! - own(move.face!);
+        const cost = costOf(move.move, c.ante);
+        const context =
+          `dice=${dicePerSide} bid=${c.bid.quantity}x${c.bid.face} move=${move.move} ` +
+          `k=${k} ante=${c.ante} pots=${c.potPlayer}/${c.potDealer}`;
+        // (1) Every raise happens from a believed-true claim.
+        expect(pTrue, context).toBe(1);
+        // (2) …and clears the gate the "wrong" model supplies. IF THIS GOES RED,
+        // the raise valuation has been re-priced and LD-27 is re-opened — that is
+        // the whole point of asserting it, not a formality.
+        expect(
+          probAtLeast(k, dicePerSide) * (c.potPlayer + c.potDealer + cost),
+          context,
+        ).toBeGreaterThan(cost);
+        if (k > maxK) maxK = k;
+      }
+      // NON-VACUITY, COUNTED BEFORE IT WAS WRITTEN DOWN (the T-177 house style, and
+      // these reproduce that describe's numbers exactly because they share its
+      // sweep and seed): tier 0 raises 984 / challenges 4,016; tier 1 1,100 /
+      // 3,900; tier 2 1,182 / 3,818 — folds 0 at every width (LD-26).
+      expect(raises).toBeGreaterThan(500);
+      expect(challenges).toBeGreaterThan(500);
+      expect(folds).toBe(0);
+      // AND THE SWEEP REACHES DEEP RAISES, so (2) is a real constraint rather than
+      // one satisfied by construction at the trivial `k <= 0` corner. Observed
+      // `k` histograms (raises only): tier 0 `k = −2..4`, peak at k = 1 (302);
+      // tier 1 `k = −2..4`; tier 2 `k = −2..5`. The sweep's pots reach 3,000 and
+      // its antes fall to 1, so the threshold `cost/(pots+cost)` gets small and
+      // deep raises become admissible — which is F-219-1 (`T-222`) showing up in
+      // the sweep, and exactly why (2) is asserted as the derived INEQUALITY and
+      // never as a literal `k` bound.
+      expect(maxK).toBeGreaterThanOrEqual(3);
+    },
+  );
+
+  it('the admissible set is a DOWN-SET in k at every width — which is what a call-probability factor destroys', () => {
+    // `probAtLeast` is monotone non-increasing in `k`, so `admissible` is closed
+    // downward. That is the property that makes the shipped expression an EVIDENCE
+    // rule; a `pCall(q_m)` factor is a function of the CLAIMED QUANTITY rather than
+    // of `k`, so multiplying by it destroys the monotonicity and `optimal` starts
+    // raising on claims it has no evidence for (measured: S1a raises at `k = 3` on
+    // 31.8% of its raises at four dice, §19.6).
+    let strictBoundaries = 0;
+    for (const tier of TIERS) {
+      const u = dicePerSideForTier(tier);
+      for (const potPlayer of [1, 25, 100, 400, 1500, 3000]) {
+        for (const potDealer of [1, 25, 100, 400, 1500, 3000]) {
+          for (const cost of [1, 6, 30, 90, 180]) {
+            const admissible = (k: number) =>
+              probAtLeast(k, u) * (potPlayer + potDealer + cost) > cost;
+            let sawAdmissible = false;
+            let sawInadmissible = false;
+            for (let k = 0; k <= u; k += 1) {
+              if (admissible(k)) {
+                sawAdmissible = true;
+                // closed downward: every smaller k is admissible too
+                for (let j = 0; j < k; j += 1) {
+                  expect(
+                    admissible(j),
+                    `u=${u} k=${k} j=${j} pots=${potPlayer}/${potDealer} c=${cost}`,
+                  ).toBe(true);
+                }
+              } else {
+                sawInadmissible = true;
+              }
+            }
+            if (sawAdmissible && sawInadmissible) strictBoundaries += 1;
+          }
+        }
+      }
+    }
+    // Non-vacuous: the grid must contain cells where the gate actually BITES,
+    // otherwise "down-set" would be the trivial "everything is admissible".
+    expect(strictBoundaries).toBeGreaterThan(100);
+  });
+
+  it('F-219-1 · the gate is `ante / (2·seedWager + ante)`, so the PLAYER moves the house evidence bar', () => {
+    // The coupling T-219 exposed and FILED rather than fixed (`TASKS.md` T-222).
+    // Both pots are seeded at the player's chosen stake
+    // (`actions/hangout.ts:550-551`) and `cost` is the frozen `anteFor` — a
+    // fraction of the port's own ceiling (`liarsDiceRules.ts:72`,
+    // `DARE_ANTE_BAND_FRACTION = 0.03`). So the threshold is
+    // `ante / (2·seedWager + ante)` and it moves with the seed, NOT with anything
+    // the house knows. Computed from the shipped bands and `probAtLeast`; no
+    // literal thresholds.
+    const u = dicePerSideForTier(0);
+    const maxAdmissibleK = (seedWager: number, ante: number) => {
+      let best = -1;
+      for (let k = 0; k <= u; k += 1) {
+        if (probAtLeast(k, u) * (seedWager + seedWager + ante) > ante) best = k;
+      }
+      return best;
+    };
+    const observed = new Set<string>();
+    let widened = 0;
+    for (let systemId = 1; systemId <= 40; systemId += 1) {
+      const band = wagerBandFor(systemId);
+      const ante = anteFor(systemId, 0);
+      const atFloor = maxAdmissibleK(band.min, ante);
+      const atCeiling = maxAdmissibleK(band.max, ante);
+      const context = `system ${systemId} band ${band.min}-${band.max} ante ${ante}`;
+      // The bar can only LOOSEN as the player stakes more — the threshold is
+      // strictly decreasing in `seedWager` at fixed `ante`.
+      expect(atCeiling, context).toBeGreaterThanOrEqual(atFloor);
+      if (atCeiling > atFloor) widened += 1;
+      observed.add(`${atFloor}->${atCeiling}`);
+    }
+    // Measured across the shipped ports (T-219, §19.10): every band widens, and the
+    // floor runs from `k <= 0` (three bands — `optimal` will only raise a claim it
+    // already HOLDS) to `k <= 2`, against `k <= 3` at every ceiling. If a band or
+    // `DARE_ANTE_BAND_FRACTION` is retuned so that this stops being true, F-219-1's
+    // premise has changed and T-222 must be re-read rather than silently voided.
+    expect(widened).toBe(40);
+    expect([...observed].sort()).toEqual(['0->3', '1->3', '2->3']);
   });
 });

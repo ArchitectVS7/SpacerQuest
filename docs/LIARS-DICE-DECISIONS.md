@@ -415,7 +415,17 @@ worth nothing in play. Recorded rather than assumed.
 
 **What this ruling does NOT do.** It does not touch `optimal`'s RAISE valuation — the "as if the
 opponent challenges it immediately" model assumption is untouched and remains **T-176 / F-160-2's**
-to rule on. It does not move `BAD_CREDULITY`, which was re-derived against measured post-fix data
+to rule on.
+
+> **RULED AT T-219 (2026-08-06) — MEASURED AND KEPT.** The sentence above is left verbatim; its
+> pointer is discharged. T-176 declined the raise valuation in writing, it was refiled as
+> **F-176-1**, and T-219 re-measured the error on HEAD (n = 13,472 / 14,330 / 15,096 raises per
+> tier), bakeoff'd **four** replacements derived from named sources on identical seeds at
+> n = 200,000 hands per arm per tier, and **kept the shipped expression**. All four lose; three
+> re-invert the ordering this ruling shipped. The reason, derived rather than observed: at
+> `pTrue = 1` the expression reduces to `probAtLeast(k_m, u) · (potPlayer + potDealer + c_m) > c_m`,
+> so the *"as if challenged immediately"* assumption **is** `optimal`'s raise evidence gate. See
+> **LD-27** for the binding ruling and `docs/LIARS-DICE_REDESIGN.md` §19 for the record. It does not move `BAD_CREDULITY`, which was re-derived against measured post-fix data
 and left at `1` (spec §3.4a). It does not reweight the four tone mixes, which LD-20 rejected as
 circular and which are CONTENT besides. And it narrows one thing: `optimal`'s FOLD branch becomes
 provably unreachable (`pTrue` is now 0 or 1, so a challenge always ties or beats a fold), **RULED at
@@ -545,3 +555,97 @@ silently voiding it:
   the three tier widths, the tie corner at `potPlayer`/`potDealer` `= 0` with the raise set emptied,
   and the POINT-read property of `probClaimTrue` pinned so a future soft read trips the test rather
   than reviving the branch in silence.
+
+---
+
+**LD-27 — THE RAISE VALUATION'S "AS IF CHALLENGED IMMEDIATELY" ASSUMPTION IS *KEPT*, BECAUSE IT IS
+THE EVIDENCE GATE.** (T-219, ruling on **F-176-1**; filed at T-176 §18.7 after T-175 measured its
+magnitude and T-176 declined it in writing.) **The shape taken is: NOTHING CHANGES IN THE RULE, and
+the reason is written down at the site, in the spec (§3.3c) and here.** `packages/engine/src` is
+touched only in comments; `rulesFingerprint` was measured before and after at
+**`cabd2112ccf4cefb`** and is unmoved, so no capstone is owed.
+
+**The finding was RIGHT about the counterparty and WRONG about what follows.** `archetypeMove`'s
+`optimal` branch values a raise as
+`EV = pOurs · potPlayer − (1 − pOurs)(potDealer + c_m)` — the payoff if the opponent challenges it
+**immediately**. Measured on HEAD (probe, `.scratch/t219-diag.ts`, n = 13,472 / 14,330 / 15,096
+raises at 4 / 5 / 6 dice — the Accept bar was n ≥ 10,000 per tier and every tier clears it on its
+own count), the opponent challenges the house's raise on the next ply **22.62% / 28.01% / 29.86%**
+of the time. The model asserts 100%. Per-raise error, modelled minus realised:
+**−126.99 / −84.81 / −47.34** credits, SE ≈ 1.2. *T-175's quoted +52.62 / −53.26 pair was measured
+on its own pre-`probClaimTrue` control arm and its sign has since reversed; it may not be argued
+from, and §19.0 records that correction.*
+
+**Why it is kept — a derivation, not a preference.** `probClaimTrue` is a point read, so
+`pTrue ∈ {0, 1}`. At `pTrue = 0` a challenge scores `+potPlayer`, which no raise can beat (a raise
+maxes at exactly `potPlayer`, and the tie-break gives it to `challenge`), so **every raise happens
+at `pTrue = 1`** — and there `challenge` and `fold` both score `−potDealer`, so the raise comparison
+rearranges exactly to
+
+```
+optimal raises  <=>  probAtLeast(k_m, u) * (potPlayer + potDealer + c_m)  >  c_m
+```
+
+`probAtLeast` is monotone non-increasing in `k`, so the admissible set is a **down-set in `k`**.
+The immediate-challenge term is the only part of the expression that is a function of the raise's
+own truth probability; it is therefore the only thing making `optimal`'s raise rule an evidence rule
+at all. Measured: over 200,000 hands per tier the shipped rule emits **zero** raises at `k ≥ 3`.
+
+**The four shapes MEASURED AND REJECTED**, all derived from named sources, all with no free
+parameter, all on identical seeds (`SeededRng(20_260_806 + u)`) at n = 200,000 hands per arm per
+tier, all scored on **realised** house credits per hand off the engine's showdown rule rather than
+on their own EV (F-175-1's trap). `bad` is LD-25's bar:
+
+| shape | named source | 4 dice | 5 dice | 6 dice | verdict |
+| --- | --- | --- | --- | --- | --- |
+| **SHIPPED — KEPT** | — | **+48.61** | **+26.42** | **+8.43** | best at every tier |
+| S1a · `pCall · EV`, `pCall = 1 − probAtLeast(⌈q − u/6 − M⌉, u)` | `DARE_AI_CHALLENGE_MARGIN` (`:730`), the one shared bar T-176 §18.2 applied to both sides | +45.41 | +21.06 | +6.75 | REJECTED — loses at every tier, z = 9.9 / 15.0 / 4.6 on the conservative independent-arm SE |
+| S1b · S1a plus a one-ply continuation | the planner's own ungated (c3) branch order | +17.26 | +12.13 | +1.22 | REJECTED — re-inverts the ordering at four dice; its leaf is valued with the shipped model, so the lookahead re-imports the error one ply deeper |
+| S1c · S1a plus the counterparty's FOLD branch | `DARE_AI_FOLD_QUANTITY` (`:746`) | +13.68 | −3.13 | +6.88 | REJECTED — below `bad` at four and five dice, re-inverts at both |
+| S2 · restrict, don't re-price | `dealerMove`'s own raise gates (`:854`, `:858`), which unify to `own(f_m) ≥ q_m − u/6` | −3.00 | −19.08 | −24.98 | REJECTED — over the integers that is `k ≤ 0` at four and five dice; it deletes 97% of `optimal`'s raises and re-inverts at every tier |
+| `bad`, reference | — | +44.70 | +17.27 | −2.03 | — |
+
+**Why this was NOT escalated.** LD-25's halt rule fires when two candidates clear the criteria and
+the choice between them is taste. It did not fire: **a pre-committed criterion separates every
+candidate from the control.** S2, S1b and S1c fail K2 (the archetype ordering re-inverts) or K3
+(below `bad`); S1a clears K1–K3 and is separated from the shipped rule by measurement — worse at
+every tier at z ≥ 4.6, and 29–34 credits per hand worse under the robustness arm. **That last
+separation exposed a gap in this task's own criteria** (K1–K4 never said "a replacement must beat
+the incumbent"), and §19.7 records that as a scored miss rather than patching the criteria after
+the fact.
+
+**The robustness arm was run, not waved off.** A shape that prices a *selective* caller is by
+construction more exploitable by a bluffing opener. Re-run with the counterparty opening `+1` and
+`+2` over the engine floor: S1a takes **+62.62 / +27.23 / +11.83** against the shipped rule's
+**+66.87 / +56.41 / +46.08** at `+1`, converging at `+2` (**+95.75 / +91.47 / +87.07** vs
+**+95.75 / +92.24 / +87.07**). The exposure is real and it is larger than predicted.
+
+**The ordering and the win rate, re-scored on the SHIPPED instrument** (`dareCells`, the 1,600-seed
+gambler × 120-day arm §18.4 used, so the comparison is like-for-like): `bad − optimal` =
+**+15.79 pp, SE 0.44, z 35.93**, and the player win rate **52.90%** at n = 279,857 — both reproducing
+§18.6 to the published decimal, which is what an unchanged rule must do. **C2's 55–70% band is
+T-220's and was neither edited nor targeted**; it is recorded that every alternative moved the
+number *away* from the floor, so a future T-220 reaching for the raise valuation as a lever should
+read §19.6 first.
+
+**What this ruling does NOT do.** It does not change `EV(raise m)`, `probClaimTrue`,
+`BAD_CREDULITY`, `DARE_AI_CHALLENGE_MARGIN`, `DARE_AI_FOLD_QUANTITY`, the tone mixes or the sim's
+`planDareMove` — moving the last of those to make an engine measurement come out right is §16.2's
+banned third shape. It does not re-open LD-26: `pTrue` is still a point read, so `optimal`'s FOLD
+branch is still unreachable-by-construction and retained, and §3.3b's clause naming *"the
+raise-valuation work `T-219` owns"* now reads **measured and declined at T-219**. And it does not
+fix the coupling it exposed — **F-219-1**, filed as `T-222`: the gate's threshold is
+`ante / (2 · seedWager + ante)`, so the player moves the house's evidence bar by choosing how much
+to stake. Enumerated over EVERY shipped band at tier 0 (all 40 system ids): the gate is `k ≤ 3` at
+every band ceiling and `k ≤ 2`, `k ≤ 1` or — at the 15–1200, 25–2000 and 10–3000 ports — **`k ≤ 0`**
+at the floor, where `optimal` will only raise a claim it already holds. Every band widens; three
+span four steps of `k`. That is a wager-band/ante ruling, not a measurement task's to take.
+
+**What enforces this ruling.** `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts`, describe
+**`T-219 · F-176-1 — the immediate-challenge assumption IS optimal's raise evidence gate`**. Every
+assertion is computed from `probAtLeast`, `probClaimTrue` and the imported constants, with no
+literals in the mechanism, so a later change to the valuation goes RED and re-opens LD-27 rather
+than silently voiding it: every raise is emitted at `pTrue = 1`; every raise satisfies the derived
+inequality above; the admissible `k` set is a down-set at all three widths; and the
+`ante`/`seedWager` coupling of F-219-1 is pinned at the band floor, the rig's own stakes and the
+band ceiling.

@@ -2590,7 +2590,9 @@ than silently substituted (§17.0's precedent).
    raise valuation should price the planner's selectivity. It is **not** one of Accept's two
    branches, it would re-open the ordering T-175 shipped one task ago, and it is the same class of
    move as §16.2's banned third shape. It is filed as **F-176-1** (§18.7) and the comment is
-   retargeted at the finding.
+   retargeted at the finding. **RESOLVED AT T-219 (2026-08-06):** the finding was taken up, the
+   error was re-measured on HEAD, four derived replacements were bakeoff'd, and the assumption was
+   **kept** — §19, and §18.7's own `CLOSED AT T-219` block.
 
 ### 18.1 The two policies, read off their source — the argument the criterion has to price
 
@@ -2913,6 +2915,20 @@ task earlier, and it is the same class of move as §16.2's banned third shape. �
 *mechanism* to T-175's magnitude: the shipped planner played **zero** unbacked challenges in 29,699,
 so "the opponent challenges immediately" is nearly true at high `k` and nearly false everywhere else.
 
+> **CLOSED AT T-219 (2026-08-06) — MEASURED, BAKED OFF, AND DECLINED.** See **§19**. Re-measured on
+> HEAD at n = 13,472 / 14,330 / 15,096 raises per tier: the T-175 pair quoted above is
+> **pre-`probClaimTrue` and its sign has since reversed** — the shipped model is now systematically
+> *pessimistic* about raises (−37.05 modelled vs +10.29 realised at six dice), and the counterparty
+> calls on the next ply **22.62% / 28.01% / 29.86%** of the time against the model's assumed 100%.
+> Four replacements derived from named sources (`DARE_AI_CHALLENGE_MARGIN`,
+> `DARE_AI_FOLD_QUANTITY`, `dealerMove`'s own raise gate) were bakeoff'd on identical seeds at
+> n = 200,000 hands per arm per tier. **All four lose**; three re-invert the archetype ordering
+> T-175 shipped. §19.6 says why in one line: at `pTrue = 1` the shipped expression reduces to
+> `probAtLeast(k, u) > cost / (potPlayer + potDealer + cost)`, a monotone threshold on `k` — **the
+> immediate-challenge assumption IS `optimal`'s raise evidence gate**, and pricing the counterparty
+> correctly dissolves it. Nothing shipped in `packages/engine/src` beyond comments;
+> `rulesFingerprint` measured unmoved at `cabd2112ccf4cefb`.
+
 **F-176-2 · the table's player win rate has fallen through T-160's own C2 band, unremarked.** Filed
 as `TASKS.md` **T-220**. C2 pre-committed **55-70%** and (b) shipped at 61.07%. T-175 moved it again
 and scored the ORDERING, not the band. This arm measures **52.90%** at n = 279,857 — **2.1 pp below
@@ -2940,3 +2956,404 @@ composition difference the original criterion never priced**: the shipped planne
 evidence-backed position **100% of the time**, the dealer from one **57.5% / 77.1%** of the time.
 That gap is the game working. The lever that would remove it was bakeoff'd anyway, because the
 criterion said in advance that it would be, and it lost.
+
+## §19 · T-219 — F-176-1 closed: the raise valuation, re-measured and priced (2026-08-06)
+
+**What this section is.** F-176-1 says `archetypeMove`'s `optimal` branch values every candidate
+raise **as if the opponent challenged it immediately** — `ev = pOurs · potPlayer − (1 − pOurs) ·
+(potDealer + cost)` — and that the shipped counterparty does not behave that way. The finding was
+filed with a *magnitude* (T-175's +52.62 modelled against −53.26 realised at six dice, §18.7) and a
+*mechanism* (T-176's zero unbacked challenges in 29,699, §18.4). This task re-measures the error on
+HEAD before touching anything, derives candidate replacements from named sources, bakes them off on
+identical seeds, and either ships one or declines in writing. **§19.0–§19.3 were written before a
+single bakeoff number existed**, so the predictions can be scored rather than rationalised (§17.1 /
+§18.3's own discipline).
+
+### 19.0 Corrections to the finding's own framing, made before anything ran
+
+1. **THE FINDING'S HEADLINE PAIR IS PRE-`probClaimTrue` AND MAY NOT BE ARGUED FROM.** "+52.62
+   modelled vs −53.26 realised at six dice" was measured by T-175 **on its own control arm, i.e.
+   before `probClaimTrue` shipped** (it appears in T-175's PHASE B, the block that measured the
+   defect it then fixed). `probClaimTrue` did not change the raise formula, but it changed
+   *catastrophically* which decisions ever reach a raise: `optimal` challenged 91–94% of its
+   decisions before the change and challenges from a **zero count only** after it. The raise
+   population is therefore a different population, and the pair must be re-taken. It was — see
+   §19.1.
+2. **THE SIGN OF THE ERROR HAS REVERSED, AND THAT REVERSES WHAT A FIX HAS TO DO.** On HEAD the
+   shipped model is systematically **PESSIMISTIC** about raises, not optimistic: at six dice it
+   models **−42.32** per raise against a realised **+16.44** (T-175's own estimand, replicated), and
+   on the sharper per-raise estimand **−37.05 modelled vs +10.29 realised**. A repair that prices
+   the counterparty correctly should therefore make `optimal` raise **more**, not less. Any
+   reasoning inherited from the finding's text ("it over-values raises") is wrong on arrival.
+3. **T-175'S ESTIMAND IS NOT PER-RAISE AND IS KEPT ONLY AS A REPLICATION TARGET.** It recorded the
+   modelled EV of the **last** raise in a hand against the **whole hand's** terminal house net, once
+   per hand. The headline estimand here is **one record per raise decision**, carrying `k = q_m −
+   own(f_m)`, both pots, the cost, the modelled EV and the hand's terminal house net as the
+   continuation value from that decision. Both are printed, the first labelled as the replication.
+4. **THE TWO QUANTITIES ARE NOT COMMENSURABLE, AND THAT NON-COMMENSURABILITY *IS* THE DEFECT.** The
+   modelled EV prices the pots **as they stand at the raise**; the realised net is the terminal net,
+   after every subsequent escrow contribution. The model says the hand ends here. It does not. That
+   is the finding, stated as an identity rather than as a discrepancy to be explained away.
+
+### 19.1 PHASE 0 — the error re-measured on HEAD, before anything changed
+
+**Probe-sourced** (`.scratch/t219-diag.ts`, temporary and uncommitted — the T-169 / T-175
+precedent). The rig is `t175-diag.ts`'s hand loop with the raise block replaced by the two
+estimands above; `plannerMove` is a **restatement** of `packages/sim/src/index.ts`'s `planDareMove`,
+matched line for line against `SIM_DARE_FOLD_QUANTITY = 5` (`:4963`),
+`SIM_DARE_CHALLENGE_MARGIN = 1.5` (`:4968`) and the ungated (c3) `raise-quantity` → `raise-face` →
+(c4) `challenge` order. It is a restatement because `@spacerquest/engine` cannot import
+`@spacerquest/sim` — the dependency runs the other way — which is the same reason the shipped
+`liarsDiceArchetypes.test.ts` restates it. **N = 40,000 hands per tier; the Accept bar is n ≥ 10,000
+RAISES per tier and every tier clears it on its own count, so the sample was not widened.**
+
+| tier | n (raises) | modelled/raise | realised/raise | gap | SE | T-175 replication (modelled / realised, n) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 4 dice | **13,472** | −73.73 | +53.26 | **−126.99** | 1.193 | −78.99 / +60.43 (n = 13,001) |
+| 5 dice | **14,330** | −56.73 | +28.08 | **−84.81** | 1.234 | −61.15 / +34.45 (n = 13,680) |
+| 6 dice | **15,096** | −37.05 | +10.29 | **−47.34** | 1.217 | −42.32 / +16.44 (n = 14,080) |
+
+**THE ERROR IS A FUNCTION OF `k`, EXACTLY AS T-176'S MECHANISM PREDICTS** — and the last column is
+"the counterparty that does not exist" turned into a number. The shipped model asserts that column
+is **100.00%** at every row.
+
+| tier | `k = q_m − own(f_m)` | n | modelled | realised | gap | SE | **P(called on the next ply)** |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 | 0 | 423 | +100.00 | −114.40 | +214.40 | 4.90 | **12.53%** |
+| 4 | 1 | 3,067 | −10.91 | +45.53 | −56.44 | 2.21 | **18.00%** |
+| 4 | 2 | 9,969 | −100.65 | +62.86 | −163.51 | 1.14 | **24.51%** |
+| 5 | 0 | 506 | +100.06 | −46.03 | +146.09 | 5.98 | **25.30%** |
+| 5 | 1 | 3,377 | +7.66 | −15.58 | +23.24 | 2.23 | **28.40%** |
+| 5 | 2 | 10,404 | −85.91 | +45.69 | −131.60 | 1.20 | **28.04%** |
+| 6 | 0 | 734 | +100.25 | +3.69 | +96.55 | 4.98 | **32.02%** |
+| 6 | 1 | 3,919 | +23.26 | −40.90 | +64.16 | 1.98 | **29.17%** |
+| 6 | 2 | 10,360 | −70.69 | +29.22 | −99.91 | 1.26 | **30.00%** |
+
+Pooled over all `k`, the counterparty calls the house's raise on the very next ply **22.62%**
+(n = 13,472) / **28.01%** (n = 14,330) / **29.86%** (n = 15,096) of the time. The model's
+assumption is wrong by 70–77 percentage points, and the `k = 2` rows — which carry 74%, 73% and 69%
+of all raises — are where it is wrong by the most credits.
+
+### 19.2 The candidates, and the named source each is derived from
+
+Every constant below is either already exported from `packages/engine/src/liarsDiceRules.ts` or is
+an existing rule in that file read backwards (the `creditedClaimSupport` precedent, LD-25: *"there
+is no free parameter here; move `minOpeningQuantity` and this moves with it"*). **A new free scalar
+picked because it scored well is a tuned number and is disqualified before it is run.**
+
+- **S0 — SHIPPED (control).** `ev = pOurs · potPlayer − (1 − pOurs)(potDealer + cost)`.
+- **S1 — price the call probability from the engine's OWN challenge rule.** The counterparty
+  challenges a claim `(q, f)` iff its own surplus clears the shared evidence bar,
+  `q − X − u/6 > DARE_AI_CHALLENGE_MARGIN`, where `X` is its count of `f`. From the house's seat
+  `X ~ Binomial(u, 1/6)`, which is exactly what `probAtLeast` integrates. Writing
+  `T = q − u/6 − DARE_AI_CHALLENGE_MARGIN`: **`T` is never an integer**, because
+  `DARE_AI_CHALLENGE_MARGIN = 1.5` and `u/6 ∈ {2/3, 5/6, 1}` for the only three widths the ladder
+  reaches, so the strict `X < T` collapses to `X ≤ ⌈T⌉ − 1` and
+  **`pCall = 1 − probAtLeast(⌈T⌉, u)`** — one exported constant, one exported function, no
+  parameter. Named source: `DARE_AI_CHALLENGE_MARGIN` (`:730`), the one shared bar §18.2 applied
+  identically to both sides, mirrored verbatim by the sim at `index.ts:4860`.
+  - **S1a — `V_cont = 0`, the minimal shape.** `ev = pCall · S0ev + (1 − pCall) · 0`. The
+    not-called branch is valued at the status quo, which is not a convenience: LD-8 / §16.3's
+    escrow derivation says the raise's `cost` is **debited at contribution time**, so at the moment
+    the raise is made the house's position relative to "the hand continues" is exactly zero.
+  - **S1b — `V_cont` = one-ply lookahead.** If the opponent does not call, its shipped branch (c3)
+    is **ungated** and plays `raise-quantity` to `(q + 1, f)` (or `raise-face` if the quantity is
+    capped); value the continuation as the house's own argmax against that forced reply, one ply
+    deep, S0 at the leaf. O(1). Named source: the planner's own branch order, which §18.1's table
+    already reads off source.
+- **S2 — do not re-price; RESTRICT.** Keep S0's formula and apply the **roaming dealer's own
+  shipped raise gate** to `optimal`'s candidate set. `dealerMove` admits a quantity raise iff
+  `own(f) ≥ bid.quantity + 1 − u/6` (`:854`) and a face raise iff `own(f+1) ≥ bid.quantity − u/6`
+  (`:858`); on the candidate's own `(q_m, f_m)` **both unify to `own(f_m) ≥ q_m − u/6`**. Named
+  source in the strongest available sense — a rule already in this file, applied to a second
+  consumer, exactly as `legalMovesFrom` is.
+
+### 19.3 Arbitration criteria, pre-committed BEFORE the runs
+
+| # | criterion | bar |
+| --- | --- | --- |
+| **K1** | the raise-valuation gap shrinks materially at every tier | measured against §19.1's table, with `n` and SE |
+| **K2** | **the archetype ordering does not re-invert** | `bad − optimal` stays **positive at every tier**, and the headline stays clear of 0 with its z (control **+15.79 pp, z 35.93**, §18.4) |
+| **K3** | house credits/hand ≥ `bad` at every tier | LD-25's own bar, unchanged |
+| **K4** | the player win rate is **reported** against F-176-2 | reported, **not optimised toward** — the 55–70% band is **T-220's** and may not be edited or targeted here |
+
+**THE HALT RULE, RESTATED FROM LD-25.** If two candidates both clear K1–K3 and the choice between
+them is **taste**, HALT and escalate to the owner rather than picking. If a pre-committed criterion
+separates them, proceed and say which one did.
+
+**THE ROBUSTNESS ARM IS NOT OPTIONAL.** A shape that prices "the opponent challenges *selectively*"
+is by construction more exploitable by a counterparty that bluffs. The winner is re-run with the
+counterparty opening **+1 and +2 over the engine floor** (T-175's own objection-measuring arm), and
+if it collapses there that is reported with numbers rather than waved off.
+
+### 19.4 Predictions, recorded BEFORE the first bakeoff run
+
+1. **S2 collapses `optimal`'s raise share and is the worst arm.** At `u = 4`, `own ≥ q_m − 2/3` is
+   `own ≥ q_m` over the integers, i.e. `k ≤ 0`; §19.1 says `k ≤ 0` is only **3.2%** of the raises
+   `optimal` currently makes, so the gate deletes ~97% of them and pushes `optimal` back toward the
+   pure-challenger behaviour F-160-1 measured as the softest seat in the game. Predicted to **fail
+   K2 or K3**.
+2. **S1a raises MORE than S0 at every tier.** Raise EVs on HEAD are mostly negative (§19.1), and
+   multiplying a negative by `pCall ∈ (0,1)` moves it toward zero, i.e. up, while `challenge` and
+   `fold` are untouched. Predicted **raise share up, challenge share down**.
+3. **S1a beats S0 on realised house credits/hand at every tier**, because the realised value of a
+   raise (§19.1's `realised` column) is positive at every tier while the model calls it negative.
+4. **S1b beats S1a at six dice and is within noise of it at four**, because the continuation value
+   is largest where the ladder is widest and raises are cheapest relative to the pot.
+5. **No candidate re-inverts the ordering** (`bad − optimal` stays positive), because none of them
+   touches the challenge branch that T-175 fixed.
+6. **The winner loses ground under the +1/+2 bluff arm relative to S0**, since S1 prices a
+   selective caller and a bluffing opener is exactly the counterparty that model under-prices.
+
+### 19.5 THE BAKEOFF — five arms, identical seeds, `n` on every cell
+
+**Probe-sourced** (`.scratch/t219-bakeoff.ts`, temporary and uncommitted). Derived from
+`.scratch/t175-bakeoff.ts`; that rig swapped the probability *estimator*, this one swaps the whole
+raise **valuer**, and everything else is byte-identical so the arms differ in exactly one place.
+Every arm plays the same seeds (`SeededRng(20_260_806 + u)`) and **every arm is scored on REALISED
+house credits per hand off the engine's own showdown rule — never on its own EV**, which is
+F-175-1's self-confirming premise (a) and the one trap this task could most easily have fallen into.
+
+**THE CONTROL IS THE SHIPPED RULE, PROVEN AND NOT ASSUMED.** The rig restates `optimal`; a drifted
+restatement would score every arm against a straw control. `.scratch/t219-fidelity.ts`
+cross-checks the rig's S0 arm against `archetypeMove({archetype:'optimal'})` over **1,200,000
+randomised states** — 600,000 with randomised `headroom`/`dealerCredits` and 600,000 in the rig's
+own configuration — at all three widths, on move kind, quantity **and** face. **Zero mismatches**,
+with the move mix reported for non-vacuity (challenge 515,106 / raise-quantity 50,403 / raise-face
+34,491 on the first sweep).
+
+**A FOURTH ALTERNATIVE WAS ADDED AFTER THE FIRST RUN, AND THAT IS RECORDED RATHER THAN HIDDEN.**
+S1c (below) does not appear in §19.2 because it was written after S1a/S1b/S2 were scored, when
+S1a's *shape* had been ruled out but its *family* had not: S1c prices the counterparty's FOLD branch
+as well as its CHALLENGE branch, from `DARE_AI_FOLD_QUANTITY` — the second constant §19.2's own
+plan named as available. It is derived from the same named source, carries no free parameter, and it
+**lost**; adding it strengthens the decline rather than weakening it.
+
+**n = 200,000 hands per arm per tier** (the first pass ran at 40,000 and was widened to 200,000
+because S1a's shortfall at six dice was the closest cell; **the sample was widened, the claim was
+never softened** — T-175's third-arm precedent).
+
+| tier | arm | house cr/hand | SE | challenge share (win rate, n) | raise share (n) | player win | raise gap vs the shipped model (n) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **4 dice** | **S0 (shipped)** | **+48.61** | 0.224 | 72.93% (78.15%, n=184,262) | 27.07% (n=68,380) | 27.81% | −126.16 (n=68,380) |
+| | S1a | +45.41 | 0.235 | 64.83% (87.76%, n=163,937) | 35.17% (n=88,940) | 27.85% | −99.52 (n=88,940) |
+| | S1b | +17.26 | 0.242 | 75.30% (68.57%, n=171,676) | 24.70% (n=56,319) | 40.94% | −82.77 (n=56,319) |
+| | S1c | +13.68 | 0.270 | 49.62% (93.19%, n=130,067) | 50.38% (n=132,068) | 37.69% | −26.62 (n=132,068) |
+| | S2 | −3.00 | 0.224 | 98.95% (48.47%, n=199,792) | 1.05% (n=2,116) | 51.47% | +112.16 (n=2,116) |
+| | `bad`, reference | +44.70 | 0.219 | 80.97% (69.68%, n=199,041) | 19.03% (n=46,773) | 30.57% | −187.55 (n=46,773) |
+| **5 dice** | **S0 (shipped)** | **+26.42** | 0.242 | 71.52% (68.12%, n=179,976) | 28.48% (n=71,681) | 37.97% | −84.93 (n=71,681) |
+| | S1a | +21.06 | 0.263 | 54.32% (86.15%, n=144,110) | 45.68% (n=121,202) | 37.17% | −50.37 (n=121,202) |
+| | S1b | +12.13 | 0.250 | 67.76% (68.78%, n=163,095) | 32.24% (n=77,612) | 43.17% | −65.13 (n=77,612) |
+| | S1c | −3.13 | 0.277 | 44.74% (90.19%, n=119,733) | 55.26% (n=147,902) | 44.96% | −9.71 (n=147,902) |
+| | S2 | −19.08 | 0.220 | 98.62% (40.36%, n=199,268) | 1.38% (n=2,779) | 59.42% | +146.87 (n=2,779) |
+| | `bad`, reference | +17.27 | 0.236 | 83.01% (56.73%, n=198,908) | 16.99% (n=40,714) | 43.32% | −147.15 (n=40,714) |
+| **6 dice** | **S0 (shipped)** | **+8.43** | 0.249 | 70.20% (58.84%, n=177,269) | 29.80% (n=75,255) | 46.15% | −47.60 (n=75,255) |
+| | S1a | +6.75 | 0.271 | 49.45% (82.56%, n=133,264) | 50.55% (n=136,215) | 43.26% | −31.77 (n=136,215) |
+| | S1b | +1.22 | 0.255 | 64.57% (62.74%, n=159,542) | 35.43% (n=87,558) | 48.22% | −43.30 (n=87,558) |
+| | S1c | +6.88 | 0.271 | 49.42% (82.63%, n=133,178) | 50.58% (n=136,317) | 43.21% | −32.12 (n=136,317) |
+| | S2 | −24.98 | 0.225 | 89.25% (38.33%, n=193,419) | 10.75% (n=23,301) | 61.93% | +69.35 (n=23,301) |
+| | `bad`, reference | −2.03 | 0.238 | 83.30% (47.44%, n=198,687) | 16.70% (n=39,841) | 52.30% | −105.68 (n=39,841) |
+
+**THE SHIPPED RULE WINS AT EVERY TIER, AND NOT NARROWLY.** Against the strongest alternative (S1a):
+**+3.20** at four dice (conservative independent-arm SE 0.325, **z = 9.9**), **+5.36** at five
+(SE 0.357, **z = 15.0**), **+1.68** at six (SE 0.368, **z = 4.6**). The arms share seeds, so the
+paired SE is smaller than that bound and the z figures are floors.
+
+**THE ORDERING, PER ARM, ON THIS RIG** (`bad − optimal` in player-win points; K2's bar):
+
+| arm | 4 dice | 5 dice | 6 dice | K2 |
+| --- | --- | --- | --- | --- |
+| **S0 (shipped)** | **+2.76** | **+5.35** | **+6.15** | **PASS** |
+| S1a | +2.72 | +6.15 | +9.04 | PASS |
+| S1b | **−10.37** | +0.15 | +4.08 | **FAIL** — re-inverts at four dice |
+| S1c | **−7.12** | **−1.64** | +9.09 | **FAIL** — re-inverts at four and five |
+| S2 | **−20.90** | **−16.10** | **−9.63** | **FAIL** — re-inverts at every tier |
+
+**THE ROBUSTNESS ARM, RUN ANYWAY** (counterparty opening +1 / +2 over the engine floor,
+n = 200,000/cell). S1a does not merely lose ground, it **collapses**: at +1 it takes
+**+62.62 / +27.23 / +11.83** against S0's **+66.87 / +56.41 / +46.08**, a 29- and 34-credit gap at
+five and six dice. At +2 the two shapes converge (**+95.75 / +91.47 / +87.07** vs
+**+95.75 / +92.24 / +87.07**) because a +2 opener is called almost immediately by both. The
+exposure predicted in §19.4 item 6 is real, and larger than predicted.
+
+### 19.6 WHY EVERY REPLACEMENT LOSES — the model error is LOAD-BEARING, and that is a measurement
+
+The derivation, from the shipped branch alone. `probClaimTrue` is a point read, so at any decision
+`pTrue ∈ {0, 1}`.
+
+- At **`pTrue = 0`** the challenge branch scores `+potPlayer`, and no raise can beat it: the raise
+  EV is maximised at `pOurs = 1`, where it is exactly `potPlayer`, and `OPTIMAL_TIE_BREAK` orders
+  `challenge` first. **So every raise `optimal` makes happens at `pTrue = 1`.**
+- At **`pTrue = 1`** the challenge and fold branches both score exactly `−potDealer`, so the raise
+  comparison collapses to `S0ev > −potDealer`, which rearranges — with no approximation — to
+
+  ```
+  pOurs · (potPlayer + potDealer + cost) > cost
+  ```
+
+  i.e. **`optimal` raises iff `probAtLeast(k, u) > cost / (potPlayer + potDealer + cost)`**, a
+  threshold on `k` alone at fixed pots. `probAtLeast` is monotone non-increasing in `k`, so the
+  admissible set is a **down-set in `k`**: a genuine evidence gate.
+
+**At the table's own numbers that gate is `k ≤ 2`, and the histogram is the proof.** With the rig's
+pots and ante (100 / 100 / 30) the threshold is `30/230 = 0.13043`;
+`probAtLeast(2, 4) = 0.13194` clears it and `probAtLeast(3, 4) = 0.01620` does not. Raises actually
+emitted, by `k = q_m − own(f_m)`, n = 200,000 hands per arm:
+
+| arm | 4 dice | 5 dice | 6 dice |
+| --- | --- | --- | --- |
+| **S0 (shipped)** | k≤2 only — k=1 22.8%, **k=2 74.1%**, k≥3 **0** | k≤2 only — k=2 72.3%, k≥3 **0** | k≤2 only — k=2 68.6%, k≥3 **0** |
+| S1a | k=3 **31.8%** | k=3 42.9%, k=4 5.4% | k=3 37.5%, k=4 12.3% |
+| S1b | k=3 51.5%, k=4 9.6% | k=3 37.4%, k=4 14.2% | k=3 24.2%, k=4 17.5% |
+| S1c | k=3 27.8%, k=4 24.0%, **k=6/7 present** | k=3 38.4%, k=4 9.1%, k=5 9.8% | k=3 37.5%, k=4 12.3% |
+| S2 | k≤0 only (k=0 95.6%) | k≤0 only | k≤1 only |
+| `bad` | k≤2 only | k≤2 only | k≤2 only |
+
+**THAT IS THE WHOLE ANSWER.** `pCall` is a function of the claimed **quantity** `q_m`; the raise's
+own truth probability is a function of **`k`**. Multiplying the second by the first does not sharpen
+the gate, it **dissolves** it: `|pCall · S0ev| < potDealer` for essentially every reachable state
+(`pCall ≤ 0.77` and `|S0ev| ≤ potDealer + cost`), so under S1 the raise branch beats `−potDealer`
+almost unconditionally and `optimal` starts raising on claims it has no evidence for. S2 fails from
+the other side: `dealerMove`'s gate is `own(f_m) ≥ q_m − u/6`, which over the integers is `k ≤ 0` at
+four and five dice — it deletes 97% of `optimal`'s raises and pushes it back toward the
+pure-challenger behaviour F-160-1 measured as the softest seat in the game.
+
+**So the "counterparty that does not exist" is doing real work.** The immediate-challenge assumption
+is not merely a conservative simplification, as the comment at the site has claimed since T-145 — it
+is the **only** thing that makes `optimal`'s raise rule an evidence rule at all, because it is the
+only term in the expression that is a function of the raise's own truth probability. Pricing the
+counterparty correctly, in every derived form available, removes the evidence test and plays worse.
+**That is the finding, and it is why nothing ships.**
+
+### 19.7 The predictions, SCORED — including the wrong ones
+
+| # | prediction | verdict | what actually happened |
+| --- | --- | --- | --- |
+| 1 | S2 collapses the raise share and is the worst arm; fails K2 or K3 | **RIGHT** | raise share 1.05% / 1.38% / 10.75%; house net −3.00 / −19.08 / −24.98, below `bad` at every tier (K3) **and** the ordering re-inverts at every tier (K2) |
+| 2 | S1a raises MORE than S0 at every tier | **RIGHT** | 27.07 → 35.17, 28.48 → 45.68, 29.80 → 50.55 |
+| 3 | S1a beats S0 on realised house credits/hand at every tier | **WRONG** | it **loses** at every tier: −3.20 (z 9.9), −5.36 (z 15.0), −1.68 (z 4.6). The reasoning failed because it treated "the realised value of the raises S0 makes is positive" as "raising more is better" — but the realised column is conditioned on **the raises S0 selects**, and S1a selects a different, worse population (§19.6) |
+| 4 | S1b beats S1a at six dice and is within noise at four | **WRONG on both halves** | S1b is *below* S1a at six (+1.22 vs +6.75) and 28 credits below it at four (+17.26 vs +45.41) — not noise. The one-ply leaf is itself valued with S0, so the lookahead imports the very error it was meant to correct, one ply deeper |
+| 5 | No candidate re-inverts the ordering | **WRONG** | three of four do: S2 at every tier, S1b at four dice, S1c at four and five. Only S1a keeps `bad − optimal` positive throughout. The reasoning ("none of them touches the challenge branch") was wrong because the challenge **share** is a consequence of the raise valuation, not independent of it |
+| 6 | The winner loses ground under the +1/+2 bluff arm | **RIGHT, and by more than expected** | S1a: −4.25 / −29.18 / −34.25 credits/hand against S0 at +1 |
+
+**AND A MISS IN THE CRITERIA THEMSELVES, RECORDED RATHER THAN PATCHED OVER.** K1–K4 were written
+against `bad` (LD-25's frame) and **never said a replacement must beat the incumbent**. Read
+literally, S1a passes K1 (the gap shrinks at every tier: −126.16 → −99.52, −84.93 → −50.37,
+−47.60 → −31.77), passes K2, passes K3 (it clears `bad` at every tier) and K4 is report-only — so
+the pre-committed set would have licensed shipping a rule that is worse than the shipped one at
+every tier at z ≥ 4.6. **That is a defect in this task's own criteria, not a licence.** The binding
+rule is the one the whole track runs on and which K1–K4 forgot to restate: a change ships only if it
+is an improvement. It is recorded here so the criteria set can be scored, exactly as §18.5 scored
+prediction 4 as half-wrong rather than dropping it.
+
+### 19.8 THE DECISION — F-176-1 is CLOSED as MEASURED AND DECLINED
+
+**Nothing ships in `packages/engine/src` beyond comments.** The finding is real, its magnitude is
+re-measured on HEAD (§19.1) and its mechanism is understood (§19.6) — and the correct response to
+it is to leave the rule alone and say why, at the site and in the ruling. The T-177 precedent is
+exact: that task also found the honest answer was "the shipped shape is right for a reason nobody
+had written down", and it recorded the reason rather than manufacturing a change.
+
+**The halt rule did not fire.** LD-25's halt is for *two candidates separated only by taste*. Here a
+**pre-committed criterion separated every candidate from the control**: S2, S1b and S1c fail K2
+(the ordering re-inverts) or K3 (below `bad`), and S1a is separated from S0 by the improvement
+requirement §19.7 records as the criteria set's own omission — measured, not judged, at z ≥ 4.6 at
+every tier and −29 to −34 credits/hand under the robustness arm.
+
+**`rulesFingerprint`, MEASURED BEFORE AND AFTER, NOT ASSERTED** (T-176 §18.6a / T-177's method,
+`computeRulesFingerprint` from `packages/sim/src/balance/rules-fingerprint.ts` via the built
+`packages/sim/dist`): **`cabd2112ccf4cefb` → `cabd2112ccf4cefb`**. Equal. `instrumentFingerprint`
+**`2d6d1990eaf13031`** and `docsFingerprint` **`46a21a8d0fe680fb`**, both unmoved. The only non-doc,
+non-test file this change set touches is `liarsDiceRules.ts`, and every edit in it is inside a
+comment, which `hashSemantic` strips; the two test files are free of a capstone by
+`HASHED_ROOT_IGNORED_DIRECTORIES.__tests__` (`rules-fingerprint.ts:255-262`), read at HEAD rather
+than taken from a plan. **`CURRENT_SAVE_VERSION` re-read live at `packages/engine/src/save.ts:627`
+— 17, UNMOVED**; no persisted shape changed, so no migration and no round-trip test is owed, stated
+rather than left unaddressed.
+
+**THE "IF ANYTHING SHIPS" CLAUSE DID NOT FIRE.** Accept conditions the capstone on
+`packages/engine/src` being touched; the only engine lines here are comments that provably cannot
+move `rulesFingerprint`. So: **no capstone, no 8,000-row sweep, no `balance:diff`, no
+`balance:extract`, no baseline re-pin.** T-177's precedent, and its wording, verbatim.
+
+### 19.9 THE ORDERING AND THE WIN RATE, RE-SCORED ON THE SHIPPED INSTRUMENT
+
+Accept names two numbers that must come off the **shipped** instrument (`dareCells` /
+`dareChallengeCells` / `dareChallengeSplit`), not a probe — `docs/HANGOUT_REDESIGN.md` §10.7's
+standing rule. Re-scored on the **same arm shape** §18.4 used, so the comparison is like-for-like:
+`--policies gambler --seeds 1600 --days 120`, four 1-indexed shards, scored with
+`.scratch/t176-bakeoff.mjs` unchanged.
+
+```
+npm run balance:sweep -- --label t219-rescore --seeds 1600 --days 120 --policies gambler \
+  --milestone-days 21,29,30,41,60,120 --shard i/4          # i = 1..4
+node .scratch/t176-bakeoff.mjs t219-rescore
+```
+
+| | §18.6's shipped column | **T-219 re-score** | |
+| --- | --- | --- | --- |
+| rows / dares / tier disagreements | 1,600 / 279,857 / 0 | **1,600 / 279,857 / 0** | reproduced |
+| **C2 player win rate** | 52.90% | **52.90%** (n = 279,857) | reproduced |
+| C2 EV/hand | +190.1 cr | **+190.1 cr** | reproduced |
+| bids/hand | — | 1.504 | — |
+| `roster\|optimal` player wins | 39.83% (n=95,580) | **39.83%** (n=95,580) | reproduced |
+| `roster\|bad` player wins | 55.63% (n=14,680) | **55.63%** (n=14,680) | reproduced |
+| `roster\|random` player wins | — | 78.61% (n=12,560) | — |
+| **C6 `bad − optimal`** | **+15.79 pp, SE 0.44, z 35.93** | **+15.79 pp, SE 0.44, z 35.93** | **reproduced — the ordering does NOT re-invert** |
+| C3′(a) roaming / roster standardised gap | 19.29 / 10.09 pp | **19.29 / 10.09 pp** | reproduced |
+| composition share | 70.4% / 70.3% | **70.4% / 70.3%** | reproduced |
+| `invariants` | 0 violations | **0 violations** on all four shards | reproduced |
+
+**The reproduction is the point, not a formality.** An unchanged rule must give an unchanged number,
+and it does — to every decimal place published, on all four shards, with the same
+`combat-win-share` rate FAIL the T-176 arm logs carry (an artefact of a gambler-only arm, identical
+on both, and not an invariant violation). That confirms HEAD is exactly the arm §18 measured and
+that this task moved nothing.
+
+**C2's BAND IS T-220'S AND WAS NEITHER EDITED NOR TARGETED** (§18.6's own framing, restated). The
+player win rate is **reported** here against F-176-2's 52.90% and is unchanged; the 55–70% band
+belongs to T-220, and it is worth recording that the *direction* the alternatives moved it was
+**away from** the band floor — S1a takes it to 43.26% at six dice on the probe rig — so a future
+T-220 that reaches for the raise valuation as a lever should read §19.6 first.
+
+### 19.10 Findings filed by T-219
+
+**F-219-1 · `optimal`'s raise evidence gate is a function of the player's OWN WAGER, and nothing
+names or tests it.** Filed as `TASKS.md` **T-222**. §19.6 derives the gate exactly:
+`optimal` raises iff `probAtLeast(k, u) > cost / (potPlayer + potDealer + cost)`. Both pots are
+seeded at the player's chosen `seedWager` (`packages/engine/src/actions/hangout.ts:550-551`) and
+`cost` is the frozen `ante = round(band.max × DARE_ANTE_BAND_FRACTION)`
+(`liarsDiceRules.ts:72`, `hangout.ts:144`, `= 0.03`), so the threshold is
+`ante / (2 · seedWager + ante)` and **the player moves it by choosing how much to stake**:
+
+Enumerated over **every** shipped band at tier 0 (`wagerBandFor` × `anteFor`, all 40 system ids,
+so the default row is covered too), the gate at the band FLOOR against the gate at the band CEILING:
+
+| band | ante | gate at the FLOOR | gate at the CEILING |
+| --- | --- | --- | --- |
+| 25–1000 (28 ports, the default) | 30 | `k ≤ 1` | `k ≤ 3` |
+| 5–200 | 6 | `k ≤ 1` | `k ≤ 3` |
+| 20–300 | 9 | `k ≤ 1` | `k ≤ 3` |
+| 100–400 / 100–500 | 12 / 15 | `k ≤ 2` | `k ≤ 3` |
+| 250–1500 / 200–1800 / 500–3000 | 45 / 54 / 90 | `k ≤ 2` | `k ≤ 3` |
+| 50–750 / 75–900 | 23 / 27 | `k ≤ 1` | `k ≤ 3` |
+| **15–1200 / 25–2000 / 10–3000** | 36 / 60 / 90 | **`k ≤ 0`** — `optimal` will only raise a claim it ALREADY HOLDS | `k ≤ 3` |
+| the probe rig's own 100/100/30 | 30 | — | `k ≤ 2` |
+
+**Every band widens, and three of them span four whole steps of `k`.** So the house's evidence bar
+for raising **loosens as the player bets more** — at the deepest ports a minimum-stake hand faces a
+dealer that will not raise unless it already holds the claim, and a maximum-stake hand faces one
+that will raise on `k = 3`. This is an accident of the ante/pot ratio rather than a design. It is not a defect this task can fix (that is a wager-band or ante ruling,
+and touching either inside a measurement task is §16.2's banned third shape all over again), but it
+is now **pinned by a named test** rather than left to prose:
+`liarsDiceArchetypes.test.ts`, describe `T-219 · F-176-1 — the immediate-challenge assumption IS
+optimal's raise evidence gate`, which computes all three rows from `probAtLeast` and the imported
+constants and goes red if the coupling changes.
+
+**F-176-1 CLOSES: MEASURED, BAKED OFF, AND DECLINED WITH THE NUMBERS.** The finding was right that
+the model is wrong about the counterparty — the shipped rule assumes a 100% immediate-call rate
+against a measured **22.62% / 28.01% / 29.86%** — and wrong about what follows from that. Every
+replacement derived from a named source loses, three of the four re-invert the archetype ordering
+T-175 shipped, and the strongest loses to the incumbent at z ≥ 4.6 at every tier and by 29–34
+credits per hand against a bluffing opener. The assumption survives, now with a derivation, a
+measurement and a test instead of an unexamined comment.
