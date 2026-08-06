@@ -786,3 +786,336 @@ records.
 them in `balance/gate.ts`; the only assertions are `> 0` existence proofs in
 `campaign-smuggler-gambler.test.ts`, which is a claim about the instrument being wired, not
 about the game being balanced.
+
+---
+
+## Part H — Harvested 2026-08-06 (T-164 … T-208)
+
+**BR-80 — A test file under a hashed root's `__tests__` moves NO fingerprint and owes no
+capstone.** (T-164, re-affirmed T-165, T-166, T-169, T-220.) `__tests__` is the first entry of
+`HASHED_ROOT_IGNORED_DIRECTORIES` in `packages/sim/src/balance/rules-fingerprint.ts`,
+`listTsFiles` consults it before `assertNoUndeclaredSubdirectory` fires, and
+`packages/sim/src/__tests__/balance-rig.test.ts` pins that an ignored directory's contents are
+not hashed. **Corollary, which is the trap:** a content or sim test must live under
+`src/__tests__/` and nowhere else — a sibling `src/tests/` or `src/spec/` under a hashed root
+throws by design, because the escape hatch is the NAMED `__tests__` entry, not a general
+exemption for test-looking directory names.
+
+**BR-81 — Documentation-consistency and fixture-integrity checks live under
+`packages/sim/src/__tests__/`, NEVER under `packages/sim/src/balance/`.** (T-165, T-166.) Every
+module under `balance/` is a hashed instrument source or a classified non-instrument, so a
+pointer-consistency or re-extraction check placed there would move `instrumentFingerprint` and
+stale the very fixture it verifies — owing a re-extraction just to check re-extractions.
+
+**BR-82 — The baseline of record has FIVE pointer sites, not four, and the count is read from
+the test rather than from any task block.** (T-165, re-confirmed T-173, T-195, T-204, T-206.)
+The five are `BASELINE_OF_RECORD_PATH` in `packages/sim/src/__tests__/balance-targets.test.ts`
+(the only site a test reads at RUNTIME, and therefore the authority all others are checked
+against), `docs/NPC_REDESIGN.md` ×2 including the status banner, `docs/balance/smoke/README.md`,
+and BR-14's own sentence in this file — the fifth added at T-182, after the "four-site" phrasing
+was written. T-188, T-195 and T-199 each re-pinned while moving only some of the five, and all
+three lagging sites were still stale when T-165 arrived. `packages/sim/src/__tests__/
+baseline-pointers.test.ts` enumerates them and fails on any disagreement; when new docs prose
+trips its totality pass, the prose is REWORDED out of pointer shape, never added to
+`ACKNOWLEDGED_NON_POINTERS` (T-202).
+
+**BR-83 — The allowed diff set for a re-extraction of `docs/balance/smoke/tiers.json` is FOUR
+JSON paths:** `productVersion`, `rulesFingerprint`, `docsFingerprint`, `provenance.gitCommit`.
+(T-166, correcting §6 of `docs/BALANCE-TELEMETRY_SPEC.md` and BR-8.) Not "`rulesFingerprint`
+only" (the original claim, transcribed from a summary instead of read off commit `3468ef5f`) and
+not "fingerprints + `provenance`" (the 2026-08-01 reword, still one field short because
+`productVersion` is neither). Everything else, including the whole `checkpoints` array and
+`saveSchemaVersion`, is byte-identical.
+
+**BR-84 — No escape hatch on `packages/sim/src/__tests__/smoke-reextraction.test.ts`.** (T-166.)
+If its section 1 goes red, a doc no longer describes the precedent it cites — repair §6 and BR-8;
+never edit the expectation and never widen `MUTABLE_FIXTURE_FIELDS` so a field stops being
+reported, which is the same move as widening a balance band to clear a gate. If section 2 goes
+red, the remedy is a re-extraction (BR-9), never a hand edit of the fixture. Ownership is narrow
+by design: the file owns only "when a re-extraction happens, did anything move that isn't allowed
+to" — `fixtureFreshness` in `balance-smoke.test.ts` still owns staleness.
+
+**BR-85 — A cross-arm sweep violation carries the `CROSS_ARM_SEED = -1` sentinel and
+`day: null`,** because `0` is a legal seed and so cannot mean "no seed".
+(T-167, `packages/sim/src/balance/gate.ts:671`.) Widening `SweepViolation.seed` to
+`number | null` was explicitly REJECTED: `formatGateReport` and the committed `gate-*.json`
+shape both read `seed` as a number, so the nullable type would have broken the printed table and
+the committed fixtures.
+
+**BR-86 — `planDare`'s stake floor `Math.max(1, preHandWagerBand(state).min)` is a POLICY choice
+of the INSTRUMENT, not a game rule.** (T-168.) §4.8 removes the band's FLOOR at tier 5, so a raw
+`band.min` of 0 would seat FREE hands and drag `expectedValuePerDare` toward 0; the identical
+expression is re-derived — not weakened — at `campaign-smuggler-gambler.test.ts:508`. Correction
+shipped with it: `GAMBLER_RESERVE`'s "larger than a full day of dares (2 × 1,000)" is FALSE past
+tier 4; what bounds exposure there is `GAMBLER_BANKROLL_FRACTION` plus the resolver's solvency
+clamp.
+
+**BR-87 — A "before" column for a newly added measurement field is a MEASURED CONTROL ARM, not a
+construction argument, whenever the pre-fix code can be re-run.** (T-168.) T-168 re-ran the
+one-line pre-fix `planDare` over the IDENTICAL 1,000 seeds × 120 days with the new fields present
+and got 0 and 0 measured, rather than asserting 0 by construction. **BR-59 is reconciled to this
+stronger wording** — its "structurally unmeasurable, and 0 by construction" clause is superseded,
+and `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.11.0 is the record.
+
+**BR-88 — A comment-only edit to a hashed rule or instrument source, plus a new assertion under
+`__tests__`, owes NO fingerprint move, no capstone and no sweep.** (T-169, applied at T-177,
+T-219.) `hashSemantic` strips comments before hashing
+(`rules-fingerprint.ts:11-17`), `HASHED_ROOT_IGNORED_DIRECTORIES.__tests__` excludes test files,
+and the raw-byte `docsFingerprint` is reported but never fails. The claim is still shown, never
+argued: read `computeRulesFingerprint(repoRoot)` at HEAD before and after the edit and print both
+(T-177: `cabd2112ccf4cefb` both times), then run `npm run balance:smoke`.
+
+**BR-89 — A horizon-only differential arm is proved single-variable by EVIDENCE, not by
+argument.** (T-170.) Both arms must carry equal `rulesFingerprint` / `instrumentFingerprint`
+(also recomputed from the tree at the commit) AND the overlapping milestone day must reproduce
+field-for-field — T-170's `milestones[day=120]` sample (`playerDeedCount`, `playerCredits`,
+`playerDebt`, `playerFuel`, `playerTier`) equalled `baseline-t168-effective-band.json` on all
+eight policies. Only that licenses attributing 100% of the difference to `--days`.
+
+**BR-90 — A DIAGNOSTIC arm at a non-standard horizon does not re-pin the baseline of record and
+never has `balance:extract` run against it.** (T-170.) Re-cutting smoke fixtures off a 300-day
+arm is the F-146-0 class of error. The BR-82 pointers stayed put and `baseline-pointers.test.ts`
+stayed green through T-170.
+
+**BR-91 — `MAX_TRACKED_DEED = 5` and the `SeedRow` shape stay as authored even when a measurement
+wants a number they do not carry.** (T-170.) Raising either moves `instrumentFingerprint` and
+stales every smoke fixture, while an out-of-tree probe (`runCampaign(seed, 300, 'gambler')`
+reading `daily[].deedsEarned` / `daily[].renownRank`) buys the same number for nothing.
+
+**BR-92 — Instrument first, then the rule — and instrument inertness is proved by ROWS, not by a
+hash.** (T-175, extended T-176.) Adding optional event fields moves `rulesFingerprint` even when
+nothing behaves differently, so the proof is `campaign-degraded.test.ts`'s stripped-fingerprint
+entries coming back BYTE-IDENTICAL to the previous entry for all seven policies, `gambler`
+included. Corollary: a before/after table only attributes to the RULE if the control arm is
+re-run on the FINAL instrument. When sim-only report keys are added, re-pin the degraded
+fingerprints in the same change and record the ledger entry proving the strip-the-new-keys
+recovery BEFORE any number from the new instrument is argued from.
+
+**BR-93 — A large capstone row move that is the intended consequence of a measured fix is the
+FINDING, not a regression to absorb.** (T-175.) `gambler.finalCredits.median` 115,612 → 63,653
+(−44.9%), `tourOneClearRate` 0.9610 → 0.9360, `deedCount.median` 28 → 25 were reported against
+the written pre-run prediction (exactly two moved rows, `gambler` and `fleet`), nothing was tuned
+in response, no band, threshold or golden was edited, and the one SHAPE CHANGE was reported
+rather than suppressed.
+
+**BR-94 — §17.3's git-worktree bakeoff rig is NOT usable when an arm must be measured with an
+instrument that is not yet committed.** (T-176.) A worktree checks out a commit and would measure
+a tree with no instrument in it. Single-variableness is then evidenced three checkable ways
+instead: identical seeds on both arms, a `git diff` verified to be exactly one hunk, and stamp
+confirmation (differing `rulesFingerprint`, identical `instrumentFingerprint`).
+
+**BR-95 — A bakeoff arm that is not adopted as the baseline of record writes its aggregate to
+`.scratch/`, not `docs/balance/`, and the baseline is NOT re-pinned when no measured number
+moved.** (T-176.) Clearing instrument-fingerprint staleness on `docs/balance/smoke/tiers.json`
+takes T-173's cheap path instead: `npm run format` BEFORE extraction, then
+`npm run balance:extract -- --aggregate <the current baseline of record>`, with that path re-read
+live from `BASELINE_OF_RECORD_PATH` in `balance-targets.test.ts`.
+
+**BR-96 — A finding's own quoted numbers are re-measured on HEAD before they are argued from.**
+(T-219.) T-219's headline "+52.62 modelled vs −53.26 realised at six dice" was measured by T-175
+on its pre-`probClaimTrue` control arm; `probClaimTrue` changed which decisions ever reach a
+raise, so the raise population differed and the sign had reversed on HEAD (per-raise gap −126.99
+/ −84.81 / −47.34, SE ≈ 1.2). Numbers measured on a superseded arm may not be quoted.
+
+**BR-97 — A bakeoff control that RESTATES a shipped decision function is proven EQUAL to it
+before any arm is scored.** (T-219, extending BR-20 from hand-rolled ablation loops to bakeoff
+controls.) T-219 cross-checked its restated `optimal` against the shipped
+`archetypeMove({archetype:'optimal'})` over 1,200,000 randomised states at all three widths on
+move kind, quantity and face — zero mismatches. A drifted restatement scores every arm against a
+straw control, which is F-175-1's premise.
+
+**BR-98 — Probe-sourced per-task numbers do not earn a shipped-instrument field.** (T-219.)
+T-219 declined to add a per-raise field to `dareCells`: `dareCells` already answers the ordering
+and win-rate questions, and moving `instrumentFingerprint` inside a MEASUREMENT task is §16.2's
+banned third shape. T-175's calibration table is the precedent for keeping such numbers in a
+scratch probe.
+
+**BR-99 — A Phase-0 single-policy DIAGNOSTIC arm is legitimately shards-only — no `--merge` and
+no `--aggregate`.** (T-219 §19.9, T-220 §20.0.) The standing 8,000-row / `--merge` / `--aggregate`
+constraint governs the CAPSTONE sweep, which is owed only when `rulesFingerprint` moves. Both
+precedents ran as `--policies gambler --seeds 1600 --days 120` over four 1-indexed shards.
+
+**BR-100 — A test-only + docs-only task moves NO fingerprint and owes no capstone, no re-extract
+and no baseline re-pin — INCLUDING `docsFingerprint`.** (T-220, verified live: `rulesFingerprint`
+`cabd2112ccf4cefb`, `instrumentFingerprint` `2d6d1990eaf13031`, `docsFingerprint`
+`265aea1d09f0d485`, `CURRENT_SAVE_VERSION` 17, all unmoved.) `__tests__` is in
+`HASHED_ROOT_IGNORED_DIRECTORIES` and is not in `SIM_INSTRUMENT_DIRECTORIES` (`['', 'balance']`),
+and — against its name — `computeDocsFingerprint` hashes the raw bytes of the rule and instrument
+SOURCES, comments included, and never reads `docs/**`.
+
+**BR-101 — UI-only work owes NO capstone and NO fingerprint move.** (T-221, confirming BR-69;
+also T-189, T-201, T-203.) `computeRulesFingerprint` hashes `packages/engine/src` rule modules
+plus `packages/content/src`; `computeInstrumentFingerprint` hashes `packages/sim/src`;
+`packages/ui` appears in neither set. A task confined to `packages/ui` + `docs` closes with
+`rulesFingerprint` UNMOVED, an empty `git diff --stat -- packages/engine/src packages/content/src`
+and `balance-smoke.test.ts`'s "is not stale" assertion green. **This is a fact about the hash's
+scope, not a licence to reach into the engine without a capstone.** Corollary (T-189):
+hand-authored UI geometry such as `SHIP_DIAGRAM_GEOMETRY` lives in `packages/ui/src/format.ts` —
+putting a drawing's coordinates in content would stale every balance fixture for a picture.
+
+**BR-102 — An instrument-only move — a widening, a new aggregate field, a sweep-side edit — owes
+NO baseline re-pin.** (T-173, re-affirmed T-183; the corollary to BR-10's "no capstone".) The
+baseline of record does not move for an instrument change; the obligation actually discharged is
+that all five BR-82 pointers still AGREE. T-173's Accept asking for a "four-site baseline re-pin"
+was wrong twice over — the sites have been FIVE since T-182, and a non-capstone owes none of them
+a move.
+
+**BR-103 — A docs block describing an instrument move deliberately AVOIDS the phrases
+`BASELINE OF RECORD RE-PINNED AT T-` and `Baseline of record is`.** (T-173.) Otherwise it
+masquerades as a sixth pointer or a newer re-pin; a T-173 banner ahead of T-199's would fail the
+banner-ordering check and would be a false claim.
+
+**BR-104 — All Hangout/disposition measurement stays inside `packages/sim`.** (T-173.) Putting
+the named pool or the standing onto `EncounterStarted` was REJECTED because it moves
+`rulesFingerprint`, which an instrument commit is forbidden to move; interceptor provenance rides
+on `CombatEncounterRecord` (`interceptorId`, `interceptorSource`, `interceptorDisposition`,
+`namedPoolDispositions`, `namedPoolReconstructed`) instead.
+
+**BR-105 — The instrument records the RAW pool, never a derived weight.** (T-173.)
+`namedPoolDispositions` carries the pool itself because `chooseWeighted`'s formula must not be
+duplicated in the instrument, and `namedPoolReconstructed` is a COUNTED field rather than a
+footnote, so `selectEncounterInterceptor`'s band-widening branch is measured rather than assumed.
+
+**BR-106 — New aggregate fields are `?? []`-guarded and additive-only, so `sweep --merge` over a
+shard written by an older instrument cannot crash.** (T-173,
+`MilestoneAggregate.npcDisposition`, `MilestoneAggregate.npcNonzeroDispositionShare`.)
+
+**BR-107 — BR-19's "each arm gets its OWN `node_modules`" has exactly one narrow exception.**
+(T-173.) A BEFORE `git worktree` may share the root `node_modules` only when `diff -r` proves
+`packages/engine/src` and `packages/content/src` byte-identical between the arms AND the sweep
+entry point imports its sim sources by relative path, so the arms differ in `packages/sim` alone.
+Outside those two conditions the shared-`node_modules` trap stands.
+
+**BR-108 — Editing `packages/sim/src/balance/sweep.ts` does NOT move `instrumentFingerprint`.**
+(T-183.) It is named in `SIM_NON_INSTRUMENT_SOURCES` ("The I/O half of the sweep"), so `collect()`
+skips it; `report-model.ts`, `report-html.ts`, `diff.ts`, `smoke-extract.ts`, `provenance.ts` and
+`rules-fingerprint.ts` are non-instrument for the same reason. What moved the hash at T-183 was
+the `BaselineAggregate` TYPE change in `aggregate.ts`. Any future task planned on "touching
+sweep.ts costs a capstone / re-extract" is planning against a constraint that does not exist.
+
+**BR-109 — A field that describes the MEASUREMENT rather than the game joins `IGNORED_PATHS` in
+`balance/diff.ts` in the same commit that adds it, and the ignoring is made NON-SILENT.** (T-183,
+for `rulesFingerprint` / `instrumentFingerprint` / `gitCommit` on `BaselineAggregate`.)
+`diffAggregates` flattens the whole object, so without the ignore a stamped-vs-committed diff
+reports three `SHAPE CHANGES` and `identical: false` for two runs that measured the identical
+thing, breaking the "NOTHING MOVED" verdict every inertness proof depends on. Non-silence is
+supplied by `formatAggregateDiff`'s SAME RULESET / DIFFERENT RULESETS / RULESET UNKNOWN banner.
+Where the new field is OPTIONAL, its omitted case is proved byte-identical rather than argued —
+deep-equality, `JSON.stringify` equality and key ABSENCE — because `?? undefined` writes a key.
+
+**BR-110 — The travel die may only ever grant a MONOTONIC BENEFIT — no check, no DC, no fail
+state.** (T-195, owner-ruled.) That is what makes T-1605's invariant ("an ordinary jump with fuel
+always arrives") hold by construction rather than by discipline. The rejected alternative — a real
+per-jump Pilot check with a margin-scaled fuel penalty capped at 25% of the jump's cost — measured
+SAFE-LOOKING per jump but raised fleet-wide `fuelStarvationDays.mean` 278% over a 200-seed/60-day
+sweep, reproducing exactly the stranding risk T-1605 removed, spread across a career instead of
+concentrated in one hard failure. The pure fuel discount measured safe (ships lost −43%, no new
+failure mode) because it can only ever help.
+
+**BR-111 — The shipped travel-die magnitudes are `NAV_DIE_FUEL_DISCOUNT_MAX = 0.15` and
+`NAV_DIE_EVASION_MAX = 0.2`,** both linear from nat 1 (no effect) to nat 20, applied by
+`resolveTravel` to ORDINARY jumps only. (T-195, `packages/engine/src/actions/travel.ts:128-129`.)
+The Nemesis crossing is excluded and keeps its own quoted burn (`quoteCrossingStake`) and its own
+real check. `generateEncounter`'s new `die` parameter defaults to 1 (`navDieEvasionFactor(1) === 1`)
+so every caller that does not pass one stays byte-identical. **The "if these read as too strong
+once played" follow-up is CLOSED, not open:** T-198's owner ruling R1 named both constants as
+candidate levers and answered accept-as-is. Do not re-open them without new play evidence.
+
+**BR-112 — When a rules easing turns seeded regression tests red, fix the tests PROPERLY.**
+(T-195, three worked examples, under BR-17.) `campaign-degraded.test.ts`'s seven
+`PINNED_FINGERPRINTS` were re-derived TOGETHER as one shared cause documented once, not one by
+one. `campaign-reach.test.ts`'s hull-reachability sample was WIDENED 6 → 20 seeds and NOT
+re-thresholded — at 6 seeds the eased economy produced a coincidental 6-for-6, at 20 the true rate
+is 16/20, still "reachable, not free" — so that sample must not be shrunk back.
+`campaign-policies.test.ts`'s `FIGHTER_METRIC_SEED` was re-pinned 1 → 2 via the
+sweep-for-a-qualifying-seed convention that file already uses twice.
+
+**BR-113 — An engine-rules easing and the instruments' EXPLOITATION of it take SEPARATE capstone
+arms.** (T-196a / T-196b, following N13's control-arm pattern.) T-196a's arm deliberately left the
+sim policies' die budgets, the protocol enumerator's `spendDie` advertising and the UI's armed-die
+gating untouched — each marked in place with the task that owns it — so the arm measures "rules
+eased, instruments not yet exploiting", and T-196b's arm measures the exploitation. Predict which
+side moves BEFORE the run: `npc.ts` imports only `applyShipyardMutation`, `quoteShipyard` and
+travel helpers, never the resolvers, so NPC rows were correctly predicted near-still
+(`fleet.npcSpecialEquipmentPurchasesPerRun` 44.1695 → 44.2002).
+
+**BR-114 — Task ids are NOT monotonic in time in this repo, so no check may use a numeric or
+lexical PROXY for recency.** (T-196a; T-196a re-pins AFTER T-199, and `TASKS.md` sequences T-199
+first.) `baseline-pointers.test.ts`'s banner-ordering check asserts the PROPERTY directly — the
+FIRST re-pin block in file order must name the baseline the authoritative pointer names — which is
+strictly stronger and assumes no numbering scheme.
+
+**BR-115 — Sim policy planners in `packages/sim/src/index.ts` are bounded by their REAL bounds —
+a running `committed` / `yardCommitted` credit total, board size, tank, berths — never by die
+scarcity.** (T-196b.) `planRefuel`, `planCrippledRepair`, `planCaptainOverhead`,
+`planFighterUpgrade` and `planSpecialEquipment` lost their `DieLedger` outright: the hand was only
+ever standing in for the credit bound, so the throttle it silently supplied must be re-supplied
+explicitly. Where a loop sweeps once per die, the bound is charged PER ITERATION —
+`sweepReplacement` charges each queued sweep the credits its `EXPLORATION_FUEL_COST` will cost to
+replace at the local depot price, in BOTH the smuggler's and the explorer's loops, which T-199
+keeps byte-identical.
+
+**BR-116 — REJECTED on measurement, recorded so it is not re-tried: a nav gate on
+`planHomewardBurn` (mirroring `smugglerPolicy`'s `navBeatable`) as the fix for the F-196b-1
+smuggler stalls.** (T-196b.) It changed neither seed 42's nor seed 216's streak — the
+tank-emptying jumps on seed 42's days 62 and 64 were INTERDICTIONS, not failed pilot checks — so
+it was reverted rather than kept as an unmotivated shared-planner change.
+
+**BR-117 — An instrument-only arm must leave `rulesFingerprint` UNMOVED and move only
+`instrumentFingerprint`;** that pairing is what attributes the measured delta to the instruments
+rather than to the engine or content. (T-196b: `55414694d7187afc` unmoved,
+`6106da3575355153` → `812d9e87d7307f3c`.)
+
+**BR-118 — Measured value of freeing the administrative nine (8,000 rows, 1,000 seeds × 120 days
+× 8 policies).** (T-196b.) SEVEN of eight policy rows move, with `greedy` the deliberate unmoved
+control. Fleet `tourOneClearRate` 0.6305 → 0.63425 and fleet median credits 49,517 → 49,839, but
+the fleet rise is carried almost entirely by the `fighter` (+37,120 median credits, clear rate
+0.499 → 0.603, `fuelStarvationDays` 0.385 → 0.146) — the only row running a three-planner shopping
+chain on top of a sign→travel and a combat, i.e. the row that paid the largest die tax. FIVE of
+the seven moved rows FALL on median credits (`smuggler` −2,073, `explorer` −1,642, `trader` −518,
+`trader-degraded` −382, `gambler` −355) because `planCaptainOverhead` lost its die throttle. Cost
+side: ships lost 465 → 487 (+4.7%); `debtClearedRate` 0.7395 → 0.7581. Nothing was tuned in
+response.
+
+**BR-119 — A stale seed pin is RE-DERIVED from a widened sweep, never edited to fit; and where a
+BAR itself widens, it is called out and justified against its own DELETED-BRANCH control.**
+(T-196b.) `FIGHTER_METRIC_SEED` 2 → 6; `campaign-smuggler-gambler.test.ts` gained a SEPARATE
+`SMUGGLER_ENFORCEMENT_SEED = 2` rather than moving the shared `REPORT_SEED` out from under the
+file's other assertions. `sweep-gate.test.ts`'s veteran bar 10 → 12 runs against BR-17's "widen
+the sample, never the threshold", so it carries its justification: seed 91 goes 5 → 12 while the
+other eight of those nine seeds IMPROVE, which is what says the bar tracks a real re-phasing
+rather than absorbing a regression.
+
+**BR-120 — A byte-identical capstone diff is a verdict only when the instrument CAN exhibit the
+change; otherwise it is an INSTRUMENT-GAP NULL RESULT and is reported as "inert to this
+instrument", never as "the ruling is safe".** (T-202, the second such case after T-198's Insult
+null result.) The sim's gambler is bounded at `GAMBLER_MAX_DARES_PER_DAY = 2`, below the ruled
+`[1,2,3,4,5,6]` ceiling, so the sweep could not exhibit R3 at all.
+
+**BR-121 — A frozen pre-session brief is never retro-edited to accommodate a later capstone.**
+(T-202, upheld T-204 and T-206.) `pacing-brief-figures.test.ts`'s `ARC_BASELINES` deliberately
+stays at SIX: every row in it must appear in the frozen 2026-08-05 pre-session brief, so adding
+`baseline-t202-liars-dice-ceiling.json` (or t204's, or t206's) would force an edit to the brief
+itself. A new capstone baseline is added to the five BR-82 pointer sites and to nothing else. The
+reason is recorded in-file and at `docs/DAWN-HAND-REDESIGN.md:154`.
+
+**BR-122 — A pure-PROSE content pass still owes a FULL capstone, because content is hashed
+wholesale into `rulesFingerprint` — but the PREDICTION is FLAT.** (T-206, which moved
+`6635ee318436f99f` → `cbb087860825aa35`.) `balance:diff` must print `NOTHING MOVED`. A moved
+`outcomeHash` or a moved row would mean something consumes the profile object wholesale — that is
+a finding to file and escalate, never a reason to re-baseline.
+
+**BR-123 — After an intentional rule change, BOTH goldens are regenerated through their committed
+regenerators, never hand-edited, and the check that the regeneration was LEGITIMATE is that the
+DICE did not move.** (T-208, following the T-156 precedent.)
+`fixtures/day-loop-golden.ts` via `gen-day-loop-golden.ts`, `sim/fixtures/replay-golden.ts` via
+`gen-golden.ts`; all three replay session `rngState`s stayed 364866002 / 268015010 / −1231248819,
+verified against `git show HEAD:`. A quest captain takes no turn, so relocating one cannot consume
+a roll — a moved `rngState` would have meant the task perturbed the simulation itself.
+
+**BR-124 — Freeing die costs on administrative verbs moves ONLY the policies that queue
+`Explore`.** (T-196a; the mechanism is recorded in full at `docs/EXPLORE-DECISIONS.md` EX-27.)
+Exactly two of eight policy rows moved — `explorer` and `smuggler` — and the other six came back
+byte-identical on every headline metric. Predict die-budget changes to move Explore-queuing
+policies only, and cross-check on an independent sample via `campaign-degraded.test.ts`'s
+`PINNED_FINGERPRINTS`.

@@ -215,3 +215,149 @@ authored copy.
 clause at the end, matching `wireStories.ts`'s `NAT_WIRE_TEMPLATES` and `flaws.ts`'s
 `detail` lines. No puns, no exclamation marks, nothing winked at the player. Read the
 existing voice before authoring a comic line.
+
+---
+
+## 5. Harvested 2026-08-06 (T-179 … T-208)
+
+**CE-28 — Player-stat-modifying trinkets are NOT built.** (Owner ruling 2026-08-05 on
+`docs/PLAYER-TRINKETS_SPEC.md` §12.1: **C — do nothing**.) Candidates A/B/D are declined and
+stat-trinket ambitions stay served by the shipped Class-A ship-element-delta path. §§3–8's
+candidate-A design stays specified but UNBUILT (conditional design, per §2.6) and nothing
+schedules a build task. Rejected alternative A cost one engine refactor + one arm + one
+`legacy.ts` line plus a capstone AND the §2.7 10× re-run of §4/§5; if a future owner pass reopens
+12.1 to A, **that 10× re-run is still owed** before any content ships.
+
+**CE-29 — If a stat trinket were ever built, its ceiling is a HAND-SET +1.** (Owner ruling
+2026-08-05 on §12.2: **NO** confirmed, §4's ceiling accepted.) A stat trinket is not the
+`DiceBenefit`-scoping surface Ruling 2 reserved. The number is +1 and not +2 precisely because no
+live throttle constrains it: the `/10` `NAV_BONUS_DIVISOR` damping and the three-module cap are
+inapplicable to a stat delta by construction, so +1 stands as a deliberately hand-set number.
+
+**CE-30 — When a rule change makes an action field meaningless, DELETE the field from the type
+AND the zod schema rather than leaving it optional-and-ignored.** (T-196a.) A field that silently
+does nothing is its own future bug, and the deletion turns every stale call site into a `tsc`
+error — 184 `TS2353` errors across engine, sim and ui, which is the point. Where only PART of a
+union keeps the field, SPLIT the union member: `Trade` was split so `haggle` keeps `spendDie` (its
+die IS the `check(die, TRADE, 12)`) while `buy-fuel` / `sign-contract` / `pay-debt` /
+`abandon-contract` reject it.
+
+**CE-31 — A shape split inside one `type` is expressed as a NESTED `z.discriminatedUnion` in
+`packages/engine/src/schema.ts`,** because zod rejects two options of a discriminated union that
+share a discriminator value. (T-196a.) A stale caller's dropped field is STRIPPED, not accepted —
+pinned by the `T-196a · the freed actions neither require nor accept spendDie` block in
+`schema.test.ts` (11 cases, plus `haggle` keeping its die and the outer discriminator still
+rejecting `{type:'Teleport'}`).
+
+**CE-32 — `lastAction.details` is a DISPLAY-ONLY field with zero computational readers.**
+(T-204.) Every consumer is a render path (`day.ts:658,701,1007`, `actions/hangout.ts:99`,
+`npc.ts:2255`, `ui/store.ts:672`); deed triggers match `eventType` + `path`/`equals`, never text.
+The two Socialize clauses at `npc.ts:2064,2072` are therefore player-facing COPY — interpolated
+verbatim into the rumor mill — and were pulled into T-204's rename scope deliberately, because
+deferring them would have forced a SECOND golden re-derivation for the same rename.
+
+**CE-33 — Quest captains get NO voice fields at all — absent, never an empty array or an `''`
+stub.** (T-205.) `tableTalk` / `catchphrases` are optional on `NpcProfile` and ABSENT on all 11
+`QUEST_PROFILES` rows: an empty array games the "field exists" signal and reads as authored
+content that is not. Absent MEANS "no voiced surface" (a quest captain takes no simulated turn,
+is never dealt a roaming Liar's Dice seat, and is excluded from the named-interceptor pool), the
+same way `bondHook?` means "no player-facing obligation". Voice is not FORBIDDEN on them —
+`validateQuestVoices` checks quest rows for well-formedness IF PRESENT and never for presence —
+but a test pins that all eleven are unvoiced, so adding one is visible.
+
+**CE-34 — The captain-voice authoring contract, machine-enforced in
+`packages/content/src/castValidation.ts`.** (T-205.) `tableTalk` 2–4 lines
+(`TABLE_TALK_RANGE`); each catchphrase slot (`enter` / `duringBattle` / `win` / `loss`) 1–3 lines
+(`CATCHPHRASE_RANGE`); every line non-empty after `trim`, ≤ 120 chars (`MAX_BARK_LENGTH`), no
+`{…}` placeholder since lines print verbatim, and no duplicate line within a slot. Voice is
+ALL-OR-NOTHING — half a voice is an error even when waived, because the UI would otherwise render
+a captain who enters a fight silently and quips on the win. The dice-count ban applies to
+`tableTalk` ONLY (the count moves with the unlock ladder), never to catchphrases. Coverage emits
+five distinct messages, one per slot, so a failure names which slot is missing.
+
+**CE-35 — A content-coverage rule that must be UNCONDITIONAL but cannot turn the gate red is
+waived through an explicit, self-staling ID WORKLIST, not a ratcheting count.** (T-205, retired
+at T-206.) `VOICE_AUTHORING_PENDING` (27 literal ids) was chosen over `MIN_VOICED = 2` because a
+count fails only on the aggregate, not "on any of the 30 missing a slot"; and a throwing
+`defineNpcProfiles` with no waiver would make `import '@spacerquest/content'` throw and every
+suite in the repo red. The worklist cannot rot silently — an id not on the roster is an error, an
+id that HAS been authored is an error whose message says to delete it, and a `QUEST_PROFILES` id
+on it is an error — and its retirement instruction lives in the set's own docblock. **Retiring a
+waiver means deleting the set AND the branch that reads it, then pinning its ABSENCE** with an
+anti-refill test asserting the symbol is not in the module namespace, while leaving the history
+trail in docblocks (mark resolved, do not wipe).
+
+**CE-36 — The `DICE_COUNT_PHRASE` regex is duplicated across `liarsDiceValidation.ts`
+(`LIARS_DICE_DICE_COUNT_PHRASE`) and `castValidation.ts` (`CAST_DICE_COUNT_PHRASE`) BY FORCE, not
+by style.** (T-205.) `liarsDiceValidation.ts` does a RUNTIME `import { ALL_NPC_PROFILES } from
+'./cast.js'`, so importing it from `castValidation.ts` would close
+`cast.ts → castValidation.ts → liarsDiceValidation.ts → cast.ts`, a real module-init cycle with a
+TDZ hazard; `castValidation.ts` imports `cast.ts` TYPE-ONLY (erased), so the wrapper direction
+carries no runtime edge. Both copies are EXPORTED and pinned equal (`.source` and `.flags`) in a
+test file, because a test file is a leaf and adds no edge to the module graph. A comment naming
+the other copy is not enforcement.
+
+**CE-37 — Voiced content is authored off the captain's OWN authored fields.** (T-206.) `ideal` /
+`bond` / `flaw` / `flawDc` / `archetype` / stat line in `packages/content/src/cast.ts`, with the
+read written into a short docblock at the entry rather than left to be re-derived. Captains
+sharing an ideal or flaw are authored back to back (Iron Vex / Iron Clad, Nova Blitz / Crimson
+Hawk, The Phantom / Neon Shade, Star Gazer / Star Chaser, Warp Hound / Star Chaser, Gold Rush /
+Dust Devil, Cargo King / Comet Tail) so the contrast is deliberate rather than lucky.
+
+**CE-38 — When the per-captain signature-token rule goes red, the fix is to give that captain a
+line that EARNS a signature word.** (T-206.) Lowering the 4+ letter word floor or deleting the
+check is explicitly rejected — it is the same move as widening a band to clear a gate. The
+"not a template / real variety" criterion is mechanized before it is claimed: global raw
+uniqueness, normalized uniqueness (lowercased, punctuation stripped, whitespace collapsed), a
+per-author signature token, and a named hardest-pair spot-check.
+
+**CE-39 — An authored line shown by the UI is picked DETERMINISTICALLY by the shared
+non-exported `pickAuthoredLine(lines, seed)` (FNV-1a over the seed string), seeded on the id of
+the THING the line belongs to.** (T-207, `packages/ui/src/format.ts:605`; seeds `dareHand.id`,
+`encounter.id`, `${encounter.id}:${round}`, `EncounterResolved.encounterId`.) `Math.random()` is
+rejected because `format.ts` runs on EVERY React paint and would reshuffle a captain's line while
+the player was still reading it; forking the engine RNG is rejected because a display projection
+that pulled from the engine's stream would change the world by being rendered. Corollary for
+tests: a variety sweep must vary the axis the value is actually KEYED on — a hand id of
+`dare-${day}-${dealerId}-${dayEventCount}` is not a function of the world seed, so 40 seeds are a
+sample of size one.
+
+**CE-40 — Combat bark cadence: `enterLine` on round 1 ONLY; `battleLine` null on round 1 and
+thereafter only on EVEN rounds.** (T-207.) The enter line is what a captain says arriving, not a
+banner over the whole fight; a bark every round is wallpaper — the player stops reading it, which
+costs the enter and resolution lines their weight too.
+
+**CE-41 — `CAPTAIN_OUTCOME` is a TOTAL `Record<CombatAftermath['resolution'], 'win'|'loss'>`,
+deliberately not a `switch`.** (T-207, `format.ts:1947`.) A sixth resolution arm must fail to
+COMPILE rather than fall through a `default` and quote the wrong half of a captain's voice. The
+orientation is the CAPTAIN's and inverts twice: `escaped` is a captain WIN (the player fled, the
+captain held the field) and `interceptor-escaped` is a captain LOSS. The same rule bars a ternary
+chain keyed on a union: map a union member to its data with a total `Record<Union, T>`, never a
+chain whose final `else` is one arbitrary member (T-185's `setVolume` persistence keys).
+
+**CE-42 — Quest-captain placement is DECLARED CONTENT applied by ONE engine expression.**
+(T-208.) `NpcProfile.homePortSystemId` carries the eleven values in `cast.ts` and
+`createInitialState` reads `p.homePortSystemId ?? (index % 20) + 1` — the rule in the engine, the
+instances in content, with zero `if (` added to `cast.ts`. The 30 `NPC_PROFILES` keep the
+`(index % 20) + 1` spread and are FORBIDDEN to declare a home port; the mirror is machine-checked
+in both directions. This closes the defect where index arithmetic froze six of eleven quest
+captains at rim systems with no `hasHangout` — unreachable at a bar in every career on every
+seed, with no test able to fail because arithmetic always produces a legal-looking number.
+
+**CE-43 — A quest captain's home port is validated against the FLAG
+`STAR_SYSTEMS[id].hasHangout === true`, NOT against the numeric range `id <= 14`,** because the
+Cantina is the reason the rule exists. (T-208.) Enforced at IMPORT in two layers in
+`castValidation.ts`: `defineQuestProfiles` takes
+`QuestProfile = NpcProfile & { homePortSystemId: number }` so a missing value is a `tsc` error at
+the authoring site, and `validateQuestHomePorts` checks present / integer / real system /
+`hasHangout`. The added `castValidation.ts → systems.ts` import closes no cycle (`systems.ts` has
+zero imports).
+
+**CE-44 — Each of the eleven home ports carries a one-line comment naming its REASON.** (T-208,
+`cast.ts`.) Ten are sourced to the captain's own content — e.g. `npc-silk-dagger` → 3 Altair-3 via
+`chain.silk-dagger.marker` `systemIds: [3]`; `npc-lucky-seven` → 8 Mira-9 via
+`passenger.gambler.debt`; `npc-penny-wise` → 1 Sol-3 via `SUN_3_HANGOUT`'s `borrow` flavour — and
+exactly ONE, `npc-smuggler-ray` → 12 Rigel-8 (the Underhold), is declared "no location implied"
+in the open. Sol-3 and Mira-9 each take two captains; nothing requires uniqueness. (Dated
+correction: T-208's Delivered note said "NINE content-implied, TWO no-location"; the shipped
+`cast.ts` comments are ten and one. The comments are the record.)

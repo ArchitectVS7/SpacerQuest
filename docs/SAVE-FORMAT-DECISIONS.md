@@ -99,3 +99,67 @@ load-bearing and are contracted at the definition site: `rerollsRemaining` is ca
 is spread **LAST** so key order matches `rollDawnHand` and the serialized-hand golden hashes do
 not move. Any future field added to `DawnHand` inherits this contract for free; reintroducing the
 explicit literal reintroduces F-156-1.
+
+---
+
+## 4. Harvested 2026-08-06 (T-175 … T-208)
+
+**SF-13 — Adding OPTIONAL fields to an EXISTING event variant is not a schema change.** (T-175.)
+`DareHandResolved` gained `opponentKind`, `opponentArchetype` and `dicePerSide` as `.optional()`
+in `packages/engine/src/schema.ts:1057` (the Zod STRIP-mode reason `DareHandStarted.opponentRead`
+is optional), `CURRENT_SAVE_VERSION` did not move and no migration is owed (`docs/VERSIONING.md`
+§2, the `opponentRead` precedent). The round-trip must keep an ABSENCE an absence rather than
+silently defaulting it, or a pre-T-175 hand becomes indistinguishable from a roaming one.
+
+**SF-14 — `player.stats` stays WRITE-ONCE.** (Owner ruling 2026-08-05 on
+`docs/PLAYER-TRINKETS_SPEC.md` §12.3: **W1**.) Written only by `createInitialState` and CARRIED —
+not reset — by `applySuccession`. Rejected alternative W2 would have opened the field at the price
+of §3.2's forfeit-on-death. Consequence: F-151-5 (`StatBlockSchema` has no numeric bounds) and
+F-151-6 (no test pins `player.stats` across a run) stay PARKED and are not due, since nothing
+opens the field; the ratified GRIT band, `NPC_COMPONENT_STAT_AFFINITY` and the succession split
+all keep depending on the write-once contract.
+
+**SF-15 — Mixer and volume preferences live in `storage.ts`'s PREFERENCE layer under `sq.vol.*`,
+never in the save envelope.** (T-185.) Consequence for any future audio work: no save round-trip
+test is owed and `CURRENT_SAVE_VERSION` stays unmoved — re-read live from `save.ts` at delivery
+time rather than copied from a stale note.
+
+**SF-16 — Client presentation meta-state is not `GameState` and owes no bump.** (T-187, T-200; an
+instance of SF-8.) `sq.walkthrough.v1` (`WalkthroughRecord`) and `sq.opening.v1`
+(`OpeningMarkerRecord`, `packages/ui/src/opening.ts`) are CLIENT meta-state exactly like
+`onboardingSeen` and `fx`, so no migration is owed and the claim is STATED in the module header
+rather than left as an omission. **The `sq.` prefix is load-bearing** — the desktop shell's
+migration copies BY PREFIX. Being pure presentation they move no `rulesFingerprint` either.
+
+**SF-17 — Deleting a member from an EVENT fail-reason enum is a save-shape BREAK, not a
+cleanup.** (T-196a.) The eventLog is persisted inside `GameState` and validated by a `.strict()`
+schema on load, so an enum member no code can emit any more survives as **LEGACY-ONLY**, with the
+reasoning written at BOTH the type site and the zod site. `no-die` / `invalid-die-index` /
+`die-already-spent` were kept on `CrewEventFailReason` and `PortEventFailReason` on exactly these
+grounds, and `CURRENT_SAVE_VERSION` did not move.
+
+**SF-18 — A VALUE change is not a SHAPE change.** (T-204.) The Hangout→Cantina rename moved
+persisted `lastAction.details` and `wire[].message` values for NEWLY GENERATED states but added,
+removed and retyped no `GameState` field, so old saves keep their old prose and stay schema-valid
+— no migration and no round-trip test is owed.
+
+**SF-19 — Adding ROWS of data to an EXISTING optional profile field owes no migration.** (T-206.)
+`createInitialState` maps `NpcProfile` → `NpcState` field by field with no `...p` spread, so
+nothing new reaches a persisted record. As always, `CURRENT_SAVE_VERSION` is re-read live from
+`packages/engine/src/save.ts` at delivery — never copied from a prior task's note or a header.
+
+**SF-20 — A RULE change behind a persisted DERIVED value owes a VALUE migration even though no
+schema shape changed.** (T-208; this QUALIFIES SF-11, which covers only rule changes that change
+no persisted value.) T-208 bumped v16 → v17 and did the backfill in BOTH PATHS —
+`MIGRATIONS[16]` and the same backfill inside `deserializeState`'s COW-exempt `npcs` loop — both
+CALLING the rule `questHomePortForProfile` (`packages/engine/src/npc.ts:475`) rather than
+restating a table. An unresolvable `profileId` is left EXACTLY as-is rather than defaulted or
+thrown on, and `deserializeState`'s copy is unconditional rather than `??=` because a quest
+captain never moves, which is what makes the two paths agree.
+
+**SF-21 — N2's "do not re-seed a roster" does NOT block a quest-captain value migration.**
+(T-208.) N2 protects a career the SIMULATION has been writing; a quest captain is written by
+nothing after birth — its `currentSystemId` has exactly two writers (`executeTrade`,
+`executeTravel`), both reachable only via `resolveNpcDay`, whose one production caller is gated by
+`if (!isSimulatedCaptain(npc.profileId)) continue;`. Skipping the migration would have
+half-delivered the feature on every existing save.

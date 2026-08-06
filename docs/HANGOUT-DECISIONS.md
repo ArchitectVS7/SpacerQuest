@@ -177,3 +177,32 @@ knowingly given up is the player's ability to AIM a chosen die at this check; th
 accepted that as part of the same pool ruling. Logged not-chosen: keep Befriend a Main
 Action (smallest change, breaks the "the Hangout is free" story), or drop the check entirely
 (deletes a die-matters moment and kills the DC content at fourteen ports).
+
+---
+
+## 7. Harvested 2026-08-06 (T-203, T-204)
+
+**HO-22 — The standing cue must be readable BEFORE the player commits, not buried post-open.**
+(T-203.) An unconditional `hangout-npc-standing` tag on every pool-B roster row
+(`App.tsx:2448`) shows the band before a table is even opened, and `dare-dealer-history` renders
+beside `dare-dealer-name` for the life of the hand. The same rule BARS the tag from pool-A rows —
+`packages/ui/e2e/hangout.spec.ts:478-480` asserts zero `hangout-npc-standing` nodes inside
+`hangout-roster-opponent`, because a pool-A seat has no `NpcState` and therefore no standing, and
+a synthesized neutral band would be a FALSE cue rather than a harmless default.
+
+**HO-23 — "Hangout" → "Cantina" is a PLAYER-FACING TEXT rename ONLY.** (T-204, owner-scoped.)
+Authored prose string values, UI labels, tooltips and `aria-label`s change; file names, exported
+symbols, `hasHangout` / `PORT_HANGOUTS`, `HangoutTone` / `HangoutProse`, comments, test names and
+the save schema's `z.literal('VisitHangout')` do NOT. Renaming the save literal is a save-shape
+change owing its own migration and was explicitly DEFERRED by the owner, not forgotten; going
+further is its own scoped task. Related hazard, recorded because it bites silently: when renaming
+a word that appears in a NEGATIVE assertion, EXTEND the pattern to cover both words — `npc.test.ts`'s
+`VENUE` regex was strengthened to `/hangout|cantina|\bbar\b|tables?/i`, because a guard that stops
+matching stops guarding, and it does so green.
+
+**HO-24 — The rename Accept clause's "zero hits" is RECONCILED, not literal.** (T-204.) A raw
+`grep -ci hangout packages/ui/src` cannot reach zero because HO-23's out-of-scope list preserves
+`data-testid`s, `railsProps('hangout')`, imported symbols and comments. Read via the criterion's
+own "authored STRING VALUES … not field/type names", the AST-accurate remainder is exactly 14
+hits, none player-facing: 12 test-name/`describe` strings plus `liarsDiceValidation.ts:133,138`
+(developer-facing validation errors naming the `hasHangout` identifier).

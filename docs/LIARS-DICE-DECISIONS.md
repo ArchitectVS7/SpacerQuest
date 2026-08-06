@@ -1089,3 +1089,60 @@ F-223-1 files.
   `optimal` and seat 2 `mixed` everywhere — the pin that makes the seat-election derivation durable,
   so a content pass that flattens or inverts the ladder re-opens LD-30 instead of silently re-basing
   every roster figure in §18–§22.
+
+---
+
+## 8. What the table SHOWS (T-203, T-207, T-221)
+
+LD-25 … LD-30 rule what the table DOES. These four rule what it says about it. Where a UI clause
+restates an engine rule, the restatement is the defect; the readout reads the live value.
+
+**LD-31 — A PURCHASE WHOSE PRICE THE BUYER CANNOT SEE IS NOT A DESIGN, IT IS A TRAP.** (T-221,
+`docs/LIARS-DICE_REDESIGN.md` §17.7; recorded on **LD-26** as SHIPPED AT T-221.) LD-26 ruled FOLD
+a priced purchase in two currencies, but nothing at the table quoted either arm. Any priced
+mechanic must surface BOTH arms of its trade at the point of decision, and the surfacing must READ
+the live engine/content values — the hand's own `potPlayer` / `potDealer` escrow and
+`venueParamsFor(hand.systemId, 'dare').dispositionOnFold` — and restate nothing from the ruling.
+No `DARE_*_DISPOSITION` import into the view layer's logic, no crossover, no `P_false`, no
+`probAtLeast`, and no `if (` in the view deciding an outcome. **The test bar that keeps it
+honest:** apply the real action and compare the quoted value to the resolver's own delta
+(`DareHandResolved`'s `creditsDelta` / `dispositionDelta`) and to the port's own row — never to a
+literal typed in the test.
+
+**LD-32 — A UI CLAUSE ABOUT A RULE'S EFFECT IS SUPPRESSED EXACTLY WHERE THE ENGINE SUPPRESSES IT,
+BY REUSING THE ENGINE-FACING READ RATHER THAN RE-DECIDING THE CONDITION IN THE VIEW.** (T-221,
+building on T-203 and T-207.) `liarsDiceDealerReadout` (`packages/ui/src/format.ts:670`) is the
+ONE place the roaming-vs-roster distinction is made: it hard-nulls on any `ld-` roster id and on
+any id with no live `NpcState`, because a pool-A seat has no disposition and a synthesized neutral
+band would be a false cue. Consequently `DareSceneView.dealerHistory` is `null` on every roster
+hand and a `ld-` seat's DOM is byte-identical to pre-T-203 (the `roomLine` convention — render
+nothing, never a placeholder). Three constraints follow and are load-bearing:
+
+1. **New per-dealer display data is added as a FIELD on that readout** (`tableTalk` →
+   `DareSceneView.dealerTableTalk`), **never as a second exported function**, and `dareScene`
+   hoists ONE call into a local read by both `dealerHistory` and `dealerTableTalk` — a second call
+   site is a second place for the two to drift. (T-207.)
+2. **T-221's `dareFoldTrade` takes the already-hoisted readout result** rather than re-testing the
+   seat kind, so the disposition arm hard-nulls for the same §7.6 reason.
+3. **Its `disposition !== 0` guard mirrors `applyDisposition`'s own `delta === 0` early return,**
+   so a port authoring `dispositionOnFold: 0` can never make the table say "0 warmer".
+
+`liarsDiceDealerReadout` is also a deliberate TRIM of `encounterReadout`, not a reuse: it pairs
+the disposition hint with the prior-wire-mentions count but DROPS the "Last known at ⟨system⟩"
+clause, because a roaming dealer is co-located with the player by construction and the clause could
+only ever print the port the player is already standing in. (T-203; asserted at
+`packages/ui/src/__tests__/liars-dice-pane.test.ts:625`.)
+
+**LD-33 — `dispositionHint` IS THE SINGLE SOURCE OF TRUTH FOR THE FIVE STANDING BANDS, AND WAS
+EXPORTED RATHER THAN DUPLICATED.** (T-203, `packages/ui/src/format.ts:1835`, previously private.)
+The corollary that came with it binds the tests: unit tests and e2e specs DERIVE their
+expectations from `dispositionHint` rather than pinning literal band strings
+(`liars-dice-pane.test.ts:529-531`, `e2e/hangout.spec.ts:433-436` — "the band wording lives in
+exactly one place").
+
+**LD-34 — T-203 IS THE UI-ONLY PRECEDENT: SURFACING DATA THE ENGINE ALREADY COMPUTES STAYS ON THE
+UI SIDE OF THE LINE.** (T-203, cited by T-207 and T-221.) Surfacing `npc.disposition` — already
+computed and exposed on `NpcState` — touched no file in `packages/engine/src` or
+`packages/content/src`, so `rulesFingerprint` could not move and no capstone, sweep or re-pin was
+owed. See `docs/BALANCE-RIG-DECISIONS.md` BR-101 for the fingerprint half; the design half is that
+a readout which needs a new ENGINE field is a different task with a different cost.

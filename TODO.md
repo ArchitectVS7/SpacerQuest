@@ -156,6 +156,16 @@ item, put it in the section where comparable work already lives.
   drive the check from a hand that covers all six faces, or assert the branch's non-vacuity.
   [harvested: T-160/protocol-opening-floor-refusal-branch-unreachable]
 
+- **Stale directive comment in `packages/engine/src/actions/travel.ts:122-126`.** It still reads
+  "NOT YET RE-CAPSTONED … implement now, run the balance sweep + re-pin later. Do not commit this
+  past the gate until that capstone lands; `balance-smoke.test.ts` / `balance-targets.test.ts` are
+  EXPECTED to report a stale fixture until then." That capstone landed inside T-195 itself
+  (`docs/balance/baseline-t195-dawn-dice.json`), and the baseline of record has since moved on
+  (`baseline-t199-pacifist.json`, then T-196a's). The paragraph now instructs a reader to withhold
+  a commit for a re-pin that already happened, and licenses a stale-fixture failure that should no
+  longer be tolerated. Delete or rewrite it to record the capstone as done.
+  [harvested: T-195/travel-ts-stale-capstone-directive]
+
 ---
 
 ## Gaps — checks, coverage and measurements that do not exist
@@ -313,11 +323,17 @@ item, put it in the section where comparable work already lives.
   nothing writes `player.stats`; it becomes a real save-validation hole the instant anything
   does. ESCALATED by `docs/PLAYER-TRINKETS_SPEC.md` §10 as a save-validation question, not a
   trinket question — still unruled (§11). [harvested: T-151/F-151-5]
+  **PARKED BY RULING (owner, 2026-08-05).** `docs/PLAYER-TRINKETS_SPEC.md` §12.3 ruled **W1**,
+  which parks BOTH F-151-5 and F-151-6: neither is due, and nothing in `TASKS.md` will still say so
+  once the T-179 block is deleted. The trigger that makes both immediately due again is anything
+  that opens `player.stats` for writes. [harvested: T-179/f151-5-6-parked-by-ruling]
 
 - **F-151-6 · no existing test pins `player.stats` across a run**, so a missing clamp or a
   double-applied delta would be caught by nothing. Any task that ever writes `player.stats` must
   add that pin (named as a deliverable of the `(engine)` row in
   `docs/PLAYER-TRINKETS_SPEC.md` §13). [harvested: T-151/F-151-6]
+  Parked by the same 2026-08-05 owner ruling recorded on the F-151-5 entry above
+  (`docs/PLAYER-TRINKETS_SPEC.md` §12.3, W1); due the moment anything writes `player.stats`.
 
 - **Three of the eight T-1604a invariants — `inv_blocked_from_legal_non_increasing`,
   `inv_protocol_errors_non_increasing`, `inv_dice_bounds` — are protocol-seam statements a sweep
@@ -418,6 +434,207 @@ item, put it in the section where comparable work already lives.
   `gh run view <id> --log | grep -n 'Run e2e'`, and quote it verbatim. Nothing elsewhere in
   `TASKS.md` or this file records this evidence, so it is lost if the block is pruned.
   [harvested: T-163/t163-ci-evidence]
+
+- **The F-151-9 demonstration fixture is knowingly WEAKER than a real rig, and the remainder is
+  unclaimed.** The §2.3(b) rig "ran in a scratch tree and committed no per-arm aggregate"
+  (`packages/sim/src/__tests__/support/gate-fixtures.ts:264`), so `TRINKET_RIG_MEDIANS` replays
+  only the ONE published measure (median final credits) through `trinketRigArms()`, which makes
+  every other field equal across arms by construction (`gate-fixtures.ts:289-297`). It is weaker in
+  the safe direction and is paired with a real-`cleanRows()` leg, but when T-174 produces a rig
+  that DOES commit per-arm aggregates, that aggregate should replace or augment the transcribed
+  table so the predicate is proven against whole per-policy blocks.
+  [harvested: T-167/trinket-rig-fixture-weaker-than-real-rig]
+
+- **F-168-1 · the high-tier tables are a strong faucet, and the number is now measurable.**
+  Status: REPORTED, NOT FIXED, per §12.9's house discipline. With the effective band reachable, the
+  gambler's `expectedValuePerDare` is **+875.72** over 1,000 careers × 120 days (was +210.57 on the
+  pre-fix control arm), `finalCredits.median` rises **80,244 → 115,612 (+44.1%)**, and
+  `renownRanks.GIGA_HERO` appears on that row for the first time (134 careers; fleet 214 → 348).
+  Mechanism: `preHandWagerBand` removes the tier-0 pin, so a veteran stakes ×4.35 more per hand at a
+  measured 61.99% win rate (107,862 won / 66,151 lost over 174,013 hands). Recommendation: do NOT
+  retune `LIARS_DICE_RAISED_CEILING_MULT` or `LIARS_DICE_UNLOCK_GAMES` off this — §12.9 already
+  ruled both untouchable here. [found: T-168 capstone,
+  `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.11.3] **Two pointers must be re-read before anyone acts
+  on the numbers.** The original filing blamed the hot win rate on "the still-open archetype
+  inversion, F-160-1 (`docs/LIARS-DICE_REDESIGN.md` §17.8)" and left it "for the same owner call as
+  F-148-1 / F-148-3 / F-160-1" — but F-160-1 was CLOSED at T-175 (ruling LD-25 in
+  `docs/LIARS-DICE-DECISIONS.md` changed `optimal`'s planner), so the 61.99% / +875.72 figures
+  predate that change. And `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.11.3 item 1 says F-168-1 "is
+  filed as **F-168-1** in `TASKS.md`" — that pointer must be re-aimed at this entry.
+  [harvested: T-168/F-168-1]
+
+- **Write the check that `computeDocsFingerprint` never reads `docs/**`.** T-220's own draft note
+  claimed `docsFingerprint` moves "because docs moved" and that was WRONG: `computeDocsFingerprint`
+  (`packages/sim/src/balance/rules-fingerprint.ts:658`) hashes the raw bytes of the same rule and
+  instrument SOURCES, comments included, and never looks at `docs/**`. The existing case at
+  `packages/sim/src/__tests__/balance-rig.test.ts:512` ("the docs fingerprint moves on BOTH, which
+  is what keeps the edit traceable") only pins that source comment/constant edits move it — a change
+  that started hashing `docs/**` would still pass. Add a `fakeRepo` case where a `docs/**` file is
+  added or edited and the fingerprint must NOT move.
+  [harvested: T-220/docsfingerprint-scope-check]
+
+- **The whole-report hash "no career changed" proof is done BY HAND, for the third time.**
+  `packages/sim/src/__tests__/campaign-degraded.test.ts` RE-PIN LOG entry 30 (T-173) records a
+  SHAPE-ONLY re-pin of all seven whole-report hashes, but the proof was run locally rather than
+  asserted: the stripped hashes (trader `baf0ce4ea567da8e`, fighter `acfa7bcc4800e969`, explorer
+  `19c9bf4ab6ad2f94`, veteran `f649dc33cd51a01e`, smuggler `d9b36d370ba59822`, gambler
+  `4e89e7dad776577d`, greedy `bad42225b0cc469f` = entry 29) live only in a comment. Entries
+  11/N11/T-022, 12/N12/T-030 and 30/T-173 are the same manual proof three times. Write the check: a
+  helper in `campaign-degraded.test.ts` that deletes the newly-added report keys and recomputes the
+  hash, asserting it equals the prior entry's value, so a "no career changed" claim cannot be
+  asserted without machine proof. [harvested: T-173/strip-proof-not-asserted]
+
+- **`productVersion` / `saveSchemaVersion` are deliberately NOT stamped onto the
+  `BaselineAggregate`**, so the telemetry report's `productVersion` column still reads `unknown` for
+  an aggregate. Named as a follow-up both in T-183's block and in `docs/BALANCE-RIG-DECISIONS.md`
+  BR-58's last bullet, but filed nowhere as work.
+  [harvested: T-183/aggregate-productversion-stamp]
+
+- **Write the check that `### T-<id>` headings in `TASKS.md` are unique.** T-183's block was
+  originally filed as `T-175`, colliding with the earlier `T-175` (F-160-1, line 886), and was
+  renumbered on 2026-08-03; T-184's block records the same collision class again (F-160-2, line
+  911). Verified no such check exists today — `scripts/` holds only `check-signoff.mjs`,
+  `prose-scan.mjs`, `tag-rc.mjs` and `verify-clean-clone.mjs`, and none of them parses task ids.
+  [harvested: T-183/tasks-id-uniqueness-check]
+
+- **`packages/ui/e2e/ship-diagram.spec.ts` asserts the NOMINAL (undamaged) render only** — it checks
+  `data-damaged="0"` / `data-condition="9"` on every `[data-region]` and never exercises the damaged
+  or critical branch. Reaching a damaged component through the UI alone is a probabilistic multi-day
+  combat/hazard route with no deterministic hook in `packages/ui/e2e/support/career.ts`, so those
+  branches are covered by `packages/ui/src/__tests__/ship-diagram.test.ts` only. Remainder: add a
+  deterministic damage hook to `e2e/support/career.ts` so the diagram's damaged/critical flags are
+  proved through the UI as well as in the unit test.
+  [harvested: T-189/ship-diagram-damaged-e2e]
+
+- **The rendered Port Ledger rack markup has NO unit coverage** — verified: no
+  `@testing-library/react` anywhere in the repo's `package.json` files.
+  `packages/ui/src/__tests__/port-ledger-fascia.test.ts` covers only the pure `ledgerFascia`
+  selector in `packages/ui/src/format.ts`; every assertion about the rack's DOM (chamfer
+  `clip-path`, `.lb-rail`, `[data-glyph]`, bolt heads) lives only in
+  `packages/ui/e2e/port-ledger.spec.ts`. Any UI restyle therefore has no fast render-level safety
+  net. [harvested: T-191/ui-render-unit-gap]
+
+- **Write the check that enforces "a changing React `key` may never wrap an input".** T-191 observed
+  the rule by hand (only `<b class="lb-tick">` and the decorative `<i class="lb-sweep">` are keyed;
+  the wrappers holding `fuel-amount` / `debt-amount` are not), but nothing mechanically catches a
+  regression: the existing fill-then-buy flows in `packages/ui/e2e/manifest-trade.spec.ts` (lines
+  73, 133, 196, 203) and `packages/ui/e2e/progression.spec.ts` fill and submit without a key-moving
+  event landing mid-entry. Needed: an e2e that types into `fuel-amount`, forces `data-fuel-key` to
+  move while the field is focused, and asserts the typed value and caret survive.
+  [harvested: T-191/keyed-input-guard]
+
+- **Write the check that pins T-195's claim that "`travelPreview` cannot silently disagree with the
+  resolver once a die is known".** Verified absent: the
+  `describe('travelPreview (T-1401 export pack)')` block in
+  `packages/engine/src/__tests__/economy.test.ts` (lines 331-369) only ever calls the two-arg form
+  `travelPreview(state, dest)` and asserts the UNDISCOUNTED `jumpFuelCost(...)`; the optional `die`
+  parameter added at `packages/engine/src/actions/travel.ts:242` is never exercised. Add a case
+  asserting that for several die values `travelPreview(state, dest, die).fuelCost` equals exactly
+  what `resolveTravel` charges, i.e.
+  `Math.max(1, Math.round(baseFuelCost * (1 - navDieFuelDiscount(die))))` (`travel.ts:255` vs
+  `travel.ts:677`). [harvested: T-195/preview-resolver-die-agreement-test]
+
+- **Write the property test for the safety property the whole T-195 bake-off rests on.**
+  `navDieFuelDiscount` / `navDieEvasionFactor` (`packages/engine/src/actions/travel.ts:134` and
+  `:142`) are asserted to be monotonic benefits only in a code comment; a grep of
+  `packages/engine/src`, `packages/sim/src` and `packages/ui/src` found no test pinning
+  `navDieFuelDiscount(1) === 0`, `navDieEvasionFactor(1) === 1`, the endpoints at die 20
+  (`NAV_DIE_FUEL_DISCOUNT_MAX = 0.15`, `NAV_DIE_EVASION_MAX = 0.2`), or monotonicity across 1..20.
+  The only existing reference, `packages/engine/src/__tests__/actions.test.ts:84`, merely relies on
+  `navDieFuelDiscount(1) === 0` in passing while pinning something else. Without it, a future edit
+  could reintroduce a drain and only the 8,000-row sweep would notice.
+  [harvested: T-195/nav-die-monotonicity-property-test]
+
+- **A field-removal sweep that trusts `tsc` can silently miss shorthand-property call sites.**
+  T-196a's compile-error sweep (dropping `spendDie` from nine action shapes in
+  `packages/engine/src/types.ts` + `packages/engine/src/schema.ts`) produced 184 `TS2353` errors,
+  but FOUR shorthand-property call sites did NOT error — TypeScript skips the excess-property check
+  on a shorthand key inside a contextually-typed union return — and they were found only by a
+  follow-up grep. Nothing in the repo catches this today (grep for "shorthand" hits only
+  `TASKS.md`). Write the check: either a lint rule or a documented mandatory grep step in the
+  compile-error-sweep procedure, so a field-removal sweep that relies on `tsc` cannot leave
+  shorthand sites behind. [harvested: T-196a/tsc-shorthand-property-blindspot]
+
+- **F-196b-2 (filed, not fixed): `fuelStarvationDays` rises on three of eight rows in the arm-2
+  capstone** — `trader` mean 0.056 → 0.074 / max 5 → 15, `trader-degraded` mean 0.687 → 0.818 /
+  max 114 → 107, `explorer` mean 0.001 → 0.045 / max 1 → 41. Fleet-wide the metric IMPROVES
+  (1.0939 → 1.0620) and no invariant fails (gate 0 violations at 8,000 rows; `assertNoIncomeStall`
+  clean over seeds 1..300 × 120 days), so it was not tuned — BALANCE-POLICY Part B forbids retuning
+  a constant with no failing check to aim at. Mechanism: with the yard and the refuel no longer
+  rationed by the hand, the explorer sweeps more and the trader flies more legs per day, both closer
+  to the tank's edge. **WATCH ITEM:** if a later arm shows the trader's or explorer's starvation
+  mean continuing to climb, this is the entry to start from. [harvested: T-196b/F-196b-2]
+
+- **Write the seeded regression for F-196b-1.** Smuggler seeds **42** (6 consecutive zero-income
+  days) and **216** (8 days, limit 5) were caught only by the 8,000-row capstone sweep gate and are
+  NOT pinned locally. The same file, `packages/sim/src/__tests__/campaign-smuggler-gambler.test.ts`,
+  already pins the T-199/F-150-2 poverty-trap seeds (20, 970, 3, plus the F-199-1/F-199-2 table)
+  explicitly so "the next person to move a shared planner finds out locally instead of from a GitHub
+  Actions run" — F-196b-1's two seeds should be added to that ledger at the sweep gate's own 35-day
+  horizon, or at 120 days if 35 does not reproduce them. [harvested: T-196b/pin-f196b1-seeds]
+
+- **`docs/DAWN-HAND-REDESIGN.md` never recorded T-196c as shipped.** It has "SHIPPED, PART 1 —
+  T-196a", "SHIPPED, PART 2 — T-196b" and "SHIPPED, PART 3 — T-197", but line 26 still reads "the
+  cockpit still gates the buttons on an armed die — that is T-196c" and line 45 still reads "Still
+  open: the cockpit still gates the buttons on an armed die (T-196c)". Both are false as of
+  2026-08-05 and become unverifiable once the T-196c block leaves `TASKS.md`. Add the missing
+  cockpit PART (nine freed creators in `packages/ui/src/store.ts`, the `armed`/`dieArmed` gates and
+  "Pick a die first" copy dropped in `packages/ui/src/App.tsx`, coverage at
+  `packages/ui/src/__tests__/free-actions.test.ts`) and clear the two stale "still open" sentences.
+  [harvested: T-196c/dawn-hand-doc-t196c-shipped]
+
+- **CI evidence for T-200's opening-marker fix is still OWED after the push**, per
+  `docs/ENGINEERING-POLICY.md` §3 (the CI-evidence rule). T-200's CORRECTION block states that
+  `packages/desktop/e2e/packaged.spec.ts` was NOT run as a full packaged build locally (mac/win
+  packaging is expensive and platform-bound) and is only "expected to resolve identically — CI will
+  confirm". Only `packages/desktop/e2e/shell.spec.ts` (8/8) was verified locally via
+  `npx playwright test e2e/shell.spec.ts` from `packages/desktop`. Confirm the `Package (mac)` and
+  `Package (win)` matrix jobs in `.github/workflows/ci.yml` are green on the branch HEAD (the
+  failing precedent is run 31011441324, commit `aeadf5b7`) and quote the run verbatim.
+  [harvested: T-200/t200-packaged-ci-evidence]
+
+- **Nine open questions are named-not-decided in `docs/design/T-201-dawn-hand-roll.md` §7** and must
+  be ruled before or inside the implementation task: **Q1** day-1 ordering (marker → roll →
+  walkthrough vs. suppress the roll on day 1); **Q2** whether the beat fires on save-load and career
+  import (`bootKey` is bumped by `newGame` `store.ts:1287`, `endDay` `:2389`, `loadSlot` `:2502`,
+  career import `:2634`); **Q3** the stand-down set (`succession` / `combatAftermath`, and whether a
+  folded Liar's Dice hand or a `patrolScan` joins it); **Q4** the third motion tier; **Q5** the
+  floor/re-roll beat; **Q6** whether the `.sweep` boot wipe survives the day turn; **Q7** the "DAWN
+  HAND" label copy (owner placeholder, explicitly TBD — the dock already reads `Dawn Hand … DAY n`
+  at `App.tsx:5691–5704`); **Q8** whether sound is in scope (`sound.play('dawn')` fires unstaged
+  after the state commit, `store.ts:2404`); **Q9** whether the hex tiles tumble in 3D.
+  [harvested: T-201/dawn-roll-open-questions]
+
+- **The pre-floor die face is not observable by the UI (Q5 / §7).** The crew floor is applied INSIDE
+  the engine by `rollDawnHand` (`packages/engine/src/day.ts:188`), so dramatising "a die lands below
+  the floor and is lifted" requires surfacing it — engine work plus a `DawnRoll` event-shape change
+  — which crosses the engine-owns-rules line and must be its own task if wanted at all. It is also
+  the one branch that would make a capstone / `balance:extract` owed.
+  [harvested: T-201/pre-floor-face-not-observable]
+
+- **Write the check that the dawn hand renders N dice, not 5.** §3.7 records that hand size is
+  parameterised — 5 base, up to 7 with a First Officer (`packages/engine/src/day.ts:170–187`,
+  `App.tsx:5659–5660`, `dawnHandModifiers` at `packages/ui/src/format.ts:973`) — and that any layout
+  hard-coding five positions "is a bug the day the player hires a First Officer". No test currently
+  covers a 6- or 7-die dawn hand render; add one to `packages/ui` before the ceremony is built.
+  [harvested: T-201/hand-size-n-render-check]
+
+- **Write the missing check for the FIFTH `LIARS_DICE_ROUNDS_PER_DAY` site.** T-202's C-2 found five
+  content/doc sites, not the four its spec named — `docs/DAWN-HAND-REDESIGN.md` §4b's own table (now
+  headed `CONFIRMED TABLE (owner, 2026-08-05 — R3)` at line 287, with the
+  `| Tier | Games played | Rounds/day |` grid) is the fifth — but test 4 of
+  `packages/sim/src/__tests__/pacing-brief-figures.test.ts` (verified at lines ~380-436) still
+  asserts only the four original sites and its own failure messages still read "All FOUR sites move
+  in ONE edit". Extend that test to also require §4b's `CONFIRMED TABLE (owner, 2026-08-05 — R3)`
+  heading and the ruled numbers, and update the four-site wording to five, so the
+  sites-move-together property covers the site that was missed rather than the four that were named.
+  [harvested: T-202/pacing-brief-fifth-site]
+
+- **The "DATA ONLY" constraint on content is verified only by an ad-hoc delivery-time grep**
+  (`git diff packages/content/src/cast.ts | grep '^+' | grep -c 'if ('` = 0). No test or lint rule
+  enforces that `packages/content/src` carries no control flow — `eslint.config.mjs` has no
+  content-scoped rule and no content-purity test exists. Write the check so CE-1/CE-2 survive an
+  author who does not run the grep. [harvested: T-206/content-data-only-check]
 
 ---
 
@@ -663,6 +880,120 @@ item, put it in the section where comparable work already lives.
   `verify-clean-clone.mjs`. Precedent for this class of doc-pointer test already exists at
   `packages/sim/src/__tests__/baseline-pointers.test.ts`.
   [harvested: T-199/write-tasks-line-ref-check]
+  **Second instance, T-204 — and it widens the check.** T-204's first-draft Delivered note cited its
+  probe at `scratchpad/t204-prose-scan.py`, a session-scratchpad path and not a repo path;
+  `scratchpad/` is not a directory this repo has, so a reviewer following the citation found nothing
+  and an auditable-looking claim was unverifiable. It was fixed by making the artifact real
+  (`scripts/prose-scan.mjs`), but nothing mechanical catches the class: the check must flag cited
+  repo paths that do not RESOLVE, not only stale line numbers.
+  [harvested: T-204/tasks-path-citation-check-t204-instance]
+
+- **T-167 shipped the DETECTOR only; the `fighter` instrument defect it detects is still open.**
+  F-151-9 (day-35 median 2,825cr flat under all eight rig variants) is already tracked as `T-174` in
+  `TASKS.md` (`status: TODO`, `after: T-198`), whose Accept already names this predicate returning
+  zero violations as its exit check, and as `docs/BALANCE-RIG-DECISIONS.md` BR-57's last bullet. No
+  new backlog entry is owed so long as T-174 survives the prune — this is recorded only so the
+  linkage is not lost with the block. [harvested: T-167/fighter-flat-defect-still-open]
+
+- **`docs/LESSONS.md` L-014's "Enforced by:" pointers have DRIFTED**, found while verifying T-168's
+  claims. It cites `packages/sim/src/__tests__/protocol.test.ts:1268` for "wager domain asserted
+  equal to `wagerBandFor(portId)` with a non-vacuity check" — line 1268 is now inside a Crew-hire
+  test; the real assertion is `packages/sim/src/__tests__/protocol.test.ts:1520` with the
+  non-vacuity check at `:1524`. It also cites `packages/ui/src/__tests__/liars-dice-pane.test.ts:416`,
+  which now lands in the `T-146 · the scene projection follows the hand's frozen dice count`
+  describe; the `T-146 · dareWagerBounds is the EFFECTIVE band for the live tier` describe starts at
+  `:439`. T-168 edited both files (it added the tier-4/tier-5 arms to `protocol.test.ts` and
+  collapsed `dareWagerBounds`), so it plausibly caused the shift. No check resolves
+  `docs/LESSONS.md` "Enforced by:" file:line pointers against the tree — writing one would catch
+  this class. [harvested: T-168/lessons-l014-stale-pointers]
+
+- **F-148-1 / F-148-3 / F-160-1 were explicitly left open by T-169 for "the same owner call"** (the
+  archetype inversion, `docs/LIARS-DICE_REDESIGN.md` §17.8) and routed to T-175 / T-176 / T-177.
+  Those three tasks now read `status: DONE` in `TASKS.md` — confirm each finding was actually
+  settled there before this pointer is dropped, since T-169 is the last block that names all three
+  together. [harvested: T-169/f148-siblings-owner-call]
+
+- **`optimal`'s claim pricing is bluff-exploitable in principle, and the sim cannot test it.**
+  LD-25's `probClaimTrue` / `creditedClaimSupport` point read (a claim of `q` is read as someone
+  holding `q − 1`, capped at `dicePerSide`) is maximally credulous. T-175 measured the exposure only
+  against counterparties opening +1 / +2 over `minOpeningQuantity(own(bestFace))` and accepted it
+  because bluffing loses catastrophically there, but the chosen shape is 8–10 credits/hand behind
+  the rejected modal-face-plus-lattice-bound runner-up under those openers. **Trigger to revisit:**
+  if any archetype or `planDareMove` / `dealerMove` ever opens ABOVE the engine's floor, re-measure
+  `optimal`'s claim pricing before shipping it — the sim's planner cannot test this by construction.
+  [harvested: T-175/optimal-bluff-exposure-revisit]
+
+- **The T-160 → HEAD win-rate composition decomposition is NOT computable at HEAD.** F-176-2's trend
+  (T-137 94.66% → T-148 80.07% → T-160 61.07% → HEAD 52.90%) invites it, but `dareCells` shipped at
+  T-175, after T-160, so that endpoint has no cells. Recorded as `docs/LIARS-DICE_REDESIGN.md` §20.0
+  correction 1; §20.4 answers only the decidable within-HEAD form. The named remainder is re-running
+  T-160's rule to produce cells if that endpoint decomposition is ever actually wanted.
+  [harvested: T-220/t160-head-composition-decomposition]
+
+- **Measurement coverage gap left standing by T-220:** six of the 12 pool × tier `dareCells` cells
+  are marked UNDER-POWERED rather than reported as rates, and four of the eight pool × archetype
+  cells are structurally empty. LD-28's per-tier reads (`docs/LIARS-DICE_REDESIGN.md` §20.3/§20.3a)
+  therefore have no usable low-tier rate; the standing remedy the tests carry is "WIDEN THE SAMPLE —
+  never move the bar (N4/N10, `docs/VERSIONING.md`)", which nobody has scheduled.
+  [harvested: T-220/dare-cells-low-tier-underpowered]
+
+- **T-185's scripted 6-step audio pass was NOT re-executed** — the `RULED (owner, 2026-08-05): DONE`
+  closed it via live play, keeping the scripted pass "for the record, not re-executed". Two asks are
+  therefore unconfirmed: step (6) Settings → the new **Music** fader and the Mute button, and the
+  request to "report on levels and on whether the score wears well over ten minutes". Every level
+  named is a one-constant edit (`CUE_GAIN` in `packages/ui/src/sound.ts:400`, the 171 Hz partial mix
+  0.18, `DEFAULT_MIXER` music 0.45). [harvested: T-185/owner-audio-scripted-pass-residue]
+
+- **`setDriveHum`'s `false` branch still has no caller.** F-185-1 observed that "nothing ever called
+  `setDriveHum(false)`"; the fix added `sound.setDriveHum(true)` at `packages/ui/src/store.ts:552`
+  (module scope) on top of the existing `store.ts:1309` / `store.ts:2405` calls, so the `false`
+  branch (`packages/ui/src/sound.ts:695`) is still dead anywhere in the tree. Either wire a stop path
+  or drop the parameter. [harvested: T-185/setdrivehum-false-dead-branch]
+
+- **Write a check that a baseline filename quoted in `TASKS.md` prose names a file that exists under
+  `docs/balance/`.** T-195's block originally named `docs/balance/baseline-t193-dawn-dice.json`, a
+  file that never existed; it was caught only by the human 2026-08-04 review pass.
+  `packages/sim/src/__tests__/baseline-pointers.test.ts` enforces the five pointer SITES against
+  `BASELINE_OF_RECORD_PATH` but reads no `TASKS.md` prose, so this class is currently unenforced.
+  [harvested: T-195/tasks-md-baseline-name-check]
+
+- **The legacy die fail-reasons wait on the next save-version bump.** `CrewEventFailReason` and
+  `PortEventFailReason` in `packages/engine/src/types.ts` (and their zod mirrors in
+  `packages/engine/src/schema.ts`) still carry `no-die` / `invalid-die-index` / `die-already-spent`,
+  now unreachable for the freed actions. They were kept as LEGACY-ONLY because the eventLog is
+  persisted inside `GameState` and validated by a `.strict()` schema on load, so deleting a member is
+  a save-shape break owing a migration T-196a did not own (`CURRENT_SAVE_VERSION` stays 15).
+  Remainder: fold the deletion into the next save-version bump, or rule them permanent.
+  `HangoutFailReason`'s copies were resolved at T-197 — still live because `actions/dare.ts`'s PEEK
+  raises them — so only the Crew/Port copies remain.
+  [harvested: T-196a/legacy-die-fail-reasons-await-save-bump]
+
+- **The T-196a capstone shipped an UNPREDICTED fleet move.**
+  `docs/balance/baseline-t196a-free-actions.json` (8,000 rows, PASS · 0 invariant violations) shows
+  ships lost **436 → 465 (+6.7%)**, carried entirely by `explorer` 49 → 66 and `smuggler` 46 → 58,
+  alongside `tourOneClearRate` 0.6320 → 0.6305 and median final credits 49,729 → 49,517 (−0.4%). It
+  was explained by `exploreOutcomes.ts` `payExtraDiceClaim` and accepted inside a passing gate, not
+  filed. Worth re-reading across the later re-pins to confirm the two policies' loss rate has not
+  compounded. [harvested: T-196a/t196a-ships-lost-rise]
+
+- **`planHomewardBurn` still has NO nav gate**, and whether it should is explicitly out of T-196b's
+  scope. A Guard-4 nav gate mirroring `smugglerPolicy`'s `navBeatable` was tried during F-196b-1 and
+  reverted on measurement (it changed neither stalled seed's streak). Note `planHomewardBurn` (in
+  `packages/sim/src/index.ts`) is a SHARED planner (`fighterPolicy`, `traderPolicy`,
+  `smugglerPolicy`, per BR-36/T-175/T-199), so any change to it needs the two-step
+  extract-then-wire evidence. [harvested: T-196b/homeward-burn-nav-gate]
+
+- **`docs/design/T-201-dawn-hand-roll.md` pins every file:line against commit `b8343150` and the
+  tree has since drifted:** `useDiceRoll` is now `packages/ui/src/App.tsx:5867`, not the `:5785`
+  cited in both the doc and T-201's Delivered note. Re-verify the doc's pins (per `LESSONS.md`'s
+  resolvable-pin rule) at the start of the implementation task rather than trusting them.
+  [harvested: T-201/design-doc-pins-stale]
+
+- **No `tableTalk` / `catchphrases` were authored for any quest captain.** `cast.ts` rules that the
+  absence MEANS "no voiced surface" and that a stub is forbidden. T-207's block anticipated that "a
+  later task may legitimately voice one", and T-208 has now parked all eleven permanently at
+  Cantinas where the table-talk surface renders — so voicing them is a live option that no task
+  currently owns. [harvested: T-208/quest-captain-voice]
 
 ---
 

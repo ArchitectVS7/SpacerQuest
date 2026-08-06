@@ -59,6 +59,32 @@ indexed at the bottom — pointers only, never content.
 - A UI handler derives engine state from the authoritative post-action state, never from the presence or absence of a notice or refusal message.
 - Feedback that can legitimately repeat carries a monotonic identity attribute bumped at one choke point, so a repeat is observable in the DOM.
 - A test exercising a failure path CAPTURES the tool's human-readable output and asserts on it, never letting production-shaped failure text escape into the shared run log.
+- When one value is recorded in more than one file, one runtime-read site is the authority, a test reads every other site and fails on disagreement, and a totality pass over the tree catches the site nobody remembered; take the count from the test, never from a task block.
+- A check that encodes a numeric or lexical PROXY for the property it cares about is replaced with the property, never re-pinned — task ids are not monotonic in this repo.
+- A zero, a null diff or an unreached threshold measured by an instrument is a fact about the instrument until re-measured on the rig and at the horizon the thing was derived against.
+- A pre-committed criterion and a declined finding both ship as live assertions that recompute their derivation from shipped symbols — no literal thresholds — carrying both rates, both `n` and the SE in the failure message.
+- A standing bar is stated on a cut whose marginals are pinned lossless and non-empty with `n` on every cell, never on an aggregate whose level moves with the sweep window or with cell weights.
+- An instrument that asserts a policy is good plays to TERMINATION against the SHIPPED counterparty with engine-drawn inputs; a model-coherence test is renamed to say that is all it proves.
+- When an AI prices an opponent's public action, the probability model is conditioned on the constraint that action implies, and calibrated by bucket before any argmax is trusted.
+- A new instrument field is proved inert byte-identically — deep-equal, stringify-equal, key ABSENT — with the degraded fingerprints re-pinned and a strip-the-keys ledger entry, before any number from it is argued from; a field describing the measurement joins `IGNORED_PATHS` in the same commit.
+- Before declaring a move dominated, derive its EV in every currency the game pays out and record the crossover as a formula over live constants, never as a measured take-rate.
+- A price the UI quotes is compared to the resolver's own delta and the port's own row, never to a literal or a view-side re-derivation.
+- Audio is verified by spectrum inside 150 Hz – 4 kHz, never by peak amplitude at the destination; mix raises go inside the shared envelope, never into a persisted mixer default.
+- No audio-graph construction happens at module load; every node defers behind the first real gesture, guarded by a console-cleanliness test.
+- Any always-on subsystem carries a plain-boot test — load autosave, no New Game, no day end — not just a fresh-career one.
+- An instructional overlay is click-through except its own controls, any stow inside its rails is force-open, and both are proved by an e2e case that boots a real first-time player and performs the instructed action.
+- Sequenced-flow progress is a monotone one-shot flag folded from events; no predicate over mutable game state that can flip back.
+- Global first-run UI state is handled in every e2e helper family in the same commit — `packages/ui/e2e/support/career.ts` and `packages/desktop/e2e/support/cockpit.ts` — and a green local gate is never evidence for the desktop suite.
+- When a test asserts on the FIRST occurrence of anything, every setup action the harness performs happens before the observer is installed.
+- Any change that adds chrome to a column ends its spec by driving a control below the fold; height parity is measured against a stashed baseline; anything reporting a spent resource lives outside every collapsible container.
+- Every new animation is railed behind `prefers-reduced-motion` and asserted in both directions via computed `animation-name`, with `emulateMedia` followed by `page.reload()`.
+- A UI projection that picks from an authored pool is a pure function of a stable domain id, with a test asserting two calls on one state return the same line.
+- A variety, detector or reachability test varies the axis the value is KEYED on, and a red one is widened or re-derived through its own documented procedure — never weakened, shrunk or re-thresholded.
+- A "nothing changed" arm is proved with a whole-object `toEqual`, and a new nullable field is nulled explicitly on the negative arm.
+- When a change removes the scarce resource that was incidentally bounding a loop, the loop's real bound is re-derived and charged per iteration.
+- Any check that reads repository history fails loudly rather than skipping, and its CI job checks out with `fetch-depth: 0`.
+- A retired exemption, waiver or generator is pinned ABSENT from the module namespace, not merely deleted.
+- Where a shared constant must be duplicated to avoid a module-init cycle, both copies are exported and pinned equal in a test file.
 
 ---
 
@@ -71,13 +97,15 @@ T-101 specced `HangoutProse` (`houseName`, `roomLine`, `flavour`) and three soci
 
 ### L-002 · A content row with empty player-facing copy is a silent-outcome bug
 T-110's 12 `legacy-` rows shipped `wireFound: ''` while `resolveExploreOutcome` guarded on non-empty, so a boarded POI could cost 80 fuel and a die and emit no line at all (F-110-B). The guard hid the gap instead of failing on it. T-113 re-authored the same class: legacy Explore rows carrying empty copy, closed by authoring non-empty, mutually distinct copy on every row so the engine's `wireFound !== ''` guard is vacuous rather than load-bearing.
-**Enforced by:** `packages/engine/src/__tests__/exploreContent.test.ts` — 'EVERY row in the table SPEAKS — non-empty copy, distinct, and {name} at most once'
-**Rule:** Player-visible copy is validated at the content layer — non-empty, mutually distinct, template-safe for every shipped row — never left to a silent resolver-side guard; a row that can be selected and say nothing is a bug, not a null case.
+T-206 shows the same class one level up, where the copy is present but interchangeable: 245 lines across 27 captains (5 slots each) in `packages/content/src/cast.ts`, under an Accept criterion — "not a copy-pasted template — a spot-check comparing two captains' lines must show real voice difference" — that is unfalsifiable as prose, and that a renamed paste (`Deal me in.` vs `Deal me in!`) passes on any eyeball review AND on a bare distinctness check.
+**Enforced by:** `packages/engine/src/__tests__/exploreContent.test.ts` — 'EVERY row in the table SPEAKS — non-empty copy, distinct, and {name} at most once' + `packages/content/src/__tests__/castValidation.test.ts` (global raw uniqueness, NORMALIZED uniqueness — lowercased, punctuation stripped, whitespace collapsed — a per-author signature token, and a named hardest-pair spot-check)
+**Rule:** Player-visible copy is validated at the content layer — non-empty, mutually distinct, template-safe for every shipped row — never left to a silent resolver-side guard; a row that can be selected and say nothing is a bug, not a null case. Distinctness is not variety: a "not a template / real voice" criterion is MECHANIZED before it is claimed, and when the signature-token check goes red the fix is to author a line that earns a signature word, never to lower the floor.
 
 ### L-003 · A union member with no handler is silence
 Four occurrences of one class. **Engine side (T-110):** `resolveExploreOutcome` resolves one arm per kind, and without an exhaustive `never` default a new content-supplied kind would be silently swallowed; the check demonstrably bites — deleting the `contraband` member turns the `case 'contraband':` into a compile error (F-113-B). **UI side:** `hangoutFailNoticeFrom` had no arm for `'venue-not-offered'`, so a social-venue refusal rendered NOTHING (F-123-1, unreachable only by accident until Deneb-4 omitted `meet`); `explorationFailNoticeFrom` switched inline, handled five of six shipped reasons and fell through to `return null` on `'recovery-in-progress'` — silence since T-111 — while its docstring claimed full coverage (T-131); and `loanFailNoticeFrom` had a `default` arm, so it was not silent but answered an absent credit desk with "Penny Wise turned that request down", a sentence about a lender who considered and declined, at a port with no lender (T-132).
 **Enforced by:** `npm run typecheck` (engine `never` defaults) + `packages/ui/src/format.ts` `explorationFailExplanation` / `hangoutFailExplanation` / `loanFailExplanation` (exhaustive, no `default`, no trailing return) + `packages/ui/src/__tests__/exploration-notice.test.ts` and `hangout-pane.test.ts` (literal `as const` reason arrays; every reason renders a distinct visible line)
-**Rule:** Every switch over a typed union is exhaustive by compilation — a `never` default in the engine, no `default` and no trailing return in `format.ts` — so a new or removed member fails `tsc` rather than silently no-opping or rendering nothing; the store-side function is only the FINDER of the event.
+**Fifth occurrence, the same hole wearing a different syntax (T-185).** `setVolume`'s persistence-key ternary chain ended `: KEY_AMBIENT`, so adding the `music` bus to `MixerBus` would have written the music level into `sq.vol.ambient` with **no type error at all** — a total `Record<MixerBus, string>` replaced it, and omission is now a `tsc -b` failure. `CAPTAIN_OUTCOME` (T-207) is the same choice made up front: a total `Record<CombatAftermath['resolution'], 'win'|'loss'>` rather than a `switch`, so a sixth resolution arm cannot fall through a `default` and quote the wrong half of a captain's voice.
+**Rule:** Every dispatch over a typed union is total BY COMPILATION — a `never` default in the engine, no `default` and no trailing return in `format.ts`, and a total `Record<Union, T>` in place of any ternary chain whose final `else` is one arbitrary member — so a new or removed member fails `tsc` rather than silently no-opping, rendering nothing, or routing to the wrong arm; the store-side function is only the FINDER of the event.
 
 ### L-004 · A tuning knob duplicated onto authored rows drifts from its band table
 T-111 made recovery length derive from `EXPLORE_VALUE_BANDS` rather than a per-row `recoveryDays`, so authored rows cannot disagree with the ladder. T-131 added `apCost` on identical terms and the same test caught it — a band-level rule that an authored row could silently shadow with a per-row constant, with nothing structural stopping one band from charging calendar days AND extra dice at once.
@@ -101,8 +129,9 @@ In T-113, retiring `legacy-salvage-derelict` would have made the `rich_hulk` dee
 
 ### L-008 · A real id is not a reachable id
 T-114 authored 6 NPC-introduction rows whose `profileId` had to be checked against BOTH `ALL_NPC_PROFILES` and the live `createInitialState().npcs` roster, because `applyEffects`'s disposition arm does `state.npcs.find(...)` and silently `continue`s on a miss. T-124 found the sharper form (F-124-1): a `clientele.regulars` entry naming a QUEST captain is permanently dead content — the eleven quest-frozen captains take no turn in the dusk loop and sit at their day-1 system for a whole career, and `rankClientele` returns its input unchanged on an empty intersection, so the row looks authored, passes every well-formedness check and ranks nobody forever. Both thematically obvious regulars hit it exactly and would have shipped dead.
-**Enforced by:** `packages/engine/src/__tests__/exploreContent.test.ts` ("every npc row names a profile the CAST table and the LIVE roster both hold") + `packages/engine/src/__tests__/hangoutContent.test.ts:314`
-**Rule:** Content that names an entity id is validated against the LIVE seeded state and against the context the content places it in — membership of the definition table is not reachability, wherever the consuming effect fails silently on a miss.
+**T-208 — the same class with no id at all, and no symptom either.** `createInitialState` seeded all 41 cast profiles with `currentSystemId: (index % 20) + 1`, so the 11 `QUEST_PROFILES` (indices 30–40) landed at systems 11–20+1 and **six of eleven** were frozen forever at rim systems with `hasHangout` absent — Doc Salvage at Antares-5, Wild Card at Capella-4, Smuggler Ray at Polaris-1, Stellar Monk at Mizar-9, Void Whisper at Achernar-5, The Broker at Algol-2 — unreachable at a bar in every career on every seed. No test could fail, because arithmetic always produces a legal-looking number.
+**Enforced by:** `packages/engine/src/__tests__/exploreContent.test.ts` ("every npc row names a profile the CAST table and the LIVE roster both hold") + `packages/engine/src/__tests__/hangoutContent.test.ts:314` + `packages/content/src/castValidation.ts` `validateQuestHomePorts` (called from `defineQuestProfiles`) with `packages/content/src/__tests__/castValidation.test.ts`
+**Rule:** Content that names OR PLACES an entity is validated against the LIVE seeded state and against the CAPABILITY FLAG the content's context actually needs (`STAR_SYSTEMS[id].hasHangout === true`), never against membership of a definition table, never against a numeric id range that merely correlates with the flag, and never derived from array-index arithmetic — placement gameplay depends on is DECLARED per record and checked at import.
 
 ### L-009 · A draw's rng cost must not depend on how much content an author wrote
 T-117: the legacy `drawLegacyLoot` short-circuited the uniform pick when a leg held a single id, so the number of rng draws — and therefore the phase of the whole day's stream — depended on how many ids an author happened to write on that leg. `drawOutcome` replaced it with a flat two draws, always.
@@ -127,12 +156,14 @@ Four occurrences. T-116/T-150 (F-116-1): `explorerPolicy` queued Explores withou
 ### L-013 · A defect lives at every sibling call site — and the accidentally-safe siblings are what hide it
 Two occurrences, two shapes. **All siblings broken (T-150):** after fixing `explorerPolicy`'s unguarded Explore loop (F-116-1), `smugglerPolicy` was found to carry a byte-identical copy of the same defect (F-150-2, 3,891 of 23,192 queued on a recovery dawn) that the original finding never named. **Only one family broken, which is worse (T-182 / F-156-1):** `spendDie` had two divergent caller conventions — six callers assigned its return value back onto the save and were broken, while `actions/crew.ts`, `actions/port.ts`, `actions/hangout.ts` and `actions/dare.ts` mutated `spent[index]` on the live hand and were accidentally safe. The two families disagreed, only one was right, and the safe half is why the bug survived unnoticed from T-1306 to T-182.
 **Enforced by:** `packages/sim/src/__tests__/campaign-policies.test.ts` + `packages/engine/src/__tests__/spend-die-rerolls.test.ts` (a caller MANIFEST rescanned from the source tree: every caller in the tree has a case or a documented exemption, and each assign-family caller is driven through `applyPlayerAction`)
-**Rule:** When fixing a loop, guard or shared helper, enumerate every sibling call site — `grep` the sibling policies in `packages/sim/src/index.ts`, or the helper's callers across the tree — and fix or tripwire each before closing the finding; where two call-site conventions have diverged, commit the caller list as a manifest a test RESCANS from source, so a new or reappearing caller in either family goes red instead of silently inheriting the unsafe convention.
+**Third occurrence, and the reason a manifest needs two halves (T-196a).** Eight of the ten `spendDie` call sites left the source when the nine M17 Free Actions were freed, and the doc-comment ledger's line numbers went stale with them. A one-directional manifest — "these sites call it" — would have stayed green while a freed verb quietly re-acquired a die spend.
+**Rule:** When fixing a loop, guard or shared helper, enumerate every sibling call site — `grep` the sibling policies in `packages/sim/src/index.ts`, or the helper's callers across the tree — and fix or tripwire each before closing the finding; where two call-site conventions have diverged, commit the caller list as a manifest a test RESCANS from source, and assert BOTH halves against live source — the sites that DO call the helper, and the families that must NEVER call it — so a new or reappearing caller in either family goes red instead of silently inheriting the unsafe convention.
 
 ### L-014 · An extraction is not behaviour-preserving until every consumer reads the accessor
 In T-120 the Hangout wager band and check DCs moved out of `hangout.ts`'s constants into content behind `wagerBandFor` / `venueParamsFor`, but `legalActions` and `packages/ui/src/format.ts`'s `dareWagerBounds` / `hangoutNpcs` still clamped and advertised against the old `DARE_MIN_WAGER` / `DARE_MAX_WAGER` / `BEFRIEND_DC` constants — the UGT harness and the Hangout pane would have offered a band the engine no longer read.
-**Enforced by:** `packages/sim/src/__tests__/protocol.test.ts:1268` (wager domain asserted equal to `wagerBandFor(portId)` with a non-vacuity check that the port band differs from the global one) + `packages/ui/src/__tests__/liars-dice-pane.test.ts:416`
-**Rule:** When a constant moves into content behind an accessor, move every mirror of it (sim protocol, UI format) in the same change and pin each with a test that reads the accessor, never a restated literal.
+**T-196c — the same shape when the thing that moved is a RULE, not a constant.** All nine verbs freed of their die cost in the engine still read `state.selectedDie` in `packages/ui/src/store.ts`, refused when null, and CLEARED `selectedDie` / wrote `bloomDie` on commit — so buying fuel silently disarmed the die queued for a jump, and `dropDie`'s drag bridge had it in reverse, ARMING a die as a side effect of a free verb. **T-205 — the same shape when the mirror is forced.** `LIARS_DICE_DICE_COUNT_PHRASE` could not be imported into `castValidation.ts` without closing a `cast.ts → castValidation.ts → liarsDiceValidation.ts → cast.ts` init cycle, so the regex shipped as a second copy with nothing but a docblock tying the two together.
+**Enforced by:** `packages/sim/src/__tests__/protocol.test.ts:1268` (wager domain asserted equal to `wagerBandFor(portId)` with a non-vacuity check that the port band differs from the global one) + `packages/ui/src/__tests__/liars-dice-pane.test.ts:416` + `packages/ui/src/__tests__/free-actions.test.ts` (a two-sided source-scan manifest of GATED vs FREED creators) + `packages/content/src/__tests__/castValidation.test.ts:307-308` (`.source` and `.flags` of both copies asserted equal)
+**Rule:** When a constant or a rule moves, move every mirror of it in the SAME change — sim protocol, UI format, and the store creators that gate on it — stripping the resource READS and the resource WRITES together, and pin each mirror with a test that reads the accessor rather than a restated literal. Where a shared constant genuinely must be duplicated to avoid a module-init cycle, EXPORT both copies and pin them equal in a test file (a test file is a leaf and adds no edge to the module graph); a comment naming the other copy is not enforcement.
 
 ### L-015 · A one-global-winner selector is a latent single-scope assumption
 T-122 found F-121-2: `activeOnboardingPrompt` picks ONE global winner, and `first-loan` — predicate `hangoutOpen(game) && loan == null`, mounted inside the *closed* Hangout panel — took that slot at every `hasHangout` port, rendering nothing and blocking `first-contraband`, `first-port` and `first-explore`. Latent at 1 of 28 ports, live at 14 of 28 the moment T-121 widened Hangout reach.
@@ -142,12 +173,15 @@ T-122 found F-121-2: `activeOnboardingPrompt` picks ONE global winner, and `firs
 ### L-016 · A green test that quantifies over nothing
 Seven occurrences of one class — green while asserting nothing. T-122: an Accept clause named a literal grep over a content file, executed from a test in a different package, so a wrong path, an emptied file or a moved table would pass vacuously. T-124: `AUTHORED_PORTS` / `MECHANICALLY_DEVIANT_PORTS` drive every `it.each` in the file, so a dropped row would quietly stop being tested by every block and nothing would go red. T-124 again: T-121's "the unauthored rows are still BASELINE rows" test would have become a loop over an empty id list once the last four ports were authored — green forever. T-149: flavor tests iterate port sets derived from `STAR_SYSTEMS`, so a content edit flagging the whole rim would have emptied them. T-143: the "panel is not shipped" test greps eight build-output directories, and on a machine where nothing has been built an unrecorded pass would report green having checked nothing. T-153: the clean gate fixture would have reported all-pass while several `EXPECTED_EVENT_RATES` bands were merely SKIPPED for want of sample size. **T-155 — the sharpest form, where the SET is a driver's behaviour rather than a list:** the pilot's volume leg would have reported `illegalAttempts` / `protocolErrors` / `fallbacks` all zero off the `first-legal` brain, which reaches just 5 distinct verbs over 5 seeds × 30 days (three at seed 1) with a flat, seed-independent `stepsApplied: 150`. An all-zero counter sheet over 5 of the 87 `specType`s the engine offers measures the driver, not the system.
 **Enforced by:** `packages/engine/src/__tests__/hangoutContent.test.ts:537` (enumeration pinned to the table's key set in both directions plus cardinality) and `:550`; `packages/engine/src/__tests__/hangoutRules.test.ts:265` (inverted to the positive claim with a cardinality guard); `packages/engine/src/__tests__/npc.test.ts` ('has both port sets non-empty, so nothing below can pass vacuously'); `packages/devpanel/src/__tests__/not-shipped.test.ts` (records `absent (not built)` per directory in the assertion message); `packages/sim/src/__tests__/sweep-gate.test.ts` ('the clean sample passes every band, and SKIPS none of them'; 'SKIPPED is a third value, not a quiet pass'); `packages/sim/src/__tests__/pilot.test.ts:393` ('is not first-legal in disguise — it exercises real verb breadth')
-**Rule:** Any test that quantifies over a derived, enumerated or scanned set must prove it is non-vacuous — assert the set non-empty, pin its cardinality to the source in both directions, first assert the scanned file is non-trivial and holds the symbols claimed, enumerate every location inspected in the failure message, and count skips as failures; when a task empties the set a test quantifies over, invert it into the positive claim over the new set rather than leaving a loop that can pass over nothing. An audit driver's clean-counter claim is a quantification too, and only as wide as its action breadth: pin a breadth floor in the same file as the counter assertions.
+**Three further shapes, all of them "green while asserting nothing".** **T-221 — the sample that may never reach its own case:** an escrow-tracking test needed a REACHABLE RAISE, which is a property of the seed, so scanning seeds until one occurs would have passed while never entering the case it claims to guard. **T-208 — the invariance a dead system also satisfies:** asserting the eleven quest captains' `{id → currentSystemId}` byte-identical after a 40-day career is a claim a dusk loop that stopped running entirely would also pass. **T-177 — the zero that stops meaning anything the moment the mechanism changes:** `optimal` never folds because `probClaimTrue` is a POINT read (`pTrue` exactly 0 or 1), and a test asserting "folds 0" would still pass if a later soft read revived the branch at a low fold share.
+**Enforced by (additions):** `packages/ui/src/__tests__/liars-dice-pane.test.ts` (`expect(raised).toBe(1)` — the precondition itself asserted) · `packages/engine/src/__tests__/day.test.ts` (`T-208 · quest captains are stationary`, with the ANTI-VACUITY CHECK at :434-441 asserting at least one SIMULATED captain relocated over the same run) · `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` (describe `T-177 · F-175-2 — OPTIMAL never folds, and that is now a construction`, asserting `probClaimTrue ∈ {0,1}` at every shipped tier width)
+**Rule:** Any test that quantifies over a derived, enumerated or scanned set must prove it is non-vacuous — assert the set non-empty, pin its cardinality to the source in both directions, first assert the scanned file is non-trivial and holds the symbols claimed, enumerate every location inspected in the failure message, and count skips as failures; when a task empties the set a test quantifies over, invert it into the positive claim over the new set rather than leaving a loop that can pass over nothing. An audit driver's clean-counter claim is a quantification too, and only as wide as its action breadth: pin a breadth floor in the same file as the counter assertions. Three corollaries: a test that widens its sample until a precondition occurs ASSERTS the precondition was reached; any "X did not change" assertion asserts IN THE SAME RUN that the mechanism which could have changed X was live; and any "this branch never fires" assertion pins the CONSTRUCTION that makes it never fire, not the zero count.
 
 ### L-017 · Assert against the generator's shape, not against the fallback constant
 The existing "not the DEFAULT house name" check did NOT catch a T-121 baseline row, because `baselineHangout` generated `the <system> Hangout` per port — a name of its own that passed the default check while carrying no authored voice. The teeth came from asserting `houseName !== \`the ${STAR_SYSTEMS[id]?.name} Hangout\`` and from grepping the source for a surviving `baselineHangout` call.
-**Enforced by:** `packages/engine/src/__tests__/hangoutContent.test.ts:550`
-**Rule:** To prove content is authored, assert against the shape a generator would have produced — and that the generator itself is absent from the source — not merely against the fallback default value.
+**T-206 — the same rule pointed at a retired WAIVER rather than a retired generator.** T-206 deleted `VOICE_AUTHORING_PENDING`, its 27-id set, the `waived` branch in `validateNpcVoices`, the `rosterIds` set and three waiver-hygiene rules. Nothing would have stopped a future captain being exempted by reintroducing the symbol, and a deletion on its own leaves no signal at all.
+**Enforced by:** `packages/engine/src/__tests__/hangoutContent.test.ts:550` + `packages/content/src/__tests__/castValidation.test.ts` (the ANTI-REFILL test: `'VOICE_AUTHORING_PENDING' in contentIndex === false`)
+**Rule:** To prove content is authored, assert against the shape a generator would have produced — and that the generator itself is absent from the source — not merely against the fallback default value. Retiring an exemption means deleting the SET **and** the branch that reads it, then pinning its ABSENCE from the module namespace, while leaving the history trail in docblocks (mark resolved, do not wipe).
 
 ### L-018 · An acceptance assertion with no negative control passes against a no-op
 Three occurrences. **T-143 twice.** (a) Proving every panel flag is a real parsed argument: spawning each CLI with all panel flags and asserting no `Unknown argument:` / `Missing value for` would pass identically against a parser that validated nothing at all. (b) Proving sweep shards launch concurrently: timing-based assertions ("it was faster") pass by luck on a serial implementation. **T-155 — the same hole in a determinism NORMALISER:** `pilot-cli.ts` builds `runId` from `Date.now()`, so two independent processes can never emit byte-identical JSONL and a raw `diff` reports a meaningless divergence; `actionSequence()` therefore normalises `runId`, `startedAt` and `brain.latencyMs` away. A normaliser that drops too much passes forever, so the check is only a check once the ignore-set AND a deliberately mutated field are both asserted — the sequence keeps the step ordinal, the chosen `specType`/id, the action sent, the response type and the engine's state delta, so the claim is "the same seed produced the same *game*".
@@ -171,8 +205,9 @@ T-125 re-pinned the baseline of record to an 8,000-row aggregate and re-read the
 
 ### L-022 · Do not move `instrumentFingerprint` in the commit that takes the capstone
 T-125's five questions needed hangout, disposition and interceptor-source fields the aggregate does not carry; adding them would have moved `instrumentFingerprint` in the same commit that took the capstone and extracted the fixture from it, so the fixture would have recorded numbers measured under a different instrument. The measurement was routed to a gitignored two-arm probe instead.
-**Enforced by:** `packages/sim/src/__tests__/balance-smoke.test.ts` ("the fixture describes the ruleset in the working tree / is not stale", via `fixtureFreshness` in `packages/sim/src/balance/checkpoints.ts`)
-**Rule:** Instrument-shape changes get their own commit, with the fixture re-extracted and the baseline re-pinned there — a capstone commit adds no instrument field.
+**The mirror-image discipline, from T-177 and T-219: a fingerprint NON-move is measured, never asserted.** T-177 claimed a comment-only engine edit and proved it by reading `computeRulesFingerprint(repoRoot)` at HEAD before and after (`cabd2112ccf4cefb` both times) rather than reasoning that comments cannot matter. An asserted non-move silently desynchronises the balance fixture from the tree, which is the same failure the freshness check exists to catch.
+**Enforced by:** `packages/sim/src/__tests__/balance-smoke.test.ts` ("the fixture describes the ruleset in the working tree / is not stale", via `fixtureFreshness` in `packages/sim/src/balance/checkpoints.ts`), run as `npm run balance:smoke` in the gate
+**Rule:** Instrument-shape changes get their own commit, with the fixture re-extracted and the baseline re-pinned there — a capstone commit adds no instrument field — and any task claiming it did NOT move `rulesFingerprint` shows the hash read at HEAD before and after the edit and runs `npm run balance:smoke`.
 
 ### L-023 · A dropped tool flag can silently downgrade a shipped fixture
 T-146 found F-146-0, a regression T-145 left behind: `balance:extract` was run with NO `--aggregate`, so it defaulted to a baseline carrying no `fleet.milestones`, flipping `docs/balance/smoke/tiers.json`'s `provenance.spreadSource` from `harvested` to `estimated` and replacing harvested tier spreads with synthetic ones — a silent quality regression that survived a whole milestone unnoticed. T-148 made it loud and named why it was invisible: omitting the flag does not fail, and the loss moves none of `rulesFingerprint` / `instrumentFingerprint` / `docsFingerprint`, so the freshness check never trips and a whole milestone can pass green on a degraded rig.
@@ -226,8 +261,9 @@ T-159's brief diagnosed one missing branch. The T-1104 relaxation alone took see
 
 ### L-033 · An exported predicate the composer never calls silently never runs
 Nothing structurally forced `runGate` in `packages/sim/src/balance/sweep.ts` to call every `assert*` that `gate.ts` exports; a tenth invariant added to `gate.ts` but never wired in would have sat green forever.
-**Enforced by:** `packages/sim/src/__tests__/sweep-gate.test.ts` — 'runGate reaches EVERY invariant gate.ts exports (the kitchen sink)'
-**Rule:** Any registry-plus-composer pair needs a totality guard proving the composer reaches every member the registry exports.
+**T-167 — what the guard's FIRST legitimate exemption is allowed to cost.** A tenth exported `assert*`, `assertVariantsPerturbEveryPolicy`, takes a control aggregate plus N variant arms, so `runGate` can never reach it by construction — a sweep has exactly one arm. The cheap repair would have been an exemption list. Instead the guard was re-cut to PARTITION the exported names on SIGNATURE via a second exported registry, `ARM_LEVEL_ASSERTIONS`, with both counts asserted (9 report-level, 10 exported total) and every name in the second registry owing a seeded-bad fixture that proves it fires.
+**Enforced by:** `packages/sim/src/__tests__/sweep-gate.test.ts` — 'runGate reaches EVERY invariant gate.ts exports (the kitchen sink)' + `:642` 'ARM_LEVEL_ASSERTIONS names only real arm-level exports, and each owes a fixture', with the roster counts at `:636-639`
+**Rule:** Any registry-plus-composer pair needs a totality guard proving the composer reaches every member the registry exports; when a member genuinely cannot be reached by its composer, repair the guard by partitioning on SIGNATURE into a second NAMED registry — never by adding an exemption list — and make every name in that second registry owe a seeded-bad fixture proving it fires, so the exemption costs a working demonstration rather than buying silence.
 
 ### L-034 · A coverage table can claim coverage that does not exist
 T-152 wired the T-1604a invariant set into the sweep as a gate, but three of the eight are protocol-seam statements no sweep can observe. Rather than mapping them onto a loosely related assertion to make the coverage table read 8/8, they were recorded as `disposition: 'not-observable'` with `coveredBy: null` and an owning task named in `why`. T-153 then closed the other half of the hole: a `mapped`/`analogue` row naming a non-existent function, or a `not-observable` row quietly carrying a `coveredBy` value, would fake Tier-1 coverage.
@@ -237,7 +273,8 @@ T-152 wired the T-1604a invariant set into the sweep as a gate, but three of the
 ### L-035 · A measured figure written into prose is a claim nothing checks
 Three occurrences. **T-157, twice:** `ACKNOWLEDGED_COVERAGE_GAPS.gambler`'s evidence quoted the PARITY LEDGER's ruling-time figures `+4.86cr/captain-day` and `95.91%` as "still true" when the re-ask the ledger row itself points at had already re-measured them at `+3.44cr/captain-day` and `37.97%` — the status half of `coverage.ts` was machine-checked, the evidence half was trusted prose. Separately, the Accept clause took "the two most distinctive archetypes" from a SUMMARY document instead of from the two source documents, and was wrong by one row (F-157-1), halting the task for an owner ruling on what was pure transcription. **T-161, the sharper form — a figure with no document behind it at all:** `veteranPolicy`'s exemption note in `packages/sim/src/balance/gate.ts` `GATE_COMPETENT_POLICIES` justified the exclusion with "6-8 consecutive zero-income days" attributed to dice-banking; re-measured over seeds 1..200 × 35 days the pre-fix reality was a 31-day worst streak on 198 of 200 seeds, and the cause was an un-relaxed contract filter (F-159-1), not banking. The number was off by ~4× and only a human audit found it.
 **Enforced by:** `packages/sim/src/__tests__/archetype-coverage.test.ts` — 'pins every measured figure an acknowledgement quotes to its live document row'; 'mirrors docs/TESTING-STRATEGY.md Part C, in both directions'; "mirrors docs/NPC_REDESIGN.md's PARITY LEDGER row by row" · `packages/sim/src/__tests__/sweep-gate.test.ts:452` — "the veteran carries the T-1104 full-tank relaxation (F-159-1 regression pin)", a LIVE nine-seed run rather than a hash, which also asserts `GATE_COMPETENT_POLICIES` still excludes `veteran`
-**Rule:** Every measured figure quoted from a document carries a resolvable pin (document · section · row · value) checked against the live file AND asserted still quoted by the prose, and every transcribed constant is asserted equal to the parsed source in BOTH directions — transcribed from the source document, never from a summary of it; where the figure has no document behind it and instead JUSTIFIES an exemption or a threshold, the pin is a live measurement test that fails if the relaxation is removed or the membership call drifts. An empty pin list is a checked claim with a stated reason, never a blank field.
+**T-166 — the same class where the source is a COMMIT rather than a document, and wrong twice about the same four lines.** §6 of `docs/BALANCE-TELEMETRY_SPEC.md` asserted an Accept criterion — "the `rulesFingerprint` move is the ONLY expected diff" — citing T-110 (`3468ef5f`) as precedent, but it had been transcribed from a summary (`docs/TESTING-STRATEGY.md`) instead of read off the commit; `git show 3468ef5f -- docs/balance/smoke/tiers.json` shows FOUR paths moved. The 2026-08-01 reword to "fingerprints and `provenance` only" was still wrong, because `productVersion` moves too. Nothing had ever read the diff. (`packages/sim/src/__tests__/smoke-reextraction.test.ts` now reads it out of git; the historical misquotes are left intact as the auditable record of why the check exists.)
+**Rule:** Every measured figure quoted from a document carries a resolvable pin (document · section · row · value) checked against the live file AND asserted still quoted by the prose, and a criterion that cites a PRECEDENT COMMIT is asserted against that commit's real diff read out of git, never against a doc restating it; and every transcribed constant is asserted equal to the parsed source in BOTH directions — transcribed from the source document, never from a summary of it; where the figure has no document behind it and instead JUSTIFIES an exemption or a threshold, the pin is a live measurement test that fails if the relaxation is removed or the membership call drifts. An empty pin list is a checked claim with a stated reason, never a blank field.
 
 ### L-036 · A CI trigger enumerated by branch name is a gate that does not run on the branch that needs it
 Twice, a fortnight apart, on the same mechanism. **F-112-D:** T-1605 deleted the travel PILOT check while `starmap.spec.ts` still asserted it, and 7 of 95 specs sat red on `main@74403ab4` from 2026-07-28 until T-112 tripped over them. **F-162-3:** T-195 shipped `navDieFuelDiscount` / `navDieEvasionFactor` without an e2e run, and six specs sat red on `redesign/explore-hangout` until T-162 tripped over them. Root cause both times: `ci.yml` triggered `push` on the hand-maintained list `[main, rimward-redesign]` **and** every job skipped same-repo PRs on the grounds that the push run of the same commit had already tested it — a premise that is false on an unlisted branch, so the commit about to merge got no run at all. Neither change "touched the cockpit", so `ENGINEERING-POLICY.md` §2's local e2e requirement did not fire either. `sweep-gate.yml` showed the rot in progress: someone had hand-added `redesign/explore-hangout` to its list, one branch at a time.
@@ -284,6 +321,333 @@ T-162 / F-162-5: `reportGate` (`packages/sim/src/balance/sweep.ts:502`) writes `
 **Enforced by:** `packages/sim/src/__tests__/sweep-gate.test.ts:965` — 'the stderr capture is bounded, and a real break still gets its output' (the four `withTempDir` legs capture stderr via `gateOutput()` and assert the printed table instead of emitting it)
 **Rule:** A test that exercises a failure path CAPTURES the tool's human-readable output and asserts on it; it never lets production-shaped failure text escape into the shared run log, where a gate reader — human or scripted — will parse it as a real failure.
 
+### L-045 · A value recorded in N places goes stale at every site you did not remember
+Seven tasks, one mechanism. **Five** separate files record which aggregate the rig measures, and
+`packages/sim/src/__tests__/baseline-pointers.test.ts`'s header records that T-188, T-195 and
+T-199 each re-pinned while moving only some of them — three of five were still stale when T-165
+arrived (the `docs/NPC_REDESIGN.md` status banner, `docs/balance/smoke/README.md`, and BR-14's own
+sentence). The same class had already bitten at T-137. The count itself rots too: T-173, T-195,
+T-204 and T-206 all inherited task-block prose saying "all four sites" when T-182 had added a
+fifth, and T-195's block first named a baseline file (`t193`) that never existed. T-196a then
+found the check's own recency test was a PROXY — `taskNumbers[0] === max(taskNumbers)`, which
+demands the banner be ordered oldest-first, the exact opposite of what the extractor needs,
+because task ids are not monotonic here (T-196a re-pins after T-199). T-202 found the last shape:
+new docs prose that accidentally matches the pointer pattern, where the fix is to reword the
+sentence out of pointer shape, **not** to grow `ACKNOWLEDGED_NON_POINTERS`, which is exactly how
+the fifth pointer appeared unnoticed in the first place.
+**Enforced by:** `packages/sim/src/__tests__/baseline-pointers.test.ts` (the `SITES` list, the
+`disagreements()` pure core driven by seeded-bad reading sets, the banner-ordering test asserting
+the PROPERTY rather than a proxy, and the totality pass over every `.md` under `docs/`)
+**Rule:** When one value is recorded in more than one file, name a single RUNTIME-READ site as the
+authority and commit a test that reads every other site and fails on disagreement; take the number
+and identity of those sites from the test, never from a task block's prose; give the check a
+totality pass that scans the whole tree for the pattern so a new site cannot appear unnoticed; and
+when a check encodes a numeric or lexical PROXY for the property it cares about, replace the proxy
+with the property rather than re-pinning the proxy.
+
+### L-046 · A zero measured by an instrument is a fact about the instrument
+Three tasks, three readings-as-if-the-player. **T-169:** "0 grand slams in 720 careers" was taken
+as evidence that `liars_dice_grand_slam` was unreachable and that `planDare` needed a
+set-completion preference. The sweep seats the RICHEST candidate, so it never completes a set by
+construction; on the deliberate-play rig the same fifteen deeds land in 75–76 of 76 careers.
+**T-170:** `RENOWN_DEED_THRESHOLDS.CONQUEROR = 38` was filed as "unreached at 120 days by every
+policy" off a 120-day sweep and a 59-deed slate — the 300-day arm it was actually derived against
+puts the `gambler` deedCount median at exactly 38 with 579/1,000 careers reaching the rank. The
+number was being READ EARLY, and retiring the finding cost a whole task. **T-202:** the sim's
+gambler is bounded at `GAMBLER_MAX_DARES_PER_DAY = 2`, below the ruled `[1..6]` ceiling, so a
+byte-identical capstone diff could not have exhibited the change at all.
+**Enforced by:** `packages/sim/src/__tests__/deed-coverage.test.ts` ("the fifteen set-completion
+deeds are reached by DELIBERATE play", plus the deed-hunter drive at a 300-day horizon) +
+`packages/engine/src/__tests__/deeds.test.ts:394`
+**Rule:** Before ruling content unreachable, a threshold mis-sized, or a ruling safe, re-measure on
+the rig and at the HORIZON the thing was derived against, and land the counter-evidence as a
+standing assertion derived from the trigger family with a floor far below the measurement — never
+hand-listed, never pinned to a seed. A null result from an instrument whose own bound sits below
+the quantity in question is reported as "inert to this instrument", never as a verdict.
+
+### L-047 · A ruling that lives only in prose has no red path
+Three tasks. **T-176:** T-160's C3 challenger-won criterion sat in
+`docs/LIARS-DICE_REDESIGN.md` §17.2/§17.8 and rotted unremarked until T-176 re-derived it.
+**T-219:** the task measured F-176-1, baked off four replacements and DECLINED to change
+`optimal`'s raise valuation — shipping zero semantic engine lines — so the reason the rule is
+correct would have lived only in a doc and could be silently voided by a later edit. **T-220:** all
+three anchors C2's 55–70% player-win band rested on had been measured on the risk-free opener
+T-160's own bakeoff removed; the band outlived its anchor, and two consecutive tasks moved the
+number to 52.90% without anyone re-scoring it.
+**Enforced by:** `packages/sim/src/__tests__/campaign-dare-challenges.test.ts`
+("T-176 · C3'(c) as a LIVE assertion") · `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts`
+(describe `T-219 · F-176-1 — the immediate-challenge assumption IS optimal's raise evidence gate`)
+· `packages/sim/src/__tests__/campaign-dare-cells.test.ts` (describe `T-220 · LD-28 — the table's
+standing invariants`, computing the ply-1 opening burden from `probAtLeast`, `DARE_MAX_FACE`,
+`dicePerSideForTier` and `minOpeningQuantity` rather than from a restated literal)
+**Rule:** A criterion a task pre-commits to, and a ruling a task DECLINES to change, both ship as
+live assertions that RECOMPUTE the derivation from the shipped functions and constants — no
+literal thresholds, and both rates, both `n` and the SE in the failure message — so a later change
+to the rule goes RED and RE-OPENS the ruling instead of silently voiding its anchor.
+
+### L-048 · A test that grades a policy by its own objective is self-confirming
+T-175 / F-175-1: `liarsDiceArchetypes.test.ts`'s `it('beats BAD head-to-head over 4,000 simulated
+hands')` was the ONLY shipped instrument asserting the archetype ordering, and it scored a raise as
+"the other side challenges immediately" — exactly the model assumption `archetypeMove`'s `optimal`
+branch argmaxes — over a UNIFORM opener answered for ONE ply. Both premises are false in play (the
+shipped planner opens at `minOpeningQuantity(own(bestFace))` and challenges selectively via
+`SIM_DARE_CHALLENGE_MARGIN`), so the test stayed green through four tasks of a sweep-measured
+inversion in which the seat labelled `optimal` was the softest in the game.
+**Enforced by:** `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts`
+('T-175 · PLAY-LEVEL head-to-head at %i dice: hands run to termination against the shipped
+planner') + `packages/sim/src/__tests__/campaign-dare-cells.test.ts` ('T-175 · the archetype
+ordering, as a LIVE assertion')
+**Rule:** An instrument that asserts a policy is good plays to TERMINATION against the SHIPPED
+counterparty with inputs drawn the way the engine actually forces them — never against the
+policy's own model assumption or a uniform one-ply stub. A model-coherence test may be kept only
+if it is renamed to say that is all it proves.
+
+### L-049 · An unconditioned probability model prices an opponent as if they had said nothing
+T-175: `optimal` priced the standing claim with `probAtLeast(q − own(face), dicePerSide)` — the
+raw Binomial — even though `minOpeningQuantity(m) = m + 1` forbids a claim at or under what the
+claimant holds. Fed that number, its expected-value argmax challenged 93.6% / 92.6% / 91.5% of
+decisions and won only 51.2% / 41.3% / 34.2%, losing to `bad`'s one-comparison classifier.
+**Enforced by:** `packages/sim/src/__tests__/campaign-dare-cells.test.ts` ('optimal is NOT the
+softest roster seat: the player wins no more often against it than against bad')
+**Rule:** When an AI prices an opponent's PUBLIC action, condition the probability model on the
+constraint that action implies, and calibrate predicted-versus-realised BY BUCKET before trusting
+any argmax built on it.
+
+### L-050 · An additive instrument field is not inert until the numbers say so
+Two tasks, two halves of one class. **T-176:** `dareChallengeCells` (108 cells),
+`dareChallengeSplit` (16 cells) and `dareChallengeDisagreements` were added to `HangoutPlayStats`
+purely to measure a split; because the degraded report fingerprint hashes the whole report JSON,
+SHAPE included, all seven policy rows moved on shape alone, and only a strip-the-new-keys proof
+established that zero careers had changed. **T-183:** stamping `rulesFingerprint` /
+`instrumentFingerprint` / `gitCommit` onto `BaselineAggregate` made `diffAggregates` report three
+`SHAPE CHANGES` and `identical: false` for two runs that measured the identical thing — breaking
+the "NOTHING MOVED" verdict every inertness proof in the repo depends on — and the optional stamp
+parameter was only inert because it is a SPREAD, so an unstamped aggregate leaves the keys ABSENT
+rather than present-and-`undefined`.
+**Enforced by:** `packages/sim/src/__tests__/campaign-degraded.test.ts` (the stripped-fingerprint
+ledger entries) + `packages/sim/src/__tests__/aggregate-stamp.test.ts` (deep-equality,
+`JSON.stringify` equality, key ABSENCE, and `diffAggregates(unstamped, stamped).identical === true`
+with `shapeChanges: []`)
+**Rule:** When an instrument type gains a field, prove the omitted case BYTE-IDENTICAL rather than
+arguing it — deep-equal, stringify-equal and key-ABSENT, because `?? undefined` writes a key — and
+re-pin the degraded fingerprints in the same change with a ledger entry showing they come back
+byte-identical with the new keys stripped, BEFORE any measurement from the new instrument is used
+as evidence. A field that describes the MEASUREMENT rather than the game joins `IGNORED_PATHS` in
+`balance/diff.ts` in the same commit, and the ignoring is made non-silent somewhere the reader
+will see it.
+
+### L-051 · A move is only dead once it is priced in EVERY currency the game pays in
+T-137 and T-160 both ruled FOLD a "null mechanic" whose "only positive payoff is +1 disposition",
+after deriving its dominance in CREDITS alone. T-177 found the framing incomplete rather than
+wrong: disposition is a second currency with a measured effect (a 2.4–2.9× interceptor lift on
+captain disposition), and once priced, FOLD is a trade that wins at every state where the credit
+comparison is not already a tie. The rule was then recorded as a formula over live constants —
+`P_false > (LOSS − FOLD)/(LOSS − WIN)` — rather than as the measured 3.51% take rate, because the
+take rate is an output and the constants are the input.
+**Enforced by:** `packages/engine/src/__tests__/liarsDice.test.ts` (describe `T-177 · the FOLD
+ruling — the two currencies partition`)
+**Rule:** Before declaring a move dominated or dead, derive its EV in EVERY currency the game
+actually pays out, and record the crossover as a formula over the live constants rather than as a
+measured take-rate — so retuning any constant re-opens the ruling instead of silently invalidating
+it.
+
+### L-052 · The price SHOWN must be bound to the price CHARGED
+T-221: T-177 had ruled FOLD a priced purchase, but nothing at the table quoted either arm. A UI
+quote asserted against a literal — or against a formula re-derived in the view — would drift from
+`settleDareHand` the moment `DARE_FOLD_DISPOSITION` or the escrow rule was retuned, and the player
+would be shown a price the engine no longer charges.
+**Enforced by:** `packages/ui/src/__tests__/liars-dice-pane.test.ts` (applies the real action and
+compares the quoted value to `DareHandResolved`'s own `creditsDelta` / `dispositionDelta` and to
+`venueParamsFor(...).dispositionOnFold`) + `packages/ui/e2e/liars-dice.spec.ts`
+**Rule:** When the UI quotes a price the engine will charge, the test applies the real action and
+compares the quoted value to the RESOLVER's own delta and to the port's own row — never to a
+literal typed in the test, and never to a formula the view re-derived.
+
+### L-053 · A bed can be the loudest thing in the mix and still be inaudible
+T-185: the ambient drive hum peaked 0.25 at the destination — 5.8× louder than the one-shot cues —
+and nobody could hear it. A 57 Hz sine pair behind a 200 Hz lowpass put all of its energy at
+−39.9 dB across 20–100 Hz and −112.7 dB across 100–150 Hz, below what laptop, monitor or phone
+speakers reproduce. Destination peak level is not audibility. The paired defect (F-185-3) was
+fixed the same way it must always be: `CUE_GAIN = 2.2` inside `pluck`, the one envelope every cue
+passes through, NOT `DEFAULT_MIXER.sfx` — that value is persisted, so raising it does nothing for
+any player who has ever opened Settings.
+**Enforced by:** `packages/ui/src/__tests__/music.test.ts:133` — the per-mood "every voice
+fundamental is inside the audible band" assertion
+**Rule:** Audio is verified by SPECTRUM inside the reproducible band (150 Hz – 4 kHz), never by
+peak amplitude at `ctx.destination`; and a mix-level raise goes inside the code path every cue
+already passes through, never into a persisted mixer default.
+
+### L-054 · Audio-graph construction at module load is an autoplay violation
+T-185: adding a module-scope `sound.setDriveHum(true)` in `packages/ui/src/store.ts` constructed
+the `AudioContext` at module load, and Chromium logged the autoplay block eight times. Fixed with
+an explicit `if (!unlocked) return` deferral in `startHum`, so `sound.ts`'s header autoplay rule is
+ENFORCED rather than merely described.
+**Enforced by:** `packages/ui/e2e/sound.spec.ts:25` ("no autoplay-policy console errors on first
+interaction") + `packages/ui/e2e/sound-audible.spec.ts:257` (asserts no context exists pre-gesture)
+**Rule:** No audio-graph construction may happen at module load; every context and node creation
+defers behind the first real `pointerdown` / `keydown`, and a console-cleanliness test guards it.
+
+### L-055 · A subsystem wired only into event entry points is absent on the returning-boot path
+T-185 / F-185-1: `sound.setDriveHum(true)` had exactly two call sites, `newGame` and `endDay`.
+`init()` and `loadSlot()` never called it, so a captain booting into their autosave measured a peak
+of EXACTLY 0.000 and heard only sub-100 ms blips until they happened to end a day. The owner's
+entire "zero feedback" session was that path.
+**Enforced by:** `packages/ui/e2e/sound-audible.spec.ts:343` ("T-185 regression · a plain boot has
+an ambient bed, with no New Game and no day end"), demonstrated RED against the pre-fix tree
+**Rule:** Any always-on subsystem needs a PLAIN-BOOT test — load autosave, no New Game, no day end
+— not just a fresh-career one; enumerate every entry point that produces a running game, not just
+the ones that produce an event.
+
+### L-056 · A tutorial that blocks its own lesson
+Two occurrences, two mechanisms. **T-187:** the step-3 walkthrough card sat over the Manifest Board
+with `pointer-events: auto` on the whole card, swallowing the very click it was telling the player
+to make. **T-190:** turning the manifest header into a stow toggle put a collapse inside the same
+step's rails, so a stowed board is a tutorial hiding its own target; the force-open guard
+`open = !stowed || walkthroughActive(state.walkthrough)` is load-bearing, not defensive.
+**Enforced by:** `packages/ui/e2e/walkthrough.spec.ts` (performs the instructed click with the
+overlay up) + `packages/ui/e2e/manifest-object.spec.ts:185` ("the scripted walkthrough force-opens
+the board — the stow can never soft-lock it", driven from a genuine first-time boot)
+**Rule:** An instructional overlay is click-through except for its own controls, and any
+collapse/stow affordance inside a scripted-rails region is force-open while the rails are up —
+both proved by an e2e case that BOOTS A REAL FIRST-TIME PLAYER and performs the instructed action,
+never by a spec that skips the walkthrough.
+
+### L-057 · Sequenced progress derived from live state can run backwards
+T-187: deriving the "contract signed" step-completion from the live predicate
+`player.activeContract != null` would have regressed the walkthrough pointer back to step 3 the
+moment delivery nulled the contract, re-railing a player who had already advanced.
+**Enforced by:** `packages/ui/src/__tests__/walkthrough.test.ts`
+**Rule:** Sequenced-flow progress is a one-shot MONOTONE flag folded from events; any predicate
+over mutable game state that can flip back is forbidden, and the regression case gets its own
+named test.
+
+### L-058 · A helper added to one e2e suite leaves the other suite silently red
+Twice, and CI-only both times. **T-189 discovered the first:** T-187 added
+`skipFirstTurnWalkthrough` to `packages/ui/e2e/support/career.ts` for all twenty web specs and left
+`packages/desktop/e2e` out, so every Electron launch hit the first-turn walkthrough and 6/8 of
+`shell.spec.ts` failed on `<div class="body"> intercepts pointer events` — the desktop suite had
+been red since `eed2f3fe`. **T-200 repeated it exactly:** a new boot-blocking `OpeningMarker`
+overlay was dismissed in `packages/ui/e2e` only, and CI's desktop plus both packaging jobs failed
+8/8 on the marker blocking every "New game" click, AFTER the Delivered note had claimed the flows
+were unblocked.
+**Enforced by:** `.github/workflows/ci.yml` job `desktop` ("Electron desktop e2e",
+`xvfb-run -a npm run test:e2e` in `packages/desktop`), with job presence pinned by
+`packages/ui/src/__tests__/ci-workflow.test.ts`
+**Rule:** Any change that neutralises, or introduces, global first-run UI state ships the handling
+in EVERY e2e helper family — `packages/ui/e2e/support/career.ts` AND
+`packages/desktop/e2e/support/cockpit.ts` — in the same commit; a green LOCAL gate is never
+evidence for the desktop suite, which runs only in CI. When a pointer-interception failure names a
+container element, hit-test the live DOM rather than reading the diff.
+
+### L-059 · The harness's own input gets measured as the subject's
+T-200: in `packages/desktop/e2e/shell.spec.ts` the standalone T-185 audio test has no `startCareer`
+call, so `skipOpeningMarker` had to be added directly — and placing it AFTER the audio-recorder
+`addInitScript`/`reload()` broke the test, because the dismiss click is a real `pointerdown` that
+`sound.ts`'s capture-phase listener credits as the observed FIRST gesture.
+**Enforced by:** `packages/desktop/e2e/shell.spec.ts` (the T-185 audio spec, run by the `desktop`
+job in `.github/workflows/ci.yml`)
+**Rule:** When a test asserts on the FIRST occurrence of anything, every setup action the harness
+performs happens BEFORE the observer is installed.
+
+### L-060 · Chrome that costs height costs the player information
+Three passes on the same class. T-189's gate went red on it; **T-190's first styling pass** failed
+its own screenshot judgement twice — the board stock read as a pane, and new padding ate ~12px and
+pushed the second contract's headline below the fold; **T-191** built to ZERO cost on the shortest
+pane in the cockpit (163px of visible body, internally scrolling) and proved it by measuring the
+same page with the diff stashed then restored (`.pane.trade .body` scrollHeight 574 → 571,
+clientHeight 163 → 163, clientWidth 591 → 591, all five `.lb-head` heights 15px → 15px). T-190 also
+found the collapse form of the same defect: `CheckBreakdown` had to be kept OUTSIDE `.mb-sheet`, so
+stowing the paper can never hide the outcome of a roll the player just spent a die on.
+**Enforced by:** `packages/ui/e2e/manifest-object.spec.ts:165` (stows the board and re-asserts
+`check-breakdown` is still visible) and `:249-253` (fills `debt-amount` and clicks `pay-debt` in
+the pane below — Playwright `click()` fails on an occluded or offscreen control, so those lines ARE
+the below-the-fold assertion) + `packages/ui/e2e/port-ledger.spec.ts` (`click()` on `pay-debt`,
+`hover()` on the legitimately-disabled `buy-port`)
+**Rule:** Any change that adds chrome to a column ends its spec by DRIVING a control below the fold
+at the suite viewport, and where height parity is claimed it is measured against a stashed baseline
+rather than asserted. Anything that reports the outcome of a spent resource lives outside every
+collapsible container, and a test stows the container and re-asserts the readout is visible.
+
+### L-061 · A reduced-motion assertion without a reload checks a stale kill-switch
+T-190 and T-191 both wired animations behind `@media not (prefers-reduced-motion: reduce)`. The
+reduced-motion e2e initially proved nothing: the cockpit reads the OS preference ONCE per render
+and stamps `data-motion` on `<html>` (`packages/ui/src/App.tsx:934`), which is a blanket
+`animation: none !important` kill-switch — so toggling `page.emulateMedia({ reducedMotion: ... })`
+mid-test asserts against the stale attribute rather than against the media query. Getting this
+right is what keeps the whole suite honest, since it runs under `reducedMotion: 'reduce'`, and it
+is why the reduced path must be INSTANT rather than "animated then skipped".
+**Enforced by:** `packages/ui/e2e/port-ledger.spec.ts` (and its `styles()` helper)
+**Rule:** Every new animation is railed behind `prefers-reduced-motion` AND asserted in BOTH
+directions via computed `animation-name`, with `emulateMedia` followed by `page.reload()` and
+`html[data-motion]` checked to flip — never asserted in prose or inferred from the CSS source.
+
+### L-062 · A display projection that repaints must never draw at random
+T-207 renders captain barks from `packages/ui/src/format.ts`, which runs on EVERY React paint. A
+`Math.random()` pick would have reshuffled a captain's line while the player was still reading it,
+and forking the engine RNG would have changed the world by being rendered.
+**Enforced by:** `packages/ui/src/__tests__/combat-catchphrases.test.ts` ('holds each line steady
+across paints', 'is stable for the life of the panel') + `packages/ui/src/__tests__/
+liars-dice-pane.test.ts` ('holds the SAME line for the life of the hand, across paints and across
+moves')
+**Rule:** Any UI projection that picks from an authored pool is a PURE function of a stable domain
+id (a seeded hash), and ships a test asserting two calls on one state return the same line.
+
+### L-063 · A red sample test is widened, never weakened
+Four tasks, one temptation. **T-207** found its variety test red at `drawn.size === 1` over 40
+seeds — the hand id is `dare-${day}-${dealerId}-${dayEventCount}` and is NOT derived from the world
+seed, so 40 seeds all deal their first hand on day 1 at the same event count: a sample of size ONE
+dressed up as forty, repaired by driving a real 12-day career with the assertion untouched.
+**T-176** found its challenger-split detector vacuous at eight seeds (n = 136 on the player's cell)
+and widened to 24 rather than lowering the guard. **T-195** widened a hull-reachability sample
+6 → 20 seeds rather than re-thresholding, because at 6 the eased economy produced a coincidental
+6-for-6. **T-208** repaired a red reachability pin by re-running the test's own documented re-pin
+sweep (seeds 1..30 × 300 days, nine qualifying seeds found) and moving only `CAMPAIGN_SEED`.
+**Enforced by:** `packages/ui/src/__tests__/liars-dice-pane.test.ts` ('does not say the same thing
+every hand of a career') · `packages/sim/src/__tests__/campaign-dare-challenges.test.ts` ·
+`packages/sim/src/__tests__/campaign-reach.test.ts`
+**Rule:** A variety, detector or reachability test must vary the axis the value is actually KEYED
+on, and when it goes red the repair is to WIDEN the sample or re-derive the pin through the
+procedure the test documents — never to weaken the assertion, lower the guard, shrink the sample
+back, or move the bar.
+
+### L-064 · A "nothing changed" arm proved field by field lets the next field through
+T-207 added `enterLine` / `battleLine` to `EncounterReadout` while the anonymous-interceptor path
+had to gain ZERO DOM. Both fields are set explicitly to `null` on the anonymous arm rather than
+left to an initialiser, nothing is pushed into `CombatAftermath.lines`, and all three new JSX
+blocks are `null &&` guards so React emits nothing — but per-field assertions would have gone
+green for a later field added with no null default on that arm.
+**Enforced by:** `packages/ui/src/__tests__/combat-catchphrases.test.ts` ('reads byte-for-byte as it
+did before this task' — a whole-object `toEqual` on `encounterReadout`, plus the rounds-1..6 sweep
+and the `lines` deep-equal)
+**Rule:** A new nullable readout field is nulled EXPLICITLY on the negative arm, and the
+"nothing changed" claim is proved with a whole-object `toEqual` rather than per-field assertions.
+
+### L-065 · A loop's resource bound must be charged PER ITERATION
+T-196b / F-196b-1: the smuggler's and explorer's Explore loops tested `credits - committed >
+exploreFloor` a single time BEFORE the first iteration, then swept once per remaining die — asking
+"can the purse afford to be exploring today" instead of "can it afford THIS MANY sweeps". It was
+survivable only while sign/refuel/yard each took a die and held the loop to one or two iterations;
+once T-196b freed all three, a fuelled day handed the loop four dice (320 fuel burned instead of
+160) and produced zero-income streaks of 4/6/8 days on seeds the policy had never stalled on. Same
+shape as F-116-1 and F-150-2, reached indirectly through the dice the freed actions gave back.
+**Enforced by:** `packages/sim/src/balance/gate.ts` (`assertNoIncomeStall`, via
+`packages/sim/src/balance/sweep.ts`), run by the "Sweep gate" check in
+`.github/workflows/sweep-gate.yml` — it is what failed two of eight capstone shards and surfaced
+this defect
+**Rule:** When a change removes the scarce resource that was INCIDENTALLY bounding a loop,
+re-derive the loop's own bound and charge it per iteration — a single pre-loop affordability test
+is an unbounded loop wearing a guard.
+
+### L-066 · A check that reads repository history must fail loudly, and CI must be able to feed it
+T-166: `packages/sim/src/__tests__/smoke-reextraction.test.ts` reads commit `3468ef5f` and its
+parent out of git, which a default depth-1 CI clone cannot produce. The fix gave only the `test`
+job in `.github/workflows/ci.yml` `fetch-depth: 0`, and the test throws a remediation message
+naming `git fetch --unshallow` and the workflow rather than skipping.
+**Enforced by:** `packages/sim/src/__tests__/smoke-reextraction.test.ts` +
+`.github/workflows/ci.yml` (`test` job, `fetch-depth: 0`)
+**Rule:** Any check that reads repository history fails loudly — never skips — when the revision is
+unreachable, and the CI job that runs it checks out with `fetch-depth: 0`.
+
 ---
 
 ## Decisions index
@@ -297,3 +661,4 @@ T-162 / F-162-5: `reportGate` (`packages/sim/src/balance/sweep.ts:502`) writes `
 - `docs/LIARS-DICE-DECISIONS.md` — the Dare scene, its presentation, the fixed roster, the unlock ladder, and the open owner call (`LD-*`).
 - `docs/DEV-TOOLING-DECISIONS.md` — NPC decision telemetry, playtest telemetry, the balance report generator, the dev control panel, and the Tier-2 LLM pilot (`DT-*`).
 - `docs/TEST-TIER-DECISIONS.md` — the tier map and what may not substitute for what, Tier 3's shape and cadence, e2e repair discipline, and CI trigger breadth (`TT-*`).
+- `docs/UI-PRESENTATION-DECISIONS.md` — the cockpit's visual language, the first-turn and dawn-hand ceremonies, motion, the synthesized score, and the UI-state/game-state boundary (`UI-*`).

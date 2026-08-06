@@ -206,3 +206,126 @@ results are worth having, not about what the builder needs: T-154 (build) stayed
 `after: T-130` while T-155 (run) took `after: T-154, T-158`, because neither Accept clause
 referenced anything T-158 produces. Over-gating a build task on a human-blocked predecessor
 stalls work that could have shipped.
+
+---
+
+## 7. Harvested 2026-08-06 (T-166 … T-204)
+
+**TP-33 — When a delivered task finds its own block's framing wrong, the correction is RECORDED
+BESIDE the original wording, never silently substituted.** (T-173, reused by name at T-183, T-202,
+T-204, T-208.) T-173 recorded two — a stale baseline path and a stale re-pin site count. The same
+discipline governs documents: when a doc claim about a precedent commit is found wrong, correct
+the LIVE claim but leave the historical misquotes intact as an auditable record (T-166) — the
+record of having been wrong twice about the same four-line diff is itself the evidence for the
+check that now guards it. And an explicitly DATED ground-truth table is a snapshot, left alone
+rather than back-edited: `docs/LIARS-DICE-PROGRESSION_SPEC.md` §0's 2026-07-31 table still says 44
+deeds after T-170 measured the slate at 59; the new number is stated in the new section (T-170).
+
+**TP-34 — A rename never rewrites the historical record.** (T-204.) `TASKS.md` and every dated
+design doc describe decisions actually made under the old name; rewriting them would falsify the
+record. The invariant that survives an append-only protocol note is not a byte-identical count but
+`git diff TASKS.md | grep '^-' | grep -i hangout` returning exactly one line — the task's own
+`status:` flip. The file only grew. Related: when a `PROPOSED` / `STILL OPEN` marker is CONFIRMED
+by an owner ruling, the superseded proposal text is RETAINED as dated history rather than deleted,
+and any pinned assertion guarding the old phrase is RE-PURPOSED — its `why` restated to say it now
+guards THE RETAINED HISTORY — so a later cleanup pass cannot delete the record silently (T-202,
+applied across five sites).
+
+**TP-35 — An Accept criterion's "if anything ships" clause is settled against what MEASURABLY
+shipped, not against which files were opened.** (T-177.) T-177 touched
+`packages/engine/src/liarsDiceRules.ts` but only inside COMMENTS, which `hashSemantic` strips, so
+`computeRulesFingerprint(repoRoot)` read `cabd2112ccf4cefb` before and after and the clause did not
+fire — no capstone, no 8,000-row sweep, no re-measurement, no fixture re-extract. Test files are
+exempt by `HASHED_ROOT_IGNORED_DIRECTORIES.__tests__`. Likewise, adding keys to a DERIVED REPORT is
+not a save-shape change (T-176).
+
+**TP-36 — A bakeoff's pre-committed criteria must separate candidates from the INCUMBENT, not
+only from the baseline.** (T-219.) T-219's K1–K4 were written against `bad` and never said a
+replacement must beat the SHIPPED rule, so read literally they would have licensed shipping S1a —
+which loses at every tier. The criteria set names the incumbent bar up front, and **may not be
+patched after the numbers land**; the gap is recorded as a scored miss instead (§19.7).
+
+**TP-37 — A criterion pre-committed for a BAKEOFF is an arbitration instrument, not a standing
+invariant.** (T-220.) When a shipped number falls through such a band, the owner either RE-DERIVES
+the band against the shipped rules — arguing the anchors, not picking them — or RETIRES it
+explicitly in the relevant decisions doc. Either way the band's text stands VERBATIM and the fall
+is still reported as a fall. T-220 partitioned C2 this way (win-rate limb retired, EV limb
+promoted, binding text LD-28), leaving the `55–70%` untouched in `docs/LIARS-DICE_REDESIGN.md`
+§17.2.
+
+**TP-38 — A replacement bar must name a source that PREDATES the measurement it is scored
+against, and a task may not set a bar on a number it measured in that same task.** (T-220.) That
+is fitting a bar to a number. T-220's two kept bars cite T-148's measured +558 money-printer
+signature and "EV > 0 for a voluntary action", neither being 190.1 minus slack, and it explicitly
+DECLINED to set the roster-pool EV floor, deferring it to T-223.
+
+**TP-39 — Pre-registered predictions are kept VERBATIM once the result is in.** (T-196b, T-160's
+discipline: a forecast is worthless if it can be edited after the fact.) Sentences inside them that
+are misstatements of EVIDENCE rather than forecasts get a DATED CORRECTIONS block immediately
+after the list, beside the original text and never over it; the forecast-versus-result
+reconciliation goes in Delivered. Where the block's own prediction is FALSIFIABLE BY READING
+SOURCE before the run, the corrected prediction is written INTO the block before the run and the
+original kept beside it (T-202: the block predicted "only the `gambler` row moves, and it moves
+UP"; source said `min(2, allowance)` is `1,2,2,2,2,2` by tier under both tables, so the corrected
+pre-run prediction was "all eight policy rows byte-identical, `rulesFingerprint` moves,
+`instrumentFingerprint` does not" — which held exactly).
+
+**TP-40 — "No logic change expected" in a task's Files list is discharged by a TEST, not by a
+sentence in the delivery note.** (T-196b.) The `packages/sim/src/pilot.ts` confirmation shipped as
+`pilot.test.ts` `T-196b · still enumerates the freed verbs, plus Wait and end-day, on an exhausted
+hand`, with the argued mechanism written INTO the test (dropping `spendDie` SHRINKS each freed
+spec's odometer domain, so freed candidates become strictly LESS likely to hit
+`DEFAULT_PER_SPEC_CANDIDATE_CAP`).
+
+**TP-41 — A feel-gated Accept clause is closed ONLY by a signed `RULED (owner, <date>)` entry in
+`TASKS.md`.** (T-185, on the T-157/T-158 escalate-and-halt precedent.) Never by test count, and
+never by a coder flipping status because the commit instruction asked for DONE. T-185 was
+deliberately left `BLOCKED` at commit time for exactly this reason and only went DONE on the
+owner's 2026-08-05 ruling.
+
+**TP-42 — TP-30's "never move a build block back below a halting block" extends to human RULING
+gate tasks, not just `[BLOCKED BY = Human UAT]` blocks.** (T-187.) T-187 was deliberately ordered
+ABOVE T-186 — a ruling gate that halts the whole run when reached — because it had no dependency
+on it and Select picks the first eligible TODO in FILE ORDER.
+
+**TP-43 — A task whose Accept clause is CONDITIONAL on another task's ruling closes as MOOT,
+recording the ruling in the block and gating green, when that ruling does not produce the
+precondition.** (T-192.) T-188's ruling was scoped to the map's VISUAL question only and explicitly
+held the live travel formula unchanged, so T-192 closed moot rather than manufacturing the missing
+state to gate on.
+
+**TP-44 — Restyle in two commits' worth of ORDER, not one.** (T-190, T-191.) Move every handler
+and `data-*` attribute VERBATIM into the new wrapper, land the wrap with ZERO lines of CSS and run
+the full gate green on that INERT state, before any styling is written — so the move is proved
+inert first and any later red is unambiguously the styling. The proof that interactions are
+unchanged is that the EXISTING readers of the same testids pass UNMODIFIED (T-190: nine
+board-reading specs plus `e2e/support/career.ts`'s contract picker, 138/138, `git status` showing
+exactly one new spec file; T-191: thirteen testid readers plus the desktop cockpit helper, with
+`port-ledger.spec.ts` the only new file). `railsProps(...)` stays on the same blocks in the same
+order so `inert` / `data-rails-off` semantics are byte-identical. **Restyles must also run
+`npm run test:e2e:demo -w @spacerquest/ui` explicitly,** because `demo-gate.spec.ts` lives behind
+its own config.
+
+**TP-45 — A load-bearing number the owner has not ruled MAY ship against the spec's
+starting-suggestion table, provided it is marked `PROPOSED — AWAITING OWNER CONFIRMATION` in all
+THREE surfaces at once:** the content docblock holding the constant, the spec section that
+proposed it, and the decision-doc entry. (T-197, for `LIARS_DICE_ROUNDS_PER_DAY`.) Surfacing a
+question is not confirming it, and a Delivered note may never describe the former as the latter.
+
+**TP-46 — An open owner question inherited by a downstream CHECKPOINT task is promoted to its own
+NUMBERED ruling rather than left to ride inside a broader ruling of that checkpoint.** (T-197's
+rounds table became **R3** at T-198.) A "pacing is fine" answer to the wide question would silently
+bless specific numbers nobody ruled on, so the narrow question must be asked separately or it is
+never actually answered.
+
+**TP-47 — A PRESENTATION task over an existing number changes ZERO economy values.** (T-200.)
+T-200 reframed the $25,000 Tour One debt without touching its value, the due day or the guild
+interest rate. Every figure is read live off `GameState` with no numeric literal duplicated in the
+copy, and the boundary is verified by `git diff --stat` scoped to `packages/engine` /
+`packages/content` returning EMPTY.
+
+**TP-48 — A `type: design` task produces a written proposal and nothing else.** (T-201, owner-set:
+"explicitly asked to review a design proposal before any implementation".) Every changed path ends
+in `.md`, no engine or UI code is touched, the proposal NAMES its own open questions rather than
+silently deciding them, and the follow-up `code`-type implementation task is NOT filed until the
+owner picks a direction.

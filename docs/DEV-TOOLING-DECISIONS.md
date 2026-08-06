@@ -236,3 +236,38 @@ touched. An un-run leg is filed as a finding (BR-45's standard), never covered b
 silently ignored. Future CLI additions of this kind follow the same mode-vs-flag rule, because a
 silently-ignored `--days` on a compare invocation produces a result the operator believes is
 something else.
+
+---
+
+## 6. Harvested 2026-08-06 (T-164 … T-204)
+
+**DT-34 — `packages/content`'s test runner is `"test": "vitest run"` with a `vitest ^1.5.0`
+devDependency and NO `vitest.config.*`.** (T-164.) The range is deliberately the same as engine's
+so the lockfile resolves the already-installed copy; engine has no config either, and vitest's
+defaults already exclude `dist/`, which matters because `tsc -b` emits
+`dist/__tests__/*.test.js`. No root wiring was needed and none should be added — the root `test`
+script is `npm run test --workspaces --if-present`, run by CI at `.github/workflows/ci.yml:97`.
+**The hazard that comes with `--if-present`:** deleting a workspace's `test` script turns its
+whole suite into a silent no-op that reports SUCCESS, so the script itself is pinned by a test.
+
+**DT-35 — The `test` job in `.github/workflows/ci.yml` must check out with `fetch-depth: 0`.**
+(T-166.) It is the only job that runs `npm test`, and
+`packages/sim/src/__tests__/smoke-reextraction.test.ts` reads the precedent commit `3468ef5f` and
+its parent out of git, which a default depth-1 clone cannot produce. The test FAILS LOUDLY with a
+remediation message naming `git fetch --unshallow` and the workflow, and never skips, when the
+revision is unreachable. No other job needs this — `sweep-gate.yml` and the e2e/desktop/package
+jobs never run `npm test`.
+
+**DT-36 — `scripts/prose-scan.mjs` is the committed rename-audit probe, and it EXITS 0 ALWAYS by
+design.** (T-204.) It parses with the TypeScript compiler (the `import ts from 'typescript'` idiom
+`rules-fingerprint.ts` already uses) and visits only `StringLiteral`, `Template*` spans and
+`JsxText`, so comments are never matched; it then applies ONE mechanical split with no allow-list
+— a matching literal with internal whitespace is PROSE, one without is an identifier-shaped tag.
+Which prose hits are player-facing is a human call, so gating on the exit code would smuggle the
+stale allow-list back in.
+
+**DT-37 — `prose-scan.mjs`'s prose count is a LOWER BOUND on player-facing copy, not a total.**
+(T-204.) A one-word label has no internal whitespace and lands in the identifier bucket — the live
+example is the `App.tsx` launcher button whose JSX text reads exactly `Cantina`. `--all` is
+therefore the honest read for a rename audit, and every bare literal must be inspected
+individually.

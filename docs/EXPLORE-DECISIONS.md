@@ -177,3 +177,16 @@ build task's.**
 to price back out.** (T-115) A board used to walk three independent legs and now draws one row
 of a hundred. Read fixture figures against their predicted share, per
 `BALANCE-RIG-DECISIONS.md` BR-27.
+
+**EX-27 — `Explore` is the ONE verb that reads the REST of the hand at resolve time, and that is
+why die-budget changes move Explore-queuing policies and nothing else.** (T-196a.) Freeing die
+costs on the nine administrative verbs moved exactly TWO of eight policy rows — `explorer` and
+`smuggler`, the only two that queue `Explore` — while `trader`, `trader-degraded`, `fighter`,
+`veteran`, `gambler` and `greedy` came back byte-identical on every headline metric. The mechanism
+is `exploreOutcomes.ts`'s `payExtraDiceClaim`: a band-3/4 find's `apCost` is charged out of the
+REMAINING dice and the find is forfeited when the hand is too thin, so what else the day spent
+changes what is left standing when the board lands. Predict accordingly, and cross-check on an
+independent sample via `campaign-degraded.test.ts`'s `PINNED_FINGERPRINTS` (5 seeds × 40 days),
+which moved the same two rows and held the same five. **Corollary for the sim side:** an Explore
+sweep loop's resource bound is charged PER ITERATION, never once before the loop — see
+`docs/BALANCE-RIG-DECISIONS.md` BR-115.
