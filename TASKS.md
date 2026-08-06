@@ -2587,7 +2587,7 @@ and both halves are measurements rather than assertions.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
 
-### T-220 · F-176-2: the table's player win rate has fallen through T-160's 55–70% band, unremarked — `status: TODO` · `coder: opus` · `after: T-175, T-176`
+### T-220 · F-176-2: the table's player win rate has fallen through T-160's 55–70% band, unremarked — `status: DONE` · `coder: opus` · `after: T-175, T-176`
 
 **Filed at T-176 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §18.6.** T-160 pre-committed criterion
 **C2** — "**55–70%** player win rate, EV/hand well under +558 cr" — and shipped shape (b) at
@@ -2610,6 +2610,129 @@ the band was a bakeoff instrument and retires it explicitly in `docs/LIARS-DICE-
 any rule moves in response, it is bakeoff'd rather than tuned and the archetype ordering is
 re-scored alongside; the rate is re-measured at n ≥ 10,000 hands per pool with `n` on every cell;
 `docs/LIARS-DICE_REDESIGN.md` §17.2's C2 row gains the outcome; gate green.
+
+**Delivered (2026-08-06):**
+
+- **THE RULING, in one sentence: C2 is PARTITIONED — its WIN-RATE limb is RETIRED as the bakeoff
+  instrument its own row says it is, its EV limb is PROMOTED to a standing invariant unchanged, and
+  a second invariant (pooled EV/hand > 0) is added from design intent.** Binding text is **LD-28**
+  in `docs/LIARS-DICE-DECISIONS.md`. **The retirement is argued, not picked:** all three anchors
+  C2's 55–70% was built on were measured on the risk-free opener T-160's own bakeoff removed
+  (T-137's 94.66% and T-148's 80.07% at *openers guaranteed true = 100.00%*; §1.3's 57.3% is the
+  discarded opposed-d20 Dare, which §1.3 itself says is not a target). The shipped rules supply the
+  replacement anchor with **no free parameter**: `minOpeningQuantity(m) = m + 1`
+  (`liarsDiceRules.ts:498`, reached from `isLatticeMove:545`) plus `dealerMove:801` /
+  `archetypeMove:1113` throwing on `bid === null` make **the opener always the player**, so the
+  minimum legal opening claim is true with probability `probAtLeast(1, d)` = **51.77% / 59.81% /
+  66.51%** at d = 4/5/6 — the game is structurally asymmetric against the player at ply 1 and a
+  62.5%-centred band was never derivable from these rules.
+- **THE MEASUREMENT, per pool, `n` on every cell** (`dareCells`, `--policies gambler --seeds 1600
+  --days 120`, four 1-indexed shards, scored by `.scratch/t220-c2.mjs`). Accept bar `n ≥ 10,000`
+  per pool, **both clear it by >10×**: **roaming n = 157,037, 58.55% ±0.12, EV +495.8 cr/hand**;
+  **roster n = 122,820, 45.69% ±0.14, EV −200.8 cr/hand**; **aggregate n = 279,857, 52.90% ±0.09,
+  EV +190.1 cr/hand**. *The two pools sit on opposite sides of C2's 55% floor* — one number cannot
+  be an invariant for both. Per archetype with `n`: `roaming|none` 58.55% (157,037),
+  `roster|optimal` 39.83% (95,580), `roster|bad` 55.63% (14,680), `roster|random` 78.61% (12,560);
+  the other four of eight cells are **structurally empty**, stated as such rather than as
+  under-sampled. All 12 pool × tier cells published with `n`, and the six low-tier cells **marked
+  UNDER-POWERED** rather than reported as rates. The join is asserted, not eyeballed:
+  Σ cells.hands = 279,857 = Σ dares, Σ playerWon = 148,052 = Σ daresWon, Σ netCredits = 53,208,282.
+  Everything reproduces §18.6/§19.9 to the published decimal, including `finalCredits` median
+  **64,622**, which is what an unmoved rule owes.
+- **C6 RE-SCORED ALONGSIDE, as Accept requires:** `bad − optimal` = **+15.79 pp, SE 0.44, z 35.93**
+  — no re-inversion, reproducing §18.4/§19.9 exactly.
+- **THE SECOND, INDEPENDENT REASON the aggregate form was never an invariant (§20.4).** Holding
+  every cell's own rate fixed and changing only the weights, the headline reads 52.90% (as
+  measured) / 49.11% (tiers equal) / 52.12% (pools equal) / **35.63% (tier-0 mix)** — a **17.28 pp
+  spread with no rate changed**. The repo already contains the demonstration: T-175 read 51.58% off
+  a 5-seed × 40-day window and this capstone reads 52.90% off 1,600 × 120 **on the same rules**. A
+  bar passed or failed by the sweep's `--days` is not a bar. *Reported against the tidier story:*
+  the roaming−roster **gap** Kitagawa-decomposes to only **3.2% composition / 96.8% rate**, unlike
+  C3's ~70% at T-176 — the two pools genuinely play differently, and only the weighting-sensitivity
+  of the *level* bears on the ruling.
+- **§20.3a — the derivation CORROBORATED on the rows, not just asserted.** Cut by dice width, the
+  offset from `probAtLeast(1, d)` is near-constant within each pool across the whole ladder:
+  roaming **−5.03 / −4.34 / −7.70 pp**, roster **−21.35 / −19.57 / −19.84 pp** (n = 2,550 / 3,007 /
+  151,480 and 5,450 / 4,990 / 112,380). The ply-1 burden explains the ladder *shape*; which house
+  policy sits opposite explains the *level*.
+- **"IF ANY RULE MOVES" IS DISCHARGED VACUOUSLY AND DELIBERATELY — NO RULE MOVED**, with a written
+  reason per lever (§20.5): shape (a) is dead (LD-22 — it loses this very ruling's EV invariant at
+  −314.9); `optimal`'s raise valuation is closed and declined (LD-27, and §19.9 records that its
+  strongest alternative moves the win rate *further* from the band); both challenge margins were
+  already ruled off-limits by T-176 as "tuning the instrument to hit a threshold";
+  `minOpeningQuantity` **is** the fix and is the replacement anchor's own source.
+- **NO THRESHOLD, BAND OR GOLDEN WAS EDITED IN EITHER DIRECTION.** The 55–70% stands **verbatim**
+  in §17.2 and the fall through it is still reported as a fall. Both replacement bars name sources
+  that **predate** the measurement (+558 is T-148's measured money-printer signature; "EV > 0" is a
+  statement about a voluntary action), neither is 190.1 minus slack — and §20.2's counter-case says
+  in writing that a derived floor above 52.90% would have been reported as a miss, as T-160 did for
+  C3.
+- **TESTS.** `packages/sim/src/__tests__/campaign-dare-cells.test.ts` gains describe **`T-220 ·
+  LD-28 — the table's standing invariants`**: pooled EV/hand > 0; pooled EV/hand < T-148's +558
+  (the constant commented as a *measured pathology*, not a picked bar); the per-pool cut is lossless
+  and both marginals non-empty (**not** a duplicate of the T-175 join block — it pins the pool
+  *partition*, which that block does not); and the ply-1 opening burden computed from the engine's
+  own `probAtLeast` against `DARE_MAX_FACE`, with monotonicity in `d` and the load-bearing
+  `probAtLeast(1, 4) > 0.5`, so a change to the dice model goes RED and **re-opens LD-28** rather
+  than silently voiding its anchor (LD-27's precedent). Every assertion prints its value, its `n`
+  and its SE and carries the standing remedy *"WIDEN THE SAMPLE — never move the bar (N4/N10)"*.
+  The EV detector got its own `WIDE_GAMBLER_SEEDS` (48 seeds, ~8,450 hands, +174.0 cr/hand);
+  **sized off the capstone's own 1,600 careers** — a 48-career bootstrap lands below zero in 0 of
+  8,000 resamples — so the sample was widened rather than the bar softened. File green: 26/26.
+- **DOCS.** `docs/LIARS-DICE_REDESIGN.md` gains **§20** (20.0 four framing corrections written
+  before anything ran, 20.1 six predictions recorded **before** the scorer ran, 20.2 the
+  derivation, 20.3 the per-pool measurement, 20.3a the corroboration, 20.4 the composition read,
+  20.5 the ruling + what was not edited, 20.6 the scored predictions, 20.7 the finding, 20.8 the
+  scorecard). §17.2's **C2 row gains a second dated italic outcome line beneath T-176's**, with the
+  `55–70%` untouched; §17.3's C2 scoring bullet gains a dated verbatim+pointer note that it is a
+  bakeoff record and not a live band. `docs/LIARS-DICE-DECISIONS.md` gains **LD-28** and LD-22's
+  T-176 block gains a dated `BOTH FINDINGS NOW CLOSED` blockquote with its text left verbatim.
+  **§16.2 was deliberately left untouched** — its 55–70% mention is already past-tense record of
+  the bakeoff and does not assert a live band; a fourth pointer would be noise.
+- **ONE FINDING FILED THE MOMENT IT WAS CONFIRMED, as its own backlog row** (Bug Discovery Policy).
+  **F-220-1 → `T-223`**: the **roster pool is a net credit SINK at −200.8 cr/hand (n = 122,820)**,
+  driven by `roster|optimal` at **−482.3 over n = 95,580 — 34% of every hand played**. This was
+  **prediction 4, and it was WRONG** (§20.6 records it as a miss rather than restating it to match
+  the result); LD-28's invariants are therefore stated on the **pooled** table and the pool-level
+  price is an owner call with its own row. LD-26 already ruled that credits buy disposition, so
+  this may be that purchase one level up — but the price has never been named, derived, bounded or
+  tested, and setting a roster-EV floor inside the task that just measured it would be fitting a
+  bar to a number.
+- **FINGERPRINTS, CAPSTONE AND SAVE SHAPE, stated rather than left to inference.** `git diff
+  --stat` touches `docs/**`, `packages/sim/src/__tests__/**`, `.scratch/**` and `TASKS.md` **only**
+  — nothing under `packages/engine/src` or `packages/content/src`, not even a comment. Read live
+  before and after: **`rulesFingerprint` cabd2112ccf4cefb** and **`instrumentFingerprint`
+  2d6d1990eaf13031**, both **UNMOVED** and both identical to §18.6a's, which is also what makes the
+  arm like-for-like with §18/§19. `__tests__` is in `HASHED_ROOT_IGNORED_DIRECTORIES` and is not in
+  `SIM_INSTRUMENT_DIRECTORIES` (`rules-fingerprint.ts`, list `['', 'balance']`). **`docsFingerprint`
+  is UNMOVED too, at `265aea1d09f0d485`** — a draft of this note claimed it moves "because docs
+  moved" and that was **wrong**, corrected by reading `rules-fingerprint.ts:658` rather than the
+  name: `computeDocsFingerprint` hashes the **raw bytes of the same rule and instrument SOURCES**,
+  comments included, and never looks at `docs/**`. Recorded in §20.5 and LD-28 so the next reader
+  does not inherit the same wrong inference. **NO CAPSTONE, no re-extract, no baseline re-pin is owed**
+  — and the Phase-0 arm is therefore deliberately **shards-only with no `--merge` and no
+  `--aggregate`**: the standing 8,000-row/`--merge`/`--aggregate` constraint governs the *capstone*
+  sweep, which is owed when `rulesFingerprint` moves, and T-219 §19.9 is the exact precedent for
+  this single-policy diagnostic invocation (§20.0 correction 3 says so in the doc too, so a reviewer
+  does not read a skipped step). **`CURRENT_SAVE_VERSION` UNMOVED at 17**, re-read live at
+  `packages/engine/src/save.ts:627` — nothing persisted moved and a derived per-pool report is not
+  a save shape, so **no migration and no round-trip test is owed**.
+- **Sweep hygiene:** `dareTierDisagreements 0`, `dareChallengeDisagreements 0` and `invariants: 0
+  violations` on all four shards. The `combat-win-share` gate FAIL is the known gambler-only-arm
+  artefact §19.9 records on the identical arm shape (a `--policies gambler` arm plays almost no
+  combat), recorded in §20.0 correction 4 rather than glossed.
+- **Deliberate scope boundary:** this task ships **no rule change**, and that is a ruling with its
+  reasons written down per lever (§20.5), not an omission. It also does **not** set a roster-pool
+  EV floor (that is T-223's, and setting it here would fit a bar to this task's own measurement),
+  does **not** re-open LD-21/LD-22/LD-25/LD-26/LD-27, and does **not** attempt the T-160 → HEAD
+  composition decomposition the finding invites — `dareCells` shipped at T-175, *after* T-160, so
+  that endpoint has no cells and the decomposition is **not computable** without re-running T-160's
+  rule. §20.0 correction 1 records that instead of faking it, and §20.4 answers the decidable form
+  of the same question entirely within HEAD.
+- **Gate green**: `npm run format`, `npm test`, `npx tsc -b`, `npm run lint`, `npm run
+  format:check`.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
 
 ### T-221 · F-177-1: the FOLD trade is invisible to the player — `status: TODO` · `coder: opus` · `after: T-177`
 
@@ -2673,6 +2796,48 @@ re-invert; `liarsDiceArchetypes.test.ts`'s `T-219 · F-176-1` describe is update
 than relaxed to pass; `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3c and `docs/LIARS-DICE_REDESIGN.md`
 §19.10 gain the outcome; if `packages/engine/src` or `packages/content/src` moves semantically the
 task takes its own capstone with the moved rows predicted first; gate green.
+
+### T-223 · F-220-1: the ROSTER pool is a net credit SINK, and nothing names or bounds the price — `status: TODO` · `coder: opus` · `after: T-220`
+
+**Filed at T-220 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §20.7 / `docs/LIARS-DICE-DECISIONS.md`
+LD-28.** T-220 cut the shipped table by pool for the first time (`dareCells`, 1,600 gambler careers
+× 120 days, n = 279,857). The aggregate EV/hand is **+190.1 cr** — but that is a mixture of two
+pools that point in **opposite directions**:
+
+| pool | n (hands) | player win rate | EV / hand |
+| --- | --- | --- | --- |
+| **roaming** (`archetype = none`, `dealerMove`) | **157,037** | 58.55% ±0.12 | **+495.8 cr** |
+| **roster** (the named captains, `archetypeMove`) | **122,820** | 45.69% ±0.14 | **−200.8 cr** |
+
+Driven almost entirely by `roster|optimal` at **−482.3 cr/hand over n = 95,580** — **34% of every
+hand played in the game**. **T-220 predicted EV > 0 on both pools and that prediction was WRONG**
+(§20.6, prediction 4); the invariant LD-28 ships is therefore stated on the pooled table, and this
+row is the honest remainder rather than a rounding of it.
+
+**This is not obviously a defect, and that is exactly why it needs a ruling.** LD-26 already
+established that in this game credits buy disposition and that *"the two currencies partition"* —
+a player who wants disposition with a **specific named captain** must sit at a roster table, and
+paying ~200 cr/hand for it is that same purchase one level up. But **the price has never been
+named, derived, bounded or tested.** It is currently an emergent consequence of `optimal` being the
+majority roster seat, not a design decision anyone took: nothing in `docs/HANGOUT_REDESIGN.md` §7 /
+§10.4, `docs/LIARS-DICE_REDESIGN.md` or `docs/LIARS-DICE-DECISIONS.md` says the named-captain table
+is meant to cost credits, and no test would notice if the price doubled. The player-facing risk is
+that the disposition channel §10.4's interceptor draw depends on is gated behind an unadvertised
+and unbounded credit sink. [filed: T-220/F-220-1]
+
+**Accept:** the roster pool's EV is re-measured at n ≥ 10,000 per pool with `n` on every cell and
+decomposed against the roster archetype mix (is the sink `optimal` specifically, or the pool?); the
+owner either **rules the price intended** — in which case it is written into
+`docs/LIARS-DICE-DECISIONS.md` with the derivation of what the disposition is worth in credits,
+LD-26's partition is cited rather than restated, and a **bounded** standing invariant is added
+(a floor on roster EV/hand, sourced and argued, not fitted to the measured −200.8) — or **rules it
+a defect**, in which case the fix is **bakeoff'd rather than tuned** against at least one named
+alternative on identical seeds, the archetype ordering (`bad − optimal` = +15.79 pp, z = 35.93,
+§18.4/§19.9/§20.3) is re-scored and must not re-invert, and LD-28's two shipped invariants are
+re-scored alongside; whichever branch is taken, the UI question is answered explicitly (does the
+player know the roster seat is the expensive one? — `docs/HANGOUT_REDESIGN.md` §7); if any rule
+moves the task takes its own capstone with the moved rows predicted first; §20.7 gains the outcome;
+gate green.
 
 ---
 

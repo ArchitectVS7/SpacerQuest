@@ -231,6 +231,14 @@ challenges by default — so a gap is expected. **No threshold was edited.** Fil
 > win rate is 52.90%, 2.1 pp below C2's own floor, moved there by T-175 and never re-scored —
 > `TASKS.md` T-220).
 
+> **BOTH OF THOSE FINDINGS ARE NOW CLOSED (2026-08-06).** F-176-1 at T-219 — measured, bakeoff'd
+> and declined, see **LD-27**. F-176-2 at T-220 — C2 **partitioned**, see **LD-28** and
+> `docs/LIARS-DICE_REDESIGN.md` §20: the win-rate limb retires as a bakeoff instrument, the EV limb
+> is promoted to a standing invariant, and the 52.90% quoted above is re-measured per pool at
+> **58.55% roaming (n = 157,037) / 45.69% roster (n = 122,820)**. **The 55–70% was not edited.**
+> Shape (a)'s death, recorded above, is reinforced rather than re-opened: its −314.9 cr/hand fails
+> LD-28's new EV invariant outright.
+
 ---
 
 ## 5. Open owner call
@@ -649,3 +657,117 @@ than silently voiding it: every raise is emitted at `pTrue = 1`; every raise sat
 inequality above; the admissible `k` set is a down-set at all three widths; and the
 `ante`/`seedWager` coupling of F-219-1 is pinned at the band floor, the rig's own stakes and the
 band ceiling.
+
+---
+
+**LD-28 — C2 IS PARTITIONED: ITS WIN-RATE LIMB IS RETIRED AS THE BAKEOFF INSTRUMENT IT SAYS IT IS,
+ITS EV LIMB IS PROMOTED TO A STANDING INVARIANT, AND A SECOND INVARIANT IS ADDED.** (T-220, ruling
+on **F-176-2**; filed at T-176 §18.7 after T-175 moved the number and scored the ordering rather
+than the band.) **The shape taken is: NOTHING CHANGES IN ANY RULE, no band, threshold or golden is
+edited in either direction, and the 55–70% stands VERBATIM in `docs/LIARS-DICE_REDESIGN.md` §17.2
+with the shipped game still reported as having fallen through it.** `packages/engine/src` and
+`packages/content/src` are **not touched at all**; `rulesFingerprint` was read before and after at
+**`cabd2112ccf4cefb`**, `instrumentFingerprint` at **`2d6d1990eaf13031`** and `docsFingerprint` at
+**`265aea1d09f0d485`** — **all three unmoved**, so no capstone is owed. *(`docsFingerprint` hashes
+the raw bytes of the same rule and instrument SOURCES, comments included — **not** `docs/**`; see
+`rules-fingerprint.ts:658`. Editing this file does not move it, and a reader who assumes otherwise
+from the name will mis-read every note in this series.)* `CURRENT_SAVE_VERSION` unmoved at 17
+(`packages/engine/src/save.ts:627`).
+
+**THE FINDING WAS RIGHT ABOUT THE FACT AND THE OMISSION.** The trend is real and monotone —
+T-137 **94.66%** → T-148 **80.07%** → T-160 **61.07%** → HEAD **52.90%** — and two consecutive
+tasks moved the number without re-scoring the band it was chosen against.
+
+**WHY THE WIN-RATE LIMB CANNOT BE A STANDING INVARIANT — the derivation, not a preference.**
+Every anchor the 55–70% was built on was measured on the very defect T-160's bakeoff removed:
+T-137's 94.66% and T-148's 80.07% were both taken with **openers guaranteed true = 100.00%**
+(F-137-1 itself), and §1.3's 57.3% is the **opposed-d20** Dare — a different mechanic, which §1.3
+discards in its own words (*"none of the old figures is a target"*). T-160 was entitled to use them
+as **bakeoff anchors**, and C2's own row states its job: *"Disqualifies; does not pick."* It
+discharged that job twice and correctly — shape (a) at **73.04%** above the ceiling (T-160) and at
+**39.64%** below the floor (T-176). Nothing ever promoted it beyond that.
+
+**The shipped rules supply the replacement anchor with NO FREE PARAMETER.** `minOpeningQuantity(m)
+= m + 1` (`liarsDiceRules.ts:498`, reached from `isLatticeMove` at `:545`) forces the opener to
+claim strictly above their own count, and both house policies throw on `bid === null`
+(`dealerMove:801`, `archetypeMove:1113`), so **the opener is always the player**. The minimum legal
+opening claim is true iff the other side holds one of the claimed face — the engine's own
+`probAtLeast(1, d)`, **called and never restated as a literal**:
+**51.77% (d=4) / 59.81% (d=5) / 66.51% (d=6)**. The shipped game is therefore **structurally
+asymmetric against the player at ply 1**, and a band centred on 62.5% is derivable only from the
+rules that let the opener claim for free. 50% is not the fair point either: the player chooses the
+stake, chooses the face, and challenges from an evidence-backed position **100%** of the time
+against the dealer's 57.5% / 77.1% (LD-22). 52.90% is what that combination looks like.
+
+**THE MEASUREMENT, per pool, `n` on every cell** (`dareCells`, 1,600 gambler careers × 120 days,
+the same arm §18.4 / §19.9 used; Accept bar `n ≥ 10,000` per pool, both clear it by >10×):
+
+| pool | **n (hands)** | player win rate | SE | **EV / hand** | bids/hand |
+| --- | --- | --- | --- | --- | --- |
+| **roaming** (`dealerMove`) | **157,037** | **58.55%** | 0.12 | **+495.8 cr** | 1.289 |
+| **roster** (`archetypeMove`) | **122,820** | **45.69%** | 0.14 | **−200.8 cr** | 1.780 |
+| **AGGREGATE** | **279,857** | **52.90%** | 0.09 | **+190.1 cr** | 1.504 |
+
+Reproducing §18.6 / §19.9 to every published decimal, which is what an unmoved rule owes.
+**The two pools sit on opposite sides of C2's 55% floor.** Per archetype:
+`roaming|none` 58.55% (n = 157,037), `roster|optimal` 39.83% (n = 95,580), `roster|bad` 55.63%
+(n = 14,680), `roster|random` 78.61% (n = 12,560); the other four of the eight cells are
+**structurally empty**, not under-sampled. C6 re-scored alongside: `bad − optimal` = **+15.79 pp,
+SE 0.44, z 35.93** — no re-inversion.
+
+**A SECOND, INDEPENDENT REASON.** The aggregate is a **mixture**, and its level moves with its
+weights alone. Holding every cell's own measured rate fixed and changing only the weighting:
+**52.90%** as measured, **49.11%** with tiers equally weighted, **52.12%** with pools equally
+weighted, **35.63%** under a tier-0 mix — a **17.28 pp spread with no rate changed**. The repo
+already contains the demonstration: T-175 read **51.58%** off a 5-seed × 40-day window and this
+capstone reads **52.90%** off 1,600 × 120 **on the same rules**, because careers climb the ladder.
+A bar that is passed or failed by the sweep's `--days` is not a bar. *(Reported honestly against
+the tidier story: the roaming−roster **gap** is 96.8% rate and only 3.2% composition — unlike C3,
+where LD-22 found ~70% composition. The two pools genuinely play differently. Only the
+weighting-sensitivity of the **level** bears on this ruling.)*
+
+**THE RULING.**
+
+1. **RETIRED — C2's win-rate limb**, as the bakeoff instrument it declares itself to be. Its text
+   is left verbatim; the number is not moved in either direction; the fall through it is still
+   reported as a fall in §17.2, §18.6, §19.9 and §20.
+2. **PROMOTED — C2's EV limb, unchanged: pooled EV/hand well under +558 cr.** That figure is not
+   taste; it is **T-148's measured money-printer signature** on a table that was provably broken
+   (§17.3's control arm reproduces it at +565.8). A bar naming a measured pathology keeps its
+   meaning after the pathology is fixed. Measured **+190.1** — comfortable.
+3. **ADDED — pooled EV/hand must remain POSITIVE**, from design intent rather than from the
+   measurement: the Dare is a **voluntary** action whose headline value is the disposition channel
+   (`docs/HANGOUT_REDESIGN.md` §7 / §10.4, the interceptor draw), and a negative-EV table is one a
+   rational player never sits at, which closes that channel. Falsifiable, with a demonstrated
+   violator — shape (a) at **−314.9 cr/hand** (§18.6).
+
+**THE COUNTER-CASE, ANSWERED.** Retiring a band the shipped game has just fallen through is on its
+face self-serving. Three checkable answers: **(i)** no number moved in either direction, and the
+fall is still reported; **(ii)** both replacement bars name sources that **predate** the
+measurement — +558 is T-148's, and "EV > 0" is a statement about a voluntary action, neither is
+190.1 minus slack; **(iii)** had the derivation produced a floor above 52.90%, the honest outcome
+was to report a miss, which is exactly what T-160 did for C3 and what §18.5 did again.
+
+**WHAT THIS RULING DOES NOT DO.** It does not move `minOpeningQuantity`, `dealerMove`,
+`archetypeMove`, `probClaimTrue`, `DARE_AI_CHALLENGE_MARGIN`, `SIM_DARE_CHALLENGE_MARGIN`, the
+wager bands, the ante, or any band in `balance-targets.test.ts` / `balance/gate.ts`. It does not
+re-open LD-21 (the opening lattice **is** the replacement anchor's source), LD-22 (shape (a) stays
+dead — it loses this ruling's EV invariant outright), LD-25 or LD-27. And it does not price the
+residual it exposed — **F-220-1**, filed as `TASKS.md` **T-223**: the roster pool is EV-**negative**
+at **−200.8 cr/hand** (n = 122,820), driven by `roster|optimal` at **−482.3 over n = 95,580**, i.e.
+34% of every hand played. T-220 **predicted EV > 0 on both pools and that prediction was WRONG**
+(§20.6), which is why the invariant above is stated on the **pooled** table and the pool-level price
+is an owner call with its own row. LD-26 already ruled that credits buy disposition and that the two
+currencies partition, so this may be that same purchase one level up — but the price has never been
+named, derived, bounded or tested, and setting a roster-EV floor inside the task that just measured
+it would be fitting a bar to a number.
+
+**WHAT ENFORCES THIS RULING.** `packages/sim/src/__tests__/campaign-dare-cells.test.ts`, describe
+**`T-220 · LD-28 — the table's standing invariants`**. Four assertions, all sized as detectors
+rather than knife edges, all printing the value, the `n` and the SE on failure, all carrying the
+standing remedy *"if red, WIDEN THE SAMPLE — never move the bar (N4/N10, `docs/VERSIONING.md`)"*:
+the pooled EV/hand is positive; the pooled EV/hand is far under T-148's +558; the ply-1 opening
+burden is computed from the engine's own `probAtLeast` against the binomial written out in the test
+and is monotone in `d`, so a change to the dice model goes RED and re-opens LD-28 rather than
+silently voiding its anchor; and the per-pool rollup is lossless against `dares` / `daresWon` /
+`netCredits`.
