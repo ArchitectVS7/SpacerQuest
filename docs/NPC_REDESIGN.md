@@ -70,11 +70,11 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 | N6 — Honor List, 31-way board | **SHIPPED** | **accepted** — actor-shaped board; found 6 of 8 titles uncontestable by construction |
 | N3 — NPCs meet pirates | **SHIPPED 2026-07-29 (rebuilt)** | encounters on every NPC jump, stance triangle on the shared rules, permanent death, four dead-field skips; **capstone discharged at N4** (the two steps share one capstone, and the cost of that is under N3's own Result) |
 | N4 — NPC archetypes | **SHIPPED 2026-07-29 (rebuilt)** | **ACCEPTED** — the Ideal×archetype blend, a hand-curated 6/6/5/5/4/4 roster, and a control arm that makes the effect attributable: median wealth trader +43% / veteran +31% / gambler −38% / explorer −99% / fighter −71% against the neutral arm. Found the **verb payout asymmetry** (only Trade pays) and two live instrument bugs |
-| N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile`; **GATED BY N13** — its die-allocation lever needs a decision surface to act on |
+| N5 — NPC proficiency spread | TODO · **UN-GATED 2026-08-02** | reuses R1's `PilotDegradationProfile`. N13 shipped the decision surface its die-allocation lever needed, and the seam is already wired and inert: `npcVirtualHand(rng, dullDieChance?)` takes the profile's `dullDieChance` directly. **Grade WITHIN archetype and reuse N13's control arm** — see the rewritten lever list in N5's own section |
 | **N10 — NPCs work the contract board** | **SHIPPED 2026-07-29** | **CHANGE ACCEPTED · HYPOTHESIS DISPROVED** — the shared per-system pool is built and the cast works it galaxy-wide, but competition is not a force: cast demand is ~6% of the galaxy's job supply, and neither throttle was ever the binding constraint. The step's real effect was the parity gap it was not looking for — the cast now CHOOSES its contract (`pickContract`), worth +247% on cast median wealth. **The non-trader floor did not move (p10 126 → 126)** |
 | **N11 — NPCs earn deeds and Renown** | **SHIPPED 2026-07-30** | **CHANGE ACCEPTED · HYPOTHESIS HELD, BOTH DISPROVES LIMBS SURVIVED** — the −1 dead end is gone (98.7% of cast slots hold an earned rank at day 120, 42.8 gated purchases per run), the median captain sits **two rungs BELOW** a competent player (COMMODORE vs TOP_DOG), and nobody accrues zero. **The floor did not move for the THIRD time (p10 126 → 126) and the structural reason is now known: a deed pays no credits — rank is a spending unlock, not income**, so cast median wealth FELL 76,049 → 55,437 |
 | **N12 — NPCs buy ports** | **TODO · MUST-HAVE** · FIRST TASK DONE | lands BEFORE N8. Its FIRST TASK — the aggregate learning to see ports, player AND per-NPC — **landed ahead of the step (2026-07-30)**, so the step can measure its own effect. **N11 hands it the sharpened question:** the floor has now failed to move three times, and a port must be BOUGHT, so measure port ownership PER ARCHETYPE from the first sweep — fleet-wide would hide a two-archetype economy |
-| **N13 — NPC decision surface (dawn-hand parity)** | **TODO · MUST-HAVE** | literal reduced hand vs algorithmic equivalent — owner accepts algorithmic fast-forward; gates N5 |
+| **N13 — NPC decision surface (dawn-hand parity)** | **SHIPPED 2026-08-02** (`TASKS.md` T-156) | **CHANGE ACCEPTED · HYPOTHESIS — see N13's Result for the verdict word and the three-arm decomposition.** The cast holds a five-die virtual hand dealt through the player's own `rollDawnHand` and spent through `spendDie` at both of `npc.ts`'s check sites; the PICK is the one sanctioned abstraction, flagged at `npcHand.ts`'s definition site. `Crew`/`Reroll` are now recorded EXCLUSIONS in THE PARITY LEDGER, the Combat row's die gap is closed, and N5 is un-gated with its lever seam already wired and inert |
 | **N14 — captain voice: the daily wire boast** | **TODO · EXPERIMENT** | owner spec 2026-07-29 — 3 boasts × 30 captains, top-3 candidates, one per day, 2-day cooldown + line rotation; **not** PvP messaging (PRD non-goal) |
 | **N9 — the instrument's three unplayed actions** | **SHIPPED** | **hypothesis REJECTED** — verbs cost 38% of fleet cash, not gain; found the aggregate cannot see an asset |
 | N8 — re-pin against a living field | TODO | **ledger rulings discharged 2026-07-30; the aggregate now sees ports**; re-pin against the post-N9 instrument; **follows N10–N12** (owner ruling 2026-07-29) |
@@ -103,7 +103,462 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
-> **BASELINE OF RECORD RE-PINNED AT T-137 (2026-07-31)** to
+> **INSTRUMENT WIDENED AND FIXTURE RE-EXTRACTED AT T-173 (2026-08-04) — no capstone, and the
+> baseline of record does NOT move.** Under BR-10 (an instrument-only fingerprint move does not
+> earn a capstone) and BR-9 (the remedy is a re-extract from the same aggregate), T-173 closed
+> the blind spot BR-13 recorded: three measurement shapes now carry the Hangout/disposition
+> fields that four separate probes (T-125, T-137, T-148, T-150) had to descend from a gitignored
+> `.scratch/` script to obtain. **`SeedRow`** gains `hangout` and `disposition` (both carried
+> whole off the report); **`MilestoneSample`** gains `npcDisposition` (through `sampleField`, so
+> it is index-aligned with the seven per-captain arrays beside it); **`CombatEncounterRecord`**
+> gains `interceptorId`, `interceptorSource`, `interceptorDisposition`, `namedPoolDispositions`
+> and `namedPoolReconstructed`; and `PolicyAggregate` / `MilestoneAggregate` gain the
+> `interceptor` block and `npcDisposition` / `npcNonzeroDispositionShare`. **ADDITIVE ONLY** —
+> no existing key on any shape was renamed, retyped or removed. Fingerprints, transcribed from
+> the re-extracted `docs/balance/smoke/tiers.json`: `rulesFingerprint` **UNMOVED** at
+> `febc55edd3a94b3f` (T-173 changed zero lines under `packages/engine/src` and
+> `packages/content/src` — putting the pool or the standing on `EncounterStarted` would have
+> moved it, which is why the measurement stays in `packages/sim`), while
+> `instrumentFingerprint` `836f9e8804ea2637` -> `b28fad2af6107f8a` and `docsFingerprint`
+> `f827fddcbb3fa446` -> `e7b35fa4850f418d`. `CURRENT_SAVE_VERSION` does NOT move (15): no
+> persisted shape changed, so no migration and no round-trip test is owed. **INERTNESS, proven
+> twice.** (1) The re-extract moved `productVersion`-class provenance and the two fingerprints
+> only — every recorded checkpoint number is byte-identical, which is BR-9's own test and is
+> machine-enforced by `smoke-reextraction.test.ts`. (2) A two-arm 40-seed × 120-day × 8-policy
+> sweep (320 runs per arm, BEFORE built in a `git worktree` at the parent commit) diffed at the
+> aggregate level: *"NO MEASURED VALUE MOVED. Every difference below is a SHAPE difference:
+> fields present on one side only."* — 528 one-sided paths, all of them the new fields, and not
+> one shared path moved. The `.scratch/t125-hangout.ts` lineage is retired
+> (`docs/HANGOUT_REDESIGN.md` §10.7 carries the counter → field map).
+>
+> **BASELINE OF RECORD RE-PINNED AT T-175 (2026-08-06)** to
+> `docs/balance/baseline-t175-archetype-ordering.json` — **F-160-1's close**, the second and
+> last step of LD-20's fixed order. `archetypeMove`'s `optimal` branch priced the standing
+> claim with `probAtLeast(q − own(face), dicePerSide)` — the unconditioned Binomial, i.e. **as
+> though the claimant had said nothing.** Measured calibration at n ≈ 42,000 dealer decisions
+> per tier: its `[0.1, 0.3)` predicted-truth band realised **60.89% / 85.34% / 95.50%**
+> actually-true at 4 / 5 / 6 dice, so it challenged 91–94% of decisions and won 51% / 41% / 34%
+> — worse than `bad`'s one-comparison rule. `probClaimTrue` / `creditedClaimSupport` read the
+> claimant's support off the claim instead (`minOpeningQuantity` read backwards; **no free
+> parameter**). The ordering flips: bad − optimal **−6.64 pp (z −12.74) → +16.09 pp (z +28.99)**,
+> positive at every tier. Same shape as the outgoing capstone: 1,000 seeds × 120 days × 8
+> policies = 8,000 rows, eight one-indexed shards then `--merge`,
+> `--milestone-days 21,29,30,41,60,120`, spreads harvested. Gate PASS, **0 invariant
+> violations**. **BOTH fingerprints move, so the attribution is NOT single-arm and this banner
+> says so rather than implying otherwise:** `rulesFingerprint` `f264d7f4a2d56fde` →
+> `cabd2112ccf4cefb` (the new rule in `packages/engine/src/liarsDiceRules.ts` plus three
+> optional `DareHandResolved` fields) and `instrumentFingerprint` `b8894cb6c678fce6` →
+> `e84d8e074fde0b98` (`packages/sim/src/index.ts` — the `dareCells` pool × archetype × tier
+> split, plus `gamblerPolicy` gaining T-199's two shared anti-idle rungs).
+> `CURRENT_SAVE_VERSION` is **UNMOVED at 17** (re-read live at
+> `packages/engine/src/save.ts:627`) — three OPTIONAL fields on an existing event variant are
+> not a schema change (`docs/VERSIONING.md` §2), so no migration is owed.
+> **`balance:diff` = TWO OF TEN ROWS MOVED** — `fleet` and `gambler`; `explorer`, `fighter`,
+> `greedy`, `smuggler`, `trader`, `trader-degraded` and `veteran` all byte-identical. **THE
+> MOVE WAS PREDICTED IN WRITING BEFORE THE RUN** (`TASKS.md` T-175) with its containment
+> argument: `archetypeMove` has ONE call site, reachable only through an open Liar's Dice hand,
+> and `planDare` is queued by `gamblerPolicy` and by nothing else. Gambler
+> `finalCredits.median` 115,612 → 63,653 (−44.9%), `tourOneClearRate` 0.9610 → 0.9360,
+> `deedCount.median` 28 → 25; fleet `finalCredits.median` 50,094 → 46,916. **THE TABLES STOP
+> BEING A MONEY PRINTER, AND THAT IS THE FINDING RATHER THAN A REGRESSION** — a seat labelled
+> `optimal` that was measurably the SOFTEST in the game now is not. **ONE SHAPE CHANGE,
+> REPORTED AND NOT SUPPRESSED:** `+ byPolicy[gambler].renownRanks.ADMIRAL` (and the matching
+> three `milestones[i].npcRenownRanks.ADMIRAL` dropping out) — a rank bucket the re-phased
+> gambler now reaches. **NOTHING WAS TUNED IN RESPONSE.** The four not-chosen candidate reads
+> are logged as `docs/LIARS-DICE-DECISIONS.md` LD-25.
+>
+> **BASELINE OF RECORD RE-PINNED AT T-168 (2026-08-05)** to
+> `docs/balance/baseline-t168-effective-band.json` — **F-148-4's fix**: `planDare`
+> (`packages/sim/src/index.ts`) and the UGT protocol enumerator now size the Dare **wager
+> domain** off the engine's new `preHandWagerBand` — the unlock tier's **EFFECTIVE** band —
+> instead of the port's raw tier-0 band, so a career can at last *request* into the raised
+> tier-4 ceiling and tier 5's removed clamp. Before this, tiers 4 and 5 were unmeasurable as
+> played. Same shape as the outgoing capstone: 1,000 seeds × 120 days × 8 policies = 8,000
+> rows, eight one-indexed shards then `--merge`, `--milestone-days 21,29,30,41,60,120`,
+> spreads harvested. Gate PASS, **0 invariant violations**. **BOTH fingerprints move, so the
+> attribution is NOT single-arm and this banner says so rather than implying otherwise:**
+> `rulesFingerprint` `2f93098dc9ab15f0` → `f264d7f4a2d56fde` (the new `preHandWagerBand`
+> accessor in `packages/engine/src/liarsDiceRules.ts`) and `instrumentFingerprint`
+> `5c230e99648cddee` → `b8894cb6c678fce6` (`packages/sim/src/index.ts` — `planDare` plus three
+> additive `HangoutPlayStats` fields). `packages/sim/src/protocol.ts`'s half of the fix
+> contributes to NEITHER (it is classified `SIM_NON_INSTRUMENT_SOURCES`).
+> `CURRENT_SAVE_VERSION` is **UNMOVED at 17** (re-read live at
+> `packages/engine/src/save.ts:627`) — no persisted shape changed, so no migration is owed.
+> **`balance:diff` = TWO OF TEN ROWS MOVED** — `fleet` and `gambler`; `explorer`, `fighter`,
+> `greedy`, `smuggler`, `trader`, `trader-degraded` and `veteran` all byte-identical. **THE
+> MOVE WAS PREDICTED IN WRITING BEFORE THE RUN** (`TASKS.md` T-168) with its containment
+> argument: the engine accessor has zero engine callers, `planDare` is called by
+> `gamblerPolicy` and by nothing else, and `fleet` pools it. Gambler `finalCredits.median`
+> 80,244 → 115,612 (+44.1%), `deedCount.median` 25 → 28, `survival.shipsLost` 26 → 18; fleet
+> `finalCredits.median` 49,687 → 50,094. **ONE SHAPE CHANGE, REPORTED AND NOT SUPPRESSED:**
+> `+ byPolicy[gambler].renownRanks.GIGA_HERO` — a previously-empty renown bucket the richer
+> gambler now reaches (the T-148 §12.7 precedent). **NOTHING WAS TUNED IN RESPONSE**; the two
+> numbers this capstone hands on rather than acts on are filed as F-168-1
+> (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.11.3).
+>
+> **BASELINE OF RECORD RE-PINNED AT T-208 (2026-08-05)** to
+> `docs/balance/baseline-t208-quest-captain-ports.json` — the **M19 MILESTONE CLOSER**, and a
+> **CONTENT-AND-ENGINE** capstone: the 11 `QUEST_PROFILES` captains now sit at a **DECLARED
+> HOME PORT** (`NpcProfile.homePortSystemId`, content) read once at birth by
+> `createInitialState` (engine), replacing the arbitrary `(index % 20) + 1` seed that had
+> parked **six of the eleven at rim systems with no Cantina** — permanently, because a quest
+> captain never moves. Same shape as the outgoing capstone: 1,000 seeds × 120 days ×
+> 8 policies = 8,000 rows, eight one-indexed shards then `--merge`,
+> `--milestone-days 21,29,30,41,60,120`, spreads harvested. Gate PASS, **0 invariant
+> violations**. One fingerprint moves and one does not, by construction: `rulesFingerprint`
+> `cbb087860825aa35` → `2f93098dc9ab15f0` (content is hashed WHOLESALE and `state.ts` /
+> `save.ts` are hashed engine rule modules), while `instrumentFingerprint` is **UNMOVED** at
+> `5c230e99648cddee` (nothing under `packages/sim/src` outside `__tests__` was touched) and
+> `docsFingerprint` moves `5ca4979722c55ee1` → `a88b9aa992f78ec6`. `CURRENT_SAVE_VERSION`
+> **DOES** move, 16 → **17** (re-read live at `packages/engine/src/save.ts`): `MIGRATIONS[16]`
+> re-seeds a carried save's quest captains through the same `questHomePortForProfile` rule the
+> two loader paths read, and `save.test.ts` carries the round-trip and the idempotence proof.
+> **`balance:diff` = SIX OF TEN ROWS MOVED** — fleet, explorer, gambler, greedy, smuggler and
+> veteran, with fighter, trader and trader-degraded byte-identical. **THE MOVE WAS PREDICTED
+> IN WRITING BEFORE THE RUN** (`TASKS.md` T-208) together with its channel:
+> `resolveVisitHangout` resolves a Dare dealer and a social target from co-located NPCs
+> **without an `isSimulatedCaptain` filter**, and the bond hook requires co-location too, so
+> relocating eleven records changes which captain is in which room. Headline movement is small
+> in every direction — fleet `tourOneClearRate` 0.6329 → 0.6348, fleet `finalCredits.median`
+> 49,839 → 49,687, fleet `survival.deathsPer1000Days` 0.5125 → 0.5146. **NOTHING WAS TUNED IN
+> RESPONSE**, no band was widened and no threshold moved.
+>
+> **BASELINE OF RECORD RE-PINNED AT T-206 (2026-08-05)** to
+> `docs/balance/baseline-t206-captain-voice.json` — a **CONTENT-ONLY** capstone shipping the
+> authored VOICE of the cast: `tableTalk` (2-4 Liar's Dice lines) and `catchphrases`
+> (enter / duringBattle / win / loss) for the 27 captains T-205 carried on its
+> `VOICE_AUTHORING_PENDING` worklist, which is deleted here along with the `waived` branch
+> and the three hygiene rules that policed it. **Presence is now REQUIRED of all 30
+> `NPC_PROFILES` unconditionally**, and still never required of the 11 `QUEST_PROFILES`.
+> 245 authored lines, every one of them distinct across the roster, longest 72 chars against
+> the 120 cap. Same shape as the outgoing capstone: 1,000 seeds × 120 days × 8 policies =
+> 8,000 rows, eight one-indexed shards then `--merge`, `--milestone-days 21,29,30,41,60,120`,
+> spreads harvested. Gate PASS, **0 invariant violations**. One fingerprint moves and one
+> does not, by construction: `rulesFingerprint` `5ae9a5d473827024` → `cbb087860825aa35`
+> (content is hashed WHOLESALE, so prose with no reader still moves it — that is what this
+> capstone pays for, rather than editing a fingerprint or a golden), while
+> `instrumentFingerprint` is **UNMOVED** at `5c230e99648cddee` (nothing under
+> `packages/sim/src` outside `__tests__` was touched) and `docsFingerprint` moves
+> `22c4de362494c36a` → `5ca4979722c55ee1`. `CURRENT_SAVE_VERSION` does NOT move (**16**,
+> re-read live at `packages/engine/src/save.ts:562`): `createInitialState` maps `NpcProfile`
+> into `NpcState` field by field with no spread, so nothing new reaches a persisted record
+> and no migration or round-trip test is owed. **`balance:diff` = "NOTHING MOVED. Every
+> compared field is equal on both sides"** — PREDICTED IN WRITING BEFORE THE RUN (`TASKS.md`
+> T-206), and the only correct result for data nothing reads until T-207: a moved
+> `outcomeHash` or a moved policy row would have meant something consumes the profile object
+> wholesale, and was pre-committed as a FINDING to escalate rather than a thing to
+> re-baseline around. The re-extracted fixture moves exactly four lines — the two
+> fingerprints, `sweepLabel` and `gitCommit` — with every tier number byte-identical.
+>
+> **BASELINE OF RECORD RE-PINNED AT T-204 (2026-08-05)** to
+> `docs/balance/baseline-t204-cantina-rename.json` — a **TEXT-ONLY** capstone shipping the
+> player-facing rename of "Hangout" to "Cantina". Scoped deliberately narrow: authored PROSE
+> STRING VALUES only (UI copy, onboarding and walkthrough text, per-port house name, deed
+> citation, flaw detail, the gamble wire templates, and the NPC Socialize clauses those
+> templates interpolate). NOTHING internal moved — not a file name, not an exported symbol,
+> not the `hasHangout`/`PORT_HANGOUTS` identifiers, and **not** the save schema's
+> `z.literal('VisitHangout')`, which is stored verbatim in every existing save and whose
+> rename would owe its own migration (explicitly deferred, not forgotten).
+> One fingerprint moves and one does not, by construction: `rulesFingerprint`
+> `f33b6af1ee21dffa` → `5ae9a5d473827024` — **content is hashed WHOLESALE, so even a pure-text
+> edit moves it, and that is paid for with this capstone rather than by editing a fingerprint
+> or a golden** — while `instrumentFingerprint` is **UNMOVED** at `5c230e99648cddee` (nothing
+> under `packages/sim/src` outside `__tests__` was touched). `CURRENT_SAVE_VERSION` does NOT
+> move (16, re-read live at `packages/engine/src/save.ts:562`): no `GameState` field was
+> added, removed or retyped, so no migration and no round-trip test is owed. Persisted
+> `lastAction.details` and `wire[].message` *values* differ for newly generated states, but
+> old saves keep their old prose and stay valid — **a value change is not a shape change.**
+> **EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL** — `balance:diff` reported
+> *"NOTHING MOVED. Every compared field is equal on both sides."* That was PREDICTED IN
+> WRITING BEFORE THE RUN (a text-only change has no mechanical effect, and `lastAction.details`
+> has zero computational readers — every consumer is a display path), so the run confirms a
+> prediction rather than discovering a result; a moved row would have been a finding to file,
+> not a rename gone right. Two goldens were RE-DERIVED, not hand-patched to pass: the sim
+> replay golden (all six constants) and the engine day-loop golden (all four hashes). Both
+> re-derivations are justified in-file by the same mechanical proof — reverse-substituting
+> "Cantina" → "Hangout" in each new pre-image reproduces the committed predecessor constants
+> EXACTLY, and all three replay `rngState`s held at `364866002 / 268015010 / -1231248819`, so
+> no dice draw moved.
+>
+> **BASELINE OF RECORD RE-PINNED AT T-202 (2026-08-05)** to
+> `docs/balance/baseline-t202-liars-dice-ceiling.json` — a **CONTENT-ONLY** capstone shipping
+> the owner's R3 ruling from the T-198 pacing checkpoint:
+> `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]` (tiers 0-5, a strict +1/tier climb, revised
+> up from the `[1, 2, 2, 3, 3, 4]` suggestion T-197 shipped marked `PROPOSED`). One fingerprint
+> moves and one does not, by construction: `rulesFingerprint` `10e19c88e9a07856` →
+> `f33b6af1ee21dffa` (a content constant changed), `instrumentFingerprint` **UNMOVED** at
+> `5c230e99648cddee` (nothing under `packages/sim/src` outside `__tests__` was touched).
+> `CURRENT_SAVE_VERSION` does NOT move (16, re-read at `packages/engine/src/save.ts:562`): no
+> persisted shape changed, so no migration and no round-trip test is owed.
+> **EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL** — `balance:diff` reported
+> *"NOTHING MOVED. Every compared field is equal on both sides."* Fleet `tourOneClearRate`
+> 0.6329, median final credits 49,839, ships lost 492, encounters/run 22.2482, all unmoved.
+> Gate PASS, 0 invariant violations, 8,000 rows over 8 one-indexed shards, spreads harvested.
+> **THAT NULL RESULT WAS PREDICTED IN WRITING BEFORE THE RUN, AND IT IS AN INSTRUMENT GAP
+> RATHER THAN A VERDICT (F-202-1)** — this block's own task predicted "only the `gambler` row
+> moves, and it moves UP", and that prediction was corrected before the sweep rather than
+> after: the sim's gambler is the only policy that plans a Dare at all
+> (`packages/sim/src/index.ts:4225`) and its loop is bounded by
+> `Math.min(GAMBLER_MAX_DARES_PER_DAY = 2, liarsDiceRoundsRemaining(state))` (`:4058,:4584`),
+> so it plays `1,2,2,2,2,2` hands by tier under BOTH the old and the new table. The instrument
+> cannot exhibit tiers ≥ 2 of the ruled ceiling — structurally the same shape as T-197's Insult
+> null result below. Measuring the ceiling needs a gambler arm bounded by the engine's own
+> accessor, which is a new instrument BEHAVIOUR and its own task, filed as F-202-1 in
+> `TASKS.md`'s T-202 block rather than smuggled into this content capstone.
+>
+> **BASELINE OF RECORD RE-PINNED AT T-197 (2026-08-05)** to
+> `docs/balance/baseline-t197-hangout-caps.json` — the **M17 MILESTONE CLOSER**
+> (`docs/DAWN-HAND-REDESIGN.md` §3/§4a/§4b). All seven Hangout venues became Free Actions
+> and two DAILY CAPS replaced the die: the social pool (`SOCIAL_PLAYS_PER_DAY = 3`, shared
+> by meet/befriend/insult) and the Liar's Dice rounds cap (scaling with `liarsDiceTier`).
+> **THIS IS THE FIRST CAPSTONE OF THE ARC THAT IS NOT A SINGLE-ARM ATTRIBUTION**, and that
+> is said before the numbers rather than after: T-196a moved only `rulesFingerprint` and
+> T-196b moved only `instrumentFingerprint` by design, whereas T-197 moves BOTH (rules
+> `55414694d7187afc` → `10e19c88e9a07856`, instrument `812d9e87d7307f3c` →
+> `5c230e99648cddee`, save schema 15 → 16), so no arithmetic in its diff can separate the
+> rule effect from the exploitation effect.
+> THREE of the eight policy rows moved — `gambler`, `smuggler`, `trader-degraded` — against
+> arm 2's seven, and the narrowness is the result: this task changes only the three planners
+> that touch a Hangout, so only the policies that call them can feel it. Fleet
+> `tourOneClearRate` 0.6342 → 0.6329, median final credits 49,839 → 49,839 (UNMOVED),
+> ships lost 487 → 492, encounters/run 22.2404 → 22.2482. Gate PASS, 0 invariant violations.
+>
+> **THE INSULT MEASUREMENT, REPORTED HONESTLY AS A NULL RESULT.** The task asked whether
+> `SOCIAL_PLAYS_PER_DAY = 3` holds the free-insult × 2.358× wronged-interceptor farming
+> loop. **The `fighter` row came back BYTE-IDENTICAL** — encounters/run 19.6460, ships lost
+> 11, median credits 82,671, clear rate 0.6030, all unchanged from T-196b. That is NOT
+> evidence the pool works, because **no sim policy has ever emitted `meet`, `befriend` or
+> `insult`** (only `protocol.ts`'s enumerator names them). The loop cannot be EXHIBITED by
+> this instrument, so the pool cannot be measured against it here, and the honest reading is
+> that the fighter's stillness confirms only that the freed dice and the rounds cap do not
+> reach it. What CAN be said is the analytic bound: 3 plays/day × −4 disposition ⇒ at most
+> ONE manufactured grudge per day, from a −10 floor, where before the cap it was three
+> clicks. **The instrument gap is T-198's brief**; an insult-playing policy is a new
+> instrument behaviour and its own arm, and was deliberately not added here.
+>
+> **BASELINE OF RECORD RE-PINNED AT T-196b (2026-08-05)** to
+> `docs/balance/baseline-t196b-instruments.json` — the **M17 arm-2** capstone
+> (`docs/DAWN-HAND-REDESIGN.md` §3). The eight sim policies stopped budgeting a dawn die
+> for the nine freed action types and the protocol enumerator stopped advertising one, so
+> the RULES are unmoved (`rulesFingerprint` still `55414694d7187afc`) and only the
+> INSTRUMENT hash changes. Its diff against the T-196a arm is therefore the measured value
+> of EXPLOITATION alone, cleanly attributed. SEVEN of the eight policy rows moved — all but
+> `greedy`, whose day plan did not change — against arm 1's two. Fleet `tourOneClearRate`
+> 0.6305 → 0.6342, median final credits 49,517 → 49,839 (+0.7%), ships lost 465 → 487.
+> The arm is carried by the fighter (clear rate 0.499 → 0.603, median credits 45,551 →
+> 82,671); the smuggler and explorer give a little back (−5.9% and −4.2% clear rate) and
+> both also carry F-196b-1's per-sweep credit charge on their Explore loops, the finding
+> this capstone's own gate caught and closed. Gate PASS, 0 invariant violations.
+>
+> **BASELINE OF RECORD RE-PINNED AT T-196a (2026-08-04)** to
+> `docs/balance/baseline-t196a-free-actions.json` — the **M17 arm-1** capstone
+> (`docs/DAWN-HAND-REDESIGN.md` §3). Nine administrative action types stopped costing a
+> dawn die — `sign-contract`, `buy-fuel`, `abandon-contract`, all four `Shipyard` kinds,
+> `Crew` hire/dismiss and the `Port` buy — with the `spendDie` field deleted from their
+> action shapes and from the zod schema. This is the CONTROL arm of a control-arm pair:
+> the rules are eased and the INSTRUMENTS ARE DELIBERATELY UNCHANGED (the sim policies
+> still budget a die for these verbs; the protocol enumerator still advertises one), so
+> T-196b's arm measures the exploitation separately.
+> **PREDICTED BEFORE THE RUN and held.** NPC-side rows near-still: `npc.ts` imports only
+> `applyShipyardMutation`/`quoteShipyard`/travel helpers and never these four resolvers,
+> and `fleet.npcSpecialEquipmentPurchasesPerRun` moved 44.1695 -> 44.2002 (+0.1%),
+> inside shard noise. Player-policy rows move — but MUCH more narrowly than predicted,
+> and the shape of that narrowness is the finding: **exactly two of the eight policy rows
+> moved, `explorer` and `smuggler`, and they are exactly the two that queue `Explore`.**
+> `trader`, `trader-degraded`, `fighter`, `veteran`, `gambler` and `greedy` came back
+> byte-identical on every headline metric — clear rate, credits, encounters, contracts,
+> ports, ships lost. Fleet deltas are small: `tourOneClearRate` 0.6320 -> 0.6305,
+> median final credits 49,729 -> 49,517 (−0.4%), ships lost 436 -> 465 (+6.7%), with
+> `explorer` 49 -> 66 and `smuggler` 46 -> 58 carrying all of it. `explorer`'s clear rate
+> 0.8710 -> 0.8660 and median credits 70,310 -> 68,333 (−2.8%); `smuggler`'s 0.8190 ->
+> 0.8120 and 45,601 -> 45,216 (−0.8%). CROSS-CHECKED against a second, independent
+> instrument: `campaign-degraded.test.ts`'s `PINNED_FINGERPRINTS` (5 seeds × 40 days,
+> a different sample entirely) moved the SAME two policies and held the same five.
+> `rulesFingerprint` `febc55edd3a94b3f` -> `55414694d7187afc`; `instrumentFingerprint`
+> `836f9e8804ea2637` -> `6106da3575355153` (the sim's policy builders lost their
+> `spendDie` arguments — a shape edit, not a budget change); `docsFingerprint` moved too,
+> because it hashes RAW bytes of the same sources and this task rewrote a great many
+> now-false comments (it is informational only and fails nothing).
+> `CURRENT_SAVE_VERSION` does NOT move (15): no persisted shape changed, and
+> the three now-unreachable `no-die`/`invalid-die-index`/`die-already-spent` members of
+> `CrewEventFailReason`/`PortEventFailReason` were deliberately KEPT so pre-M17 saves
+> still load under the `.strict()` event-log schema.
+>
+> > **BASELINE OF RECORD RE-PINNED AT T-199 (2026-08-04)** to
+> `docs/balance/baseline-t199-pacifist.json` — the **F-150-2** capstone. The shared
+> `planPacifistCombat` no longer plays one stance against an unaffordable tribute, `smugglerPolicy`
+> gains the Explore recovery guard T-150 had to back out, and the rim-strand class (`trader`,
+> `fighter`) is closed structurally by a shared `planHomewardBurn` / `planStrandedExplore`.
+> **PREDICTED BEFORE THE RUN and held:** all eight rows move except `greedy`, which never reaches
+> the changed planner. **The change it exists for is `assertNoIncomeStall`: 7 violations → 0** at
+> 1,000 seeds × 35 days. Fleet deltas are deliberately small — `fleet.tourOneClearRate` 0.6310 ->
+> 0.6320, median final credits 50,813 -> 49,729 (-2.1%), ships lost 411 -> 436 (+6.1%), with the
+> `fighter` row alone falling 14 -> 8 (-42.9%) on its new crippled repair. `rulesFingerprint`
+> **unmoved** at `febc55edd3a94b3f` — T-199 changed `packages/sim/src/index.ts`, the INSTRUMENT,
+> and zero lines under `packages/engine/src`, `packages/content/src` or `packages/ui/src` — while
+> `instrumentFingerprint` `f8a237612f4c38d5` -> `836f9e8804ea2637` and `docsFingerprint`
+> `26e3998c51814e72` -> `f827fddcbb3fa446` (all three transcribed from the T-199-re-extracted
+> `docs/balance/smoke/tiers.json`, `spreads harvested`). `CURRENT_SAVE_VERSION` does NOT move (15):
+> no persisted shape changed. **This block was written at T-165, not at T-199** — T-199 re-pinned
+> only two of the five pointer sites, and this banner was one of the three left stale (see the
+> T-165 note under BR-14 in `docs/BALANCE-RIG-DECISIONS.md`; agreement is now machine-checked by
+> `packages/sim/src/__tests__/baseline-pointers.test.ts`).
+>
+> **BASELINE OF RECORD RE-PINNED AT T-195 (2026-08-04)** to
+> `docs/balance/baseline-t195-dawn-dice.json` — a `/bakeoff` result: the travel die now sets a
+> 0-15% fuel discount (`navDieFuelDiscount`) and a 0-20% encounter-evasion bonus
+> (`navDieEvasionFactor`), both monotonic benefits with no fail state (see `travel.ts`'s
+> `T-1605b` comment for why a real check-and-penalty shape was tested and rejected — it measured
+> safe per-jump but raised fleet-wide fuel-starvation days 278% in the bake-off rig). The Nemesis
+> crossing is excluded — it keeps its own quoted burn and its own real check. **Real, broad
+> movement, not a re-pin formality:** ALL EIGHT policies moved. `fleet.tourOneClearRate` 0.5605 ->
+> 0.6310 (+12.6%), `finalCredits.median` +40.5%, `survival.shipsLost` -27.1%,
+> `encountersPerRun` -10.3% — the game is measurably, broadly easier, which is the expected and
+> intended shape of a monotonic-benefit die (see the M16 task block for the owner's own read on
+> this: two seeded regression tests, `campaign-reach.test.ts` and `campaign-policies.test.ts`,
+> flagged specific instances of this same easing and were left UNCHANGED rather than patched to
+> match — worth the owner's attention if the 15%/20% magnitudes want tuning down later).
+> `rulesFingerprint` `5d4ddb2593cca4f6` -> `febc55edd3a94b3f`, `instrumentFingerprint` unmoved at
+> `f8a237612f4c38d5` (no instrument source touched), `docsFingerprint` -> `26e3998c51814e72`.
+> `CURRENT_SAVE_VERSION` does NOT move (15): no persisted shape changed.
+>
+> **BASELINE OF RECORD RE-PINNED AT T-188 (2026-08-04)** to
+> `docs/balance/baseline-t188-orbital-3d.json`. **T-188's own changes are PROVEN INERT, not
+> assumed:** two isolated 30-seed bisects (gambler, veteran — the two archetypes any Hangout/
+> route-geometry change would most plausibly touch) diffed a pre-change and post-change tree
+> against each other and both report "NOTHING MOVED. Every compared field is equal on both
+> sides." T-188 adds `coordinates3D`/`distance3D`/`orbitalLayout2D` to `systems.ts` (additive,
+> not wired into `travel.ts`'s live formula — see the T-188 task block) and renames the display
+> name `Sun-3` -> `Sol-3` throughout; neither touches a value any sim policy reads. **What
+> DID move — `fleet` (397 fields) and `veteran` (601 fields), diffed against the outgoing
+> `baseline-t160-dealer-fix.json` — is entirely T-161's `veteranPolicy` contract-filter fix**
+> (already reviewed, gated and committed; see its own TASKS.md block), which changed real
+> `veteranPolicy` behaviour but had not yet had its own full 8,000-row capstone taken — T-188's
+> capstone is simply the first one run since, so it correctly absorbs T-161's already-accepted
+> drift rather than introducing new drift of its own. `explorer`, `fighter`, `gambler`,
+> `greedy`, `smuggler`, `trader`, `trader-degraded` are byte-identical. `rulesFingerprint`
+> `fbcfe11ab7772555` -> `5d4ddb2593cca4f6`, `instrumentFingerprint` `70d2ccbad279ff08` ->
+> `f8a237612f4c38d5`, `docsFingerprint` -> `a20d333978cfd2ca`. `CURRENT_SAVE_VERSION` does NOT
+> move (15): no persisted shape changed.
+>
+> **BASELINE OF RECORD RE-PINNED AT T-160 (2026-08-02)** to
+> `docs/balance/baseline-t160-dealer-fix.json` — the **F-137-1** capstone
+> (`docs/LIARS-DICE_REDESIGN.md` §17). An opening Liar's Dice claim must now EXCEED what the
+> bidder holds of the claimed face (§16.2 shape (b), the winner of a three-arm bakeoff), which
+> takes openers-guaranteed-true from **100.00% to 0.00%** and the player's win rate at the
+> tables from 80.30% to **61.07%**. `rulesFingerprint` `d0388cb50b0f9a11` -> `fbcfe11ab7772555`,
+> `instrumentFingerprint` `e81bc730c94b1fce` -> `70d2ccbad279ff08` (the planner's opening claim
+> and `protocol.ts`'s advertised bounds are instrument sources), `docsFingerprint` ->
+> `e2efb468b7e8bcba`. **EXACTLY TWO ROWS MOVE — `gambler` and `fleet` — and that was PREDICTED
+> IN WRITING BEFORE THE SWEEP RAN** (§17.1): the rule is reachable only through an open Liar's
+> Dice hand, and `planDare` is queued by `gamblerPolicy` and by nothing else. `gambler`
+> `finalCredits.median` 97,930 -> **67,716** (-30.9%), `tourOneClearRate` 0.9690 -> 0.9020,
+> `portOwnershipRate` 0.9870 -> 0.9100, `survival.shipsLost` 22 -> 16 — all four directions
+> predicted in advance. No band, threshold, golden or fingerprint was edited to reach it.
+> `CURRENT_SAVE_VERSION` does NOT move (15): no persisted shape changed.
+>
+> Before that, **T-182 (2026-08-02)** pinned
+> `docs/balance/baseline-t182-reroll-fix.json` — the F-156-1 capstone. `dice.ts` `spendDie`
+> stopped dropping `rerollsRemaining` from the hand it returns, which moves
+> `rulesFingerprint` (`50f24146a366b558` -> `d0388cb50b0f9a11`) and therefore obliges a
+> capstone whether or not a number moves. **NOTHING MOVED — `balance:diff` from
+> `n13-shipped` reports "NOTHING MOVED. Every compared field is equal on both sides"
+> across all 8,000 careers, and that was PREDICTED IN ADVANCE rather than discovered:**
+> the sim's `withReroll` (`packages/sim/src/index.ts`) PREPENDS its `Reroll` to the
+> dawn batch, and `runCampaign` asks a policy for the whole day once at dawn, so no
+> policy has ever read `rerollsRemaining` AFTER a die was spent — which is the only
+> window in which the bug existed. The fix restores a charge the instrument cannot
+> reach. `greedy`, the attribution control that never rerolls, is unmoved as expected.
+> `instrumentFingerprint` is UNCHANGED at `e81bc730c94b1fce` (no instrument source was
+> touched); `docsFingerprint` moved to `023f6e5df3ac738f`, which is a NOTE and not a
+> failure — the `spendDie` contract block is commentary, and comments decide no
+> outcomes. Same shape as every capstone back to `baseline-r2c-explorer-remit`
+> (1,000 seeds × 120 days × 8 policies = 8,000 runs, 8 1-indexed shards through
+> `--merge` reporting `wrote aggregate for 8000 rows`, both
+> `--milestone-days 21,29,30,41,60,120` and `--aggregate` honoured, fixture re-extracted
+> FROM it with `spreads harvested`). The merged gate PASSES with 0 invariant violations.
+>
+> **BASELINE OF RECORD RE-PINNED AT T-156 (2026-08-02)** to
+> `docs/balance/baseline-n13-shipped.json` — the N13 dawn-hand-parity capstone. The 30
+> captains now hold a five-die virtual hand and spend it at both of `npc.ts`'s check sites
+> (`packages/engine/src/npcHand.ts`), so `baseline-t150-postfix` no longer describes HEAD.
+> Same shape as every capstone back to `baseline-r2c-explorer-remit` (1,000 seeds × 120 days
+> × 8 policies = 8,000 runs, 8 1-indexed shards through `--merge` reporting `wrote aggregate
+> for 8000 rows`, both `--milestone-days 21,29,30,41,60,120` and `--aggregate` honoured,
+> fixture re-extracted FROM it with `spreads harvested`). Fingerprints are rules
+> `50f24146a366b558` / instrument `e81bc730c94b1fce` / docs `ac53586ad5912040`. **rules
+> MOVED, and correctly** — this task adds an engine rule module and two content constants,
+> which is the one thing the fingerprint exists to catch. **instrument MOVED**, also
+> correctly: `packages/sim/src/balance/coverage.ts` is inside the instrument corpus and this
+> task re-transcribes the `Crew`/`Reroll`/`Combat` rows into it. `balance:diff` from
+> `n13-pre` moves ALL NINE rows, which is the expected signature of a change to the WORLD
+> rather than to one policy — a policy row that had NOT moved would have been the finding.
+>
+> **TWO OTHER ARMS SHIP BESIDE IT AS GRADING EVIDENCE AND ARE EXPLICITLY NOT BASELINES**
+> (the `baseline-n4-control` precedent): `baseline-n13-pre.json` (the pre-N13 turn, taken at
+> the provably-inert threading commit) and `baseline-n13-control.json` (the hand exists,
+> `NPC_ALLOCATION_SHARPNESS_PER_STAT = 0`, so every captain allocates at the neutral
+> middle). The control arm is what makes "verb-weight luck vs. skill" attributable rather
+> than merely observed, and N5 is instructed to reuse it.
+>
+> **A FINDING FROM THE PRE ARM, worth recording because it invalidated a halt condition's
+> premise:** `baseline-t150-postfix.json` had ALREADY stopped describing HEAD before this
+> task ran. The `n13-pre` arm — taken at the inert threading commit — is byte-identical to
+> `t150-postfix` on seven of eight policy rows and differs on `fighter`, because
+> **T-159 (`b93a7af7`) fixed `fighterPolicy`'s missing T-1104 relaxation** after T-150's
+> capstone was taken and no capstone was re-taken for it. That is an INSTRUMENT change, not
+> a rules change, so nothing was wrong; but "the pre arm should equal the baseline of
+> record" was false on arrival, and inertness had to be proved the harder and better way
+> instead — the raw shard rows at the threading commit are BYTE-IDENTICAL to the same sweep
+> at the parent commit (`md5` equal on `rows-*-shard1of8.json`). This re-pin closes the
+> staleness.
+>
+> **PREVIOUSLY RE-PINNED AT T-150 (2026-08-01)** to
+> `docs/balance/baseline-t150-postfix.json` — the M4a–M4f post-fix capstone. T-150 closed
+> **F-116-1** (`explorerPolicy` queued Explores on a day carrying an open recovery, a
+> guaranteed `ExplorationFailed{'recovery-in-progress'}`) and **F-123-3** (`planDare` picked
+> the richest ROAMING dealer once off the dawn purse, so the day's second hand could be a
+> zero- or sub-floor stake), so `baseline-t148-roster-ladder` no longer describes HEAD. Same
+> shape as every capstone back to `baseline-r2c-explorer-remit` (1,000 seeds × 120 days × 8
+> policies = 8,000 runs, 8 1-indexed shards through `--merge` reporting `wrote aggregate for
+> 8000 rows`, both `--milestone-days 21,29,30,41,60,120` and `--aggregate` honoured, fixture
+> re-extracted FROM it with `spreads harvested`). Fingerprints are rules
+> `30956ac30326f246` / instrument `342e248189f7ac34` / docs `a3ef073897c54166`. **rules is
+> UNMOVED BY THIS TASK** and was verified so against a worktree at the parent commit —
+> T-150 edits no engine and no content source at all, and the move away from T-148's
+> `09deb1e41c99bdeb` belongs to T-149. **instrument MOVED**, correctly: `packages/sim/src/index.ts`
+> is inside the instrument corpus, and this is exactly the "a stale fixture gets a new
+> capstone" case that forced the fixes and the capstone into one task. **docs MOVED** (raw
+> bytes; the new comments alone move it). `balance:diff` from `t148-roster-ladder` isolates
+> the two fixes exactly, and the prediction was written down BEFORE the run: **it moves
+> precisely THREE rows, `explorer`, `gambler` and `fleet`,** and leaves `fighter`, `greedy`,
+> `smuggler`, `trader`, `trader-degraded` and `veteran` byte-identical — the Explore guard is
+> a term inside `explorerPolicy`'s own loop and `planDare` has exactly one caller. NOTHING
+> WAS TUNED IN RESPONSE: `git diff --stat` over `packages/engine/src`, `packages/content/src`
+> and `packages/ui/src` is zero files and zero lines. The fresh named-pool and decay numbers
+> are written up as `docs/HANGOUT_REDESIGN.md` §11 and filed as **F-150-1** — a DESIGN
+> QUESTION for the owner, with neither `0.25` nor `DISPOSITION_DECAY_INTERVAL_DAYS` touched —
+> and §11.4 RE-ASKS the two vacated PARITY LEDGER rows with those numbers beside them.
+>
+> **PREVIOUSLY RE-PINNED AT T-148 (2026-08-01)** to
+> `docs/balance/baseline-t148-roster-ladder.json` — M4e (T-144…T-148) added the 42-seat
+> fixed roster, the 5/10/20/40/80 unlock ladder and the fifteen completion deeds, so
+> `baseline-t137-liars-dice` predates the whole progression system. Same shape as every
+> capstone back to `baseline-r2c-explorer-remit` (1,000 seeds × 120 days × 8 policies =
+> 8,000 runs, 8 1-indexed shards through `--merge` reporting `wrote aggregate for 8000
+> rows`, both `--milestone-days 21,29,30,41,60,120` and `--aggregate` honoured, fixture
+> re-extracted FROM it with `spreads harvested`). Fingerprints are rules
+> `09deb1e41c99bdeb` / instrument `c80ebc59869406bb` / docs `350d78708243b524` — **all
+> three UNMOVED by this extract**, because T-145/T-146/T-147 each re-stamped them as they
+> landed; T-148's contribution is the fresh 8,000-row aggregate underneath them, not a new
+> hash. `balance:diff` from `t137-liars-dice` isolates the milestone exactly: **it moves
+> precisely TWO rows, `gambler` and `fleet`,** and leaves `explorer`, `fighter`, `greedy`,
+> `smuggler`, `trader`, `trader-degraded` and `veteran` byte-identical — every policy that
+> never sits at a table. NOTHING WAS TUNED IN RESPONSE; the measured numbers are written up
+> as §12 of `docs/LIARS-DICE-PROGRESSION_SPEC.md` and the bad ones are filed as findings
+> F-148-1…F-148-5 for a fresh owner call.
+>
+> **PREVIOUSLY RE-PINNED AT T-137 (2026-07-31)** to
 > `docs/balance/baseline-t137-liars-dice.json` — M4d (T-134…T-137) replaced the
 > opposed-d20 Dare with the Liar's Dice scene, so `baseline-t131-explore-ap` predates
 > the whole mechanic and no longer describes HEAD. Same shape as every capstone back
@@ -258,13 +713,13 @@ ruling; it is what makes the fast-forward honest).
 | --- | --- | --- |
 | Trade | coarse haul, but on the SHARED pool: every captain draws the local board through the player's own `generateManifestBoard` and CHOOSES off it by archetype (`pickContract`), and the claim debits a per-system ledger that sizes the next board the player sees there. The co-location gate no longer gates participation — it governs only the visible snipe | shipped (N10) |
 | Travel | real fuel, real routes, real encounters, real permanent death | shipped (N3) |
-| Combat | interdiction on the SHARED rules, one-tick — same DC, tribute, damage, salvage, retreat. **NOT `resolveCombat`**: gives up die CHOICE only, closed by N13. **GAP FOUND AT N4:** that is the verb a captain is FORCED into; the one they CHOOSE (`executeCombat`) is still the pre-N3 abstract GUNS check + flat `150 × tier`, with no interceptor, no damage and no ship loss — so the six fighters take 6.4 interdictions each and **0 deaths** | shipped (N3) · N13 closes the die gap · **`executeCombat` still owed** |
+| Combat | interdiction on the SHARED rules, one-tick — same DC, tribute, damage, salvage, retreat. **NOT `resolveCombat`**: gave up die CHOICE only, and **N13 CLOSED THAT (T-156, 2026-08-02)** — every interdiction stance check now spends from the captain's virtual hand (`packages/engine/src/npcHand.ts` `allocateVirtualDie`) instead of drawing a bare `rng.d20()`, so a captain's stance roll is drawn under the player's own deal/spend discipline with the reach scaled by the stat the check is on. What is still modelled rather than played is WHICH die — flagged at `npcHand.ts`'s definition site as the one sanctioned abstraction. **GAP FOUND AT N4:** that is the verb a captain is FORCED into; the one they CHOOSE (`executeCombat`) is still the pre-N3 abstract GUNS check + flat `150 × tier`, with no interceptor, no damage and no ship loss — so the six fighters take 6.4 interdictions each and **0 deaths** | shipped (N3) · die gap CLOSED at N13 (T-156) · **`executeCombat` still owed — RULED DEFERRED (owner, 2026-08-03, T-158)** |
 | Shipyard | full price/gate parity via `ShipyardActor`, and since N11 the RENOWN GATE IS EXERCISED AND MEASURED: the refit ladder asks for rank-gated special equipment and is refused or served by the player's own `requiredRank` check, on the standing the captain earned — no NPC branch, **42.8 gated purchases per run at the N11 capstone**. Still **spends no die** where a player burns 1 of 5 even on a refusal (watch item **OI-9**, argued under N2's Result) | shipped (N2) · **gate shipped (N11)** · OI-9 open |
-| Explore | never for the cast. The 2026-07-30 exclusion is **VACATED**: it was ruled against an Explore that is being replaced (0.5.2). The measurement that decided it — a net credit SINK, 53.8cr/attempt against 400–640cr of fuel — stands as a fact about the OLD verb and is the reason for the redesign | **DEFERRED (owner 2026-07-30)** — re-ruled after the 0.5.2 Explore system ships |
-| VisitHangout | the cast plays a stub of it (`executeSocialize`). The 2026-07-30 lending exclusion is **VACATED** — ruled against a Hangout that exists at ONE system of 28 and is being rebuilt as a parameterised system across all 14 spaceports (0.5.2). **Three defects found while ruling it, all still true and all deferred with it:** the NPC verb is a pure faucet (+4.86cr/captain-day, no counterparty, where the player's dare is zero-sum), 95.91% of its actions resolve where there is no Hangout, and the 150cr ante locks out the destitute captains it would help most | **DEFERRED (owner 2026-07-30)** — re-ruled after the 0.5.2 Hangout system ships |
-| Crew | never (meaningless without a hand) | N13 decides |
+| Explore | never for the cast. The 2026-07-30 exclusion is **VACATED**: it was ruled against an Explore that is being replaced (0.5.2). The measurement that decided it — a net credit SINK, 53.8cr/attempt against 400–640cr of fuel — stands as a fact about the OLD verb and is the reason for the redesign | **RE-ASKED at T-150 (2026-08-01) — still DEFERRED pending owner ruling.** The 0.5.2 Explore system has now shipped (T-110…T-117, owner ruling D1, T-131) and the question is restated against it with fresh per-attempt economics in `docs/EXPLORE_REDESIGN.md` §10. Unruled: owner's call, not T-150's |
+| VisitHangout | the cast plays a stub of it (`executeSocialize`). The 2026-07-30 lending exclusion is **VACATED** — ruled against a Hangout that exists at ONE system of 28 and is being rebuilt as a parameterised system across all 14 spaceports (0.5.2). **Three defects found while ruling it, all still true and all deferred with it:** the NPC verb is a pure faucet (+4.86cr/captain-day, no counterparty, where the player's dare is zero-sum), 95.91% of its actions resolve where there is no Hangout, and the 150cr ante locks out the destitute captains it would help most | **RULED (owner, 2026-08-02): still DEFERRED.** Re-asked at T-150 (2026-08-01) and re-measured in full against the now-shipped 0.5.2 Hangout (14 ports, Liar's Dice, the 42-seat roster, T-132's dispatch surfacing, T-133's per-port loan band, T-149's `hasHangout` gate) in `docs/HANGOUT_REDESIGN.md` §11.4 — all three defects smaller than at the original ruling (faucet down to +3.44cr/captain-day, 0.22% of NPC wealth; off-Hangout resolution down to 37.97%; ante lockout newly quantified at 17.49%) but none discharged. The stub does not constitute parity; parity needs the cast playing through the real `resolveVisitHangout`/Liar's Dice resolver. **Ruling: the gap remains open, and closing it (N8 — an actor-parameterised resolver, the 42-seat roster made zero-sum by construction, its own capstone) is unblocked as future N-series work, not scheduled by this ruling.** (Filed against T-157's coverage gate, which is corrected — not the code — to reflect this row's status: see TASKS.md.) |
+| Crew | never, and now never by DECISION rather than by omission. Design (b) keeps the coarse one-verb day, so there is no NPC decision for crew hiring to attach to — a captain has no plan across five dice to hire a specialist into | **EXCLUDED (owner ruling 2026-07-31, shipped at N13 / T-156)** — a ruled exclusion, not a gap. Re-opening it means re-opening the (a)/(b) design choice, which is an owner call |
 | Port | never — the player is the only possible port owner | **N12** |
-| Reroll | n/a without a hand | N13 decides |
+| Reroll | the cast now HOLDS a hand (N13) and still cannot re-roll it: `npcHand.ts` deals every captain through the player's own `rollDawnHand` with `rerolls: 0`, and re-roll charges are a crew/equipment benefit the cast does not buy | **EXCLUDED (owner ruling 2026-07-31, shipped at N13 / T-156)** — and STRUCTURAL rather than merely ruled: the exclusion is expressed in the deal's data, not in a branch, so there is nothing to flip back |
 | Storylet | authored player-facing content, and cast participation is SUBTRACTIVE: 112 of 114 storylets are `repeat: 'never'` against one world-scoped `completed` map, so a captain resolving a beat plays instead of the player | **EXCLUDED (owner 2026-07-30)** — ruled absence |
 | Wait | Idle | shipped |
 
@@ -290,17 +745,37 @@ N12.
 > N8 therefore waits on the 0.5.2 track as well as on N12. Storylet's exclusion is
 > UNAFFECTED — its deciding ground (the shared once-only `completed` ledger) is structural
 > and no redesign is scoped against it.
+>
+> **UPDATE — T-150 (2026-08-01): THE RE-ASK HAS NOW BEEN MADE, AND BOTH ROWS REMAIN
+> UNRULED.** The precondition this block set is met: both 0.5.2 systems are functional and
+> capstoned. T-150 re-ran the balance capstone against them and restated each row against the
+> systems AS THEY NOW ARE, with the fresh numbers beside it — Explore in
+> `docs/EXPLORE_REDESIGN.md` §10, VisitHangout (with all three defects deferred alongside it
+> re-measured) in `docs/HANGOUT_REDESIGN.md` §11.4. **T-150 deliberately rules NEITHER.**
+> Restating a question with current evidence is a build task; answering it is the owner's,
+> and this whole ledger exists because that distinction was worth writing down.
+>
+> **N8 UN-GATES ON THE OWNER'S RULING, NOT ON T-150.** No N-series task's status is changed
+> by the re-ask, and none should be until the two rows above read as ruled rather than
+> re-asked. The 0.5.2 half of N8's precondition is now DISCHARGED — the systems exist and are
+> measured; what remains is the ruling itself, plus N12, exactly as this block set out.
 
 **THE LEDGER WAS FULLY RULED FOR ONE AFTERNOON (2026-07-30); two rows are now DEFERRED.** The
 three rows that were deliberately not defaulted — "most" is only honest if every exclusion
 is a recorded decision rather than a silent gap — were ruled Explore ABSENCE, Storylet
 ABSENCE, VisitHangout PARTIAL. **Storylet's ruling stands. Explore's and VisitHangout's are
 vacated pending the 0.5.2 redesign of both systems** (see the caution above). Reasons and
-the measurements behind all three are in THE THREE VERB RULINGS below. **Of the player's eleven verbs the cast now plays seven** (Trade,
-Travel, Combat, Shipyard, Socialize-as-VisitHangout, Wait, plus the verb-less Renown row),
-**two are excluded by ruling** (Explore, Storylet), and **two wait on N13's hand** (Crew,
-Reroll) with **Port owed by N12** — which is the honest form of the owner's "all or most of
-a full player's actions".
+the measurements behind all three are in THE THREE VERB RULINGS below.
+
+**THE COUNT, RESTATED AT N13's CLOSE (T-156, 2026-08-02).** Of the player's eleven verbs the
+cast now plays **seven** (Trade, Travel, Combat, Shipyard, Socialize-as-VisitHangout, Wait,
+plus the verb-less Renown row); **three are EXCLUDED by ruling** (Storylet, plus Crew and
+Reroll, which N13 ruled rather than left waiting); **two are DEFERRED pending an owner
+ruling** (Explore, VisitHangout — vacated exclusions, re-asked at T-150 and still unanswered);
+and **one is owed by N12** (Port). The distinction between EXCLUDED and DEFERRED is
+load-bearing and is not to be collapsed: an exclusion is an answer, a deferral is an open
+question. **No ledger row now reads "N13 decides".** That is the honest form of the owner's
+"all or most of a full player's actions".
 
 ---
 
@@ -493,10 +968,14 @@ MOVED"*, so the player did not move across the refactor. The step also found **R
   have killed, and N11's richer refit ladder, N12's per-NPC port pricing and N13's dawn hand
   are all measured inside the envelope it bought.
 
-- **WATCH ITEM OI-9 — the NPC refit pays no die.** `considerRefit` applies
+- **WATCH ITEM OI-9 — the NPC refit pays no die. CLOSED BY T-196a (2026-08-04), from the
+  other side:** M17 (`docs/DAWN-HAND-REDESIGN.md` §3) freed the whole shipyard for the
+  PLAYER, so neither side pays a die and the asymmetry this item watched no longer exists.
+  The `spendDie: 0` placeholder is gone with the field itself. The original text, for the
+  record: `considerRefit` applies
   `applyShipyardMutation` directly; `resolveShipyard` is never called, and the `spendDie: 0`
-  sitting beside it is a placeholder, not a cost. A player buying at the yard burns 1 of
-  their 5 dice **even when the purchase is refused.** Everything else is at parity — same
+  sitting beside it was a placeholder, not a cost. A player buying at the yard burned 1 of
+  their 5 dice **even when the purchase was refused.** Everything else is at parity — same
   prices, same gates, the engine's own functions on both sides, no location rule on either —
   and the asymmetry is argued at its definition site (`npc.ts:648-673`: one coarse action
   stands in for a whole NPC day, so charging a die would double-charge the abstraction). It
@@ -964,10 +1443,33 @@ live and measurable** (roughly 4–6 each across the 30). No machine assignment.
   a visible top and bottom that is not purely luck.
 - **Disproves:** proficiency washes out — the NPC turn has too few decisions for skill to
   express itself, which would itself be a finding about the turn's depth.
-- **GATED BY N13 (2026-07-29).** "Noisy die allocation" presupposes a hand the cast does
-  not hold — the very Disproves clause above was at risk of firing *by construction*.
-  Grade this step against whichever decision surface N13 ships, and rewrite the lever
-  list here at N13's close to name which degradation levers survive the translation.
+- **UN-GATED 2026-08-02 (N13 shipped; T-156).** The gate was: *"noisy die allocation
+  presupposes a hand the cast does not hold — the very Disproves clause above was at risk
+  of firing by construction."* The cast now holds one. **THE LEVER LIST, REWRITTEN AT N13's
+  CLOSE AS THAT GATE INSTRUCTED — which of `PilotDegradationProfile`'s three slips survive
+  the translation:**
+  1. **`dullDieChance` — SURVIVES, and the seam is already built and proved inert.**
+     `npcVirtualHand(rng, dullDieChance?)` (`packages/engine/src/npcHand.ts`) takes it as
+     an optional trailing parameter and applies it exactly as the player-side
+     `dieLedger.takeBest` does: a sharpest reach is downgraded to the middle, guarded at
+     three remaining dice for the same stated reason. **When the parameter is absent
+     nothing is drawn and nothing is allocated differently** — asserted against `rng`
+     STATE equality in `npc-virtual-hand.test.ts`, so N5 can switch it on without a
+     separate inert-extraction commit. N5's remaining work on this lever is SOURCING a
+     per-captain profile at world creation, not building the mechanism.
+  2. **`thinFuelChance` — SURVIVES WITH AN NPC ANALOGUE, and it is N5's own work.**
+     The cast's refuel decision is `refuelIfNeeded` (`npc.ts`), which tops to exactly what
+     the leg needs. The sloppy version — top to the leg plus one getaway burn — is the
+     same slip in the same place, and it bites harder for a captain than for the player
+     because a thin tank removes the `run` stance from `pickNpcStance`.
+  3. **`overreachChance` — SURVIVES WITH AN NPC ANALOGUE, and it is N5's own work.**
+     `pickContract` already scores by archetype; the greedy slip is to score on the RAW
+     payment instead, which is precisely what the `trader` row already does and what the
+     `veteran` row deliberately does not. That makes this lever cheap AND makes it a
+     within-archetype axis, which is the axis standing amendment 4 says to grade on.
+  **Nothing in the profile is orphaned by design (b).** Grade proficiency WITHIN
+  archetype and reuse N13's control arm (`docs/balance/baseline-n13-control.json`), which
+  was built for exactly this hand-off — see N13's Result.
 - **WHAT N4 HANDS TO N5 (standing amendment 4): the Disproves clause needs re-reading,
   because the axis N5 wants now has a rival that works.** N4 established that per-captain
   *style* produces a very large outcome spread (median wealth from 170 to 851,930 across
@@ -1468,7 +1970,7 @@ N10's 9/80).
 > the capstone, or the step cannot see its own effect.** `contractClaims` / `boardDepth`
 > on `PolicyAggregate` are the worked example to copy for `ports`.
 
-### N13 — The NPC decision surface: dawn-hand parity (MUST-HAVE · owner ruling 2026-07-29 · GATES N5)
+### N13 — The NPC decision surface: dawn-hand parity (MUST-HAVE · owner ruling 2026-07-29, design ruled 2026-07-31 · GATES N5)
 
 - **The gap, in this track's own words:** the preamble says *"the NPC field does not face
   the game's central decision"* — and no step before this one addressed it. N5's premise
@@ -1489,12 +1991,160 @@ N10's 9/80).
     at its definition site as the one sanctioned abstraction in the parity design, and
     `Crew`/`Reroll` then stay player-only, which the PARITY LEDGER must record as a ruled
     exclusion rather than a gap.
+- **Owner ruling on the (a)/(b) choice (2026-07-31): (b), the algorithmic equivalent.**
+  Envelope-cheap and already the pre-approved fast-forward; N5 gets the decision-quality
+  medium it needs either way. `Crew` and `Reroll` are therefore a **ruled exclusion**, not
+  a gap — record them as such in THE PARITY LEDGER when N13 ships, not silently. Scheduled
+  as `TASKS.md` T-156, decoupled from N12 (port-buying is a separate, orthogonal system;
+  nothing about the virtual-hand mechanism reads NPC port state).
 - **Simulate:** full sweep + per-captain outcome variance decomposition (verb-weight luck
   vs skill).
 - **Proves:** NPC day outcomes gain a skill-sensitive spread that N5 can then widen;
   per-captain variance stops being pure verb-weight luck.
 - **Disproves:** outcomes statistically indistinguishable from the pre-N13 turn — the
   added surface carried no decision, and N5 should not be graded on top of it.
+
+#### Result (T-156, 2026-08-02): **CHANGE ACCEPTED · HYPOTHESIS DISPROVED AS STATED, and the reason it is disproved is itself the finding**
+
+**The verdict, plainly, in this document's own vocabulary.** The Proves clause asked for
+*"per-captain variance stops being pure verb-weight luck"*. Measured fleet-wide over three
+8,000-row arms it does **not**: the skill share of per-captain wealth variance is **0.7527
+(PRE) → 0.7407 (CONTROL) → 0.7452 (SHIPPED)**, so SHIPPED sits marginally *below* the
+pre-N13 turn, and the SHIPPED−CONTROL gap that IS the allocation-skill component (+0.0045)
+is smaller than the measurement's own noise floor. **The change is accepted anyway** — it
+does what design (b) was ruled to do, it moves real outcomes, and the ledger rows it was
+scheduled to close are closed. N1 and N10 are the precedent for that pairing.
+
+**Simulate, exactly as this section specified.** Full sweep + per-captain outcome variance
+decomposition, three arms, 1,000 seeds × 120 days × 8 policies = 8,000 rows each, 8
+1-indexed shards through `--merge` (all three reported `wrote aggregate for 8000 rows`),
+both `--milestone-days 21,29,30,41,60,120` and `--aggregate` honoured:
+
+| arm | file | what it is |
+| --- | --- | --- |
+| PRE | `docs/balance/baseline-n13-pre.json` | the pre-N13 turn, taken at the provably-inert threading commit |
+| CONTROL | `docs/balance/baseline-n13-control.json` | the hand exists, `NPC_ALLOCATION_SHARPNESS_PER_STAT = 0` — every captain allocates at the neutral middle |
+| SHIPPED | `docs/balance/baseline-n13-shipped.json` | **the new baseline of record** |
+
+The decomposition is `between = Var_i(mean_r x[i][r])`, `within = mean_i(Var_r x[i][r])`,
+`skillShare = between/(between+within)` over `SeedRow.milestones[].npcCredits` at day 120,
+headlined on `log1p(credits)` because cast wealth is heavy-tailed and a raw-credit variance
+is an outlier report rather than a decomposition. It lives in a **gitignored
+`.scratch/n13-variance.mjs`, deliberately**: `docs/BALANCE-RIG-DECISIONS.md` Part B forbids
+adding a `SeedRow`/`MilestoneSample` field in the same commit that takes the capstone, and
+the substrate this needs was already on disk. Confidence is the spread of `skillShare`
+across each arm's 8 disjoint 1,000-row shards — a noise floor computed from data already
+held, not an invented statistic.
+
+| arm | between | within | skillShare (log1p) | 8-shard spread | skillShare (raw) |
+| --- | --- | --- | --- | --- | --- |
+| PRE | 9.9525 | 3.2700 | **0.7527** | 0.7508 – 0.7566 (0.0058) | 0.8436 |
+| CONTROL | 9.4908 | 3.3217 | **0.7407** | 0.7372 – 0.7463 (0.0091) | 0.8333 |
+| SHIPPED | 9.4141 | 3.2186 | **0.7452** | 0.7417 – 0.7482 (0.0065) | 0.8357 |
+
+**Reading it against the rule written down BEFORE the run.** PROVED required
+`skillShare(SHIPPED) > skillShare(CONTROL)` by more than either shard spread, *with*
+`skillShare(CONTROL) ≈ skillShare(PRE)`. Neither limb holds: the gap is +0.0045 against
+spreads of 0.0065 and 0.0091, and CONTROL − PRE is −0.0119, which is *larger* than the
+lever's own effect. **So the dominant fleet-wide effect of N13 is not the skill lever at
+all — it is the HAND ITSELF, and it is a variance REDUCER.** `Var[middle of five sorted
+d20s]` is roughly a third of `Var[d20]`, so simply routing every check through a hand
+compresses per-day outcome noise for everyone; `between` fell 9.95 → 9.49 with skill
+switched off entirely. That was not predicted, and it is the sort of thing a control arm
+exists to make visible.
+
+**WHERE THE SKILL LEVER DOES SHOW UP: WITHIN ARCHETYPE — which is exactly where standing
+amendment 4 told N5 to look.** Re-running the same decomposition over each archetype's
+captain slots alone, so `between` is the spread among captains who share a playstyle:
+
+| archetype | n | PRE | CONTROL | SHIPPED | SHIPPED − CONTROL | shards with a positive gap |
+| --- | --- | --- | --- | --- | --- | --- |
+| explorer | 5 | 0.6464 | 0.6224 | 0.6656 | **+0.0432** | **8/8** |
+| fighter | 6 | 0.2198 | 0.2928 | 0.3234 | **+0.0306** | **8/8** |
+| veteran | 5 | 0.7531 | 0.7670 | 0.7835 | **+0.0165** | **8/8** |
+| smuggler | 4 | 0.7037 | 0.6934 | 0.6970 | +0.0035 | 5/8 |
+| trader | 6 | 0.0937 | 0.0835 | 0.0876 | +0.0040 | 5/8 |
+| gambler | 4 | 0.3567 | 0.3411 | 0.3419 | +0.0008 | 5/8 |
+
+The gap is positive in **all eight independent 1,000-row shards** for explorer, fighter and
+veteran, and is a coin flip (5/8) for smuggler, trader and gambler. **THE SPLIT IS NOT
+NOISE AND IT HAS A STRUCTURAL CAUSE, ALREADY WRITTEN DOWN IN CONTENT:** a die can only
+matter where the check it feeds has a CONSEQUENCE. Explorers, fighters and veterans fly and
+fight, so their days turn on Travel/PILOT, Combat/GUNS and the interdiction stance checks —
+all of which pay or cost. The trader's day turns on which contract `pickContract` takes, and
+`NPC_CHECK_DCS`'s own comment records that *"the Trade check deliberately carries NO
+credit/fuel consequence"*; the gambler's Socialize check is a flat ±150 stake. **This is
+N4's verb payout asymmetry — "only Trade pays" — measured from the other side, and it BOUNDS
+both N13 and N5.**
+
+**HAND-OF-FIVE ECONOMICS, mean-neutral as calibrated** (day-120 fleet, PRE → CONTROL →
+SHIPPED): cast wealth **mean 244,171 → 240,029 → 244,155** (+0.0% net — the mean-neutrality
+the pivot was chosen for, held), **median 53,834 → 52,317 → 58,535 (+8.7%)**, p90 675,712 →
+673,425. So the median captain got ~12 points richer *attributably* (the control arm is
+−2.8%, the shipped arm +8.7%), and the fleet got no richer overall — the skill lever
+redistributes rather than mints. Ships lost **615 → 573 (−6.8%)**. The player is essentially
+untouched: `tourOneClearRate` 0.5690 → 0.5689, `finalCredits.median` 37,571 → 36,947
+(−1.7%), `boardDepth.mean` 3.7773 → 3.7764.
+
+**THE FLOOR STILL HAS NOT MOVED — for the FOURTH consecutive step.** `npcCredits.p10` at day
+120 reads **126 → 127**. N10, N11 and now N13 have each left it where it was, and N11 named
+the structural reason for its own case (a deed pays no credits). N13's reason is different
+and is the archetype table above: the poorest captains are the ones whose verb outcomes a
+die cannot reach. **This is the sharpened question N13 hands on**, and it should be read
+beside N12's before either is graded.
+
+**HAND EXHAUSTION, measured rather than assumed small.** Five dice against one verb check
+plus up to `NPC_ENCOUNTER_MAX_ROUNDS` stance rounds. Over 40 seeds × 120 days (82,393
+captain-days that rolled at least one check, 118,606 allocations): **3.09% of rolling
+captain-days exhaust the hand and 3.48% of all allocations are served by the documented raw
+d20 fallback.** The per-day census is 1 check on 78.5% of days and 7 on 1.9%. The fallback is
+exactly the pre-N13 draw, so it can never be worse than what it replaced — but it is a real
+3.5%, it is named as boundary 2 at `npcHand.ts`'s definition site, and it is not hidden.
+
+**What shipped, at its call sites** (the "never mark DONE without grepping" rule):
+`packages/engine/src/npcHand.ts` — `npcVirtualHand()` built once per captain-day in
+`resolveNpcDay`, `allocateVirtualDie()` spent at **both** check sites, `rollNpcCheck`
+(the day's verb) and `rollEncounterCheck` (the interdiction stance). The deal is the
+player's own `rollDawnHand` at `DAWN_BASE_HAND_SIZE` and the spend is the player's own
+`spendDie`; only the PICK is modelled, flagged at the definition site under the marker
+`THE ONE SANCTIONED ABSTRACTION` — the same string `npc.ts` already carried, so one grep
+finds both. The deal is LAZY, which is load-bearing: an Idle / FlawOverride / broke day
+still rolls nothing.
+
+**What was NOT touched, deliberately.** The interceptor's pressure roll and both dice of the
+post-kill opposed retreat stay raw `rng.d20()`, because the PLAYER's equivalents are raw too
+(`actions/combat.ts`) — parity means matching, not maximising. **OI-9 stays OPEN**: the NPC
+refit still spends no die where a player burns one. N13 makes it closable for the first time
+(there is now a hand to spend from) and it is not being closed here.
+
+**No save-shape change.** The hand is per-captain-day and never persisted; `NpcState` gains
+no field, `CURRENT_SAVE_VERSION` is unmoved, no migration and no round-trip test are owed —
+asserted in `npc.test.ts` rather than claimed.
+
+**Discipline, stated so it can be checked.** No fingerprint, band, threshold or golden was
+edited to reach a result. The threading was proved inert in its own step first — all four
+day-loop golden hashes unmoved, the engine battery green, and the raw sweep shard rows
+**byte-identical** to the same sweep at the parent commit. Only then was the deal switched
+on, and the goldens were then **REGENERATED** with the committed regenerator (a different
+sentence from "edited": `gen-day-loop-golden.ts`, the fixture header's own "deliberate
+rebalance" case). The calibration was chosen for mean-neutrality at the roster's measured
+median stat and validated on a cheap 100-seed two-arm probe **before** the capstone, not
+after a red band. Collateral reds were fixed legitimately: seed re-pins with the sweep
+evidence recorded (`recovery.test.ts` 52 → 719, `campaign-reach.test.ts` 1 → 3,
+`era-storylet-coverage.test.ts` [4,22] → [8,26]), a sample widened 20 → 100 in
+`alliance-arcs.test.ts` — which incidentally showed its "EVERY seed" claim had been false at
+HEAD too — and entry-27 re-derivations of the seven `campaign-degraded` policy fingerprints
+and the three protocol session goldens, each with its cause named.
+
+**One defect found and filed, not fixed here: F-156-1** (`TASKS.md` T-182). `dice.ts`
+`spendDie` rebuilds the hand as `{ dice, spent }` and **drops `rerollsRemaining`**, so the
+first die a player spends through `actions/trade.ts` / `travel.ts` / `shipyard.ts` /
+`exploration.ts` / `combat.ts` / `storylets.ts` silently destroys the day's crew-granted
+re-roll charges. It is a PLAYER-path bug, it is out of N13's scope, and folding its fix into
+this commit would have put two rule changes under one capstone and made this very
+decomposition unattributable. The written risk analysis is on the task.
+
+---
 
 ### N14 — Captain voice: the daily wire boast (EXPERIMENT · owner spec 2026-07-29)
 
@@ -2024,11 +2674,153 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t137-liars-dice.json`** (1,000 seeds ×
-   > 120 days × 8 policies = 8,000 runs, re-pinned at T-137 2026-07-31 — M4d replaced the
+   > **Baseline of record is `docs/balance/baseline-t175-archetype-ordering.json`** (1,000
+   > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-175 2026-08-06 — F-160-1's
+   > close: `archetypeMove`'s `optimal` branch now READS the standing claim
+   > (`probClaimTrue`) instead of pricing it with the unconditioned Binomial, so the
+   > archetype ordering un-inverts at every tier. BOTH fingerprints move —
+   > `rulesFingerprint` `f264d7f4a2d56fde` → `cabd2112ccf4cefb` and
+   > `instrumentFingerprint` `b8894cb6c678fce6` → `e84d8e074fde0b98` — so the attribution
+   > is NOT single-arm. TWO OF TEN ROWS MOVED — fleet and gambler; the other seven
+   > byte-identical — PREDICTED IN WRITING BEFORE THE RUN (`TASKS.md` T-175). Gate PASS,
+   > 0 invariant violations. The T-168 pin it replaces was — F-148-4's
+   > fix: `planDare` and the UGT protocol enumerator size the Dare wager domain off the
+   > engine's new `preHandWagerBand` (the unlock tier's EFFECTIVE band) instead of the port's
+   > raw tier-0 band, so a career can at last REQUEST into the raised tier-4 ceiling and tier
+   > 5's removed clamp. BOTH fingerprints move — `rulesFingerprint` `2f93098dc9ab15f0` →
+   > `f264d7f4a2d56fde` and `instrumentFingerprint` `5c230e99648cddee` → `b8894cb6c678fce6` —
+   > so the attribution is NOT single-arm. TWO OF TEN ROWS MOVED — fleet and gambler; the
+   > other seven policy rows byte-identical — PREDICTED IN WRITING BEFORE THE RUN
+   > (`TASKS.md` T-168): `planDare` is called by `gamblerPolicy` and by nothing else, and
+   > fleet pools it. Gambler `finalCredits.median` 80,244 → 115,612. One shape change
+   > reported and not suppressed (`byPolicy[gambler].renownRanks.GIGA_HERO`). Gate PASS,
+   > 0 invariant violations, nothing tuned in response. `CURRENT_SAVE_VERSION` unmoved at 17
+   > (re-read live at `packages/engine/src/save.ts:627`); no persisted shape changed, so no
+   > migration is owed.
+   > Before that: **`docs/balance/baseline-t208-quest-captain-ports.json`** (1,000
+   > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-208 2026-08-05 — the M19
+   > milestone closer, giving the 11 `QUEST_PROFILES` captains a DECLARED HOME PORT
+   > (`NpcProfile.homePortSystemId`) in place of the arbitrary `(index % 20) + 1` seed that
+   > had frozen six of them at rim systems with no Cantina for an entire career.
+   > `rulesFingerprint` moves `cbb087860825aa35` → `2f93098dc9ab15f0`;
+   > `instrumentFingerprint` does NOT (unmoved at `5c230e99648cddee`), so the attribution is
+   > single-arm. SIX OF TEN ROWS MOVED — fleet, explorer, gambler, greedy, smuggler, veteran;
+   > fighter, trader and trader-degraded byte-identical — PREDICTED IN WRITING BEFORE THE RUN
+   > (`TASKS.md` T-208) with the channel named: `resolveVisitHangout` seats a co-located Dare
+   > dealer with no `isSimulatedCaptain` filter, and the bond hook requires co-location.
+   > Movement is small in every headline (fleet `tourOneClearRate` 0.6329 → 0.6348). Gate
+   > PASS, 0 invariant violations, nothing tuned in response. `CURRENT_SAVE_VERSION` moves
+   > 16 → 17 with `MIGRATIONS[16]`, which re-seeds a carried save's quest captains through the
+   > same rule the two loader paths read.
+   > Before that: **`docs/balance/baseline-t206-captain-voice.json`** (1,000
+   > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-206 2026-08-05 — a
+   > CONTENT-ONLY capstone shipping the cast's authored VOICE: `tableTalk` and the four
+   > `catchphrases` slots for the 27 captains T-205 left on its `VOICE_AUTHORING_PENDING`
+   > worklist, which T-206 deletes along with the branch that read it, so voice is now
+   > required of all 30 `NPC_PROFILES` unconditionally. `rulesFingerprint` moves
+   > `5ae9a5d473827024` → `cbb087860825aa35` (content is hashed wholesale, so authored prose
+   > moves it even with no reader until T-207); `instrumentFingerprint` does NOT (unmoved at
+   > `5c230e99648cddee`). **EVERY POLICY ROW IS BYTE-IDENTICAL** — `balance:diff` reported
+   > "NOTHING MOVED. Every compared field is equal on both sides" — PREDICTED IN WRITING
+   > BEFORE THE RUN (`TASKS.md` T-206), where a moved row was pre-committed as a finding to
+   > escalate rather than something to re-baseline around. Gate PASS, 0 invariant violations.
+   > `CURRENT_SAVE_VERSION` unmoved at 16 (re-read live at `packages/engine/src/save.ts:562`);
+   > no persisted shape changed, so no migration is owed.
+   > Before that: **`docs/balance/baseline-t204-cantina-rename.json`** (1,000
+   > seeds × 120 days × 8 policies = 8,000 runs, re-pinned at T-204 2026-08-05 — a
+   > TEXT-ONLY capstone shipping the player-facing "Hangout" → "Cantina" rename (prose string
+   > values only; no rule, DC, band, threshold or code path changed). `rulesFingerprint` moves
+   > `f33b6af1ee21dffa` → `5ae9a5d473827024` (content is hashed wholesale, so authored prose
+   > moves it); `instrumentFingerprint` does NOT (unmoved at `5c230e99648cddee`).
+   > **EVERY POLICY ROW IS BYTE-IDENTICAL** — `balance:diff` reported "NOTHING MOVED. Every
+   > compared field is equal on both sides" — which was PREDICTED IN WRITING BEFORE THE RUN
+   > (`TASKS.md` T-202) and is an INSTRUMENT-GAP NULL RESULT, not a verdict that the new
+   > ceiling is balanced: the sim's gambler is the only policy that plans a Dare and it is
+   > bounded by `GAMBLER_MAX_DARES_PER_DAY = 2`, below the ruled ceiling, so it plays
+   > `1,2,2,2,2,2` hands by tier under BOTH tables. See F-202-1. Gate PASS, 0 invariant
+   > violations. Fleet `tourOneClearRate` 0.6329, median final credits 49,839, ships lost 492,
+   > encounters/run 22.2482 — all unmoved.
+   > Before that: **`docs/balance/baseline-t197-hangout-caps.json`** (1,000 seeds
+   > × 120 days × 8 policies = 8,000 runs, re-pinned at T-197 2026-08-05 — the M17
+   > MILESTONE CLOSER: all seven Hangout venues went free and two daily caps replaced the
+   > die (`docs/DAWN-HAND-REDESIGN.md` §3/§4a/§4b). **Both fingerprints move**, so unlike
+   > the T-196a/T-196b pair this is not a clean single-arm attribution — stated in the
+   > predictions BEFORE the merge ran, not discovered after. PREDICTED AND HELD: the
+   > `gambler` is the largest mover and its credits rise (median 81,667 → 82,965) on the
+   > freed best die; `hangoutPlay.failedVisits` stays 0 on every row (4,445 visits at the
+   > capstone horizon), which is the mechanical proof both cap mirrors are right. PREDICTED
+   > AND CONTRADICTED: the smuggler and trader were predicted to BOTH move over a 120-day
+   > horizon; `trader` came back byte-identical and `trader-degraded` moved instead.
+   > Fleet `tourOneClearRate` 0.6342 → 0.6329, median final credits UNMOVED at 49,839,
+   > ships lost 487 → 492. The fighter row is byte-identical — see the status banner for why
+   > that is a NULL RESULT about the instrument rather than a verdict on the pool.
+   > Before that: **`docs/balance/baseline-t196b-instruments.json`** (1,000 seeds
+   > × 120 days × 8 policies = 8,000 runs, re-pinned at T-196b 2026-08-05 — the M17 arm-2
+   > capstone: the eight sim policies and the protocol enumerator stopped treating the nine
+   > freed action types as die spends (`docs/DAWN-HAND-REDESIGN.md` §3), so the ruleset is
+   > unmoved and only `instrumentFingerprint` changes. PREDICTED BEFORE THE RUN (TASKS.md
+   > T-196b) and held: NPC-side rows near-still
+   > (`npcSpecialEquipmentPurchasesPerRun` −0.1%), and the BREADTH prediction — seven of
+   > eight policy rows move against arm 1's two, with `greedy` the named control that does
+   > not. (That prediction's headline read "all eight"; its own pre-registered
+   > counter-evidence named `greedy`, so seven is the number it was reaching for and the
+   > number that landed. Corrected in TASKS.md T-196b rather than rewritten in place.)
+   > Fleet `tourOneClearRate` 0.6305 → 0.6342, median final credits 49,517 → 49,839
+   > (+0.7%), ships lost 465 → 487. The task block's own "median credits UP again" guess was
+   > CONTRADICTED at row level — five of seven moved rows fall — and the pre-registered
+   > prediction that `planCaptainOverhead` losing its throttle would push credits down is
+   > what actually held. **The fleet medians rise anyway, and the reason is the row nothing
+   > predicted: the FIGHTER carries the arm alone** (clear rate 0.499 → 0.603, median
+   > credits 45,551 → 82,671), because it is the policy whose day the dawn hand rationed
+   > hardest — a three-planner shopping chain on top of a sign→travel and a combat. Full
+   > reconciliation in TASKS.md T-196b's Delivered block.)
+   > Before that, `docs/balance/baseline-t196a-free-actions.json` (1,000 seeds
+   > × 120 days × 8 policies = 8,000 runs, re-pinned at T-196a 2026-08-04 — the M17 arm-1
+   > capstone: nine administrative action types stopped costing a dawn die
+   > (`docs/DAWN-HAND-REDESIGN.md` §3), with the instruments deliberately left budgeting for
+   > them so T-196b's arm measures the exploitation separately. PREDICTED BEFORE THE RUN and
+   > held: NPC-side rows near-still (`npcSpecialEquipmentPurchasesPerRun` +0.1%), and exactly
+   > two policy rows move — `explorer` and `smuggler`, the only two that queue `Explore`.
+   > Fleet `tourOneClearRate` 0.6320 → 0.6305, median final credits 49,729 → 49,517 (−0.4%),
+   > ships lost 436 → 465 (+6.7%), all of the last carried by those two rows.)
+   > Before that, `docs/balance/baseline-t199-pacifist.json` (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at T-199 2026-08-04 — the F-150-2 capstone:
+   > the shared `planPacifistCombat` no longer plays one stance against an unaffordable tribute,
+   > `smugglerPolicy` gains the Explore recovery guard T-150 had to back out, and the rim-strand
+   > class gets a shared anti-idle move. PREDICTED BEFORE THE RUN and held: all eight rows move
+   > except `greedy`, which never reaches the changed planner. Fleet deltas are small —
+   > `tourOneClearRate` 0.6310 → 0.6320, median final credits 50,813 → 49,729 (−2.1%), ships lost
+   > 411 → 436 (+6.1%, and the `fighter` row alone falls 14 → 8 on its new crippled repair). The
+   > change it exists for is `assertNoIncomeStall`: **7 violations → 0** at 1,000 seeds × 35 days).
+   > Before that, `docs/balance/baseline-t195-dawn-dice.json` (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at T-195 2026-08-04 — the dawn-hand travel-die
+   > bake-off; all eight policies moved, a real and intended broad easing — see the standing
+   > amendment above for the exact deltas and the two seeded tests flagged for possible re-tuning).
+   > Before that, `docs/balance/baseline-t188-orbital-3d.json` (re-pinned at T-188 2026-08-04 —
+   > proven inert for T-188's own changes by isolated bisect; its `fleet`/`veteran` movement was
+   > T-161's already-accepted `veteranPolicy` fix getting its first capstone). Before that,
+   > `docs/balance/baseline-t160-dealer-fix.json` (re-pinned at T-160 2026-08-02 — the F-137-1
+   > capstone; the Liar's Dice OPENING FLOOR ships, which moves exactly the `gambler` and
+   > `fleet` rows against `t182-reroll-fix` — predicted in writing before the sweep ran).
+   > `baseline-t182-reroll-fix` (re-pinned at T-182 2026-08-02 — the F-156-1
+   > `spendDie` capstone; `rulesFingerprint` moved, so a capstone was owed, but
+   > `balance:diff` from `n13-shipped` reports NOTHING MOVED, so that file and
+   > `n13-shipped` describe the same 8,000 careers).
+   > `baseline-n13-shipped` (re-pinned at T-156 2026-08-02 — the N13
+   > dawn-hand-parity capstone; the cast's checks now spend from a virtual hand, which
+   > moves ALL NINE rows against `t150-postfix`, so that file no longer describes HEAD).
+   > `baseline-n13-control.json` and `baseline-n13-pre.json` sit beside it as N13's other
+   > two ARMS — **grading evidence, explicitly NOT baselines** (the `baseline-n4-control`
+   > precedent). `baseline-t150-postfix` (re-pinned at T-150 2026-08-01 — the M4a–M4f
+   > post-fix capstone; F-116-1's recovery guard and F-123-3's roaming-dealer stake
+   > carry-forward move exactly the `explorer`, `gambler` and `fleet` rows against
+   > `t148-roster-ladder`),
+   > `baseline-t148-roster-ladder` (re-pinned at T-148 2026-08-01 — M4e added the
+   > 42-seat roster, the unlock ladder and the fifteen completion deeds, which moves exactly
+   > the `gambler` and `fleet` rows against `t137-liars-dice`),
+   > `baseline-t137-liars-dice` (re-pinned at T-137 2026-07-31 — M4d replaced the
    > opposed-d20 Dare with the Liar's Dice scene, which moves exactly the `gambler` and
-   > `fleet` rows against `t133-loanband`, so `baseline-t131-explore-ap` no longer
-   > describes HEAD).
+   > `fleet` rows against `t133-loanband`),
    > `baseline-t131-explore-ap` (re-pinned at T-131 2026-07-31 — owner ruling D1
    > repriced Explore bands 3-4 from calendar days to extra dice, which moved the
    > `explorer`, `smuggler` and `fleet` rows),

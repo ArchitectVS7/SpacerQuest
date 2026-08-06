@@ -85,7 +85,6 @@ function haulerDay(state: GameState): GameState {
         type: 'Trade',
         action: 'buy-fuel',
         fuelAmount: units,
-        spendDie: die,
       }).state;
     }
   }
@@ -112,7 +111,6 @@ function haulerDay(state: GameState): GameState {
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: 0,
-        spendDie: signDie,
       }).state;
     }
     const travelDie = freeDie(next);

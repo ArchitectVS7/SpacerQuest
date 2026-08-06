@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 
 // T-1604a · `ActionBlocked` UI/protocol parity — the `active-encounter` mirror.
 //
@@ -10,7 +11,7 @@ import { test, expect, type Page } from '@playwright/test';
 //   destination-locked → nemesis-crossing.spec.ts (sealed systems are not even
 //                        rendered as starmap nodes while the crossing is locked)
 //   no-hangout         → hangout.spec.ts (the hangout-toggle launcher is present
-//                        at Sun-3 and absent one hop away)
+//                        at Sol-3 and absent one hop away)
 //   career-ended       → nemesis-crossing.spec.ts / nemesis-ending.spec.ts (the
 //                        ending screen REPLACES the cockpit; only ending-return)
 //
@@ -54,12 +55,20 @@ const BLOCKABLE = [
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 async function newGameSeed(page: Page, seed: number): Promise<void> {
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(seed));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
 }
 
 test('an active encounter leaves no cockpit affordance that the engine would refuse', async ({

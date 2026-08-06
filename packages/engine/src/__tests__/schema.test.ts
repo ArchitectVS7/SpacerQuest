@@ -52,18 +52,18 @@ function fixtureEncounter(): EncounterState {
 const VARIED_SCRIPT: PlayerAction[][] = [
   [
     { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
-    { type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 1 },
+    { type: 'Trade', action: 'sign-contract', contractIndex: 0 },
     { type: 'Travel', destinationId: 3, spendDie: 2 },
   ],
   [
-    { type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: 0 },
-    { type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1, spendDie: 1 },
+    { type: 'Shipyard', action: 'repair', repairMode: 'all' },
+    { type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1 },
     { type: 'Trade', action: 'pay-debt', amount: 50 },
   ],
   [
     { type: 'Explore', spendDie: 0 },
     { type: 'Travel', destinationId: 4, spendDie: 1 },
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 2 },
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 10 },
   ],
 ];
 
@@ -75,12 +75,12 @@ const VARIED_SCRIPT: PlayerAction[][] = [
 function driveDiverseRun(seed: number): GameState {
   let state = createInitialState(seed);
 
-  // Day 1: the Sun-3 guild-auditor storylet is deterministically available at
+  // Day 1: the Sol-3 guild-auditor storylet is deterministically available at
   // the start system — exercises the Storylet* event family — plus explore and
   // travel to open the trade/travel families.
   state = advanceDay(state, [
     { type: 'Storylet', storyletId: 'port.sun3.guild-auditor', choiceId: 'argue', spendDie: 0 },
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 40, spendDie: 1 },
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 40 },
     { type: 'Explore', spendDie: 2 },
     { type: 'Travel', destinationId: 2, spendDie: 3 },
   ]).state;
@@ -187,7 +187,11 @@ describe('GameStateSchema — accepts real serialized states', () => {
     {
       reason: 'die-already-spent',
       actions: [
-        { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
+        // T-196a: `buy-fuel` used to be the die burner here; M17 made it a FREE
+        // ACTION, so it can no longer spend die 0. `haggle` is the trade desk's
+        // one surviving Main Action and spends the die it is handed, which is
+        // exactly what this case needs to reach 'die-already-spent'.
+        { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
         { type: 'Explore', spendDie: 0 },
       ],
     },
@@ -425,7 +429,7 @@ describe('T-1303 · HangoutEvent + new DispositionChanged reasons round-trip', (
         type: 'HangoutEvent',
         day: 1,
         venue: 'rumor',
-        rumors: ['Word is Iron Vex is keeping quiet around Sun-3.'],
+        rumors: ['Word is Iron Vex is keeping quiet around Sol-3.'],
       },
       {
         type: 'DispositionChanged',
@@ -504,7 +508,108 @@ describe('GameStateSchema — T-1306 crew + dice progression', () => {
   it('validates the Reroll and Crew PlayerActions', () => {
     expect(() => validatePlayerAction({ type: 'Reroll', dieIndex: 2 })).not.toThrow();
     expect(() =>
-      validatePlayerAction({ type: 'Crew', action: 'hire', roleId: 'crew-second', spendDie: 0 }),
+      validatePlayerAction({ type: 'Crew', action: 'hire', roleId: 'crew-second' }),
+    ).not.toThrow();
+  });
+});
+
+/**
+ * T-196a · `spendDie` IS GONE FROM THE SCHEMA for the nine M17 Free Actions
+ * (docs/DAWN-HAND-REDESIGN.md §3), not merely ignored by the resolvers. This is the
+ * mechanical proof of that half of the acceptance: a stale caller's field is
+ * STRIPPED by zod rather than carried through, so it cannot silently reappear in a
+ * persisted command log or a replay fixture. The `haggle` arm — the trade desk's one
+ * surviving Main Action — must KEEP it, which is what makes this a real test rather
+ * than a blanket "strip everything".
+ */
+describe('T-196a · the freed actions neither require nor accept spendDie', () => {
+  const STRIPPED: { type: string; action: string; [key: string]: unknown }[] = [
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 4 },
+    { type: 'Trade', action: 'sign-contract', contractIndex: 0 },
+    { type: 'Trade', action: 'abandon-contract' },
+    { type: 'Shipyard', action: 'repair', repairMode: 'all' },
+    { type: 'Shipyard', action: 'buy-cargo-pods', quantity: 2 },
+    { type: 'Shipyard', action: 'buy-component-tier', component: 'weapons', tier: 3 },
+    { type: 'Shipyard', action: 'buy-special-equipment', equipment: 'CLOAKER' },
+    { type: 'Crew', action: 'hire', roleId: 'crew-second' },
+    { type: 'Crew', action: 'dismiss', roleId: 'crew-second' },
+    { type: 'Port', action: 'buy', systemId: 1 },
+  ];
+
+  for (const clean of STRIPPED) {
+    it(`${clean.type} · ${clean.action} — parses without a die, and strips a stale one`, () => {
+      // NEITHER REQUIRES it…
+      expect(validatePlayerAction(clean)).toEqual(clean);
+      // …NOR ACCEPTS it: a stale call site's field does not survive the parse.
+      const stale = validatePlayerAction({ ...clean, spendDie: 3 }) as Record<string, unknown>;
+      expect(stale).toEqual(clean);
+      expect('spendDie' in stale).toBe(false);
+    });
+  }
+
+  it('Trade · haggle KEEPS its spendDie — the die IS the Trade check', () => {
+    const haggle = { type: 'Trade', action: 'haggle', contractIndex: 1, spendDie: 2 };
+    expect(validatePlayerAction(haggle)).toEqual(haggle);
+  });
+
+  // T-197 · THE HANGOUT JOINS THE STRIPPED SET, all seven venues at once
+  // (docs/DAWN-HAND-REDESIGN.md §3 as amended 2026-08-04). It is asserted here
+  // rather than in the loop above because `VisitHangout` discriminates on `venue`
+  // rather than on `action`, so it does not fit that fixture's shape.
+  const HANGOUT_VENUES = [
+    'dare',
+    'meet',
+    'befriend',
+    'insult',
+    'rumor',
+    'borrow',
+    'repay',
+  ] as const;
+
+  for (const venue of HANGOUT_VENUES) {
+    it(`VisitHangout · ${venue} — parses without a die, and strips a stale one`, () => {
+      const clean = { type: 'VisitHangout', venue, opponentId: 'npc-iron-vex' };
+      expect(validatePlayerAction(clean)).toEqual(clean);
+      const stale = validatePlayerAction({ ...clean, spendDie: 3 }) as Record<string, unknown>;
+      expect(stale).toEqual(clean);
+      expect('spendDie' in stale).toBe(false);
+    });
+  }
+
+  it('Dare · peek KEEPS its spendDie — the one check inside an open hand', () => {
+    // The counterpart that makes the sweep above a real test rather than a blanket
+    // strip: Peek stayed a Main Action by ruling (§3), so its die survives.
+    const peek = { type: 'Dare', move: 'peek', spendDie: 1 };
+    expect(validatePlayerAction(peek)).toEqual(peek);
+  });
+
+  it('the nested Trade union did not break the outer discriminator', () => {
+    // The Trade member is a `discriminatedUnion('action', …)` nested inside the
+    // outer `discriminatedUnion('type', …)` (zod rejects duplicate discriminator
+    // values). Guard that the outer union still rejects an unknown type, and that
+    // an unknown Trade sub-action is rejected too.
+    expect(() => validatePlayerAction({ type: 'Teleport' })).toThrow(z.ZodError);
+    expect(() => validatePlayerAction({ type: 'Trade', action: 'bribe' })).toThrow(z.ZodError);
+  });
+});
+
+// T-197 · THE TWO NEW PLAYER KEYS ARE NON-OPTIONAL, which is what makes the
+// v15->v16 migration OWED rather than optional: without the backfill, every
+// pre-T-197 save fails this schema at load (docs/DAWN-HAND-REDESIGN.md §4a/§4b).
+describe('T-197 · PlayerStateSchema requires both daily Hangout caps', () => {
+  for (const key of ['socialPlaysRemaining', 'dareRoundsToday'] as const) {
+    it(`rejects a player missing ${key}`, () => {
+      const state = JSON.parse(serializeState(createInitialState(1))) as {
+        player: Record<string, unknown>;
+      };
+      delete state.player[key];
+      expect(() => validateGameState(state)).toThrow(z.ZodError);
+    });
+  }
+
+  it('accepts a player carrying both', () => {
+    expect(() =>
+      validateGameState(JSON.parse(serializeState(createInitialState(1)))),
     ).not.toThrow();
   });
 });

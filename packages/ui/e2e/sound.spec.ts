@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 
 // T-310 sound design. These tests exercise the mixer + autoplay policy through
 // the real UI (never the audio API directly). Playwright's Chromium has WebAudio,
@@ -15,6 +16,10 @@ test.beforeEach(async ({ page }) => {
       window.sessionStorage.setItem('sq.test.cleared', '1');
     }
   });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 test('no autoplay-policy console errors on first interaction', async ({ page }) => {
@@ -84,12 +89,26 @@ test('volume sliders work and persist', async ({ page }) => {
 
   await set('vol-master', 'sq.vol.master', '0.42');
   await set('vol-sfx', 'sq.vol.sfx', '0.9');
+  // T-185 · The score's own fader. It is the FOURTH bus, and it is the one that
+  // caught `setVolume`'s bug: the persistence key used to be picked by a ternary
+  // chain ending `: KEY_AMBIENT`, so every bus added after `ambient` wrote its
+  // value into `sq.vol.ambient`. The assertion below that `sq.vol.ambient` is
+  // still untouched at this point is the one that would have failed.
+  await set('vol-music', 'sq.vol.music', '0.33');
+  expect(
+    await page.evaluate(() => window.localStorage.getItem('sq.vol.ambient')),
+    'the Music slider wrote into the Ambient key',
+  ).toBeNull();
   await set('vol-ambient', 'sq.vol.ambient', '0.1');
+  // …and the music value survived the ambient write, i.e. they are separate keys
+  // in both directions.
+  expect(await page.evaluate(() => window.localStorage.getItem('sq.vol.music'))).toBe('0.33');
 
   // Reopen the Settings panel and confirm the sliders reflect the persisted values.
   await page.getByTestId('settings-toggle').click(); // close
   await page.getByTestId('settings-toggle').click(); // reopen
   await expect(page.getByTestId('vol-master')).toHaveValue('0.42');
   await expect(page.getByTestId('vol-sfx')).toHaveValue('0.9');
+  await expect(page.getByTestId('vol-music')).toHaveValue('0.33');
   await expect(page.getByTestId('vol-ambient')).toHaveValue('0.1');
 });

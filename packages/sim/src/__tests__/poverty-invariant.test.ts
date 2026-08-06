@@ -197,7 +197,7 @@ function planEscapeStep(state: GameState): PlayerAction | null {
     //    jump to your own system is never advertised, so such a contract can
     //    never be discharged. See the board filter below for how one is acquired.
     if (needed > ship.maxFuel || contract.destination === here) {
-      return { type: 'Trade', action: 'abandon-contract', spendDie };
+      return { type: 'Trade', action: 'abandon-contract' };
     }
     if (ship.fuel >= needed) {
       return { type: 'Travel', destinationId: contract.destination, spendDie };
@@ -207,7 +207,7 @@ function planEscapeStep(state: GameState): PlayerAction | null {
   const fuelPrice = state.market.localFuelPrice || 5;
   const fuelAmount = Math.min(ship.maxFuel - ship.fuel, Math.floor(player.credits / fuelPrice));
   if (fuelAmount >= 1) {
-    return { type: 'Trade', action: 'buy-fuel', fuelAmount, spendDie };
+    return { type: 'Trade', action: 'buy-fuel', fuelAmount };
   }
 
   if (!contract && state.market.manifestBoard.length > 0) {
@@ -231,7 +231,7 @@ function planEscapeStep(state: GameState): PlayerAction | null {
       }
     });
     if (cheapestIndex !== null) {
-      return { type: 'Trade', action: 'sign-contract', contractIndex: cheapestIndex, spendDie };
+      return { type: 'Trade', action: 'sign-contract', contractIndex: cheapestIndex };
     }
   }
 
@@ -292,6 +292,13 @@ function advertisementViolation(legal: LegalActions, action: PlayerAction): stri
     return `${verbLabel(action)} is not advertised`;
   }
   for (const [key, param] of Object.entries(spec.params)) {
+    // T-196b · THE T-196a ESCAPE HATCH IS GONE, and its removal makes this checker
+    // STRICTLY STRONGER rather than more permissive. T-196a left `legalActions`
+    // advertising a `spendDie` on the nine M17 Free Actions (§3) that the engine's
+    // shapes no longer carry, so this loop needed a `dieIsVestigial` shim to accept
+    // an omitted die. T-196b stopped advertising the field on those nine, so there
+    // is nothing left to excuse: every advertised param must now be satisfied, on
+    // every verb, with no exemption — including `Trade/haggle`, whose die is real.
     if (!paramSatisfied(param, fields[key])) {
       return `${verbLabel(action)} param ${key}=${JSON.stringify(fields[key])} is outside the advertised ${param.kind} domain`;
     }
@@ -464,7 +471,7 @@ interface AdversarialState {
   dawn: GameState;
 }
 
-/** A · INDEBTED TO PENNY WISE. A real borrow at the real desk (Sun-3 — the home
+/** A · INDEBTED TO PENNY WISE. A real borrow at the real desk (Sol-3 — the home
  *  hall, and since T-121 one of fourteen `hasHangout` ports) for the maximum
  *  principal, then LOAN_TERM_DAYS + 6 real
  *  dusks so the ENGINE itself accrues the interest and flips `status` to
@@ -478,7 +485,6 @@ function buildIndebted(seed: number, systemId: number): AdversarialState {
     type: 'VisitHangout',
     venue: 'borrow',
     amount: LOAN_MAX_PRINCIPAL,
-    spendDie: 0,
   }).state;
 
   for (let i = 0; i < LOAN_TERM_DAYS + 6; i += 1) {
@@ -621,7 +627,6 @@ describe('T-1605b · anti-poverty-trap invariant over adversarial states', () =>
         type: 'VisitHangout',
         venue: 'borrow',
         amount: LOAN_MAX_PRINCIPAL,
-        spendDie: 0,
       });
       expect(
         retry.events.some(

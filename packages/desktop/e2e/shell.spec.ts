@@ -12,6 +12,7 @@ import {
   openSettings,
   payDebt,
   presenceLog,
+  skipOpeningMarker,
   startCareer,
   steamLog,
   tempDir,
@@ -109,11 +110,14 @@ test.describe('T-1701a · the Electron shell', () => {
       Object.keys((window as unknown as { sqDesktop: object }).sqDesktop).sort(),
     );
     // T-1701b added `about`; T-1702a added `unlockAchievement`; T-1702b added
-    // `setPresence`. The list is asserted EXACTLY so the three twins
-    // (`preload.ts`, `storage.ts`'s `DesktopStorageBridge`, this) cannot drift —
-    // which is why each task UPDATES it rather than loosening it.
+    // `setPresence`; T-141 added `appendPlaytestLog` (the opt-in playtest log's
+    // desktop sink, `docs/PLAYTEST-TELEMETRY_SPEC.md` §4). The list is asserted
+    // EXACTLY so the three twins (`preload.ts`, `storage.ts`'s
+    // `DesktopStorageBridge`, this) cannot drift — which is why each task
+    // UPDATES it rather than loosening it.
     expect(bridgeMethods).toEqual([
       'about',
+      'appendPlaytestLog',
       'dir',
       'getItem',
       'keys',
@@ -611,9 +615,239 @@ test.describe('T-1702b · Steam Cloud & rich presence', () => {
         { key: 'day', value: '2' },
       ]);
 
-    // …and the quit clears it, so a stale "Day 2 — Sun-3" does not outlive the
+    // …and the quit clears it, so a stale "Day 2 — Sol-3" does not outlive the
     // process on the player's friends list.
     await app.close();
     expect(presenceLog(steamFakeLog).at(-1)).toEqual({ key: 'steam_display', value: null });
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+test.describe('T-141 · opt-in playtest logging', () => {
+  // `docs/PLAYTEST-TELEMETRY_SPEC.md` §4 names the desktop store as the shipping
+  // target: "an append-only JSONL file under the existing
+  // `app.getPath('userData')` directory … Rotate per session". The unit suites
+  // own the module (`src/__tests__/playtest-log.test.ts`) and the bridge
+  // (`packages/ui/src/__tests__/storage.test.ts`); THIS owns the link between
+  // them — the real preload, the real sender-validated IPC channel, the real
+  // file — driven by a player who opens Settings and presses the toggle.
+
+  test('writes nothing until the player opts in, then appends the real action stream', async () => {
+    const saveDir = join(tempDir('saves'), 'saves');
+    const userDataDir = tempDir('userdata');
+    const logDir = join(tempDir('logs'), 'logs');
+
+    const { app, page } = await launch({ saveDir, userDataDir, logDir });
+    await startCareer(page, 141);
+
+    // --- OFF means NOTHING ON DISK ------------------------------------------
+    // The OFF state is now ESTABLISHED through the real toggle rather than
+    // assumed from the build default. Found at T-185: the owner's 2026-08-03
+    // directive flipped the default to ON for the pre-public internal build
+    // (`packages/ui/src/playtestLog.ts`'s header; spec §3's OFF is to be
+    // restored before public release) and this test still asserted the old
+    // default, so it was red on a clean tree. Driving the control instead of
+    // trusting the default makes the claim — "off writes nothing" — true under
+    // either default, and it survives the revert unchanged.
+    await openSettings(page);
+    const toggle = page.getByTestId('set-playtest-logging');
+    if ((await toggle.getAttribute('aria-pressed')) === 'true') await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await closeSettings(page);
+
+    await payDebt(page, 100);
+    expect(existsSync(logDir)).toBe(false);
+
+    await openSettings(page);
+    // The sentence is SPELLED OUT here rather than imported from
+    // `packages/ui/src/playtestLog.ts`, unlike the web spec's copy: this package
+    // must not grow a source dependency on the cockpit. A literal is safe
+    // BECAUSE it fails loudly on drift — the golden in
+    // `packages/ui/src/__tests__/playtest-log.test.ts` is the authority, and if
+    // the spec's wording ever changes, both this and that must move together.
+    await expect(page.getByTestId('playtest-disclosure')).toHaveText(
+      'Gameplay actions only — no personally identifying information, no location.',
+    );
+
+    // --- the player opts in --------------------------------------------------
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await closeSettings(page);
+
+    // --- a real action, taken the way a player takes it ---------------------
+    await payDebt(page, 100);
+
+    // The file is named for the session and appended line by line, so the last
+    // line before a crash is already on disk.
+    await expect
+      .poll(() => (existsSync(logDir) ? readdirSync(logDir) : []), { timeout: 10_000 })
+      .toHaveLength(1);
+    const [file] = readdirSync(logDir);
+    expect(file).toMatch(/^playtest-[A-Za-z0-9-]{1,64}\.jsonl$/);
+
+    const entries = readFileSync(join(logDir, file), 'utf8')
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { kind: string; day: number; action?: { type: string } });
+    expect(entries).toHaveLength(1); // the action taken AFTER opting in, and only it
+    expect(entries[0].kind).toBe('action');
+    expect(entries[0].day).toBe(1);
+    expect(entries[0].action?.type).toBe('Trade');
+
+    // --- and a flagged moment lands in the same file -------------------------
+    await openSettings(page);
+    await page.getByTestId('playtest-flag-input').fill('the debt row read oddly');
+    await page.getByTestId('playtest-flag').click();
+    await closeSettings(page);
+
+    await expect
+      .poll(() => readFileSync(join(logDir, file), 'utf8').trimEnd().split('\n').length, {
+        timeout: 10_000,
+      })
+      .toBe(2);
+    const flagged = JSON.parse(
+      readFileSync(join(logDir, file), 'utf8').trimEnd().split('\n')[1],
+    ) as { kind: string; note: string };
+    expect(flagged).toMatchObject({ kind: 'annotation', note: 'the debt row read oddly' });
+
+    // --- no PII: the OS username never reaches the file ---------------------
+    // Spec §2 excludes it outright, and the session id is minted fresh rather
+    // than derived from anything about the machine.
+    const raw = readFileSync(join(logDir, file), 'utf8');
+    expect(raw).not.toContain(userDataDir);
+    expect(raw).not.toContain(saveDir);
+
+    await app.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-185 · THE SAME AUDIO CLAIM, INSIDE THE REAL ELECTRON RENDERER.
+//
+// The owner's UAT finding ("there is just zero feedback") came from a session in
+// the DESKTOP shell, and its Accept names the desktop build specifically — so the
+// claim is made here and not only against the browser (`packages/ui/e2e/
+// sound-audible.spec.ts`, which carries the full battery). Chromium in Electron
+// is not Chromium in Playwright: the shell sets its own switches, its own window
+// flags and `backgroundThrottling`, and the autoplay policy is exactly the kind
+// of thing an embedder changes.
+//
+// ONE test, deliberately: this suite is serial and slow.
+//
+// It observes the SCHEDULE, never the samples. CI runs this job under `xvfb-run`
+// on an ubuntu runner with no sound device at all, so anything reading real
+// audio output would be green here and a mystery there.
+// ---------------------------------------------------------------------------
+test.describe('T-185 · audio in the shell', () => {
+  test('the first gesture unlocks the context and schedules a real signal', async () => {
+    const saveDir = join(tempDir('saves'), 'saves');
+    const userDataDir = tempDir('userdata');
+
+    const { app, page } = await launch({ saveDir, userDataDir });
+    await windowShown(app);
+
+    // T-200 · Sign off the opening marker BEFORE the recorder below exists, not
+    // after: `dismissOpeningMarker` PERSISTS (`store.ts` writes the record
+    // beside the save file), so a click here survives the reload that follows
+    // and the marker never reappears — but the click itself is a real
+    // `pointerdown` on `window`, which is exactly what `sound.ts`'s capture-phase
+    // listener treats as a gesture. Taking it now, before `__sqAudio` exists to
+    // observe it, keeps the die click below the FIRST gesture the recorder ever
+    // sees — the die click is not literally the page's first gesture (the
+    // Guild dispatch already claimed that one), only the first the test can see,
+    // which is the only claim `read()` is actually able to make either way.
+    await skipOpeningMarker(page);
+
+    // The recorder must be installed BEFORE the cockpit's modules run, and
+    // `launch()` hands back a window that has already loaded — so install, then
+    // reload. Prototype patches only; zero test hooks reach the cockpit itself,
+    // which is `src/main.ts`'s standing rule.
+    await page.addInitScript(() => {
+      const rec = {
+        ctx: null as AudioContext | null,
+        starts: 0,
+        peaks: [] as number[],
+        reachedDestination: false,
+      };
+      (window as unknown as { __sqAudio: typeof rec }).__sqAudio = rec;
+
+      const P = AudioParam.prototype as unknown as Record<string, (...a: never[]) => unknown>;
+      const origRamp = P.exponentialRampToValueAtTime;
+      P.exponentialRampToValueAtTime = function (this: AudioParam, ...args: never[]) {
+        if (typeof args[0] === 'number') rec.peaks.push(args[0]);
+        return origRamp.apply(this, args);
+      };
+
+      const AN = AudioNode.prototype as unknown as Record<string, (...a: never[]) => unknown>;
+      const origConnect = AN.connect;
+      AN.connect = function (this: AudioNode, ...args: never[]) {
+        const dest = args[0] as unknown;
+        if (rec.ctx && dest === rec.ctx.destination) rec.reachedDestination = true;
+        return origConnect.apply(this, args);
+      };
+
+      for (const name of ['OscillatorNode', 'AudioBufferSourceNode'] as const) {
+        const proto = (
+          window as unknown as Record<
+            string,
+            { prototype: Record<string, (...a: never[]) => unknown> }
+          >
+        )[name].prototype;
+        if (!Object.prototype.hasOwnProperty.call(proto, 'start')) continue;
+        const orig = proto.start;
+        proto.start = function (this: AudioScheduledSourceNode, ...args: never[]) {
+          rec.starts++;
+          return orig.apply(this, args);
+        };
+      }
+
+      const Ctor = window.AudioContext;
+      class Recorded extends Ctor {
+        constructor(...args: never[]) {
+          super(...(args as []));
+          rec.ctx = this;
+        }
+      }
+      (window as unknown as { AudioContext: unknown }).AudioContext = Recorded;
+    });
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+
+    const read = () =>
+      page.evaluate(() => {
+        const r = (
+          window as unknown as {
+            __sqAudio: {
+              ctx: AudioContext | null;
+              starts: number;
+              peaks: number[];
+              reachedDestination: boolean;
+            };
+          }
+        ).__sqAudio;
+        return {
+          state: r.ctx?.state ?? null,
+          starts: r.starts,
+          maxPeak: r.peaks.length ? Math.max(...r.peaks) : 0,
+          reachedDestination: r.reachedDestination,
+        };
+      });
+
+    // Nothing before the gesture — the autoplay policy `sound.ts` documents,
+    // and the invariant that broke when T-185 first added the boot-time bed.
+    expect((await read()).state, 'a context existed before any user gesture').toBeNull();
+
+    // One real click on a real control.
+    await page.getByTestId('die').first().click();
+    await page.waitForTimeout(600);
+
+    const after = await read();
+    expect(after.state, 'the AudioContext never reached `running` in the shell').toBe('running');
+    expect(after.starts, 'nothing was scheduled to play in the shell').toBeGreaterThan(0);
+    expect(after.maxPeak, 'every scheduled envelope peaked at zero').toBeGreaterThan(0.001);
+    expect(after.reachedDestination, 'nothing was connected to the output').toBe(true);
+
+    await app.close();
   });
 });

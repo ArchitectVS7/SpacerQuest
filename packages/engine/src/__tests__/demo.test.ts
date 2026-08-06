@@ -30,7 +30,7 @@ import { DayPhase, type EarnedDeedState, type GameEvent, type GameState } from '
 // the gate itself.
 // ---------------------------------------------------------------------------
 
-/** A DAY-phase state at Sun-3 in the given edition, with an optional pre-day
+/** A DAY-phase state at Sol-3 in the given edition, with an optional pre-day
  *  mutation (credits, day, crew). Mirrors `crew.test.ts` / `port.test.ts`'s
  *  `dayState` so the three read alike. */
 function dayState(
@@ -142,7 +142,6 @@ describe('T-1703 · the two reachable locks (demo-locked)', () => {
       type: 'Port',
       action: 'buy',
       systemId: state.player.currentSystemId,
-      spendDie: die,
     });
 
     expect(blocked(events)).toEqual([
@@ -170,7 +169,6 @@ describe('T-1703 · the two reachable locks (demo-locked)', () => {
       type: 'Crew',
       action: 'hire',
       roleId: 'crew-second',
-      spendDie: firstUnspent(state),
     });
     expect(blocked(hire.events)).toEqual([
       { type: 'ActionBlocked', day: state.day, actionType: 'Crew', reason: 'demo-locked' },
@@ -182,7 +180,6 @@ describe('T-1703 · the two reachable locks (demo-locked)', () => {
       type: 'Crew',
       action: 'dismiss',
       roleId: 'crew-quartermaster',
-      spendDie: firstUnspent(state),
     });
     expect(blocked(dismiss.events)).toEqual([]);
     expect(dismiss.state.player.crew).toEqual([]);
@@ -198,7 +195,6 @@ describe('T-1703 · the two reachable locks (demo-locked)', () => {
       type: 'Port',
       action: 'buy',
       systemId: state.player.currentSystemId,
-      spendDie: firstUnspent(state),
     });
     expect(blocked(port.events)).toEqual([]);
     expect(port.state.player.ports).toHaveLength(1);
@@ -207,7 +203,6 @@ describe('T-1703 · the two reachable locks (demo-locked)', () => {
       type: 'Crew',
       action: 'hire',
       roleId: 'crew-second',
-      spendDie: firstUnspent(state),
     });
     expect(blocked(crew.events)).toEqual([]);
     expect(crew.state.player.crew).toHaveLength(1);
@@ -225,7 +220,6 @@ describe('T-1703 · the two reachable locks (demo-locked)', () => {
       const { events } = applyPlayerAction(state, {
         type: 'VisitHangout',
         venue,
-        spendDie: firstUnspent(state),
       });
       expect(blocked(events)).toEqual([]);
     }
@@ -241,12 +235,12 @@ describe('T-1703 · the day ceiling (demo-ended)', () => {
     const die = firstUnspent(state);
     const attempts: { action: Parameters<typeof applyPlayerAction>[1]; type: string }[] = [
       {
-        action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 5, spendDie: die },
+        action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 5 },
         type: 'Trade',
       },
       { action: { type: 'Travel', destinationId: 2, spendDie: die }, type: 'Travel' },
       {
-        action: { type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: die },
+        action: { type: 'Shipyard', action: 'repair', repairMode: 'all' },
         type: 'Shipyard',
       },
       {
@@ -254,13 +248,13 @@ describe('T-1703 · the day ceiling (demo-ended)', () => {
         type: 'Storylet',
       },
       { action: { type: 'Explore', spendDie: die }, type: 'Explore' },
-      { action: { type: 'VisitHangout', venue: 'rumor', spendDie: die }, type: 'VisitHangout' },
+      { action: { type: 'VisitHangout', venue: 'rumor' }, type: 'VisitHangout' },
       {
-        action: { type: 'Port', action: 'buy', systemId: 1, spendDie: die },
+        action: { type: 'Port', action: 'buy', systemId: 1 },
         type: 'Port',
       },
       {
-        action: { type: 'Crew', action: 'hire', roleId: 'crew-second', spendDie: die },
+        action: { type: 'Crew', action: 'hire', roleId: 'crew-second' },
         type: 'Crew',
       },
     ];
@@ -288,7 +282,6 @@ describe('T-1703 · the day ceiling (demo-ended)', () => {
       type: 'Crew',
       action: 'dismiss',
       roleId: 'crew-quartermaster',
-      spendDie: firstUnspent(state),
     });
     expect(blocked(events)[0].reason).toBe('demo-ended');
     expect(next.player.crew).toHaveLength(1);
@@ -303,7 +296,6 @@ describe('T-1703 · the day ceiling (demo-ended)', () => {
       type: 'Trade',
       action: 'buy-fuel',
       fuelAmount: 5,
-      spendDie: firstUnspent(state),
     });
     expect(blocked(events)).toEqual([]);
   });
@@ -450,7 +442,6 @@ describe('T-1703 · promoteEdition', () => {
       type: 'Trade',
       action: 'buy-fuel',
       fuelAmount: 5,
-      spendDie: firstUnspent(playable),
     });
     expect(blocked(events)).toEqual([]);
   });

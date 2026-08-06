@@ -8,10 +8,13 @@ import {
   type StarCoordinates,
 } from '@spacerquest/content';
 
-// T-1101 · Real 2D starmap geometry. The content package has no test runner of
-// its own, so the "content test" for the authored coordinates lives here in the
-// engine vitest suite (the established pattern — encounter.test.ts already
-// imports from @spacerquest/content).
+// T-1101 · Real 2D starmap geometry — the "content test" for the authored
+// coordinates.
+//
+// T-164 · IT LANDED HERE BECAUSE THE CONTENT PACKAGE HAD NO TEST RUNNER. It has
+// one now, and this file imports nothing but `@spacerquest/content`, so under
+// `docs/TESTING-STRATEGY.md` Part I it qualifies to move beside its rows. It is
+// on that ruling's migration ledger (F-164-1) rather than in T-164's scope.
 
 const CORE_IDS = Array.from({ length: 14 }, (_, index) => index + 1); // 1–14
 const RIM_IDS = [15, 16, 17, 18, 19, 20];
@@ -65,7 +68,7 @@ describe('Starmap geography (T-1101)', () => {
   });
 
   it('NEMESIS is remote, not home-adjacent (regression for the (0,0) collision)', () => {
-    // NEMESIS (28) sat at (0,0) — identical to Sun-3 (1), one jump from home.
+    // NEMESIS (28) sat at (0,0) — identical to Sol-3 (1), one jump from home.
     expect(STAR_SYSTEMS[28].coordinates).not.toEqual(STAR_SYSTEMS[1].coordinates);
     // Farther from home than the farthest rim port.
     const farthestRim = Math.max(...RIM_IDS.map((id) => distance(1, id)));

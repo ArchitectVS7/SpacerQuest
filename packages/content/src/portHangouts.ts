@@ -138,7 +138,7 @@ export interface HangoutProse {
  * OPTIONALITY (the §2.1 deviation, recorded rather than silently taken): the
  * spec's §2.1 code block types `venues` / `wager` / `venueParams` / `clientele` as
  * REQUIRED, while §2.2 ("every field optional against `DEFAULT_PORT_HANGOUT`") and
- * §2.3 ("Sun-3's row … leaves `wager` and `venueParams` omitted") both require them
+ * §2.3 ("Sol-3's row … leaves `wager` and `venueParams` omitted") both require them
  * to be omittable. The two cannot both hold. Resolved in favour of §2.2/§2.3 — the
  * four parameter fields are optional, `prose` stays required — because §2.3's
  * behaviour-preserving proof depends on omission inheriting today's constant BY
@@ -174,7 +174,7 @@ export interface PortHangout {
 }
 
 /** All seven, in the resolver's own switch order. Reused by the default row and by
- *  Sun-3, so "offers everything" is written once. */
+ *  Sol-3, so "offers everything" is written once. */
 const ALL_HANGOUT_VENUES: readonly HangoutVenueId[] = [
   'dare',
   'meet',
@@ -260,18 +260,18 @@ export const DEFAULT_PORT_HANGOUT: PortHangout = {
   clientele: {},
   // Generic house, so a `hasHangout` port with no row of its own still renders.
   prose: {
-    houseName: 'the Spacers Hangout',
+    houseName: 'the Spacers Cantina',
     tone: 'everyday',
     flavour: {},
   },
 };
 
 /**
- * Sun-3 — the home-port hall (§6.3, T-122's row 1).
+ * Sol-3 — the home-port hall (§6.3, T-122's row 1).
  *
  * THE BEHAVIOUR-PRESERVING ROW. It offers all seven venues and OMITS `wager`,
  * `venueParams` and `clientele` entirely, so every number the resolver reads at
- * Sun-3 resolves through `DEFAULT_PORT_HANGOUT` to the same imported constant it
+ * Sol-3 resolves through `DEFAULT_PORT_HANGOUT` to the same imported constant it
  * read before T-120. Only `prose` is new, and prose is read by no engine assertion.
  * Do not add a parameter here: doing so would make the goldens move.
  */
@@ -282,7 +282,7 @@ const SUN_3_HANGOUT: PortHangout = {
     houseName: 'the Long Table',
     tone: 'everyday',
     roomLine:
-      'The Long Table is half full, the way it always is at Sun-3 — no one here is far from home.',
+      'The Long Table is half full, the way it always is at Sol-3 — no one here is far from home.',
     flavour: {
       dare: 'Someone racks the dice and slides the cup down the boards toward you.',
       meet: 'You get a nod and half a bench; that is how introductions go here.',
@@ -351,9 +351,9 @@ const ALDEBARAN_1_HANGOUT: PortHangout = {
  *
  * THE §6.3 / §6.4 TENSION, RESOLVED IN THE OPEN. §6.3 calls this port "fully
  * generic, deliberately", while §6.4 requires no two ports to share an axis vector
- * AND fixes Sun-3's vector to the default row — so "fully generic" and "distinct
- * from Sun-3" cannot both hold literally. §6.4's own closing sentence settles it:
- * Sun-3 is the one fixed tuple, "which means the other thirteen are the ones that
+ * AND fixes Sol-3's vector to the default row — so "fully generic" and "distinct
+ * from Sol-3" cannot both hold literally. §6.4's own closing sentence settles it:
+ * Sol-3 is the one fixed tuple, "which means the other thirteen are the ones that
  * must move". Altair-3 therefore moves on `clientele` ALONE, which is the one axis
  * no sim policy reads (`rankClientele`'s only reader is the Hangout pane;
  * `planDare` picks the richest in-system dealer without consulting it), so the port
@@ -361,7 +361,7 @@ const ALDEBARAN_1_HANGOUT: PortHangout = {
  * in place to say so.
  *
  * `wager` and `venueParams` are OMITTED rather than restated at their defaults —
- * omission is what makes the inertness true by construction, exactly as at Sun-3.
+ * omission is what makes the inertness true by construction, exactly as at Sol-3.
  */
 const ALTAIR_3_HANGOUT: PortHangout = {
   systemId: 3,
@@ -1064,7 +1064,7 @@ const SPICA_3_HANGOUT: PortHangout = {
  * equality test in `packages/engine/src/__tests__/hangoutRules.test.ts` keeps the
  * two sets from drifting apart in either direction.
  *
- * T-124 · FOURTEEN ROWS, ALL FOURTEEN AUTHORED — THE TABLE IS CLOSED. Sun-3
+ * T-124 · FOURTEEN ROWS, ALL FOURTEEN AUTHORED — THE TABLE IS CLOSED. Sol-3
  * carries its own voice and, by §2.3, the default row's mechanics; the other
  * thirteen carry authored voice AND their own axis vectors: Aldebaran-1, Altair-3,
  * Mira-9 and Procyon-5 (pass 1), Arcturus-6, Deneb-4, Regulus-6, Rigel-8 and

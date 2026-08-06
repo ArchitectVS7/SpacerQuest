@@ -30,10 +30,14 @@ import { check, spendDie } from '../dice.js';
 import { cloneState } from '../clone.js';
 import { npcGuile, venueParamsFor } from '../hangoutRules.js';
 import {
+  archetypeMove,
   dealerMove,
   headroomFor,
   isLatticeMove,
   legalDareMoves,
+  liarsDiceOpponentFor,
+  liarsDicePortCleared,
+  liarsDiceRosterCleared,
   nominalCost,
   resolveChallenge,
 } from '../liarsDiceRules.js';
@@ -53,6 +57,55 @@ import {
  *  direction they take. `dealer-fold` is mechanically a player win. */
 function playerWonOn(outcome: DareOutcome): boolean {
   return outcome === 'challenge-win' || outcome === 'dealer-fold';
+}
+
+/**
+ * T-145 · The minimum a money site needs to know about a hand's counterparty. A
+ * {@link DareHandState} satisfies it structurally, and so does the open arm in
+ * `actions/hangout.ts`, which must clamp and debit BEFORE the hand object exists.
+ */
+export interface DareCounterparty {
+  dealerId: string;
+  opponentKind: 'roaming' | 'roster';
+}
+
+/**
+ * T-145 · THE COUNTERPARTY'S LIVE PURSE
+ * (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §7.1, §7.2).
+ *
+ * Together with {@link payOpponent} these are **the only two places in the engine
+ * where `opponentKind` is branched on for money.** Everything else — the clamp
+ * algebra, the escrow invariant, the ledger at settlement — is identical for both
+ * pools and reads the number these two resolve.
+ *
+ * They live HERE rather than in `liarsDiceRules.ts` because that module's header
+ * forbids state mutation. There is no import cycle: `dare.ts` does not import
+ * `hangout.ts`.
+ */
+export function opponentCredits(state: GameState, party: DareCounterparty): number {
+  if (party.opponentKind === 'roster') return state.liarsDicePurses[party.dealerId] ?? 0;
+  return state.npcs.find((npc) => npc.id === party.dealerId)?.credits ?? 0;
+}
+
+/**
+ * T-145 · Move `delta` credits into (or, negative, out of) the counterparty's
+ * purse. A roaming dealer's winnings land on a COPY-ON-WRITE `NpcState`; a roster
+ * opponent's land in `state.liarsDicePurses`.
+ *
+ * THE ROSTER IS NEVER A MINT (§7.1). Every credit the player takes off a roster
+ * opponent came out of that opponent's authored bankroll, and the roster does not
+ * regenerate — 280,800 cr is the lifetime cap across the whole gauntlet.
+ */
+export function payOpponent(state: GameState, party: DareCounterparty, delta: number): void {
+  if (delta === 0) return;
+  if (party.opponentKind === 'roster') {
+    state.liarsDicePurses[party.dealerId] = (state.liarsDicePurses[party.dealerId] ?? 0) + delta;
+    return;
+  }
+  // COPY-ON-WRITE (npc.ts `mutableNpc`): NPC records are shared between snapshots,
+  // so the dealer's money moves on a private copy.
+  const purse = mutableNpc(state, party.dealerId);
+  if (purse) purse.credits += delta;
 }
 
 /**
@@ -93,19 +146,30 @@ export function settleDareHand(state: GameState, outcome: DareOutcome, events: G
   if (playerWon) {
     state.player.credits += pot;
   } else {
-    // COPY-ON-WRITE (npc.ts `mutableNpc`): NPC records are shared between
-    // snapshots, so the dealer's winnings land on a private copy.
-    const dealerPurse = mutableNpc(state, hand.dealerId);
-    if (dealerPurse) dealerPurse.credits += pot;
+    // T-145 · ONE OF THE THREE ZERO-SUM SITES (§7.1). Kind-resolved through
+    // `payOpponent`, so a roster opponent's purse takes the pot exactly as a
+    // roaming dealer's `NpcState.credits` does.
+    payOpponent(state, hand, pot);
   }
 
+  // T-145 · THE ROSTER APPLIES NO DISPOSITION (§7.6). Disposition lives on
+  // `NpcState`, and pool A is outside the NPC economy entirely (§1 rule 1) — there
+  // is simply no record to move, so `applyDisposition` is SKIPPED and the event's
+  // `dispositionDelta` is 0. That creates a new class of Liar's Dice hands that
+  // emit no `DispositionChanged` at all; T-148 owes the interceptor-lift
+  // measurement SPLIT by `opponentKind` and must not read a drop as a regression
+  // without that split.
+  //
   // §7 · THREE ARMS, one `applyDisposition` call, `reason: 'dare'`, exactly once
-  // per hand — the same cadence today's single-check Dare had, which is what keeps
-  // T-125's interceptor measurement comparable (§7.5 property 2). The framing is
-  // the HOUSE's: the dare's SUCCESS arm is the one where the dealer prevails.
+  // per ROAMING hand — the same cadence today's single-check Dare had, which is
+  // what keeps T-125's interceptor measurement comparable (§7.5 property 2). The
+  // framing is the HOUSE's: the dare's SUCCESS arm is the one where the dealer
+  // prevails.
+  const roster = hand.opponentKind === 'roster';
   const params = venueParamsFor(hand.systemId, 'dare');
-  const dispositionDelta =
-    outcome === 'player-fold' || outcome === 'timeout-fold'
+  const dispositionDelta = roster
+    ? 0
+    : outcome === 'player-fold' || outcome === 'timeout-fold'
       ? params.dispositionOnFold
       : playerWon
         ? params.dispositionOnFailure
@@ -114,7 +178,17 @@ export function settleDareHand(state: GameState, outcome: DareOutcome, events: G
   // batch and in the same order today's Dare produced it. `applyDisposition`'s
   // ±10 clamp and its `delta === 0` early return are unchanged, so a port that
   // authors `dispositionOnFold: 0` emits no DispositionChanged at all.
-  applyDisposition(state, hand.dealerId, dispositionDelta, 'dare', events);
+  if (!roster) applyDisposition(state, hand.dealerId, dispositionDelta, 'dare', events);
+
+  // T-145 · The roster opponent's authored catchphrase for how the hand ended —
+  // `lines.win` when THEY won, `lines.lose` when they lost. Absent on a roaming
+  // hand, and absent if the content row vanished across a reload.
+  const rosterRow = roster ? liarsDiceOpponentFor(hand.systemId, hand.dealerId) : undefined;
+  const opponentLine = rosterRow
+    ? playerWon
+      ? rosterRow.lines.lose
+      : rosterRow.lines.win
+    : undefined;
 
   events.push({
     type: 'DareHandResolved',
@@ -128,6 +202,16 @@ export function settleDareHand(state: GameState, outcome: DareOutcome, events: G
     ...(showdown ? { dealerDice: [...hand.dealerDice] } : {}),
     creditsDelta,
     dispositionDelta,
+    ...(opponentLine !== undefined ? { opponentLine } : {}),
+    // T-175 · THREE COPIES OF ALREADY-FROZEN FIELDS, and nothing else. Not a new
+    // read of anything: `opponentKind`, `opponentArchetype` and `dicePerSide` were
+    // all written onto the hand at open (§5.3) and are in scope here. They are
+    // emitted UNCONDITIONALLY (unlike `opponentLine`, whose absence is a rule about
+    // pool B) so that a reader can tell "roaming hand" from "pre-T-175 event" — a
+    // missing key and a null must not be the same reading.
+    opponentKind: hand.opponentKind,
+    opponentArchetype: hand.opponentArchetype ?? null,
+    dicePerSide: hand.dicePerSide,
   });
 
   // §10.3 · THE TERMINAL HangoutEvent STAYS, unchanged in shape. Nine shipped
@@ -145,6 +229,74 @@ export function settleDareHand(state: GameState, outcome: DareOutcome, events: G
     playerWon,
     creditsDelta,
   });
+
+  // T-145 · §6.2 STEP 1, AND ONLY STEP 1. A player win over a ROSTER opponent
+  // records that opponent in `player.liarsDiceBeaten` — once, ever. The
+  // `includes` guard IS the whole mechanism: a rematch win is legal, pays
+  // normally, and writes nothing, which is exactly what makes the beaten set a set
+  // and what T-147's completion events need in order to fire once rather than once
+  // per remaining game. A ROAMING win never reaches this branch at all (§1 rule 3:
+  // pool B respawns its willingness to play every day, so counting it would turn a
+  // finite authored gauntlet into a grind timer).
+  //
+  // `justBeaten` is read by T-147's step 2–3 block below; it is deliberately
+  // computed here, with the push, so the two tasks touch disjoint statements.
+  let justBeaten = false;
+  if (roster && playerWon && !state.player.liarsDiceBeaten.includes(hand.dealerId)) {
+    state.player.liarsDiceBeaten.push(hand.dealerId);
+    justBeaten = true;
+  }
+  // T-146 · THE UNLOCK LADDER'S ODOMETER, INCREMENTED HERE AND ONLY HERE
+  // (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.1, §8 row 20e).
+  //
+  // This is the SINGLE SETTLEMENT SITE in the engine, which is the whole argument
+  // for putting the counter here rather than at each outcome: player folds, dealer
+  // folds, both challenge arms and the dusk `timeout-fold` (`day.ts`'s call to
+  // this same function) all route through this statement, so every settled hand
+  // counts exactly once and none can be missed. A REFUSED move never reaches here
+  // and increments nothing.
+  //
+  // GLOBAL ACROSS BOTH POOLS, deliberately: a roster hand and a roaming hand move
+  // the same counter. That decoupling is what keeps the ladder off the 42-opponent
+  // bottleneck — a player who never sits at the house's own table still unlocks.
+  //
+  // The tier a hand PLAYS at is frozen at open (§4.6), so this increment can never
+  // move the rules of the hand it is settling: by the time it runs, the hand's
+  // `dicePerSide` / `maxQuantity` / `bandMax` have already done their work and
+  // `state.dareHand` is one statement from null.
+  state.player.liarsDiceGamesPlayed += 1;
+
+  // T-147 · §6.2 STEPS 2 AND 3 — THE COMPLETION SIGNAL (§8 row 20f).
+  //
+  // ONE-TIME-NESS IS BY CONSTRUCTION, and this block carries NO de-dup logic of
+  // its own — deliberately, because a second mechanism would be a second thing to
+  // keep true. Two facts from step 1 above discharge it entirely:
+  //   · a REMATCH win leaves `justBeaten` false (the `includes` guard), so a
+  //     player who keeps sitting at a cleared house fires nothing;
+  //   · a ROAMING win never sets `justBeaten` at all (the `roster` gate), so the
+  //     infinite pool-B pool can never re-fire a deed that a finite authored
+  //     gauntlet earned — which is exactly the "not once per remaining game
+  //     against the roaming pool" the acceptance names.
+  //
+  // ORDER IS PORT THEN ROSTER: the wire reads in the order a player experiences
+  // it. A roster clear implies this port's set is closed too, so nesting the
+  // second test inside the first is equivalent to two siblings — nested because
+  // that equivalence is a fact about the sets, not an ordering coincidence.
+  if (justBeaten) {
+    const beaten = state.player.liarsDiceBeaten;
+    if (liarsDicePortCleared(hand.systemId, beaten)) {
+      const closure = {
+        day: state.day,
+        systemId: hand.systemId,
+        opponentId: hand.dealerId,
+        beatenCount: beaten.length,
+      } as const;
+      events.push({ type: 'LiarsDiceSetCleared', scope: 'port', ...closure });
+      if (liarsDiceRosterCleared(beaten)) {
+        events.push({ type: 'LiarsDiceSetCleared', scope: 'roster', ...closure });
+      }
+    }
+  }
 
   state.dareHand = null;
 }
@@ -176,8 +328,8 @@ function placeBid(
       state.player.credits -= antePaid;
       hand.potPlayer += antePaid;
     } else {
-      const dealerPurse = mutableNpc(state, hand.dealerId);
-      if (dealerPurse) dealerPurse.credits -= antePaid;
+      // T-145 · the SECOND of the three zero-sum sites (§7.1) — kind-resolved.
+      payOpponent(state, hand, -antePaid);
       hand.potDealer += antePaid;
     }
   }
@@ -279,7 +431,22 @@ export function resolveDare(
   if (!legalDareMoves(hand, 'player', nextState.player.credits).includes(move)) {
     return refuse(nextState, 'illegal-dare-move');
   }
-  if (!isLatticeMove(hand.bid, move, action.quantity, action.face)) {
+  // T-146 · the ceiling is the hand's FROZEN `maxQuantity` (§8 row 21), never the
+  // `DARE_MAX_QUANTITY` constant and never a live tier — a hand opened at 4 dice
+  // still refuses a claim of 9 even if the player's 10th game settled mid-scene.
+  if (
+    !isLatticeMove(
+      hand.bid,
+      move,
+      action.quantity,
+      action.face,
+      hand.maxQuantity,
+      // T-160 · the opening floor's input (§16.2 shape (b)). Counted off the
+      // hand's OWN dice, which is the only place the rule may read it from — the
+      // resolver holds the hidden hand, and no other site does.
+      hand.playerDice.filter((die) => die === action.face).length,
+    )
+  ) {
     return refuse(nextState, 'illegal-dare-move');
   }
 
@@ -309,25 +476,67 @@ export function resolveDare(
   );
 
   // --- THE DEALER'S ANSWER, in the same call (§9.4) ------------------------
-  const dealerNpc = nextState.npcs.find((n) => n.id === hand.dealerId);
-  if (!dealerNpc) {
+  //
+  // T-145 · THE MISSING-COUNTERPARTY GUARD, NOW KIND-RESOLVED. Untouched, the
+  // roaming `npcs.find(...)` below would close EVERY roster hand instantly with
+  // `timeout-fold`, because pool A has no `NpcState` at all — a blocker, not a
+  // polish item. The roster's twin condition is "the content row vanished across a
+  // reload", which closes the hand exactly the same way.
+  const rosterRow =
+    hand.opponentKind === 'roster' ? liarsDiceOpponentFor(hand.systemId, hand.dealerId) : undefined;
+  const dealerNpc =
+    hand.opponentKind === 'roaming'
+      ? nextState.npcs.find((n) => n.id === hand.dealerId)
+      : undefined;
+  if (hand.opponentKind === 'roaming' ? !dealerNpc : !rosterRow) {
     // The dealer left the roster mid-hand (a death, a content edit across a
     // reload). Nothing to answer with and nothing to take the pot — close the hand
     // the same way dusk would, so no state can carry a counterparty-less scene.
     settleDareHand(nextState, 'timeout-fold', events);
     return { state: nextState, events };
   }
-  // `npcGuile` reads the profile; the POLICY never sees an NpcState (§9.7).
-  const answer = dealerMove({
-    dealerDice: hand.dealerDice,
-    bid: hand.bid,
-    bidder: hand.bidder,
-    dealerGuile: npcGuile(dealerNpc),
-    ante: hand.ante,
-    headroom: headroomFor(hand, 'dealer'),
-    dealerCredits: dealerNpc.credits,
-    roll: Math.floor(rng.next() * 100),
-  });
+
+  // T-145 · ONE DRAW PER MOVE ON BOTH PATHS, taken BEFORE the dispatch and
+  // whether or not the chosen policy consumes it (§3.7). `optimal` ignores it; the
+  // draw still happens, because a policy-dependent draw count would make the rng
+  // stream depend on the archetype and a content edit to one opponent's label
+  // would then move every downstream number in the campaign.
+  const roll = Math.floor(rng.next() * 100);
+
+  // T-145 · THE POLICY DISPATCH (§3.8) — `dealerMove` for pool B, `archetypeMove`
+  // for pool A, one branch on the hand's frozen `opponentKind`. `npcGuile` is read
+  // on the ROAMING path only: for a roster opponent the ARCHETYPE is the policy,
+  // which is why the content row carries no `guile` (§2.2).
+  const answer =
+    hand.opponentKind === 'roster'
+      ? archetypeMove({
+          // `opponentArchetype` is non-null on every roster hand by construction —
+          // the open arm resolves a 'mixed' row to a concrete arm and stores that.
+          archetype: hand.opponentArchetype ?? 'optimal',
+          dealerDice: hand.dealerDice,
+          dicePerSide: hand.dicePerSide,
+          maxQuantity: hand.maxQuantity,
+          bid: hand.bid!,
+          ante: hand.ante,
+          headroom: headroomFor(hand, 'dealer'),
+          dealerCredits: opponentCredits(nextState, hand),
+          potPlayer: hand.potPlayer,
+          potDealer: hand.potDealer,
+          roll,
+        })
+      : // `npcGuile` reads the profile; the POLICY never sees an NpcState (§9.7).
+        dealerMove({
+          dealerDice: hand.dealerDice,
+          // T-146 · the hand's FROZEN count (§8 row 8). Inert at four dice.
+          dicePerSide: hand.dicePerSide,
+          bid: hand.bid,
+          bidder: hand.bidder,
+          dealerGuile: npcGuile(dealerNpc!),
+          ante: hand.ante,
+          headroom: headroomFor(hand, 'dealer'),
+          dealerCredits: dealerNpc!.credits,
+          roll,
+        });
 
   if (answer.move === 'fold') {
     settleDareHand(nextState, 'dealer-fold', events);

@@ -1,4 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+// T-197 · the unlock thresholds are CONTENT; the fixture reads them rather than
+// restating a rung number (docs/DAWN-HAND-REDESIGN.md §4b).
+// T-168 · and the tier-4 ceiling multiplier, for the same reason.
+import { LIARS_DICE_RAISED_CEILING_MULT, LIARS_DICE_UNLOCK_GAMES } from '@spacerquest/content';
 import {
   DARE_MAX_MOVES_PER_HAND,
   gamblerPolicy,
@@ -14,7 +18,14 @@ import {
 import {
   applyPlayerAction,
   createInitialState,
+  endDay,
+  isLatticeMove,
   legalDareMoves,
+  minOpeningQuantity,
+  // T-168 · the pre-hand EFFECTIVE band (§4.6a item 3), so the F-123-3 property
+  // below is re-derived against the band the planner actually sizes off.
+  preHandWagerBand,
+  SeededRng,
   startDay,
   wagerBandFor,
   type GameState,
@@ -35,13 +46,11 @@ function openGamblerHand(seed: number): GameState {
     (npc) => !npc.dead && npc.currentSystemId === state.player.currentSystemId,
   );
   if (!dealer) throw new Error('fixture: no co-located dealer at the starting port');
-  const die = state.player.dawnHand!.spent.findIndex((spent) => !spent);
   const opened = applyPlayerAction(state, {
     type: 'VisitHangout',
     venue: 'dare',
     opponentId: dealer.id,
     wager: 100,
-    spendDie: die,
   }).state;
   if (!opened.dareHand) throw new Error('fixture: the hand did not open');
   return opened;
@@ -87,13 +96,37 @@ const NEW_POLICIES = ['smuggler', 'gambler'] as const satisfies readonly SimPoli
 
 const REPORT_SEED = 1;
 const REPORT_DAYS = 300;
+/** T-196b · The smuggler's own pinned seed for the CONTRABAND-ENFORCEMENT metrics,
+ *  mirroring `campaign-policies.test.ts`'s `FIGHTER_METRIC_SEED`. Everything else
+ *  in this file still runs on `REPORT_SEED`. PINNED NOT STEERED — no assertion in
+ *  the test that uses it was altered.
+ *
+ *  MECHANISM: the eight policies stopped budgeting a die for the nine M17 Free
+ *  Actions (docs/DAWN-HAND-REDESIGN.md §3), so the smuggler's day plan changed
+ *  shape and with it the route it flies. On seed 1 it now runs its contraband
+ *  CLEAN — 4 signed and 4 delivered, but `scans` 9 -> 0, so the enforcement half
+ *  of the acceptance has nothing to observe. A patrol scan is a per-jump roll
+ *  against a dirty hold, and this career's dirty stretch fell from 151 days to 22.
+ *
+ *  RE-SWEEP (seeds 1..20, `runCampaign(seed, 300, 'smuggler')`): NINETEEN of the
+ *  twenty land every signal this test asserts — seed 1 is the sole exception, and
+ *  the scan pipeline is therefore more reachable after M17, not less. Seed 2 is the
+ *  first qualifier and is what the comments below quote: 3 contraband contracts
+ *  signed, 2 delivered, 12 pods taken, 126 dirty days, 6 scans (4 caught / 2
+ *  evaded), 2,000 credits in fines, 4 pods seized, 1 fence sale, 259 rep days. */
+const SMUGGLER_ENFORCEMENT_SEED = 2;
 const REPORTS = new Map<string, CampaignStatsReport>();
-const reportFor = (policy: (typeof NEW_POLICIES)[number]) => REPORTS.get(policy)!;
+const reportFor = (policy: (typeof NEW_POLICIES)[number], seed = REPORT_SEED) =>
+  REPORTS.get(`${policy}:${seed}`)!;
 
 beforeAll(() => {
   for (const policy of NEW_POLICIES) {
-    REPORTS.set(policy, runCampaign(REPORT_SEED, REPORT_DAYS, policy));
+    REPORTS.set(`${policy}:${REPORT_SEED}`, runCampaign(REPORT_SEED, REPORT_DAYS, policy));
   }
+  REPORTS.set(
+    `smuggler:${SMUGGLER_ENFORCEMENT_SEED}`,
+    runCampaign(SMUGGLER_ENFORCEMENT_SEED, REPORT_DAYS, 'smuggler'),
+  );
 }, 150000);
 
 describe('T-1601b smuggler & gambler policies', () => {
@@ -162,8 +195,37 @@ describe('T-1601b smuggler & gambler policies', () => {
       for (const value of Object.values(report.smuggling)) {
         expect(typeof value).toBe('number');
       }
-      for (const value of Object.values(report.hangoutPlay)) {
+      // T-175 / T-176 · `dareCells`, `dareChallengeCells` and `dareChallengeSplit`
+      // are the NON-scalar members of `hangoutPlay` (the pool × archetype × tier
+      // split, F-160-1; the challenger split at matched evidence, F-160-2), so they
+      // are destructured out and checked on their own shape rather than weakening
+      // the scalar sweep over the rest. Named explicitly — a blanket
+      // `typeof value === 'object' && continue` would let a future non-scalar in
+      // unnoticed.
+      const { dareCells, dareChallengeCells, dareChallengeSplit, ...hangoutScalars } =
+        report.hangoutPlay;
+      for (const value of Object.values(hangoutScalars)) {
         expect(typeof value).toBe('number');
+      }
+      // All 48 cells present and numeric, on every career — the zero-fill property
+      // (`a missing key and a zero must not be the same reading`).
+      expect(Object.keys(dareCells)).toHaveLength(48);
+      for (const cell of Object.values(dareCells)) {
+        expect(typeof cell.hands).toBe('number');
+        expect(typeof cell.playerWon).toBe('number');
+        expect(typeof cell.netCredits).toBe('number');
+        expect(typeof cell.bids).toBe('number');
+      }
+      // T-176 · 2 pools × 2 challengers × 3 arities × 9 k-buckets, and 2 pools ×
+      // 4 archetype slots × 2 challengers. Same zero-fill property.
+      expect(Object.keys(dareChallengeCells)).toHaveLength(108);
+      expect(Object.keys(dareChallengeSplit)).toHaveLength(16);
+      for (const cell of [
+        ...Object.values(dareChallengeCells),
+        ...Object.values(dareChallengeSplit),
+      ]) {
+        expect(typeof cell.challenges).toBe('number');
+        expect(typeof cell.won).toBe('number');
       }
       expect(Number.isFinite(report.hangoutPlay.expectedValuePerDare)).toBe(true);
 
@@ -174,22 +236,24 @@ describe('T-1601b smuggler & gambler policies', () => {
   );
 
   it('the smuggler runs contraband, gets scanned by patrols, and deals with Ray', () => {
-    const report = reportFor('smuggler');
+    // T-196b: on `SMUGGLER_ENFORCEMENT_SEED`, not `REPORT_SEED` — see that
+    // constant for the re-pin's mechanism and its seeds 1..20 re-sweep.
+    const report = reportFor('smuggler', SMUGGLER_ENFORCEMENT_SEED);
     const smuggling = report.smuggling;
 
     // SUPPLY. Both of the pillar's sources are live: contraband CONTRACTS (only a
     // port with `allowsContraband` issues cargo type 10, so this also proves the
     // policy actually reaches the rim) and sealed PODS off Explore loot. Measured
-    // on seed 1: 5 contraband contracts signed, 4 delivered, 17 pods taken.
+    // on seed 2: 3 contraband contracts signed, 2 delivered, 12 pods taken.
     expect(smuggling.contrabandContractsSigned).toBeGreaterThan(0);
     expect(smuggling.podsTaken).toBeGreaterThan(0);
     expect(smuggling.contrabandDelivered).toBeGreaterThanOrEqual(0);
     // ...and the hold is dirty for a large part of the career, which is the
-    // exposure the scan rolls against. Measured on seed 1: 151 of 300 days.
+    // exposure the scan rolls against. Measured on seed 2: 126 of 300 days.
     expect(smuggling.daysCarryingIllicit).toBeGreaterThan(0);
 
     // ENFORCEMENT — THE ACCEPTANCE'S "scan outcomes nonzero" (PRD §7.2).
-    // Measured on seed 1: 9 scans, 8 caught, 1 evaded.
+    // Measured on seed 2: 6 scans, 4 caught, 2 evaded.
     expect(smuggling.scans).toBeGreaterThan(0);
     expect(smuggling.scansCaught + smuggling.scansEvaded).toBe(smuggling.scans);
     expect(smuggling.scansCaught).toBeGreaterThan(0);
@@ -197,17 +261,17 @@ describe('T-1601b smuggler & gambler policies', () => {
     // A CATCH IS REALLY CONSUMED, not merely counted: every caught scan levies a
     // fine and confiscates at least one of the two illicit sources (guaranteed,
     // because `isCarryingIllicit` is what gated the scan in the first place).
-    // Measured on seed 1: 4,000 credits in fines, 8 pods seized.
+    // Measured on seed 2: 2,000 credits in fines, 4 pods seized.
     expect(smuggling.finesPaid).toBeGreaterThan(0);
     expect(smuggling.contractsConfiscated + smuggling.podsConfiscated).toBeGreaterThanOrEqual(
       smuggling.scansCaught,
     );
 
     // THE FENCE FLOW (PRD §7.5's third out). Both `fence.ray.*` storylets are
-    // `repeat: 'never'`, so 2 is the content-imposed maximum. Measured on seed 1:
-    // 2 sales — and the rep flag they set is READ by the scan DC
+    // `repeat: 'never'`, so 2 is the content-imposed maximum. Measured on seed 2:
+    // 1 sale — and the rep flag it sets is READ by the scan DC
     // (CONTRABAND_FENCE_REP_SCAN_PENALTY) for the rest of the career, which is
-    // what `fenceRepDays` measures. Measured on seed 1: 296 of 300 days.
+    // what `fenceRepDays` measures. Measured on seed 2: 259 of 300 days.
     expect(smuggling.fenceSales).toBeGreaterThan(0);
     expect(smuggling.fenceRepDays).toBeGreaterThan(0);
   }, 60000);
@@ -272,18 +336,33 @@ describe('T-1601b smuggler & gambler policies', () => {
 
     const state = openGamblerHand(1);
     // (b) a hand with NO bid: an opening bid is always legal — any held face is in
-    // 1..6, `max(1, own(F*))` is in 1..4 ⊆ 1..8, and an opening bid costs no ante,
-    // so neither headroom nor credits can refuse it.
+    // 1..6, T-160's floor `own(F*) + 1` is in `1..dicePerSide + 1` ⊆ `1..2 ×
+    // dicePerSide` = `1..maxQuantity`, and an opening bid costs no ante, so
+    // neither headroom nor credits can refuse it.
     const opening = planDareMove(state);
     expect(opening).not.toBeNull();
     expect(opening).toMatchObject({ type: 'Dare', move: 'bid' });
     expect(legalDareMoves(state.dareHand!, 'player', state.player.credits)).toContain(
       (opening as { move: string }).move,
     );
-    // …and it is TRUTHFUL: the claim is exactly what the player holds.
+    // T-160 · …and it EXCEEDS what the player holds by exactly one, which is the
+    // engine's opening floor and the fix for F-137-1. The old assertion here read
+    // "it is TRUTHFUL: the claim is exactly what the player holds" — that WAS the
+    // defect (`resolveChallenge` counts the face across all the dice in play, so a
+    // claim at or under `own(face)` could not be false), and it is now refused by
+    // `isLatticeMove`. The planner still makes the SMALLEST claim the lattice
+    // permits; it is not bluffing.
     const face = (opening as { face: number }).face;
     const quantity = (opening as { quantity: number }).quantity;
-    expect(quantity).toBe(Math.max(1, state.dareHand!.playerDice.filter((d) => d === face).length));
+    const own = state.dareHand!.playerDice.filter((d) => d === face).length;
+    expect(quantity).toBe(minOpeningQuantity(own));
+    expect(quantity).toBeGreaterThan(own);
+    expect(quantity).toBeLessThanOrEqual(state.dareHand!.maxQuantity);
+    // And the claim is a REAL claim: it is not true by construction any more.
+    expect(
+      isLatticeMove(null, 'bid', own, face, state.dareHand!.maxQuantity, own),
+      'a claim of exactly what the player holds is now refused at its source',
+    ).toBe(false);
 
     // (c) a hand with a standing bid, at the LATTICE CEILING and with ZERO
     // headroom — the tightest reachable corner, where every raise is illegal.
@@ -349,4 +428,330 @@ describe('T-1601b smuggler & gambler policies', () => {
     expect(gambler.player.credits).toBeGreaterThan(0);
     expect(gambler.player.debt).toBe(0);
   }, 60000);
+});
+
+// ---------------------------------------------------------------------------
+// T-150 · F-123-3 — THE DEALER'S PURSE IS CARRIED FORWARD ACROSS THE DAY'S HANDS.
+//
+// APPLICABILITY WAS CHECKED, NOT ASSUMED. M4d/M4e replaced the HAND (the single
+// opposed-GUILE check became the full Liar's Dice bid/raise/challenge resolver);
+// they did not touch the DEALER PICK, which still runs once off the dawn state.
+// T-145 fixed the ROSTER half (a broke roster seat is a hard 'opponent-broke'
+// refusal) and deliberately left the ROAMING half, where the engine merely clamps
+// the seed to the dealer's purse — so `planDare`'s own parameter doc and
+// `docs/LIARS-DICE_REDESIGN.md` §16 both record the roaming case as surviving the
+// redesign. It does. T-150 threads the queued stake through the roaming pick.
+//
+// `planDare` is module-private, so both arms go through the exported policy.
+// ---------------------------------------------------------------------------
+
+/** A dawn state at the starting Hangout port with EXACTLY ONE fundable roaming
+ *  seat, every roster purse at that port zeroed, and the player's bankroll sized
+ *  so the wager lands on the port's `band.min` — which makes the dealer's purse
+ *  the only thing that can decide whether a second hand is planned. */
+function oneRoamingDealerDawn(
+  seed: number,
+  dealerCredits: number,
+  // T-168 · Both OPTIONAL and both defaulting to the values every pre-T-168 caller
+  // already got, so the F-123-3 arms above are byte-identical fixtures. They exist
+  // so the tier-4 / tier-5 arms below can move the captain up the ladder and give
+  // them a purse without forking a second fixture.
+  gamesPlayed: number = LIARS_DICE_UNLOCK_GAMES[0],
+  playerCredits: number = 3_200,
+): GameState {
+  const fresh = createInitialState(seed);
+  const port = fresh.player.currentSystemId;
+  // T-197 · THE CAPTAIN IS SEATED AT UNLOCK TIER 1, AND THAT IS LOAD-BEARING RATHER
+  // THAN COSMETIC (docs/DAWN-HAND-REDESIGN.md §4b). The rounds-per-day cap allows a
+  // TIER-0 captain exactly ONE open, so on a fresh career the cap — not the
+  // dealer's purse — would be what stops the second hand. The starved arm below
+  // would then pass for the wrong reason and the rich CONTROL could never reach two
+  // hands at all, making the whole test vacuous. One rung up (`gamesPlayed >=
+  // LIARS_DICE_UNLOCK_GAMES[0]`) buys two rounds, which restores the purse rule as
+  // the only binding constraint — which is exactly what this fixture's docstring
+  // has always claimed. The threshold is READ from content, never restated.
+  fresh.player.liarsDiceGamesPlayed = gamesPlayed;
+  // bankroll = credits − GAMBLER_RESERVE (3,000); wager = max(band.min,
+  // min(band.max, ⌊bankroll × 0.1⌋)). At 3,200 credits that is ⌊20⌋ → clamped up
+  // to band.min, and the purse still funds a SECOND hand — so the player's side
+  // is never the binding constraint in either arm.
+  fresh.player.credits = playerCredits;
+  fresh.player.ship.fuel = fresh.player.ship.maxFuel;
+  let seated = false;
+  for (const npc of fresh.npcs) {
+    if (npc.dead || npc.currentSystemId !== port) continue;
+    if (!seated) {
+      npc.credits = dealerCredits;
+      seated = true;
+    } else {
+      npc.credits = 0;
+    }
+  }
+  if (!seated) throw new Error('fixture: no co-located roaming captain at the starting port');
+  // Pool A out of the picture — a roster seat out-banking the field would take the
+  // chair and the arms would measure the wrong pool.
+  for (const id of Object.keys(fresh.liarsDicePurses)) fresh.liarsDicePurses[id] = 0;
+  return startDay(fresh).state;
+}
+
+const dareActions = (plan: readonly { type: string }[]) =>
+  plan.filter(
+    (a): a is { type: 'VisitHangout'; venue: string; opponentId?: string; wager?: number } =>
+      a.type === 'VisitHangout' && (a as { venue?: string }).venue === 'dare',
+  );
+
+describe('T-150 · F-123-3 · the gambler never queues a hand its dealer cannot cover', () => {
+  it('stops at one hand when the first stake would drain the only dealer below the port floor', () => {
+    for (let seed = 1; seed <= 3; seed += 1) {
+      const band = wagerBandFor(createInitialState(seed).player.currentSystemId);
+
+      // THE F-123-3 SCENARIO. The sole dealer can cover ONE minimum stake and no
+      // more: `band.min <= credits < 2 × band.min`. Before the fix the dawn read
+      // said "richer than band.min" twice and the second hand was clamped by the
+      // engine to a sub-floor (or zero) stake.
+      const starved = oneRoamingDealerDawn(seed, band.min + Math.floor(band.min * 0.6));
+      const starvedPlan = gamblerPolicy({
+        state: starved,
+        dayIndex: 0,
+        rng: new SeededRng(seed).fork('policy').fork(`day-${starved.day}`).fork('index-0'),
+      });
+      const starvedDares = dareActions(starvedPlan);
+      expect(starvedDares).toHaveLength(1);
+      expect(starvedDares[0].wager).toBeGreaterThanOrEqual(band.min);
+
+      // THE NON-VACUOUS CONTROL. Identical state, the same dealer made rich: TWO
+      // hands. This is what proves the arm above is measuring the purse rule and
+      // not some unrelated refusal (no die left, no venue, no bankroll).
+      const rich = oneRoamingDealerDawn(seed, 500_000);
+      const richPlan = gamblerPolicy({
+        state: rich,
+        dayIndex: 0,
+        rng: new SeededRng(seed).fork('policy').fork(`day-${rich.day}`).fork('index-0'),
+      });
+      expect(dareActions(richPlan)).toHaveLength(2);
+    }
+  }, 30000);
+
+  it('holds at campaign scale: every queued dare clears its port floor', () => {
+    // The PROPERTY, over real careers. `wager` is what the policy ASKS for; the
+    // engine re-clamps it against both purses, so this asserts the ask is never
+    // itself worthless — which is the whole of F-123-3.
+    let queued = 0;
+    for (let seed = 1; seed <= 5; seed += 1) {
+      let state = createInitialState(seed);
+      for (let dayIndex = 0; dayIndex < 120; dayIndex += 1) {
+        const rng = new SeededRng(seed)
+          .fork('policy')
+          .fork(`day-${state.day}`)
+          .fork(`index-${dayIndex}`);
+        const dawn = startDay(state);
+        let dayState = dawn.state;
+        const actions = gamblerPolicy({ state: dayState, dayIndex, rng });
+        // T-168 · RE-DERIVED AGAINST THE EFFECTIVE BAND, not weakened. The old
+        // `wagerBandFor(...).min` is FALSE PAST TIER 5 BY DESIGN: §4.8 removes the
+        // band's floor as well as its ceiling ("a veteran may sit at Regulus-6 for
+        // 10 credits"), so a career that crosses rung 5 inside these 120 days would
+        // fail an assertion about a floor the game no longer has. The floor the
+        // PLANNER promises is its own — `Math.max(1, band.min)`, the same
+        // expression `planDare` derives — and that is what F-123-3's property is
+        // about: never asking for a worthless stake. Same criterion the task
+        // applies to `planDare`'s own `dealer.credits < floor` gate; not a moved
+        // threshold.
+        const floor = Math.max(1, preHandWagerBand(dayState).min);
+        for (const dare of dareActions(actions)) {
+          queued += 1;
+          expect(dare.wager ?? 0).toBeGreaterThan(0);
+          expect(dare.wager ?? 0).toBeGreaterThanOrEqual(floor);
+        }
+        for (const action of actions) {
+          if (action.type === 'Combat' && !dayState.encounter) continue;
+          if (action.type === 'Dare' && !dayState.dareHand) continue;
+          dayState = applyPlayerAction(dayState, action).state;
+          let dareGuard = 0;
+          while (dayState.dareHand && dareGuard < DARE_MAX_MOVES_PER_HAND) {
+            dareGuard += 1;
+            const move = planDareMove(dayState);
+            if (!move) break;
+            dayState = applyPlayerAction(dayState, move).state;
+          }
+        }
+        state = endDay(dayState).state;
+      }
+    }
+    // NON-VACUOUS: hands must actually have been queued, or the loop above asserts
+    // nothing at all.
+    expect(queued).toBeGreaterThan(0);
+  }, 180000);
+});
+
+// ---------------------------------------------------------------------------
+// T-168 · F-148-4 · THE RAISED CEILING IS STAKED INTO
+// (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.6a, §4.8).
+//
+// `planDare` used to size its `wager` off `wagerBandFor(...)` — the TIER-0 band —
+// so no career it drove could ever REQUEST a tier-4 or tier-5 stake. Tiers 4 and 5
+// were therefore unmeasurable as PLAYED: the ×3 multiplier and the removed clamp
+// were worth +43.7% bids per hand and nothing else (§12.9). These four arms are the
+// local, deterministic proof; the sweep row in §12.11 is the population one.
+//
+// All four drive the REAL `gamblerPolicy` against a dawn state built by the real
+// `startDay`, and assert on what the policy ASKS for. The engine re-clamps the ask
+// against both purses at open, which is why the fixture makes the dealer rich.
+// ---------------------------------------------------------------------------
+describe('T-168 · F-148-4 · planDare sizes its stake off the EFFECTIVE band', () => {
+  const wagerOfFirstDare = (state: GameState, seed: number): number => {
+    const plan = gamblerPolicy({
+      state,
+      dayIndex: 0,
+      rng: new SeededRng(seed).fork('policy').fork(`day-${state.day}`).fork('index-0'),
+    });
+    const dares = dareActions(plan);
+    expect(dares.length).toBeGreaterThan(0);
+    return dares[0].wager ?? 0;
+  };
+
+  it('TIER 0–3 CONTROL · nothing below rung 4 moved — the stake is still the port band’s', () => {
+    // THE INERTNESS PROOF for this file. The fixture's default captain sits at rung
+    // 1 with 3,200 credits, so ⌊(3,200 − 3,000) × 0.1⌋ = 20 clamps UP to the port
+    // floor — exactly the value this fixture produced before T-168, unchanged.
+    for (let seed = 1; seed <= 3; seed += 1) {
+      const band = wagerBandFor(createInitialState(seed).player.currentSystemId);
+      const wager = wagerOfFirstDare(oneRoamingDealerDawn(seed, 500_000), seed);
+      expect(wager).toBe(band.min);
+      expect(wager).toBeLessThanOrEqual(band.max);
+    }
+  });
+
+  it('TIER 4 · the ask goes ABOVE the port ceiling, and no further than ×3', () => {
+    for (let seed = 1; seed <= 3; seed += 1) {
+      const band = wagerBandFor(createInitialState(seed).player.currentSystemId);
+      // Rung 4 opens at `LIARS_DICE_UNLOCK_GAMES[3]`, read from content. The purse
+      // is sized well above `GAMBLER_RESERVE` so the BANKROLL is never the binding
+      // constraint and the BAND is — which is the thing under test.
+      const dawn = oneRoamingDealerDawn(seed, 500_000, LIARS_DICE_UNLOCK_GAMES[3], 500_000);
+      const wager = wagerOfFirstDare(dawn, seed);
+      // STRICTLY greater: this is the assertion that was structurally impossible
+      // before T-168, and it is the whole of F-148-4.
+      expect(wager).toBeGreaterThan(band.max);
+      expect(wager).toBeLessThanOrEqual(band.max * LIARS_DICE_RAISED_CEILING_MULT);
+    }
+  });
+
+  it('TIER 5 · the band ceiling is gone, so the ask clears even the tier-4 one (§4.8)', () => {
+    for (let seed = 1; seed <= 3; seed += 1) {
+      const band = wagerBandFor(createInitialState(seed).player.currentSystemId);
+      const dawn = oneRoamingDealerDawn(seed, 500_000, LIARS_DICE_UNLOCK_GAMES[4], 500_000);
+      const wager = wagerOfFirstDare(dawn, seed);
+      expect(wager).toBeGreaterThan(band.max * LIARS_DICE_RAISED_CEILING_MULT);
+    }
+  });
+
+  it('TIER 5 · the ask still clears the instrument’s own 1-credit floor, never a FREE hand', () => {
+    // §4.8 removes the band's FLOOR as well as its ceiling, so a veteran's
+    // `band.min` is 0. `planDare` supplies `Math.max(1, band.min)` of its own
+    // rather than seating a zero stake: a free hand still counts as a dare and
+    // would drag `expectedValuePerDare` toward 0, which is the one number this
+    // instrument exists to measure. A POLICY choice, not a game rule.
+    for (let seed = 1; seed <= 3; seed += 1) {
+      // A pauper one credit above the reserve: the bankroll, not the band, decides.
+      const dawn = oneRoamingDealerDawn(seed, 500_000, LIARS_DICE_UNLOCK_GAMES[4], 3_001);
+      expect(wagerOfFirstDare(dawn, seed)).toBeGreaterThanOrEqual(1);
+    }
+  });
+});
+
+describe('T-168 · the instrument MEASURES the raised ceiling it can now reach', () => {
+  it('records hands above BOTH the port ceiling and the tier-4 ceiling over real careers', () => {
+    // SEEDS 1..3 × 120 DAYS (n = 3 careers). Small deliberately: this is the
+    // existence proof that the three `HangoutPlayStats` fields are wired and
+    // non-zero, not the population measurement — that is the 1,000-seed sweep row
+    // recorded in `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.11.
+    let aboveBase = 0;
+    let aboveRaised = 0;
+    let maxSeed = 0;
+    let dares = 0;
+    for (let seed = 1; seed <= 3; seed += 1) {
+      const play = runCampaign(seed, 120, 'gambler').hangoutPlay;
+      dares += play.dares;
+      aboveBase += play.handsAboveBaseCeiling;
+      aboveRaised += play.handsAboveRaisedCeiling;
+      maxSeed = Math.max(maxSeed, play.maxSeedWager);
+    }
+    expect(dares).toBeGreaterThan(0);
+    // BOTH must fire. `handsAboveBaseCeiling` is a tier-4-or-better stake; only
+    // tier 5's REMOVED clamp can put a hand above `handsAboveRaisedCeiling`.
+    expect(aboveBase).toBeGreaterThan(0);
+    expect(aboveRaised).toBeGreaterThan(0);
+    expect(aboveRaised).toBeLessThanOrEqual(aboveBase);
+    expect(maxSeed).toBeGreaterThan(0);
+  }, 180000);
+
+  it('CONTROL · a career pinned below rung 4 records ZERO of them', () => {
+    // The non-vacuity control for the arm above, and the pre-fix column T-168 could
+    // not otherwise report: the outgoing baseline has no such fields, so "0 before"
+    // is a claim about construction rather than a measurement. Here it is measured.
+    // A policy cannot be pinned to a tier, so this drives the seven CONTROL policies
+    // instead — none of them ever sits at a table, which is the same structural
+    // reason the sweep predicts them byte-identical.
+    for (const policy of ['trader', 'explorer', 'smuggler'] as const) {
+      const play = runCampaign(1, 120, policy).hangoutPlay;
+      expect(play.dares, policy).toBe(0);
+      expect(play.handsAboveBaseCeiling, policy).toBe(0);
+      expect(play.handsAboveRaisedCeiling, policy).toBe(0);
+      expect(play.maxSeedWager, policy).toBe(0);
+    }
+  }, 180000);
+});
+
+// ---------------------------------------------------------------------------
+// T-199 · F-150-2 · THE SEEDED REGRESSIONS FOR THE POVERTY TRAP.
+//
+// These name the exact seeds that went red, so the next person to move a shared
+// planner finds out locally instead of from a GitHub Actions run. Seed 20 is the
+// one that took the "Sweep gate" check red on `redesign/explore-hangout` for the
+// first time (run 30935230550, shard 2/2, `assertNoIncomeStall · smuggler · seed
+// 20 · 5 consecutive zero-income days (limit 5)`) — a stall in the SHARED
+// `planPacifistCombat`, not in anything the commit that surfaced it had touched.
+// Seed 970 is the one that adding the smuggler's Explore recovery guard WOKE, and
+// which the shared anti-idle move closes; it is pinned for the same reason.
+//
+// The horizon is the sweep gate's own (35 days), not 300, because that is the
+// window the CI check samples and therefore the window a local run has to match.
+// ---------------------------------------------------------------------------
+describe('T-199 · the smuggler clears the poverty-trap bar on the seeds that failed', () => {
+  it.each([
+    [20, 'the CI Sweep-gate failure: five `run` stances against an unaffordable tribute'],
+    [970, 'the strand the Explore recovery guard re-seeded onto (F-199-3)'],
+  ])('seed %i · %s', (seed) => {
+    const report = runCampaign(seed, 35, 'smuggler');
+    expect(longestZeroIncomeStreak(report.daily)).toBeLessThan(5);
+  });
+
+  it('seed 3 · the case docs/EXPLORE_REDESIGN.md §10.3 names, at its own 120-day horizon', () => {
+    // §10.3 recorded a five-day stall here (Sirius-16, days 45-49). It no longer
+    // reproduces AT ALL on this tree — T-195's travel-die rules re-seeded every
+    // stream long before T-199 touched anything — so this is pinned as a
+    // REGRESSION BAR, not as a reproduction: whatever moves next must not put it
+    // back.
+    const report = runCampaign(3, 120, 'smuggler');
+    expect(longestZeroIncomeStreak(report.daily)).toBeLessThan(5);
+  });
+});
+
+describe('T-199 · F-199-1/F-199-2 · the rim strands the shared anti-idle move closes', () => {
+  // Each of these sat at or over the `INCOME_STALL_LIMIT` bar of 5 on the tree
+  // before T-199, measured by `balance:sweep --seeds 1000 --days 35` (the map is
+  // in TASKS.md). They are pinned by seed so the next shared-planner change has to
+  // meet them locally.
+  it.each([
+    ['trader' as const, 371, 6],
+    ['trader' as const, 571, 7],
+    ['fighter' as const, 74, 9],
+    ['fighter' as const, 747, 26],
+    ['fighter' as const, 916, 24],
+    ['smuggler' as const, 677, 6],
+  ])('%s seed %i (was %i consecutive zero-income days)', (policy, seed, _was) => {
+    const report = runCampaign(seed, 35, policy);
+    expect(longestZeroIncomeStreak(report.daily)).toBeLessThan(5);
+  });
 });

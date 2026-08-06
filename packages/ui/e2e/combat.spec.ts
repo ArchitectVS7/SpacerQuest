@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 import { FIGHT_FUEL_COST } from '@spacerquest/content';
 
 // T-307 acceptance: the combat overlay is a full-screen instrument driven end to
@@ -25,7 +26,8 @@ import { FIGHT_FUEL_COST } from '@spacerquest/content';
 //     fires. Confirmed: Capt.Brutus tier 2, hull 2 -> 1 at round 2, then escaped.
 //   - Seed 2: the drain loop only ever FIGHTS with the lowest die (always a miss)
 //     and never RUNS and never KILLS, so neither the opposed-run pursuit draw nor
-//     the retreat roll is taken — the fuel drain to B_OFFLINE_FUEL is byte-identical.
+//     the retreat roll is taken — the drain to weapons-offline is monotonic and
+//     lands short of the fight cost (the value itself is read, not pinned — T-195).
 //
 // Re-fixtured for the T-1102 fuel-scarcity overhaul: jump cost is now strictly
 // per-distance (12·d for the starter drives, no cap), so a rim jump (system 15,
@@ -45,9 +47,11 @@ import { FIGHT_FUEL_COST } from '@spacerquest/content';
 //    - jump die INDEX 0 (value 17) to Pollux-7 (system 9, distance 10, cost 120,
 //      leaving 180 fuel) triggers a tier-1 encounter "Chomper", enemyHull 1.
 //    - fighting with the LOWEST die each round always misses (dice < DC 12) so the
-//      enemy never dies; each fight burns 50 fuel. Draining 180 → 130 → 80 → 30
-//      (three misses) brings up the weapons-offline band at 30 fuel (below the 50
-//      fight cost), and the next FIGHT malfunctions (die burned, no hit).
+//      enemy never dies; each fight burns 50 fuel, so the tank walks monotonically
+//      down until it is short of the 50-fuel fight cost, the weapons-offline band
+//      comes up, and the next FIGHT malfunctions (die burned, no hit). T-195's
+//      nav-die fuel discount moved WHERE that lands (the jump above no longer
+//      costs a fixed 120), so the test reads the tank rather than pinning it.
 const SEED_A = 43;
 const A_JUMP_DIE_INDEX = 1; // value 18
 const A_DEST = 3;
@@ -56,8 +60,10 @@ const A_ENEMY_NAME = 'Capt.Brutus';
 const SEED_B = 2;
 const B_JUMP_DIE_INDEX = 0; // value 17
 const B_DEST = 9;
-// Fuel remaining when the tank first drops below the 50-fuel fight cost (180 - 3×50).
-const B_OFFLINE_FUEL = 30;
+// T-195 (repaired at T-162) · the pinned `B_OFFLINE_FUEL = 30` is GONE, not
+// re-pinned: `navDieFuelDiscount` made the drain a function of the armed die, so
+// there is no longer one number to pin. The test asserts the band names the
+// engine's own live tank and that the tank is genuinely short of the fight cost.
 
 // T-1207 kill path: land a KILLING volley so the post-kill enemy-retreat mechanic
 // (opposed PILOT roll) actually fires through the UI, and the interceptor WINS it —
@@ -97,12 +103,20 @@ test.beforeEach(async ({ page }) => {
   // Settle the dawn-roll scramble so a die's displayed face equals its dealt
   // value the instant we read it (same pattern as dawn-hand/starmap specs).
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 async function newGameSeed(page: Page, seed: number): Promise<void> {
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(seed));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
 }
 
 /** Jump from the starmap: assign the given hand die, click the destination, commit. */
@@ -220,8 +234,19 @@ test('weapons-malfunction is clearly communicated when fuel-gated', async ({ pag
   await expect(offline).toBeVisible();
   await expect(offline).toContainText(String(FIGHT_FUEL_COST)); // "need 50 fuel"
   // T-1102: jump costs are multiples of 12, so a clean drain to exactly 0 is no
-  // longer reachable; the tank first dips below the 50-fuel fight cost at 30.
-  await expect(offline).toContainText(`have ${B_OFFLINE_FUEL}`);
+  // longer reachable; the tank first dips below the 50-fuel fight cost part-way.
+  //
+  // T-195 (repaired at T-162) · WHERE it lands is no longer a literal. The nav
+  // die now buys a 0–15% fuel discount, so the drain to this point is a function
+  // of which dice the loop above happened to arm, and the old pinned `30` went
+  // stale the moment that shipped. THE CLAIM IS UNCHANGED and is now asserted
+  // against the engine's own readout: the band must name the ACTUAL tank, and
+  // that tank must genuinely be short of the fight cost — which is the whole
+  // reason the band is up. Pinning the arithmetic beats pinning the number.
+  const tank = Number(await page.getByTestId('combat-fuel').getAttribute('data-fuel'));
+  expect(tank).toBeLessThan(FIGHT_FUEL_COST);
+  expect(tank).toBeGreaterThanOrEqual(0);
+  await expect(offline).toContainText(`have ${tank}`);
 
   // 2) The post-commit signal: firing anyway burns the die and draws pressure but
   //    lands no shot — the enemy hull is unchanged, proving the malfunction.

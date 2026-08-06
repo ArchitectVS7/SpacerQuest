@@ -78,7 +78,7 @@ redesigned from first principles for how people actually play in 2026.
 ## The first session — Tour One (PRD §5.1)
 
 You are a nobody with a junker ship and a 25,000-credit debt to the Merchant
-Guild of Sun-3, due in 30 days. The object is stated on the first screen: **clear
+Guild of Sol-3, due in 30 days. The object is stated on the first screen: **clear
 the debt and make your name.** Tour One is a complete authored arc of **60–120
 minutes** that doubles as the tutorial, ending on a decisive Day-30 beat and a
 hook — a fragment of a signal that shouldn't exist — that opens the veteran

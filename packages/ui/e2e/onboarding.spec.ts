@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 import { createInitialState, startDay, createSave, type GameState } from '@spacerquest/engine';
 
 // T-311 acceptance: Tour One's teaching layer, driven end to end through the real
@@ -6,7 +7,7 @@ import { createInitialState, startDay, createSave, type GameState } from '@space
 // engine use here is OFFLINE save-fixture construction — exactly as the wire/combat
 // specs do — never an in-page engine call that bypasses a screen the player uses.
 //
-//   Fresh default seed 424242 (Test A): Day 1 at Sun-3, dawn hand [19,14,14,13,3].
+//   Fresh default seed 424242 (Test A): Day 1 at Sol-3, dawn hand [19,14,14,13,3].
 //     - Contract 0 carries cargo to system 9.
 //     - Sign with die index 0, top the tank off (a visible fuel affordance), then
 //       jump with die index 2 → delivery pays out (1,000 → 3,420cr, hold empties).
@@ -83,12 +84,20 @@ test.beforeEach(async ({ page }) => {
   // value the instant we read it, and disable the coach fade (same pattern as the
   // dawn-hand / combat specs).
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 async function newGameSeed(page: Page, seed: number): Promise<void> {
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(seed));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
 }
 
 test('fresh seed: first delivery guided by visible affordances; each prompt fires once; state persists', async ({
@@ -177,7 +186,7 @@ const SEEN_DELIVERY = { 'dawn-roll': true, 'first-sign': true } as const;
 test('first-hangout coach fires once at a Hangout system, anchored, and persists', async ({
   page,
 }) => {
-  // Sun-3 (system 1) hosts the only Tour One Hangout. With the delivery chain
+  // Sol-3 (system 1) hosts the only Tour One Hangout. With the delivery chain
   // pre-seen, the highest-priority new prompt at a hangout system is first-hangout.
   await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY });
 
@@ -205,7 +214,7 @@ test('first-hangout never fires where no Hangout exists', async ({ page }) => {
 test('first-loan coach fires once inside the open Hangout panel, anchored, and persists', async ({
   page,
 }) => {
-  // Delivery chain + the hangout nudge pre-seen. Sun-3 is ALSO a purchasable,
+  // Delivery chain + the hangout nudge pre-seen. Sol-3 is ALSO a purchasable,
   // unowned port with an affordable sweep, so first-port and first-explore are
   // pre-seen too — otherwise one of them (now correctly, per-mount) claims the
   // screen slot alongside first-loan's independent hangout-mount slot, which

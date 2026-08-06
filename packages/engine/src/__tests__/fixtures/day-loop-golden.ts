@@ -38,14 +38,14 @@ export const SEED = 1;
  *  single home shared by the test and the regenerator). */
 export const TEN_DAY_SCRIPT: PlayerAction[][] = [
   [
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 20, spendDie: 0 },
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 20 },
     { type: 'Travel', destinationId: 2, spendDie: 1 },
     { type: 'Trade', action: 'pay-debt', amount: 50 },
   ],
-  [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 5, spendDie: 1 }],
+  [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 5 }],
   [
     { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
-    { type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 1 },
+    { type: 'Trade', action: 'sign-contract', contractIndex: 0 },
     { type: 'Travel', destinationId: 3, spendDie: 2 },
   ],
   [
@@ -65,18 +65,18 @@ export const TEN_DAY_SCRIPT: PlayerAction[][] = [
     { type: 'Travel', destinationId: 4, spendDie: 0 },
   ],
   [{ type: 'Wait' }],
-  [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 }, { type: 'Wait' }],
+  [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 10 }, { type: 'Wait' }],
   [
     { type: 'Travel', destinationId: 5, spendDie: 0 },
     { type: 'Trade', action: 'pay-debt', amount: 100 },
   ],
   [
     { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 1 },
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
   ],
   [{ type: 'Travel', destinationId: 6, spendDie: 1 }],
   [
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 10 },
     { type: 'Wait' },
     { type: 'Trade', action: 'pay-debt', amount: 10 },
   ],
@@ -523,11 +523,204 @@ export function runDayLoopGolden(
 //   DAY_LOOP state  3405f608… -> 013f9cb5…   (events 72748730… UNCHANGED)
 //   STORYLET state  9e332c2e… -> cc9ea7c7…   (events 3e96fe90… UNCHANGED)
 // Regenerated via gen-day-loop-golden.ts.
+//
+// T-145 re-derivation (the fixed Liar's Dice roster): the STATE hashes move for
+// exactly one reason again — `createInitialState` now serializes THREE new keys
+// (`player.liarsDiceBeaten`, `player.liarsDiceGamesPlayed` and the root-level
+// `liarsDicePurses`, the 42 authored bankrolls). Nothing behavioural changed for
+// either script: neither contains a `VisitHangout`, so no hand is opened, no
+// archetype roll is drawn, and the roster's own money sites are unreachable
+// without one.
+//
+// THE EVENT HASHES ARE STILL THE TRIPWIRE, and both held for the third time. The
+// deal loop in `actions/hangout.ts` became `for i < dicePerSideForTier(0)` over
+// two hard-coded four-element literals, in the SAME player-first order — provably
+// inert at four dice — and the roster's per-move `roll` is drawn on both paths at
+// the same point the roaming path always drew it. A move here would have meant one
+// of those two re-phased a stream neither script visits. They came back
+// byte-identical from the regenerator. If either ever moves on a change of this
+// shape, that is the leak — fix the cause, never re-pin.
+//   DAY_LOOP state  013f9cb5… -> 328b37f5…   (events 72748730… UNCHANGED)
+//   STORYLET state  cc9ea7c7… -> b8bb9995…   (events 3e96fe90… UNCHANGED)
+// Regenerated via gen-day-loop-golden.ts.
+//
+// T-146 · ALL FOUR HASHES HELD — NO RE-DERIVATION, and this entry records WHY
+// (2026-07-31, the unlock ladder, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §4).
+//
+// T-146 is the largest change to the Dare's rules since T-135: the dice count, the
+// claim ceiling, the wager band, the ante and the dealer's fold bar all became
+// functions of a live unlock tier, and `settleDareHand` gained the odometer
+// increment that drives it. NOT ONE OF THOSE FOUR HASHES MOVED, and the argument
+// is structural rather than lucky:
+//
+//   1. NEITHER SCRIPT OPENS A HAND. There is no `VisitHangout` in either — the
+//      same fact that carried T-135 and T-145 — so `liarsDiceTier` is never
+//      called, no tier is ever frozen onto a hand, and every ladder-derived number
+//      is unreachable from here.
+//   2. NEITHER SCRIPT SETTLES ONE. `settleDareHand` runs from exactly two places:
+//      `resolveDare` and the dusk timeout clause, and the dusk clause is guarded
+//      WHOLE on `state.dareHand !== null`. With no hand ever opened, the new
+//      `liarsDiceGamesPlayed += 1` cannot execute — so `serializeState` emits the
+//      same `0` T-145 seeded, and the STATE hashes hold too. That is why this is
+//      the first Liar's Dice task in the series that moved NO hash at all: T-135
+//      and T-145 each added a serialized KEY; T-146 adds none.
+//   3. THE REWIRE WAS PROVED INERT BEFORE THE LADDER WAS SWITCHED ON. Every call
+//      site was moved off a constant and onto a frozen field with the tier still
+//      pinned at 0 — `dicePerSideForTier(0) === 4`, `maxQuantityForDice(4) === 8`,
+//      `effectiveWagerBand(sid, 0) === wagerBandFor(sid)`, `anteFor(sid, 0)` the
+//      shipped expression, `round(5 × 4 / 4) === 5` — and the whole battery,
+//      including the sim's pinned gambler behavioural fingerprint
+//      (`f08a7285a5a7179f`), came back byte-identical at that pin. Only then did
+//      the tier go live. The N3 `combatRules.ts` extract-before-add discipline.
+//
+// THE EVENT HASHES REMAIN THE TRIPWIRE. If a change of THIS shape ever moves one,
+// it means a ladder read leaked into a path neither script visits — fix the cause,
+// never re-pin.
+//
+// T-149 RE-DERIVATION (the hasHangout-aware Socialize flavor). All four hashes
+// move, and unlike the T-146 entry above the EVENT hashes move too — which is
+// expected here rather than alarming, because an NPC's `lastAction.details`
+// string is carried in the dusk `WireEntry`/`NpcAction` payloads as well as in
+// the serialized state. What matters is WHICH bytes moved, and that was measured
+// rather than assumed: both scripts were replayed against the pre-change engine
+// and the post-change engine, and with the four socialize clause families
+// (`cleaned up at the … Hangout tables` / `bought a round at the … Hangout` /
+// `swapped stories at the … docks` / `drank alone at …, poorer for it`)
+// normalized out, ALL FOUR streams — both states and both event logs — are
+// byte-for-byte EQUAL. No credit, fuel level, system id, rng state, event type or
+// event ordering moved; `executeSocialize` still rolls the same GUILE check at the
+// same DC and mints the same ±credits on both sides of the new `hasHangout` read.
+// A residual diff after that normalization would have meant the boolean changed an
+// OUTCOME rather than a sentence; that is the regression to chase.
+//
+// N13/T-156 RE-DERIVATION (the NPC virtual hand). All four hashes move, and this
+// time that IS a rule change rather than a re-wording: the cast's checks are no
+// longer `rng.d20()` at `npc.ts`'s two spend sites — they spend from a five-die
+// virtual hand dealt through the player's own `rollDawnHand` (`npcHand.ts`). Both
+// scripts run ten and two days with the dusk NPC tick live, so every captain's
+// draw sequence moves and with it the dusk wire and the serialized cast. This is
+// the fixture header's own "deliberate rebalance" case, regenerated with
+// `gen-day-loop-golden.ts` — NOT hand-edited, and never edited to make a red test
+// green. The behaviour-preserving THREADING of the ledger was proved separately
+// and left all four hashes at their T-149 values; only the live deal moved them.
+// T-182 RE-DERIVATION (F-156-1 · `spendDie` stopped dropping `rerollsRemaining`),
+// 2026-08-02. THE TWO STATE HASHES MOVE; BOTH EVENT HASHES ARE BYTE-IDENTICAL,
+// and that split is the whole verification, not a footnote:
+//   DAY_LOOP state  616c14ae… -> 816a1e2a…   (events 2cea1c44… UNCHANGED)
+//   STORYLET state  b2bd3caa… -> e81bfa05…   (events e9092e60… UNCHANGED)
+//
+// WHY THE STATE MOVED, exactly. `dice.ts` `spendDie` rebuilt the hand as
+// `{ dice, spent }`, silently omitting the `rerollsRemaining` key T-1306 added.
+// Both scripts spend dice through assign-the-returned-hand call sites, and
+// `endDay` marks the hand fully spent WITHOUT nulling it (`day.ts`), so
+// `serializeState(finalState)` carries that hand. The key used to VANISH on the
+// first spend and now survives as `0` — a serialization delta of one key, on a
+// crew-free run whose charge count is 0 either way.
+//
+// WHY THE EVENTS DID NOT, and why that is the tripwire. No event payload carries
+// the dawn hand, and no OUTCOME depends on the charge: neither script hires
+// `crew-navigator` or fits `module-marked-ephemeris`, so `rerollsRemaining` is 0
+// throughout and `resolveReroll` was — and remains — unreachable from here. A
+// moved EVENT hash on a change of this shape would have meant the restored charge
+// had leaked into a resolution path; that is the regression to chase, and the
+// reason both event hashes are asserted unchanged rather than merely regenerated.
+//
+// T-196a (M17 · the administrative actions went FREE), 2026-08-04. ALL FOUR HASHES
+// CAME BACK BYTE-IDENTICAL FROM THE REGENERATOR — and, as with T-182 above, that
+// null result is the verification, not a footnote. `TEN_DAY_SCRIPT` fires five
+// `buy-fuel`s and a `sign-contract`, every one of which used to burn a die and now
+// burns none, so the "no move" needs an argument:
+//   1. STATE. The only thing that changed mid-day is `dawnHand.spent`, and `endDay`
+//      marks the hand FULLY SPENT without nulling it (`day.ts`), so the hand that
+//      reaches `serializeState(finalState)` is all-true either way. Nothing else in
+//      these scripts reads a hand.
+//   2. EVENTS. No `TradeEvent` payload ever carried the die, and every freed action
+//      still emits exactly ONE event, so `dayEventCount` — which `day.ts` forks the
+//      action rng on — advances identically. Same forks, same draws, same stream.
+// A MOVED HASH HERE would have meant the freeing had leaked into an outcome path
+// (an extra/missing event, or a hand surviving to the save differently), which is
+// precisely the regression to chase. The `rulesFingerprint` capstone is where this
+// change's real effect is measured: the sim's policies, unlike this script, plan
+// against a die BUDGET, and freeing five verbs frees that budget.
+//
+// T-197 (M17 · the seven Hangout venues went FREE, and two daily caps replaced
+// the die), 2026-08-05. THE TWO STATE HASHES MOVE; BOTH EVENT HASHES ARE
+// BYTE-IDENTICAL — the T-182 split, for the third time, and the split IS the
+// verification:
+//   DAY_LOOP state  7ae0e9ae… -> e93ec6fa…   (events 89fc2999… UNCHANGED)
+//   STORYLET state  4a076b2b… -> 4619a3c0…   (events 6a1beb69… UNCHANGED)
+//
+// WHY THE STATE MOVED, exactly, and it is NOT the Hangout. Neither script visits a
+// Hangout at all — grep them: `TEN_DAY_SCRIPT` is Trade/Travel/Wait and
+// `STORYLET_SCRIPT` is one Storylet plus a Travel, and there is no `VisitHangout`
+// or `Dare` in either. The state moved because T-197 added TWO PLAYER FIELDS to
+// the save shape (`socialPlaysRemaining`, `dareRoundsToday` — the §4a social pool
+// and the §4b rounds counter, both of which must survive a mid-day reload). The
+// state hash is over `serializeState(finalState)`, so two new serialized keys move
+// it by construction on EVERY script, whether or not the script ever exercises the
+// rule. This is a serialization delta of two keys carrying their dawn values —
+// `endDay` resets both at NEXT DAY PREP, so a run that never enters a Hangout
+// serializes `SOCIAL_PLAYS_PER_DAY` and `0` on the final day, exactly as day 1 did.
+//
+// WHY THE EVENTS DID NOT, and why that is the tripwire. No event payload carries
+// either counter, and neither script reaches a resolver that reads one: no
+// `VisitHangout` is dispatched, so the social pool is never decremented, the
+// rounds cap is never evaluated, and neither typed refusal
+// (`social-limit-reached` / `daily-round-limit`) can be raised. The freed venues
+// cannot have moved `dayEventCount` either, for the same reason — they are never
+// called. A MOVED EVENT HASH HERE would have meant the caps had leaked into a
+// resolution path these scripts DO touch (or that the dawn reset in day.ts's NEXT
+// DAY PREP had started emitting something); that is the regression to chase, and
+// the reason both event hashes are asserted unchanged rather than merely
+// regenerated. The `rulesFingerprint` capstone is where this change's real effect
+// is measured.
+//
+// ---------------------------------------------------------------------------
+// T-204 RE-DERIVATION — the "Hangout" -> "Cantina" player-facing rename.
+//
+// ALL FOUR hashes moved, which is expected: the rename touched authored PROSE
+// STRING VALUES that both scripts render into the eventLog (and therefore into
+// `serializeState`) and into the returned day-event stream — the `wireStories.ts`
+// gamble templates and `npc.ts`'s Socialize `lastAction.details` clauses. No
+// rule, DC, band, threshold or code path changed.
+//
+// THE CHECK THAT MAKES THIS A RE-DERIVATION AND NOT A REBALANCE. Rather than
+// eyeballing an opaque sha256, the pre-images were recomputed and the
+// substitution mechanically reversed: replacing every "Cantina" with "Hangout"
+// in `serializeState(finalState)` and in `JSON.stringify(events)` reproduced all
+// four COMMITTED pre-rename constants EXACTLY, for both scripts —
+//     TEN_DAY   reversed state + events == committed  ✓
+//     STORYLET  reversed state + events == committed  ✓
+// so the ONLY bytes that moved in either pre-image are the rename itself. Every
+// credit, fuel level, system id, rng draw, event type and event ordering is
+// byte-identical to the predecessor. The reversed pre-images additionally
+// contained zero residual "Hangout" occurrences (35 state / 31 events replaced
+// on TEN_DAY, 11 / 7 on STORYLET), confirming the rename is complete in the
+// rendered prose rather than partial.
+//
+// Note this is the OPPOSITE tripwire reading from the T-197 block above: there,
+// an unmoved event hash was the evidence. Here the event hashes SHOULD move,
+// because the rename edits prose the events carry verbatim; what proves nothing
+// mechanical drifted is the reversal identity, not stillness.
+//
+// T-208 · ALL FOUR HASHES MOVED, and this is a REGENERATION THROUGH THE COMMITTED
+// REGENERATOR AFTER AN INTENTIONAL RULE CHANGE (the T-156 precedent), not a
+// hand-edit to make a test pass. `createInitialState` now seeds the eleven quest
+// captains at the CORE PORT their content declares (`NpcProfile.homePortSystemId`)
+// instead of at the arbitrary `(index % 20) + 1` that parked six of them at rim
+// systems with no Cantina. Both goldens serialize whole state, so eleven changed
+// `npc.currentSystemId` values move the state hash by construction; the event
+// hashes follow because `resolveVisitHangout` and `hangoutRumors` resolve
+// co-located NPCs off that field, so which captain is in the room at a given port
+// changed too. The 30 simulated captains are untouched — they occupy indices 0-29
+// and still take the `% 20` spread, which `state.test.ts` pins directly.
+//
+// Regenerated via gen-day-loop-golden.ts. Never hand-edited.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '013f9cb5ab855a489ea7f230dfcbf10a0f889378895d0c1ac20e4ea44183a59e';
+  'd0f98ba753b3184f3453eeaa3ca154f45205672515cdf043e4034afe63d366a8';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '7274873091b87cee192878a732e7ae8217575cc6650fd41f61290d2dfe1dbe71';
+  'b86dd884c33c801d5cea19aa4f6535bcfe272e66cd8540167a18893a54a766f1';
 export const STORYLET_GOLDEN_STATE_HASH =
-  'cc9ea7c748111bb6ba814621123a603a4946ae0ad917a65f8ad04aab7586d675';
+  '6cac8f615077d5db84bad46c59c434669f100bb5a8877266c8143f03fc22d86a';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '3e96fe90247b837cba773049e855623f0381bb5cd0f9cf41fda9d86982a8b50e';
+  '1bd799be858ad23c1a6aa194172de4bda3bb131419edd94eae02716ce4ef34c2';

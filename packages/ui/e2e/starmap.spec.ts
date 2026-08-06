@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 import { jumpFuelCost, travelDc, maxJumpDistance } from '@spacerquest/engine';
 import { distance, STAR_SYSTEMS } from '@spacerquest/content';
 
@@ -16,6 +17,10 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
   // Settle the dawn roll + ring pulse so DOM reads are stable, not mid-animation.
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 /** Start a fresh, deterministic career on a chosen seed, entirely through the UI. */
@@ -23,6 +28,10 @@ async function newGameSeed(page: Page, seed: number): Promise<void> {
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(seed));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
 }
 
 function sysNode(page: Page, id: number) {
@@ -110,7 +119,7 @@ test('unreachable systems are visibly gated, not clickable-then-error', async ({
   // A full ship reaches everything, so gating is only demonstrable after a drain.
   // T-1102: under the per-distance cost the old 1<->14 lane (168 fuel/jump) can no
   // longer bounce — one leg leaves 132 fuel, short of the 168 return. Bounce the
-  // cheap adjacent pair Sun-3 (1) <-> Aldebaran-1 (2) instead: distance 5, 60
+  // cheap adjacent pair Sol-3 (1) <-> Aldebaran-1 (2) instead: distance 5, 60
   // fuel/jump, so 300 fuel drains to exactly 0 in 5 jumps. T-1103: the encounter
   // -rate repair (core 0.08 -> 0.30) means seed 3's drain now hits an interceptor
   // that would stall the loop; re-derived offline to seed 8, whose full 1<->2
@@ -124,7 +133,19 @@ test('unreachable systems are visibly gated, not clickable-then-error', async ({
   // is out): seed 9 spends its whole [16,12,10,6,2] hand on five clean 60-fuel
   // jumps, draining 300 → 0 inside day 1 with no encounter drawn. The gating claim
   // below is untouched; only the road to a dry tank moved.
-  await newGameSeed(page, 9);
+  //
+  // T-195 (re-hunted at T-162) · RE-DERIVED AGAIN, to seed 70. `navDieFuelDiscount`
+  // makes a jump cost `max(1, round(60 × (1 − 0.15·(die−1)/19)))` for the armed
+  // die, so a hand of ordinary dice now drains 300 by only ~277 and strands the
+  // loop with ~23 fuel — enough for a non-zero ring, not enough for the 60-fuel
+  // 1↔2 lane, so the next click lands on an `aria-disabled` node and the loop
+  // hangs. THE SEED WAS RE-HUNTED, NOT THE ASSERTION LOWERED: seeds 1..4000 were
+  // swept offline against the built engine with THIS loop's exact decision rule
+  // (bounce 1↔2 on the lowest-index unspent die, end the day when the hand is
+  // out, abort on an encounter). Seed 70 spends its whole hand on five clean
+  // jumps — 300 → 244 → 186 → 127 → 68 → 8 — inside day 1 with no encounter
+  // drawn, and 8 fuel is below the 12-per-distance floor, so the ring reads 0.
+  await newGameSeed(page, 70);
 
   for (let i = 0; i < 14; i++) {
     const units = Number(await page.getByTestId('fuel-ring').getAttribute('data-radius-units'));

@@ -332,6 +332,14 @@ body {
   gap: 10px;
   align-content: start;
 }
+/* T-187 · The plot group (chart + route preview + Confirm jump) is one rails
+   region; the off-lane sweep beneath it is another. The wrapper repeats the
+   parent grid's own gap so the pane looks byte-identical to before it existed. */
+.sm-plot {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
 .smsvg {
   width: 100%;
   height: auto;
@@ -546,31 +554,275 @@ body {
   font-size: 12px;
 }
 
-/* fuel-curve readout — a compact instrument strip, tabular data */
-.ship-fuelcurve {
-  display: grid;
-  grid-template-columns: auto 1fr auto 1fr auto 1fr;
-  gap: 2px 8px;
-  align-items: baseline;
-  font-family: var(--font-data);
+/* =========================================================================
+   T-189 · THE SHIP DIAGRAM — an annotated outline where a ledger used to be.
+
+   This block replaced `.ship-fuelcurve`, the flat six-cell instrument strip:
+   its four numbers now hang off the part of the hull they describe, inside
+   `.ship-region` callouts.
+
+   THE ONE STRUCTURAL RULE HERE: the callouts are HTML absolutely positioned
+   over the SVG in PERCENTAGES of the same box the viewBox draws into. That
+   alignment only holds while the svg's rendered box is exactly the viewBox
+   aspect — so the diagram is sized by `max-width` on the wrapper and NEVER by
+   a `max-height` on the svg, which would letterbox it and slide every callout
+   off its region.
+
+   Colour discipline (theme header): one phosphor. Damage is `--ember-hi` plus
+   glow; a dead system is REVERSE VIDEO, the same language as `.ship-reason`.
+   ========================================================================= */
+.shipdiagram {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
   border: 1px solid var(--hair);
-  padding: 6px 8px;
+  background:
+    radial-gradient(120% 90% at 50% 42%, rgba(255, 176, 0, 0.05), transparent 70%),
+    linear-gradient(180deg, #150e07, #0c0805);
 }
-.ship-fuelcurve .fc-k {
+.shipsvg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* --- the hull and its marks --- */
+.ship-mark {
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.ship-mark .hull-outline {
+  stroke: var(--ember);
+  stroke-width: 1.4;
+  fill: rgba(255, 176, 0, 0.05);
+  filter: drop-shadow(0 0 2px rgba(255, 176, 0, 0.35));
+}
+.mark-shields ellipse {
+  stroke: var(--amber-dim);
+  stroke-dasharray: 5 4;
+}
+.mark-pods rect {
+  stroke: var(--ember);
+  stroke-width: 1.2;
+  fill: rgba(255, 176, 0, 0.07);
+}
+.mark-drives rect {
+  stroke: var(--ember);
+  stroke-width: 1.2;
+  fill: rgba(255, 176, 0, 0.12);
+}
+.mark-drives path {
+  stroke: var(--amber-dim);
+  stroke-width: 0.8;
+}
+.mark-navigation path,
+.mark-weapons ellipse,
+.mark-weapons rect {
+  fill: rgba(255, 176, 0, 0.12);
+}
+.rg-leader {
+  stroke: var(--amber-dim);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+.hull-fitting rect {
+  fill: var(--ember);
+  stroke: none;
+  opacity: 0.85;
+}
+
+/* A damaged system lights up on the HULL as well as in its callout — that is
+   the whole point of the diagram: you see WHERE the ship is hurt. */
+.ship-mark.damaged {
+  stroke: var(--ember-hi);
+  filter: drop-shadow(0 0 3px rgba(255, 176, 0, 0.55));
+}
+.ship-mark.damaged rect,
+.ship-mark.damaged ellipse,
+.ship-mark.damaged path {
+  stroke: var(--ember-hi);
+}
+.ship-mark.critical rect,
+.ship-mark.critical ellipse,
+.ship-mark.critical path {
+  fill: var(--ember);
+  stroke: var(--ember-hi);
+}
+
+/* --- the cargo-bay fill meter (texture, not a per-pod count) --- */
+.bay-seg {
+  fill: none;
+  stroke: var(--amber-dim);
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.bay-seg.lit {
+  fill: rgba(255, 176, 0, 0.55);
+  stroke: var(--ember);
+}
+.bay-seg.used {
+  fill: var(--ember-hi);
+  stroke: var(--ember-hi);
+}
+
+/* --- the fuel bar under the drives --- */
+.fuel-bar {
+  pointer-events: none;
+}
+.fb-track {
+  fill: none;
+  stroke: var(--hair);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+.fb-fill {
+  fill: rgba(255, 176, 0, 0.5);
+  stroke: none;
+}
+
+/* --- the callouts: the numbers, AT the region they describe --- */
+.ship-callouts {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+}
+.ship-region {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  display: grid;
+  gap: 0;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  line-height: 1.15;
+  padding: 1px 2px;
+}
+.ship-region.anchor-end {
+  transform: translate(-100%, -50%);
+  text-align: right;
+  justify-items: end;
+}
+.ship-region.anchor-start {
+  transform: translate(0, -50%);
+  text-align: left;
+  justify-items: start;
+}
+.ship-region.anchor-middle {
+  transform: translate(-50%, -50%);
+  text-align: center;
+  justify-items: center;
+}
+.ship-region .rg-label {
   color: var(--amber);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-family: var(--font-display);
+  font-size: 8px;
+  letter-spacing: 0.12em;
 }
-.ship-fuelcurve .fc-v {
+.ship-region .rg-ro {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.ship-region .rg-k {
+  color: var(--amber);
+  font-style: normal;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  margin-right: 3px;
+}
+.ship-region .rg-v {
   color: var(--ember-hi);
-  text-shadow: var(--glow);
   font-weight: 600;
+  text-shadow: var(--glow);
+}
+/* The hold is the hero readout — it is the largest shape on the diagram and it
+   carries the largest numerals, so "how much can I carry" is answered without
+   reading a single label. */
+.ship-region[data-region='pods'] .rg-v {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+.ship-region[data-region='pods'] .rg-label {
+  font-size: 7px;
+}
+.ship-region:hover .rg-v {
+  text-shadow: var(--glow-hi);
+}
+/* Damage speaks in brightness; a dead system speaks in reverse video. Never a
+   second hue (theme header, design commitment 1). */
+.ship-region.damaged .rg-label,
+.ship-region.damaged .rg-k {
+  color: var(--ember);
+}
+.ship-region.damaged .rg-v {
+  text-shadow: var(--glow-hi);
+}
+.ship-region.critical {
+  background: var(--ember);
+}
+.ship-region.critical .rg-label,
+.ship-region.critical .rg-k,
+.ship-region.critical .rg-v {
+  color: #140e07;
+  text-shadow: none;
+}
+
+/* =========================================================================
+   T-189 · THE YARD BENCH — the diagram above is the READOUT, this is the
+   CONTROLS. Framing the grid, the repair-all button and the equipment list
+   inside one labelled tray is what stops them reading as "the ship's state".
+   Nothing is hidden: every row still renders, in full, exactly as before.
+   ========================================================================= */
+.ship-bench {
+  border: 1px solid var(--hair);
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  background: linear-gradient(180deg, rgba(255, 176, 0, 0.03), transparent 40%);
+}
+.ship-bench .bench-head {
+  color: var(--amber);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 4px;
 }
 
 /* component grid */
 .ship-grid {
   display: grid;
   gap: 4px;
+}
+/* T-189 · A click on a hull region lands here: the bench row it controls is
+   scrolled into view and flashes. Static under reduced motion — the border
+   still marks the row, only the bloom is dropped. */
+.comp-row.focused {
+  border-color: var(--ember);
+}
+@media not (prefers-reduced-motion: reduce) {
+  .comp-row.focused {
+    animation: comp-focus 0.7s ease-out 1;
+  }
+}
+@keyframes comp-focus {
+  0% {
+    box-shadow: inset 0 0 0 1px var(--ember-hi);
+    background: rgba(255, 176, 0, 0.18);
+  }
+  100% {
+    box-shadow: none;
+    background: transparent;
+  }
 }
 .comp-row {
   border: 1px solid var(--hair);
@@ -814,6 +1066,302 @@ body {
   color: var(--ember);
 }
 
+/* ---- T-190 · the manifest as an OBJECT ---------------------------------
+   The owner's note: the manifest "needs to be a clickable item… Make it stand
+   out as distinct from everything else." It was a second instance of `.pane`
+   sitting in the same grid as the port ledger, and it read as one.
+
+   It is now a CLIPBOARD BOLTED TO THE CONSOLE: a bulldog clip overhanging the
+   frame, a 2px board stock with two offset hairlines behind it so it has
+   THICKNESS, a slight crooked hang, a reverse-video port stamp, and a sheet of
+   paper on it with punched holes at the top and a torn bottom edge. Clicking
+   the header STOWS the paper; the board itself stays bolted on.
+
+   PALETTE DISCIPLINE: T-186 (the visual-identity/colour ruling) is still open
+   and the owner owns it, so every value below stays inside the committed
+   CRT-amber system — one phosphor colour, emphasis by REVERSE VIDEO. No second
+   hue is introduced here, and no shared rule (`.pane`, `.pane > header`, `.col`,
+   `.contract`, `.flag`) is touched: everything is additive under
+   `.manifest-board`, so the treatment is revertible in one block.
+
+   MOTION: opening/re-posting animates, and every animation is wrapped in
+   `@media not (prefers-reduced-motion: reduce)` — the house rule this file keeps
+   throughout, and the rail that keeps the e2e suite honest. */
+.manifest-board {
+  position: relative;
+  /* REQUIRED: `.pane` sets `overflow: hidden`, which would clip the clip bar,
+     the stacked-paper shadows and the torn edge. `.pane .body` keeps its own
+     `overflow: auto`, so the scroller is unchanged. */
+  overflow: visible;
+  /* 2px board stock, ROUNDED — every other pane in the cockpit is a square 1px
+     hairline, so the silhouette alone separates this one at a glance. */
+  border: 2px solid var(--amber-dim);
+  border-radius: 4px;
+  background:
+    /* fibreboard grain */
+    repeating-linear-gradient(0deg, rgba(255, 176, 0, 0.03) 0 2px, rgba(0, 0, 0, 0) 2px 4px),
+    repeating-linear-gradient(90deg, rgba(255, 176, 0, 0.018) 0 3px, rgba(0, 0, 0, 0) 3px 6px),
+    linear-gradient(180deg, #26180a 0, #17100a 55%, #0e0905 100%);
+  /* Thickness: two offset hairlines behind the board, then a cast shadow. */
+  box-shadow:
+    3px 4px 0 -1px #100b05,
+    4px 5px 0 -1px var(--hair),
+    9px 11px 20px rgba(0, 0, 0, 0.55);
+  /* A board on a hook hangs crooked. Deliberately under 0.5deg: Playwright
+     centre-clicks a rotated box fine, but a large angle degrades the hit areas
+     and the `dropDie` drag targets on `.contract`. */
+  transform: rotate(-0.45deg);
+}
+/* Bolted to the console — two screw heads in the bottom corners. Chrome only. */
+.manifest-board::before,
+.manifest-board::after {
+  content: '';
+  position: absolute;
+  bottom: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--amber) 0 35%, #241708 60%, #0d0904 100%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+.manifest-board::before {
+  left: 6px;
+}
+.manifest-board::after {
+  right: 6px;
+}
+/* The bulldog clip. Overhangs UPWARD into the 12px `.screen` gap above `.main`,
+   so it costs the column no layout height (the right column's rows are auto and
+   the trade pane's controls must stay above the fold). */
+.mb-clip {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 124px;
+  height: 19px;
+  border-radius: 3px 3px 0 0;
+  /* Brushed metal, read in one phosphor: a hot specular band across the top
+     third, falling away to shadow at the jaw. */
+  background: linear-gradient(
+    180deg,
+    #3a2409 0,
+    var(--ember) 22%,
+    #8a5710 42%,
+    var(--amber-dim) 62%,
+    #221506 100%
+  );
+  border: 1px solid var(--amber);
+  border-bottom: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 225, 166, 0.55),
+    0 3px 7px rgba(0, 0, 0, 0.7);
+  z-index: 2;
+}
+/* The jaw: the pressure bar the paper is bitten under, plus two pivot rivets. */
+.mb-clip-jaw {
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  bottom: 3px;
+  height: 5px;
+  border-radius: 1px;
+  background: linear-gradient(180deg, #100a04, #2a1a07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 176, 0, 0.3),
+    -42px -7px 0 -1px var(--ember-hi),
+    42px -7px 0 -1px var(--ember-hi);
+}
+/* The header is one big control — the owner's "clickable item". */
+.manifest-board > header {
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--amber-dim);
+}
+.manifest-board > header h2 {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mb-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mb-toggle:focus-visible {
+  outline: 1px solid var(--ember);
+  outline-offset: 3px;
+}
+.mb-title {
+  color: var(--ember);
+  text-shadow: var(--glow);
+  white-space: nowrap;
+}
+.mb-toggle:hover .mb-title {
+  color: var(--ember-hi);
+}
+/* The open/stowed chevron. Purely decorative — `aria-expanded` on the button is
+   what actually announces the state. */
+.mb-toggle::after {
+  content: '\25BE';
+  flex: 0 0 auto;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ember);
+  text-shadow: var(--glow);
+  transition: transform 180ms ease;
+}
+.mb-toggle:hover::after {
+  color: var(--ember-hi);
+}
+.manifest-board[data-manifest-open='0'] .mb-toggle::after {
+  transform: rotate(-90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mb-toggle::after {
+    transition: none;
+  }
+}
+/* The port stamp: reverse video, counter-rotated against the board's hang so it
+   reads as ink pressed onto the board rather than a label typeset on it. */
+.mb-stamp {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--tube);
+  background: var(--ember);
+  padding: 2px 8px;
+  transform: rotate(1.1deg);
+  box-shadow:
+    0 0 0 1px var(--tube),
+    0 0 0 2px var(--amber-dim);
+}
+/* The paper on the board. Padding is kept TIGHT on purpose: the chrome must not
+   cost the player a visible offer — the pane's box is ~200px at the suite
+   viewport and the baseline showed a contract and a half, which this matches. */
+.manifest-board > .body {
+  padding: 7px 9px 10px;
+}
+.mb-sheet {
+  position: relative;
+  padding: 8px 9px 4px;
+  /* Paper, lighter than the board it is clipped to, faintly ruled like a form. */
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 176, 0, 0.045) 0 1px, rgba(0, 0, 0, 0) 1px 22px),
+    linear-gradient(180deg, #241809 0, #16100a 100%);
+  border: 1px solid var(--amber-dim);
+  border-bottom: none;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
+}
+/* Punched holes along the top of the sheet, where the clip bites it. */
+.mb-punches {
+  height: 9px;
+  margin: -3px -1px 5px;
+  background-image: radial-gradient(
+    circle at 6px 4px,
+    var(--tube) 0 3px,
+    rgba(255, 176, 0, 0.28) 3px 3.9px,
+    rgba(0, 0, 0, 0) 4.1px
+  );
+  background-size: 32px 9px;
+  background-repeat: repeat-x;
+}
+/* A hand-torn bottom edge. Bleeds past the sheet's padding so the paper ends
+   ragged instead of on a ruled border. */
+.mb-tear {
+  height: 9px;
+  margin: 6px -10px -4px;
+  background: linear-gradient(180deg, #150e07, #100a05);
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% 42%,
+    96% 100%,
+    92% 34%,
+    88% 96%,
+    84% 28%,
+    80% 100%,
+    76% 40%,
+    72% 92%,
+    68% 26%,
+    64% 100%,
+    60% 36%,
+    56% 94%,
+    52% 30%,
+    48% 100%,
+    44% 38%,
+    40% 90%,
+    36% 24%,
+    32% 100%,
+    28% 42%,
+    24% 96%,
+    20% 30%,
+    16% 100%,
+    12% 36%,
+    8% 92%,
+    4% 26%,
+    0 100%
+  );
+}
+/* Stowed: the board stays bolted to the console, the paper is off it. */
+.mb-stowed-line {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--amber);
+  border: 1px dashed var(--amber-dim);
+  padding: 9px 10px;
+  text-align: center;
+}
+@media not (prefers-reduced-motion: reduce) {
+  /* THE RE-POST. `key={sheet.boardKey}` remounts the sheet whenever (port, day)
+     changes — i.e. exactly when the engine regenerates the board at dawn — so
+     this fires on a genuinely new sheet and on every un-stow, and never on an
+     ordinary re-render. */
+  .mb-sheet {
+    animation: mb-post 220ms ease-out both;
+    transform-origin: top center;
+  }
+  @keyframes mb-post {
+    from {
+      opacity: 0;
+      transform: translateY(-7px) rotate(0.5deg);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) rotate(0deg);
+    }
+  }
+  /* The close beat: the paper comes off, the stub settles onto the empty board. */
+  .mb-stowed-line {
+    animation: mb-stow 200ms ease-out both;
+  }
+  @keyframes mb-stow {
+    from {
+      opacity: 0;
+      transform: scaleY(0.6);
+    }
+    to {
+      opacity: 1;
+      transform: scaleY(1);
+    }
+  }
+}
+
 /* ---- T-305 trade pane (fuel depot / debt ledger / active contract) ---- */
 .pane.trade {
   margin-top: 12px;
@@ -889,6 +1437,222 @@ body {
 }
 .lb-controls .btn {
   white-space: nowrap;
+}
+
+/* ---- T-191 · the port ledger as a SERVICE RACK -------------------------
+   The owner's note: "other menus on lower right just need to be more
+   interesting… it doesn't differentiate, a few shapes, a few very basic
+   animations will do very good for us." The lower-right quadrant was five
+   identical rectangles inside a fourth copy of the generic pane chrome.
+
+   THE SHAPE LANGUAGE CHOSEN, AND WHY THIS ONE. Three of the four quadrants
+   already own a language: the starmap is an SVG star plane in square 1px
+   hairline chrome; the ship pane (T-189) is an annotated hull outline with
+   callouts; the manifest (T-190) is ROUNDED board stock, paper, punched holes
+   and a torn edge. Paper is taken, organic outline is taken, and the square
+   hairline is the generic pane — so the one non-colliding direction left is
+   HARDWARE: the Port Ledger is a dockside SERVICE RACK. Five machined plates,
+   each with a chamfered top-left and bottom-right corner and a lit mounting
+   edge, bolted onto a riveted rail that runs the height of the rack. A
+   chamfered plate on a rail is none of the other three.
+
+   PALETTE DISCIPLINE — T-186 IS STILL OPEN AND OWNS THE COLOUR RULING. Every
+   value below stays inside the committed CRT-amber system (--ember / --ember-hi
+   / --amber / --amber-dim / --hair / --panel / --tube / --glow), one phosphor,
+   emphasis by reverse video. NO second hue is introduced. Differentiation here
+   is carried entirely by SHAPE (chamfer + rail + rivets), ICON (five stencil
+   glyphs) and MOTION (three keyed animations) — which is exactly the accept
+   clause's own minimum bar. Giving this quadrant its own HUE would be T-186's
+   territory and was deliberately not reached for.
+
+   NO SHARED RULE IS TOUCHED. `.pane`, `.pane > header`, `.col`, `.flag`,
+   `.ship-reason` (shared with ShipPane) and the bare `.notice` (also
+   `.notice.recovery` / `.notice.demo-banner` / the hangout notice) are all left
+   alone; everything below is additive under `.pane.trade` / `.ledger-block` /
+   the new `.lb-*` classes, all of which are exclusive to `TradePane`. The whole
+   treatment is revertible in one block if T-186 rules a different direction.
+
+   MOTION: three animations, all keyed off engine state via a React `key`
+   (`ledgerFascia` in format.ts) — zero component state, zero effect, zero
+   timer. Every one of them lives inside `@media not (prefers-reduced-motion:
+   reduce)`, the house rule this file keeps throughout, so the reduced-motion
+   path is INSTANT rather than "animated then skipped" — which is what keeps
+   the e2e honest. */
+
+/* The rack frame. The body becomes a two-column grid so the rail can be a
+   NORMAL-FLOW item spanning every module: an absolutely-positioned rail inside
+   `.pane .body` (a scroll container) would scroll away from the modules it is
+   supposed to be holding. `align-content: start` keeps the auto rows from
+   stretching, so the module heights are byte-identical to the block-flow
+   baseline — this chrome costs the player no information. */
+.pane.trade > .body {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  column-gap: 9px;
+  align-content: start;
+}
+.pane.trade > .body > * {
+  grid-column: 2;
+}
+/* `1 / span 30` rather than `1 / -1`: the rows here are all IMPLICIT, and -1
+   resolves against the explicit grid (one line), so `1 / -1` would span a
+   single row. The surplus rows are empty and auto-sized, i.e. 0px. */
+.pane.trade > .body > .lb-rail {
+  grid-column: 1;
+  grid-row: 1 / span 30;
+  border-radius: 2px;
+  background:
+    /* mounting rivets down the spine */
+    radial-gradient(
+        circle at 50% 8px,
+        var(--ember-hi) 0 1.1px,
+        var(--ember) 1.1px 2px,
+        #160e05 2.4px 3.4px,
+        rgba(0, 0, 0, 0) 3.6px
+      )
+      0 0 / 9px 22px repeat-y,
+    /* the lit spine, continuous behind the rivets */
+    linear-gradient(
+        90deg,
+        rgba(0, 0, 0, 0) 0 3.5px,
+        var(--amber-dim) 3.5px 5.5px,
+        rgba(0, 0, 0, 0) 5.5px
+      ),
+    /* extruded metal: a specular edge at the left, falling to shadow at the right */
+    linear-gradient(90deg, #1a1006 0, #3a2409 22%, #241708 48%, #120c06 76%, #080503 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.6),
+    1px 0 4px rgba(0, 0, 0, 0.65);
+}
+
+/* A machined service plate: chamfered top-left and bottom-right, a lit mounting
+   edge down the left where it meets the rail. The chamfer is a `clip-path`, and
+   the two 135deg/315deg corner triangles behind it are what is left showing as a
+   bright cut line once the clip takes the outer 6.4px off — a border cannot do
+   this, because a border and a clip-path fight at the mitre. */
+.ledger-block {
+  position: relative;
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+  background:
+    linear-gradient(135deg, var(--amber) 0 8px, rgba(0, 0, 0, 0) 8px) top left / 20px 20px no-repeat,
+    linear-gradient(315deg, var(--amber-dim) 0 8px, rgba(0, 0, 0, 0) 8px) bottom right / 20px 20px
+      no-repeat,
+    linear-gradient(180deg, #1b1209, #0e0a05);
+  box-shadow: inset 2px 0 0 0 var(--amber);
+}
+/* Two bolt heads down the mounting edge, so each plate reads as FIXED to the
+   rail rather than merely adjacent to it. Absolutely positioned chrome — it
+   costs the module no layout height, which is the constraint this quadrant is
+   tightest on (it is the shortest pane in the cockpit and scrolls internally). */
+.ledger-block::before,
+.ledger-block::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 34% 28%,
+    var(--ember-hi) 0 30%,
+    var(--ember) 42%,
+    #1a1006 100%
+  );
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+  z-index: 2;
+}
+.ledger-block::before {
+  top: 12px;
+}
+.ledger-block::after {
+  bottom: 6px;
+}
+/* The five module heads carry the icon language. Kept as a plain block box so
+   the head's TEXT — which several e2e specs read verbatim — is unchanged; the
+   stencil is an inline replaced box sized to sit inside the existing 14.5px line
+   box, so the rack costs the column no height. */
+.ledger-block .lb-glyph {
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  opacity: 0.85;
+}
+/* The charge sweep. Invisible at rest — it exists only to be replayed when the
+   module's engine value moves, and it is clipped to the plate by the chamfer. */
+.ledger-block .lb-sweep {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    rgba(0, 0, 0, 0) 38%,
+    rgba(255, 225, 166, 0.16) 50%,
+    rgba(0, 0, 0, 0) 62%
+  );
+}
+
+@media not (prefers-reduced-motion: reduce) {
+  /* 1 · the readout that just moved ticks. Keyed on the LEAF `<b>` only —
+     never on anything containing `fuel-amount` / `debt-amount`, because
+     remounting an input destroys the typed value and the caret. */
+  .ledger-block .lb-tick {
+    animation: tp-tick 460ms ease-out 1;
+  }
+  /* 2 · a charge runs across the plate whose value changed. */
+  .ledger-block .lb-sweep {
+    animation: tp-charge 700ms ease-out 1;
+  }
+  /* 3 · dispatches post themselves when the live offer set changes. */
+  .lb-posts > * {
+    animation: tp-post 340ms ease-out both;
+  }
+  .lb-posts > *:nth-child(2) {
+    animation-delay: 60ms;
+  }
+  .lb-posts > *:nth-child(3) {
+    animation-delay: 120ms;
+  }
+}
+@keyframes tp-tick {
+  0% {
+    color: var(--ember-hi);
+    text-shadow: var(--glow-hi);
+    transform: scale(1.16);
+  }
+  60% {
+    color: var(--ember-hi);
+    text-shadow: var(--glow-hi);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes tp-charge {
+  0% {
+    opacity: 0;
+    transform: translateX(-102%);
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(102%);
+  }
+}
+@keyframes tp-post {
+  0% {
+    opacity: 0;
+    transform: translateX(-7px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 /* ---- honest check block (signature micro-component) ---- */
@@ -1687,6 +2451,52 @@ body {
   color: var(--tube);
   font-weight: 600;
 }
+/* T-141 · The Settings "Playtest" section. Three additions, all of them
+   presentation for controls the rest of the panel already has vocabulary for:
+
+   `.set-note` is the DISCLOSURE line that must sit beside the opt-in toggle
+   (`docs/PLAYTEST-TELEMETRY_SPEC.md` §3). It is styled like `.credit-detail` —
+   a full-width caveat under a row rather than a right-aligned value — because
+   it is a sentence the player is meant to READ before deciding, not a value
+   they glance at. Selectable, on the same reasoning as the save path above.
+
+   `.set-input` is the free-text field for "flag this moment". It is the first
+   text input in the panel; the console has no other, so it borrows the bezel's
+   data font and the toggle's hairline border rather than inventing a look.
+
+   `.set-acts` groups the two export buttons so a row can hold a pair of them
+   without the flex row spreading them to opposite edges. */
+.set-note {
+  font-family: var(--font-data);
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--amber);
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.set-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-data);
+  font-size: 11px;
+  background: rgba(20, 12, 5, 0.6);
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  padding: 5px 8px;
+}
+.set-input::placeholder {
+  color: var(--amber);
+  opacity: 0.45;
+}
+.set-input:focus {
+  outline: none;
+  border-color: var(--ember);
+}
+.set-acts {
+  display: inline-flex;
+  gap: 6px;
+}
 .save-slot {
   display: grid;
   gap: 6px;
@@ -1887,6 +2697,17 @@ body {
   color: var(--amber);
   opacity: 0.85;
 }
+/* T-207 · a NAMED captain's authored bark in the combat header. A modifier ON
+   `.co-enemy-hist`, never a standalone block: it sets only the face, so size and
+   colour stay the single copy `.co-enemy-hist` owns. Italic is what separates a
+   line of TALK from the upright factual history above it — the same italic/upright
+   split `.ld-tabletalk` vs `.ld-dealer-standing` already makes at the dice table,
+   inverted here because in combat the fact comes first. Nothing renders under this
+   class for an anonymous raider; it has no lines to say. */
+.co-enemy-bark {
+  font-style: italic;
+  opacity: 0.9;
+}
 .co-enemy-meta {
   display: grid;
   gap: 6px;
@@ -2028,6 +2849,17 @@ body {
   gap: 6px;
   font-size: 12.5px;
   color: var(--amber);
+}
+/* T-207 · the captain's parting word under the aftermath list. Its own block and
+   not a `.co-aftermath-lines` child, because it is not a `<li>` — it sits outside
+   that `<ul>` precisely so an anonymous resolution's list is untouched. Italic for
+   the same reason as `.co-enemy-bark`: this is somebody talking, not a fact. */
+.co-aftermath-bark {
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--amber);
+  opacity: 0.9;
+  margin: 0;
 }
 .co-aftermath[data-testid] .co-aftermath-head[data-resolution='defeated'] {
   color: var(--ember-hi);
@@ -2657,6 +3489,169 @@ body {
   border-color: var(--ember);
 }
 
+/* ---- T-187 · the first-turn walkthrough (rails + step card) ----
+   Visually heavier than `.onboarding` above (opaque, 2px frame, a step counter,
+   role="dialog"), because the owner asked for "on rails and with the pop ups".
+   No backdrop and no focus trap: the RAILS do the constraining, and a trap would
+   break the always-open hand/chrome escape.
+
+   THE FRAME IS CLICK-THROUGH; ONLY ITS BUTTONS TAKE POINTER EVENTS. Measured, not
+   assumed: with `pointer-events: auto` on the whole card, the step-3 card sat over
+   the Manifest Board and swallowed the very click it was telling the player to
+   make — a tutorial blocking its own lesson. The card is anchored to the column
+   OPPOSITE its target as well (see the anchor rules below), so the two fixes are
+   belt and braces: it neither covers the affordance nor could intercept it if the
+   viewport ever made them overlap.
+
+   Same one-phosphor idiom as the rest of the file: emphasis is weight and glow,
+   never a second hue (the palette question belongs to T-186). */
+.walkthrough {
+  position: absolute;
+  /* Above the contextual coach (82) and the succession beat (84) — a scripted
+     step must never end up occluded mid-run. It is BELOW the combat overlay's
+     own frame only in the sense that it is not mounted at all while an encounter
+     stands (`railsSuspended`). */
+  z-index: 86;
+  width: min(400px, 86vw);
+  border: 2px solid var(--amber);
+  background: linear-gradient(180deg, #241706, #0e0a05);
+  box-shadow: var(--glow);
+  padding: 13px 15px;
+  display: grid;
+  gap: 6px;
+  /* Click-through frame — see the block comment above for the measurement. */
+  pointer-events: none;
+}
+.walkthrough .wt-acts button {
+  pointer-events: auto;
+}
+.wt-counter {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--amber-dim);
+}
+.wt-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.wt-what {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ember);
+  line-height: 1.45;
+}
+.wt-why {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--amber);
+  line-height: 1.4;
+  opacity: 0.86;
+}
+.wt-acts {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.wt-skip,
+.wt-next {
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+.wt-next {
+  border-color: var(--ember);
+  box-shadow: var(--glow);
+}
+.wt-skip:hover,
+.wt-next:hover {
+  border-color: var(--ember);
+  box-shadow: var(--glow);
+}
+/* Anchor the card BESIDE the affordance its step teaches — on the column
+   opposite it, never on top of it. The manifest and the port ledger live in the
+   right column, so their cards sit left; the starmap and the off-lane sweep live
+   in the left column, so their cards sit right. Only one card is ever mounted,
+   so these never collide with each other. */
+.walkthrough[data-walkthrough-anchor='hand'] {
+  left: 50%;
+  bottom: 150px;
+  transform: translateX(-50%);
+}
+.walkthrough[data-walkthrough-anchor='manifest'],
+.walkthrough[data-walkthrough-anchor='trade'] {
+  left: 26px;
+  top: 120px;
+}
+.walkthrough[data-walkthrough-anchor='starmap'] {
+  right: 26px;
+  top: 120px;
+}
+/* The Hangout launcher is on the bezel (top right) and its panel is centred at
+   the bottom — the top-left corner is clear of both. */
+.walkthrough[data-walkthrough-anchor='hangout'] {
+  left: 26px;
+  top: 66px;
+}
+@media (max-width: 720px) {
+  .walkthrough[data-walkthrough-anchor='manifest'],
+  .walkthrough[data-walkthrough-anchor='trade'],
+  .walkthrough[data-walkthrough-anchor='starmap'],
+  .walkthrough[data-walkthrough-anchor='hangout'] {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    top: auto;
+    bottom: 210px;
+  }
+}
+/* The rails themselves. `inert` already does the WORK (no pointer events, no
+   focus, no AX exposure); these two rules are purely how it READS. */
+[data-rails-off='1'] {
+  opacity: 0.26;
+}
+[data-rails-active='1'] {
+  outline: 1px solid var(--ember);
+  outline-offset: 2px;
+  box-shadow: var(--glow);
+}
+/* The pinned destination on step 4 — a slow pulse on the one node that will take
+   the click, motion-gated like every other animation in this file. */
+.smsys[data-rails-target='1'] .smdot {
+  fill: var(--ember-hi);
+}
+@media not (prefers-reduced-motion: reduce) {
+  .smsys[data-rails-target='1'] .smdot {
+    animation: wt-pulse 1.6s ease-in-out infinite;
+  }
+}
+@keyframes wt-pulse {
+  0%,
+  100% {
+    r: 5;
+    opacity: 1;
+  }
+  50% {
+    r: 8;
+    opacity: 0.55;
+  }
+}
+.smsys[data-rails-locked='1'] {
+  opacity: 0.3;
+}
+
 /* ---- guild-letter letterhead treatment ---- */
 .storylet-panel[data-variant='letter'] {
   border-color: var(--ember);
@@ -3075,6 +4070,17 @@ body {
   color: var(--tube);
   background: var(--ember);
 }
+/* T-145 · a roster seat that is broke will not take a wager; the row is dead. */
+.hp-npc:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* T-145 · the '· beaten' / '· cleaned out' marks beside a roster seat's name. */
+.hp-npc-tag {
+  opacity: 0.7;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
 .hp-dare-controls,
 .hp-lend-controls {
   display: flex;
@@ -3227,6 +4233,28 @@ body {
   font-size: 10px;
   letter-spacing: 0.14em;
   color: var(--amber);
+}
+/* T-145 · a roster opponent's AUTHORED line — their table talk while the hand
+   stands, their win/lose line at the reveal. Printed verbatim; a roaming hand
+   renders nothing here at all. */
+.ld-tabletalk {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--amber-dim);
+  max-width: 46ch;
+}
+/* T-203 · a ROAMING dealer's standing with you. A modifier ON `.ld-tabletalk`,
+   never a standalone block: it sets only the face, so spacing and width stay the
+   single copy that `.ld-tabletalk` owns and the two can never disagree about them.
+   The upright face and the wider tracking are what separate a fact about your
+   history from an authored line of talk. Named for the dealer, not for "history" —
+   `.ld-history` further down is the move-by-move public record `<ol>`, and a
+   second block under that name would have won the cascade over `.ld-tabletalk`. */
+.ld-dealer-standing {
+  font-style: normal;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
 }
 .ld-dice {
   display: flex;
@@ -3513,6 +4541,18 @@ body {
   color: var(--amber);
   font-size: 9.5px;
   letter-spacing: 0.1em;
+}
+/* T-221 · the priced FOLD line, printed beside the FOLD control. A MODIFIER on
+   `.ld-tabletalk`, never a standalone block, for the same reason
+   `.ld-dealer-standing` is one: the spacing, the face and the measure stay the
+   single copy `.ld-tabletalk` owns. It sets only what it must — its own row in
+   the flex strip (the buttons would otherwise be squeezed by a full sentence)
+   and a centred, slightly wider measure to match the table's own alignment. */
+.ld-fold-trade {
+  flex-basis: 100%;
+  max-width: 52ch;
+  margin: 2px auto 0;
+  text-align: center;
 }
 .ld-moves input {
   width: 58px;
@@ -3917,4 +4957,266 @@ body {
 }
 .comp-effect-next {
   color: var(--accent, #4fd1c5);
+}
+
+/* =========================================================================
+   T-200 · THE OPENING MARKER — the debt as a cold open.
+
+   THE PROBLEM THIS SOLVES, VISUALLY. The 25,000cr Guild marker has until now
+   appeared in exactly two registers, and both are LEDGER voice: the bezel chip
+   (`DEBT 25,000 · DUE D30`, 11px, one of six chips in a row) and the Trade
+   pane's `GUILD DEBT` block. A number that reads like a stat line cannot also
+   read like a threat. Everything below exists to put the same figure in a
+   different register for the ten seconds a career opens on.
+
+   ONE PHOSPHOR COLOUR — the design commitment at the top of this file is
+   BINDING and T-186 (palette variety) is a blocked owner ruling, so a red
+   dispatch would pre-empt a decision the owner has reserved. The ominous
+   register is therefore carried entirely by things amber can do: REVERSE VIDEO
+   on the letterhead (the theme's own emphasis language), SCALE on the figure
+   (~48px against the chip's 11px), GLOW, and a slow bloom. No second hue.
+
+   MOTION: a frame bloom plus a staggered fade on the dispatch's body, both
+   inside `@media not (prefers-reduced-motion: reduce)` — the house rule this
+   file keeps throughout, so the reduced-motion path is INSTANT rather than
+   "animated then skipped", which is what keeps the e2e honest and satisfies the
+   tabletop-ui skill's "every animation must also run in a synchronous instant
+   mode".
+   ========================================================================= */
+
+.opening-marker {
+  position: fixed;
+  inset: 0;
+  /* Above the walkthrough card (86), the succession beat (84), the combat
+     overlay (80) and the contextual coach (82) — nothing may occlude the beat a
+     career opens on. Deliberately BELOW the `.fx` scanline/vignette layer (90),
+     unlike `.ending-screen`: the ending REPLACES the tube, whereas this dispatch
+     arrives ON it and should wear the same phosphor grain as everything else. */
+  z-index: 88;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  /* Darker than `.ending-screen`'s backdrop and NOT opaque: the cockpit stays
+     legible underneath, because the point is that the ship is already yours and
+     already mortgaged — not that the game has not started yet. */
+  background: radial-gradient(120% 120% at 50% 38%, rgba(6, 4, 2, 0.9), rgba(2, 1, 1, 0.985));
+}
+
+.om-frame {
+  position: relative;
+  width: min(640px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  /* Heavier than `.es-frame`'s 1px amber: a called marker is not a receipt. */
+  border: 2px solid var(--ember);
+  background: linear-gradient(180deg, #1c1207, #070505);
+  box-shadow: var(--glow-hi);
+  padding: 0 0 26px;
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  text-align: center;
+}
+/* Registration marks — the crop ticks a printed Guild form is struck with, at
+   the FOOT only: the head of this document is the reverse-video letterhead, and
+   an ember tick on an ember strip is a mark nobody can see. Cheap, and the
+   single strongest signal that this is a DOCUMENT and not a dialog. Purely
+   decorative, never hit-tested. */
+.om-frame::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  pointer-events: none;
+  opacity: 0.6;
+  background:
+    linear-gradient(var(--ember), var(--ember)) left bottom / 16px 1px no-repeat,
+    linear-gradient(var(--ember), var(--ember)) left bottom / 1px 16px no-repeat,
+    linear-gradient(var(--ember), var(--ember)) right bottom / 16px 1px no-repeat,
+    linear-gradient(var(--ember), var(--ember)) right bottom / 1px 16px no-repeat;
+}
+/* Platen grain — the dispatch is a printed thing sitting on a tube, not a modal
+   card. Purely decorative, never hit-tested. */
+.om-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(255, 176, 0, 0.045) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+/* The letterhead. REVERSE VIDEO — the emphasis language this theme already
+   owns, and the loudest thing available inside one phosphor. */
+.om-kicker {
+  width: 100%;
+  padding: 9px 14px;
+  background: var(--ember);
+  color: var(--tube);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.om-title {
+  margin: 0;
+  padding: 0 24px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.1em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+
+/* The figure. The whole task in one element: this number is ~4x the bezel
+   chip's, tabular, and the brightest thing on the screen. */
+.om-figure {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  padding: 0 24px;
+}
+.om-owed {
+  font-family: var(--font-data);
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+/* The countdown, in the ledger's own due-soon idiom (reverse video) so the two
+   readouts are recognisably the same fact — just said at different volumes. */
+.om-due {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  background: var(--ember);
+  color: var(--tube);
+  padding: 3px 9px;
+}
+
+.om-prose {
+  display: grid;
+  gap: 12px;
+  padding: 0 30px;
+  max-width: 56ch;
+}
+.om-prose p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.72;
+  color: var(--amber);
+  text-align: left;
+}
+.om-signoff {
+  margin: 0;
+  padding: 0 30px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: var(--ember-hi);
+  opacity: 0.92;
+}
+/* The foot of the document: a torn/dashed rule, the clearing-house stamp, then
+   the one control. Reading order is deliberate — the player signs UNDER the
+   authorisation, which is what makes the button a signature rather than an OK. */
+.om-foot {
+  width: 100%;
+  margin-top: 4px;
+  padding: 16px 24px 0;
+  border-top: 1px dashed var(--amber-dim);
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+.om-stamp {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  letter-spacing: 0.24em;
+  color: var(--amber-dim);
+  text-transform: uppercase;
+}
+.om-sign {
+  justify-self: center;
+  padding: 9px 24px;
+  border-color: var(--ember);
+}
+
+@media (max-width: 720px) {
+  .om-owed {
+    font-size: 34px;
+  }
+  .om-title {
+    font-size: 17px;
+  }
+  .om-prose,
+  .om-signoff {
+    padding: 0 18px;
+  }
+}
+
+@media not (prefers-reduced-motion: reduce) {
+  /* The frame arrives the way a phosphor does: struck bright, then settling. */
+  .om-frame {
+    animation: om-strike 620ms ease-out 1 both;
+  }
+  .om-owed {
+    animation: om-bloom 900ms ease-out 1 both;
+  }
+  /* The body reads in, line by line, so the FIGURE lands before the reasons for
+     it do. Staggered by position, no JS, no timer, no component state. */
+  .om-prose p:nth-child(1) {
+    animation: om-read-in 520ms ease-out 380ms both;
+  }
+  .om-prose p:nth-child(2) {
+    animation: om-read-in 520ms ease-out 620ms both;
+  }
+  .om-signoff {
+    animation: om-read-in 520ms ease-out 860ms both;
+  }
+  @keyframes om-strike {
+    0% {
+      opacity: 0;
+      transform: scale(0.985);
+      box-shadow: 0 0 0 rgba(255, 176, 0, 0);
+    }
+    45% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+      box-shadow: var(--glow-hi);
+    }
+  }
+  @keyframes om-bloom {
+    0% {
+      opacity: 0;
+      text-shadow: 0 0 0 rgba(255, 225, 166, 0);
+    }
+    35% {
+      opacity: 1;
+      text-shadow:
+        0 0 8px rgba(255, 225, 166, 1),
+        0 0 34px rgba(255, 176, 0, 0.85);
+    }
+    100% {
+      opacity: 1;
+      text-shadow: var(--glow-hi);
+    }
+  }
+  @keyframes om-read-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }

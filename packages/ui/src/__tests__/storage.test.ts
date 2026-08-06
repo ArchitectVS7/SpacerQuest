@@ -202,6 +202,8 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
   const unlocked: string[] = [];
   /** T-1702b · Every presence pair a fake bridge was asked to publish. */
   const published: string[] = [];
+  /** T-141 · Every playtest log line a fake bridge was asked to append. */
+  const appended: string[] = [];
 
   function bridgeFor(map: Map<string, string>, dir: string): DesktopStorageBridge {
     return {
@@ -228,6 +230,10 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
       },
       setPresence: (system, day) => {
         published.push(`${system}|${day}`);
+      },
+      // T-141 · The opt-in playtest log's desktop sink.
+      appendPlaytestLog: (sessionId, line) => {
+        appended.push(`${sessionId}|${line}`);
       },
     };
   }
@@ -511,6 +517,63 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
       sqDesktop: skewed as DesktopStorageBridge,
     });
     expect(() => older.setRichPresence('Sol', 1)).not.toThrow();
+    // …and the store still works, which is the point.
+    older.storage.setItem('sq.fx', 'off');
+    expect(files.get('sq.fx')).toBe('off');
+  });
+
+  // T-141 -------------------------------------------------------------------
+
+  it('T-141 · routes a playtest log line to the bridge, and no-ops on the web', () => {
+    // The THIRD sink resolved as a value by `selectStorage`, on exactly the terms
+    // the header states for the first two. `docs/PLAYTEST-TELEMETRY_SPEC.md` §4
+    // splits the two backends: the desktop shell appends to a per-session JSONL
+    // file under `userData`, and a browser tab — which has no filesystem — keeps
+    // the log only in `playtestLog.ts`'s in-memory buffer until export.
+    const files = new Map<string, string>();
+    const bridge = bridgeFor(files, '/home/pilot/.config/Rimward/saves');
+    const desktop = selectStorage({ localStorage: fakeLocalStorage({}), sqDesktop: bridge });
+
+    appended.length = 0;
+    desktop.appendPlaytestLog('abc-123', '{"kind":"action"}');
+    expect(appended).toEqual(['abc-123|{"kind":"action"}']);
+
+    const web = selectStorage({ localStorage: fakeLocalStorage({}) });
+    appended.length = 0;
+    expect(() => web.appendPlaytestLog('abc-123', '{"kind":"action"}')).not.toThrow();
+    expect(appended).toEqual([]);
+
+    // …and with no window at all (node/SSR), same answer, still no throw.
+    expect(() => selectStorage(null).appendPlaytestLog('abc-123', '{}')).not.toThrow();
+  });
+
+  it('T-141 · a bridge whose appendPlaytestLog THROWS — or is missing — costs nothing', () => {
+    // The THIRD deliberate exception to "throwing is the contract", on the same
+    // terms as the first two and for a stronger reason: this one fires on EVERY
+    // action when a tester has opted in, so a bridge hiccup that threw would cost
+    // a player their turn. The `undefined` case is a preload OLDER than this
+    // method, which is the shape a version-skewed shell takes.
+    const files = new Map<string, string>();
+    const bridge = bridgeFor(files, '/home/pilot/.config/Rimward/saves');
+
+    const throwing = selectStorage({
+      localStorage: fakeLocalStorage({}),
+      sqDesktop: {
+        ...bridge,
+        appendPlaytestLog: () => {
+          throw new Error('IPC failed');
+        },
+      },
+    });
+    expect(() => throwing.appendPlaytestLog('abc-123', '{}')).not.toThrow();
+
+    const skewed = { ...bridge } as Partial<DesktopStorageBridge>;
+    delete skewed.appendPlaytestLog;
+    const older = selectStorage({
+      localStorage: fakeLocalStorage({}),
+      sqDesktop: skewed as DesktopStorageBridge,
+    });
+    expect(() => older.appendPlaytestLog('abc-123', '{}')).not.toThrow();
     // …and the store still works, which is the point.
     older.storage.setItem('sq.fx', 'off');
     expect(files.get('sq.fx')).toBe('off');

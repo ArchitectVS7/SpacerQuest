@@ -46,11 +46,11 @@ export const NAT_WIRE_TEMPLATES: Record<
   gamble: {
     nat20: [
       // VERBATIM PRD §6 sample — do not reword. Index 0 by contract.
-      "{actor} wins the {loserShip} off {loser} in a Spacer's Dare at the Hangout. {loser} unavailable for comment.",
-      '{actor} cleaned out the whole table at the Hangout tonight — {loser} walked home broke.',
+      "{actor} wins the {loserShip} off {loser} in a Spacer's Dare at the Cantina. {loser} unavailable for comment.",
+      '{actor} cleaned out the whole table at the Cantina tonight — {loser} walked home broke.',
     ],
     nat1: [
-      '{actor} bet the ship at the Hangout and lost the whole pot to {loser}. Ouch.',
+      '{actor} bet the ship at the Cantina and lost the whole pot to {loser}. Ouch.',
       "{actor} gambled away a season's earnings to {loser} on one disastrous hand.",
     ],
   },

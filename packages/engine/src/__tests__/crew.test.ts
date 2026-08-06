@@ -24,20 +24,24 @@ function firstUnspent(state: GameState): number {
 }
 
 describe('T-1306 · crew hiring', () => {
-  it('hires a die-granting crew: die spent, credits down, crew appended, CrewEvent{hired}', () => {
+  it('hires a die-granting crew FREE: NO die spent, credits down, crew appended, CrewEvent{hired}', () => {
+    // T-196a · This assertion was `spent[0] === true` before M17
+    // (docs/DAWN-HAND-REDESIGN.md §3) freed the hire. It is INVERTED rather than
+    // deleted: the hand must come out of a hire byte-identical to how it went in.
     const state = dayState(1, (s) => {
       s.player.credits = 5000;
     });
     const before = state.player.credits;
+    const handBefore = [...state.player.dawnHand!.spent];
     const { state: next, events } = applyPlayerAction(state, {
       type: 'Crew',
       action: 'hire',
       roleId: 'crew-second',
-      spendDie: 0,
     });
     expect(next.player.crew).toEqual([{ roleId: 'crew-second', hiredDay: 1 }]);
     expect(next.player.credits).toBe(before - 3000);
-    expect(next.player.dawnHand!.spent[0]).toBe(true);
+    expect(next.player.dawnHand!.spent).toEqual(handBefore);
+    expect(next.player.dawnHand!.spent.some(Boolean)).toBe(false);
     const ce = crewEvents(events);
     expect(ce).toHaveLength(1);
     expect(ce[0]).toMatchObject({ kind: 'hired', roleId: 'crew-second', cost: 3000, crewCount: 1 });
@@ -53,7 +57,6 @@ describe('T-1306 · crew hiring', () => {
       type: 'Crew',
       action: 'hire',
       roleId: 'crew-second',
-      spendDie: die,
     });
     expect(crewEvents(events)[0]).toMatchObject({ kind: 'failed', failReason: 'no-berth' });
     expect(next.player.crew).toHaveLength(1);
@@ -72,7 +75,6 @@ describe('T-1306 · crew hiring', () => {
       type: 'Crew',
       action: 'hire',
       roleId: 'crew-second',
-      spendDie: die,
     });
     expect(crewEvents(events)[0]).toMatchObject({ kind: 'failed', failReason: 'already-hired' });
     expect(next.player.dawnHand!.spent[die]).toBe(false);
@@ -87,7 +89,6 @@ describe('T-1306 · crew hiring', () => {
       type: 'Crew',
       action: 'hire',
       roleId: 'crew-second',
-      spendDie: die,
     });
     expect(crewEvents(events)[0]).toMatchObject({
       kind: 'failed',
@@ -103,13 +104,13 @@ describe('T-1306 · crew hiring', () => {
       s.player.credits = 20000;
     });
     const die = firstUnspent(state);
-    const { events } = applyPlayerAction(state, {
+    const { state: next, events } = applyPlayerAction(state, {
       type: 'Crew',
       action: 'hire',
       roleId: 'crew-nope',
-      spendDie: die,
     });
     expect(crewEvents(events)[0]).toMatchObject({ kind: 'failed', failReason: 'unknown-role' });
+    expect(next.player.dawnHand!.spent[die]).toBe(false); // T-196a: free — never spent
   });
 
   it('dismisses a hired crew (removed, no refund), and rejects dismissing an absent role', () => {
@@ -123,10 +124,11 @@ describe('T-1306 · crew hiring', () => {
       type: 'Crew',
       action: 'dismiss',
       roleId: 'crew-second',
-      spendDie: die0,
     });
     expect(dismissed.state.player.crew).toHaveLength(0);
     expect(dismissed.state.player.credits).toBe(credits); // no refund
+    // T-196a: a dismiss is FREE — the hand is untouched (was: die0 spent).
+    expect(dismissed.state.player.dawnHand!.spent[die0]).toBe(false);
     expect(crewEvents(dismissed.events)[0]).toMatchObject({
       kind: 'dismissed',
       roleId: 'crew-second',
@@ -136,33 +138,69 @@ describe('T-1306 · crew hiring', () => {
       type: 'Crew',
       action: 'dismiss',
       roleId: 'crew-navigator',
-      spendDie: firstUnspent(dismissed.state),
     });
     expect(crewEvents(absent.events)[0]).toMatchObject({ kind: 'failed', failReason: 'not-hired' });
   });
 
-  it('malformed die input typed-fails (die-already-spent), no crew change', () => {
+  // T-196a · THE REPLACEMENT FOR THE OLD 'die-already-spent' CASE. That test asserted
+  // a state that is now unreachable — a hire cannot be refused by the hand, because it
+  // no longer reads the hand (docs/DAWN-HAND-REDESIGN.md §3). Its INTENT survives, and
+  // is what these two assert: whatever the dawn hand looks like, the roster is decided
+  // by the crew rules alone and is never corrupted.
+  it('an ALREADY SPENT-OUT hand does not block a hire (M17 free action)', () => {
     const state = dayState(1, (s) => {
-      s.player.credits = 5000;
+      s.player.credits = 20000;
+      s.player.ship.cabin.strength = 30; // berth several
     });
-    // Spend die 0 first via a real hire, then reuse it.
-    const first = applyPlayerAction(state, {
+    // T-197 · THE HAND IS SPENT OUT AS A FIXTURE, not by driving a burner action.
+    // The rumor desk used to be the read-only die burner; T-197 freed all seven
+    // Hangout venues (docs/DAWN-HAND-REDESIGN.md §3), so no read-only action
+    // spends a die any more. The precondition this test needs is "a spent-out
+    // hand" — which is a STATE, not an act — and stating it directly is both
+    // honest and stronger: the assertion no longer depends on which verb happens
+    // to still cost a die this milestone.
+    const live = state;
+    live.player.dawnHand!.spent = live.player.dawnHand!.spent.map(() => true);
+    expect(live.player.dawnHand!.spent.every(Boolean)).toBe(true);
+
+    const hired = applyPlayerAction(live, {
       type: 'Crew',
       action: 'hire',
       roleId: 'crew-second',
-      spendDie: 0,
     });
-    const reused = applyPlayerAction(first.state, {
+    expect(crewEvents(hired.events)[0]).toMatchObject({ kind: 'hired', roleId: 'crew-second' });
+    expect(hired.state.player.crew).toHaveLength(1);
+    // …and the exhausted hand is still exactly exhausted — nothing un-spent, nothing
+    // spent twice.
+    expect(hired.state.player.dawnHand!.spent).toEqual(live.player.dawnHand!.spent);
+  });
+
+  it('a hire with NO dawn hand at all still resolves on the crew rules', () => {
+    const state = dayState(1, (s) => {
+      s.player.credits = 20000;
+      s.player.ship.cabin.strength = 30;
+    });
+    const handless = { ...state, player: { ...state.player, dawnHand: undefined } };
+    const hired = applyPlayerAction(handless, {
       type: 'Crew',
       action: 'hire',
-      roleId: 'crew-navigator',
-      spendDie: 0,
+      roleId: 'crew-second',
     });
-    expect(crewEvents(reused.events)[0]).toMatchObject({
+    expect(crewEvents(hired.events)[0]).toMatchObject({ kind: 'hired', roleId: 'crew-second' });
+    expect(hired.state.player.crew).toHaveLength(1);
+    expect(hired.state.player.dawnHand).toBeUndefined();
+
+    // The rules still bite with no hand: a second hire of the same role is refused.
+    const dup = applyPlayerAction(hired.state, {
+      type: 'Crew',
+      action: 'hire',
+      roleId: 'crew-second',
+    });
+    expect(crewEvents(dup.events)[0]).toMatchObject({
       kind: 'failed',
-      failReason: 'die-already-spent',
+      failReason: 'already-hired',
     });
-    expect(reused.state.player.crew).toHaveLength(1); // only the first hire stuck
+    expect(dup.state.player.crew).toHaveLength(1);
   });
 
   it('a die-granting crew rolls 6 dice at the next dawn, headlessly (acceptance #1, end-to-end)', () => {
@@ -175,7 +213,6 @@ describe('T-1306 · crew hiring', () => {
       type: 'Crew',
       action: 'hire',
       roleId: 'crew-second',
-      spendDie: 0,
     }).state;
     const dusk = endDay(hired).state;
     expect(dusk.player.crew).toEqual([{ roleId: 'crew-second', hiredDay: 1 }]);
@@ -249,6 +286,63 @@ describe('T-1306 · dawn-die reroll', () => {
     >;
     expect(badEv.failReason).toBe('invalid-die-index');
     expect(bad.state.player.dawnHand!.rerollsRemaining).toBe(1); // charge intact
+  });
+
+  // T-182 · F-156-1 END TO END. Every step is a verb a player presses — hire,
+  // sleep, buy fuel, reroll — because the defect lived in the SEAM between the
+  // spend and the reroll, not in either one alone. On the unfixed tree the
+  // buy-fuel at step 4 destroyed the charge and step 5 refused with `no-charge`.
+  it('T-182 · hire the reroll role → next dawn → spend a die on a real action → Reroll still succeeds', () => {
+    // 6,000 credits: 2,500 to hire plus wage runway through the dusk.
+    const day1 = dayState(42, (s) => {
+      s.player.credits = 6000;
+    });
+    expect(day1.player.dawnHand!.rerollsRemaining).toBe(0); // no crew yet
+
+    const hired = applyPlayerAction(day1, {
+      type: 'Crew',
+      action: 'hire',
+      roleId: 'crew-navigator',
+    }).state;
+    expect(hired.player.crew).toEqual([{ roleId: 'crew-navigator', hiredDay: 1 }]);
+
+    // Sleep on it — the charge is dealt at the NEXT dawn, off the new roster.
+    const day2 = startDay(endDay(hired).state).state;
+    expect(day2.player.dawnHand!.rerollsRemaining).toBe(1);
+
+    // 4. Spend a die on an ASSIGN-family action. THIS is where the charge died.
+    //    T-196a: `buy-fuel` was the assign-family caller here until M17 freed it
+    //    (docs/DAWN-HAND-REDESIGN.md §3) and it stopped spending a die at all.
+    //    `haggle` is the trade desk's surviving assign-family caller — it is the
+    //    line `dice.ts`'s call-site ledger still names — so the F-156-1 regression
+    //    is still driven through a real assign-and-reassign, not a synthetic one.
+    const idx = firstUnspent(day2);
+    const spent = applyPlayerAction(day2, {
+      type: 'Trade',
+      action: 'haggle',
+      contractIndex: 0,
+      spendDie: idx,
+    }).state;
+    expect(spent.player.dawnHand!.spent[idx]).toBe(true);
+    expect(spent.player.dawnHand!.rerollsRemaining).toBe(1);
+
+    // 5. The charge the player hired is still spendable.
+    const rerollIdx = firstUnspent(spent);
+    const { state: rolled, events } = applyPlayerAction(spent, {
+      type: 'Reroll',
+      dieIndex: rerollIdx,
+    });
+    const rr = events.find((e) => e.type === 'DiceRerolled') as Extract<
+      GameEvent,
+      { type: 'DiceRerolled' }
+    >;
+    expect(rr).toBeDefined();
+    expect(rr.failReason).toBeUndefined();
+    expect(rr.dieIndex).toBe(rerollIdx);
+    expect(rr.result).toBeGreaterThanOrEqual(1);
+    expect(rr.result).toBeLessThanOrEqual(20);
+    expect(rolled.player.dawnHand!.dice[rerollIdx]).toBe(rr.result);
+    expect(rolled.player.dawnHand!.rerollsRemaining).toBe(0);
   });
 
   it('a crew with no reroll role banks no charge, so Reroll typed-fails no-charge', () => {

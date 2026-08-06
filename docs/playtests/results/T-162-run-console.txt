@@ -1,0 +1,88 @@
+T-162 · long-haul DOM invariant sweep — full run transcript
+Date: 2026-08-04   Game commit: a55edd53b125f02b5be0fb945b4dfc949f3ebff3   Node: v24.13.1
+Browser: Chromium via Playwright (packages/ui/playwright.config.ts)
+All commands run from packages/ui. Reproduced verbatim below.
+
+==============================================================================
+THE COMMITTED WIDE RUN — 5 seeds x 35 in-game days, every step through the DOM
+$ LONGHAUL_SEEDS=1,2,3,4,5 LONGHAUL_DAYS=35 npm run test:e2e:longhaul -w @spacerquest/ui
+==============================================================================
+
+Running 5 tests using 5 workers
+
+  ✓  3 [chromium] › e2e/long-haul.spec.ts:54:3 › long-haul · seed 1 · ≥35 days through the real DOM (47.1s)
+  ✓  1 [chromium] › e2e/long-haul.spec.ts:54:3 › long-haul · seed 4 · ≥35 days through the real DOM (47.9s)
+  ✓  5 [chromium] › e2e/long-haul.spec.ts:54:3 › long-haul · seed 3 · ≥35 days through the real DOM (49.1s)
+  ✓  2 [chromium] › e2e/long-haul.spec.ts:54:3 › long-haul · seed 2 · ≥35 days through the real DOM (49.1s)
+  ✓  4 [chromium] › e2e/long-haul.spec.ts:54:3 › long-haul · seed 5 · ≥35 days through the real DOM (52.3s)
+
+  5 passed (52.8s)
+
+==============================================================================
+PER-SEED SUMMARY (from packages/ui/test-results/longhaul/seed-N.md)
+==============================================================================
+# T-162 · long-haul DOM invariant sweep — game seed 1
+
+- game seed: `1` · choice seed: `7932`
+- in-game days: **35** (target 35)
+- steps dispatched: 528 (92 not takeable)
+- invariant checks run: 4224
+- distinct verbs: 35
+- daily trial sweeps: 28 over 263 controls (7 days skipped behind a blocking surface) · hittability failures: 0
+- idle digest checks: 35 · unstable: 0
+- wall clock: 47.0s
+- aborted: no
+
+
+# T-162 · long-haul DOM invariant sweep — game seed 2
+
+- game seed: `2` · choice seed: `15851`
+- in-game days: **35** (target 35)
+- steps dispatched: 567 (112 not takeable)
+- invariant checks run: 4536
+- distinct verbs: 34
+- daily trial sweeps: 34 over 342 controls (1 days skipped behind a blocking surface) · hittability failures: 0
+- idle digest checks: 35 · unstable: 0
+- wall clock: 49.0s
+- aborted: no
+
+
+# T-162 · long-haul DOM invariant sweep — game seed 3
+
+- game seed: `3` · choice seed: `23770`
+- in-game days: **35** (target 35)
+- steps dispatched: 562 (94 not takeable)
+- invariant checks run: 4496
+- distinct verbs: 32
+- daily trial sweeps: 34 over 337 controls (1 days skipped behind a blocking surface) · hittability failures: 0
+- idle digest checks: 35 · unstable: 0
+- wall clock: 48.9s
+- aborted: no
+
+
+# T-162 · long-haul DOM invariant sweep — game seed 4
+
+- game seed: `4` · choice seed: `31689`
+- in-game days: **35** (target 35)
+- steps dispatched: 530 (91 not takeable)
+- invariant checks run: 4240
+- distinct verbs: 32
+- daily trial sweeps: 34 over 347 controls (1 days skipped behind a blocking surface) · hittability failures: 0
+- idle digest checks: 35 · unstable: 0
+- wall clock: 47.7s
+- aborted: no
+
+
+# T-162 · long-haul DOM invariant sweep — game seed 5
+
+- game seed: `5` · choice seed: `39608`
+- in-game days: **36** (target 35)
+- steps dispatched: 639 (131 not takeable)
+- invariant checks run: 5112
+- distinct verbs: 34
+- daily trial sweeps: 35 over 340 controls (1 days skipped behind a blocking surface) · hittability failures: 0
+- idle digest checks: 36 · unstable: 0
+- wall clock: 52.2s
+- aborted: no
+
+

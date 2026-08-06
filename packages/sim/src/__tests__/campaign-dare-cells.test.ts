@@ -1,0 +1,374 @@
+import { describe, expect, it } from 'vitest';
+
+import { LIARS_DICE_UNLOCK_GAMES } from '@spacerquest/content';
+import { DARE_MAX_FACE, dicePerSideForTier, probAtLeast } from '@spacerquest/engine';
+
+import {
+  dareCellKey,
+  derivedDareTier,
+  dicePerSideAgreesWithTier,
+  runCampaign,
+  zeroDareCells,
+  type DareCellKey,
+  type DareCellStats,
+} from '../index.js';
+
+// ---------------------------------------------------------------------------
+// T-175 · THE ARCHETYPE-ORDERING SPLIT (F-160-1), `HangoutPlayStats.dareCells`.
+//
+// WHY THIS FILE EXISTS. `docs/HANGOUT_REDESIGN.md` §10.7 retired the gitignored
+// `.scratch/` probe lineage at T-173 — "a new measurement reads the sweep's own
+// rows instead of descending from this file" — so F-160-1's pool × archetype ×
+// tier split ships on the INSTRUMENT. An instrument nobody checks is a probe with
+// extra steps; these are the checks.
+//
+// THREE PROPERTIES, in the order they matter:
+//   1. THE JOIN IS LOSSLESS. `Σ hands === dares`, `Σ playerWon === daresWon`,
+//      `Σ netCredits === netCredits`. Every split rests on this, and it is also
+//      the only assertion that the ENGINE-derived `playerWon` (read off
+//      `DareHandResolved.outcome`) agrees with the `HangoutEvent`-derived one the
+//      three existing counters are folded from. Two independent derivations that
+//      agree is the fidelity channel; one derivation used twice would be neither.
+//   2. THE TIER IS DERIVED, NOT READ. `docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.6a
+//      CLOSES the licensed live-`liarsDiceTier` list at four; T-175 follows T-148's
+//      probe precedent and derives the tier arithmetically instead. The derivation
+//      is cross-checked against the hand's OWN frozen `dicePerSide` on every hand,
+//      which turns the constraint into a free correctness check on freeze-at-open.
+//      A non-zero `dareTierDisagreements` is a FINDING TO FILE, not a tolerance.
+//   3. EVERY KEY IS PRESENT. T-173's `movesByReason` rule: a missing key and a
+//      zero must not be the same reading.
+//
+// This file lives in `__tests__`, which is in `HASHED_ROOT_IGNORED_DIRECTORIES`,
+// so nothing here can move a fingerprint.
+// ---------------------------------------------------------------------------
+
+/** The gambler is the ONLY policy that plans a Dare (`planDare` has one call
+ *  site). Every cell figure below therefore comes off gambler careers, and the
+ *  `explorer` control below is what proves the cells are policy-sensitive rather
+ *  than incidentally populated. */
+const GAMBLER_SEEDS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+/** T-220 · LD-28's two EV invariants are POOLED credit averages, and credits per
+ *  hand are far heavier-tailed than a win/loss indicator (the stake varies by port
+ *  band, and a tier-5 hand can move thousands). Eight seeds hold ~1,400 hands,
+ *  which is thin for an average with that variance, so this detector gets its own
+ *  WIDER seed set — the sample was widened rather than the bar softened
+ *  (N4/N10, `docs/VERSIONING.md`; `campaign-dare-challenges.test.ts`'s
+ *  `WIDE_GAMBLER_SEEDS` is the precedent). At 48 seeds the pool holds ~8,450
+ *  hands and reads +174.0 cr/hand against the capstone's +190.1 (n = 279,857,
+ *  §20.3); bootstrapped over the capstone's own 1,600 careers, a 48-career pool
+ *  lands below zero in 0 of 8,000 resamples. */
+const WIDE_GAMBLER_SEEDS = Array.from({ length: 48 }, (_, index) => index + 1);
+const DAYS = 120;
+
+function sum(cells: Record<DareCellKey, DareCellStats>, of: keyof DareCellStats): number {
+  return Object.values(cells).reduce((total, cell) => total + cell[of], 0);
+}
+
+describe('T-175 · dareCells — the join is lossless', () => {
+  it.each(GAMBLER_SEEDS)(
+    'gambler seed %i: Σ over the cells reproduces dares / daresWon / netCredits exactly',
+    (seed) => {
+      const { hangoutPlay } = runCampaign(seed, DAYS, 'gambler');
+      // A career that never sat at a table would make the identity vacuous.
+      expect(hangoutPlay.dares).toBeGreaterThan(0);
+
+      expect(sum(hangoutPlay.dareCells, 'hands')).toBe(hangoutPlay.dares);
+      // THE TWO-DERIVATION CHANNEL: the cells count a win off
+      // `DareHandResolved.outcome`; `daresWon` counts it off `HangoutEvent.playerWon`.
+      // They are folded from different events and must agree.
+      expect(sum(hangoutPlay.dareCells, 'playerWon')).toBe(hangoutPlay.daresWon);
+      expect(sum(hangoutPlay.dareCells, 'netCredits')).toBeCloseTo(hangoutPlay.netCredits, 6);
+      // A raise or a bid is a beat of a hand, so there is at least one per hand.
+      expect(sum(hangoutPlay.dareCells, 'bids')).toBeGreaterThanOrEqual(hangoutPlay.dares);
+    },
+    120_000,
+  );
+
+  it('every cell is present and zero-filled on a career that never dares', () => {
+    const { hangoutPlay } = runCampaign(1, 40, 'explorer');
+    expect(hangoutPlay.dares).toBe(0);
+    const keys = Object.keys(hangoutPlay.dareCells);
+    // 2 pools × 4 archetype slots × 6 tiers.
+    expect(keys).toHaveLength(48);
+    expect(new Set(keys)).toEqual(new Set(Object.keys(zeroDareCells())));
+    for (const cell of Object.values(hangoutPlay.dareCells)) {
+      expect(cell).toEqual({ hands: 0, playerWon: 0, netCredits: 0, bids: 0 });
+    }
+  });
+
+  it('is policy-sensitive: the gambler populates cells the explorer leaves at zero', () => {
+    const gambler = runCampaign(1, DAYS, 'gambler').hangoutPlay;
+    const explorer = runCampaign(1, DAYS, 'explorer').hangoutPlay;
+    const populated = (cells: Record<DareCellKey, DareCellStats>) =>
+      Object.values(cells).filter((cell) => cell.hands > 0).length;
+    expect(populated(gambler.dareCells)).toBeGreaterThan(0);
+    expect(populated(explorer.dareCells)).toBe(0);
+  }, 120_000);
+});
+
+describe('T-175 · dareCells — the tier is derived and cross-checked', () => {
+  it.each(GAMBLER_SEEDS)(
+    'gambler seed %i: ZERO tier/dicePerSide disagreements',
+    (seed) => {
+      const { hangoutPlay } = runCampaign(seed, DAYS, 'gambler');
+      expect(
+        hangoutPlay.dareTierDisagreements,
+        `${hangoutPlay.dareTierDisagreements} of ${hangoutPlay.dares} settled hands had an ` +
+          `arithmetic tier that disagreed with their own FROZEN dicePerSide. That is a bug in ` +
+          `freeze-at-open or in the derivation — FILE IT, do not widen a tolerance.`,
+      ).toBe(0);
+    },
+    120_000,
+  );
+
+  it('derivedDareTier reproduces the engine ladder at and around every rung', () => {
+    // The thresholds are content's; the off-by-one is the engine's (the hand being
+    // settled was OPENED while the counter still read the pre-increment value).
+    expect(derivedDareTier(0)).toBe(0);
+    expect(derivedDareTier(-1)).toBe(0);
+    for (let rung = 0; rung < LIARS_DICE_UNLOCK_GAMES.length; rung += 1) {
+      const threshold = LIARS_DICE_UNLOCK_GAMES[rung];
+      expect(derivedDareTier(threshold - 1), `${threshold - 1} settled`).toBe(rung);
+      expect(derivedDareTier(threshold), `${threshold} settled`).toBe(rung + 1);
+    }
+    expect(derivedDareTier(1_000_000)).toBe(5);
+  });
+
+  it('dicePerSideAgreesWithTier is the engine mapping and nothing restated', () => {
+    for (const tier of [0, 1, 2, 3, 4, 5]) {
+      expect(dicePerSideAgreesWithTier(dicePerSideForTier(tier), tier)).toBe(true);
+      expect(dicePerSideAgreesWithTier(dicePerSideForTier(tier) + 1, tier)).toBe(false);
+    }
+    // Tiers 2..5 all hold six dice — the cross-check is a BAND, and that is why a
+    // disagreement is meaningful in only one direction.
+    expect(dicePerSideForTier(2)).toBe(dicePerSideForTier(5));
+  });
+
+  it('dareCellKey is the only spelling, and the zero-fill uses it', () => {
+    expect(dareCellKey('roster', 'optimal', 3)).toBe('roster|optimal|t3');
+    expect(dareCellKey('roaming', 'none', 0)).toBe('roaming|none|t0');
+    const cells = zeroDareCells();
+    expect(cells[dareCellKey('roster', 'random', 5)]).toEqual({
+      hands: 0,
+      playerWon: 0,
+      netCredits: 0,
+      bids: 0,
+    });
+  });
+});
+
+describe('T-175 · the archetype ordering, as a LIVE assertion (F-160-1)', () => {
+  it('optimal is NOT the softest roster seat: the player wins no more often against it than against bad', () => {
+    // THE REGRESSION DETECTOR FOR F-160-1. Before T-175 the player won 64.48%
+    // against `optimal` and 51.98% against `bad` — bad − optimal = −12.50 pp,
+    // z = −21.02. This test goes red if that inversion comes back.
+    //
+    // SIZED AS A DETECTOR, NOT A KNIFE EDGE: it asserts only the SIGN of the
+    // difference, over every gambler seed pooled, and it prints both rates and
+    // both `n` in the failure message. If it ever goes red, WIDEN THE SAMPLE —
+    // never move the bar (N4/N10, `docs/VERSIONING.md`).
+    let optimalHands = 0;
+    let optimalWon = 0;
+    let badHands = 0;
+    let badWon = 0;
+    for (const seed of GAMBLER_SEEDS) {
+      const { dareCells } = runCampaign(seed, DAYS, 'gambler').hangoutPlay;
+      for (const [key, cell] of Object.entries(dareCells) as [DareCellKey, DareCellStats][]) {
+        if (key.startsWith('roster|optimal|')) {
+          optimalHands += cell.hands;
+          optimalWon += cell.playerWon;
+        } else if (key.startsWith('roster|bad|')) {
+          badHands += cell.hands;
+          badWon += cell.playerWon;
+        }
+      }
+    }
+    // The cells must actually be populated, or the assertion below is vacuous.
+    expect(optimalHands).toBeGreaterThan(200);
+    expect(badHands).toBeGreaterThan(50);
+
+    const optimalRate = optimalWon / optimalHands;
+    const badRate = badWon / badHands;
+    const se = Math.sqrt(
+      (optimalRate * (1 - optimalRate)) / optimalHands + (badRate * (1 - badRate)) / badHands,
+    );
+    const message =
+      `player win vs optimal ${(100 * optimalRate).toFixed(2)}% (n=${optimalHands}) ` +
+      `vs bad ${(100 * badRate).toFixed(2)}% (n=${badHands}) — ` +
+      `bad − optimal = ${(100 * (badRate - optimalRate)).toFixed(2)} pp, SE ${(100 * se).toFixed(2)}`;
+    // `optimal` must be AT LEAST as hard as `bad`: the player must not win more
+    // often against it. Stated as `<=` on the win rates, which is the ordering
+    // F-160-1 names, and reported either way in the message.
+    expect(optimalRate, message).toBeLessThanOrEqual(badRate);
+  }, 240_000);
+});
+
+// ---------------------------------------------------------------------------
+// T-220 · LD-28 — THE TABLE'S STANDING INVARIANTS.
+//
+// `docs/LIARS-DICE_REDESIGN.md` §20 / `docs/LIARS-DICE-DECISIONS.md` LD-28 ruled
+// on T-160's arbitration criterion C2 ("55-70% player win rate, EV/hand well under
+// +558 cr"). C2 is PARTITIONED:
+//
+//   * its WIN-RATE limb is RETIRED as the bakeoff instrument it declares itself to
+//     be ("Disqualifies; does not pick"). All three of its anchors — T-137's
+//     94.66%, T-148's 80.07% and §1.3's opposed-d20 57.3% — were measured on a
+//     game whose opening claim was risk-free by construction, which is the very
+//     defect T-160's own bakeoff removed. THE 55-70% WAS NOT EDITED and is left
+//     verbatim in §17.2; it simply is not a bar the shipped game is held to.
+//   * its EV limb SURVIVES and is PROMOTED to a standing invariant, unchanged.
+//   * a SECOND invariant is added from design intent: the pooled EV/hand must stay
+//     POSITIVE, because the Dare is a VOLUNTARY action whose headline value is the
+//     disposition channel (`docs/HANGOUT_REDESIGN.md` §7 / §10.4).
+//
+// A ruling with no enforcement is prose. These are the checks.
+//
+// ALL FOUR ARE SIZED AS DETECTORS, NOT KNIFE EDGES: pooled over `WIDE_GAMBLER_SEEDS`,
+// each printing its value, its `n` and its SE on failure. IF ONE GOES RED, WIDEN THE
+// SAMPLE — NEVER MOVE THE BAR (N4/N10, `docs/VERSIONING.md`).
+//
+// STATED SO IT IS NOT MISREAD AS A GAP: LD-28's invariants are POOLED, not
+// per-pool, and that is a recorded consequence of a WRONG prediction rather than a
+// convenience. §20.6 predicted EV > 0 on both pools; the ROSTER pool measures
+// -200.8 cr/hand (n = 122,820). That is filed as F-220-1 / `TASKS.md` T-223 and is
+// an owner call, not something this file may quietly bound.
+// ---------------------------------------------------------------------------
+
+/** T-148's MEASURED money-printer signature — the EV per hand of a table that was
+ *  provably broken (openers guaranteed true 100.00%; progression spec §12.2, and
+ *  §17.3's control arm reproduces it at +565.8). C2's EV limb is kept BECAUSE this
+ *  is an observed pathology rather than a picked figure. NOT A TUNABLE. */
+const T148_MONEY_PRINTER_EV_PER_HAND = 558;
+
+describe('T-220 · LD-28 — the table`s standing invariants', () => {
+  /** One pass over the widened seed set; every assertion below reads this.
+   *  Memoised because `runCampaign` is deterministic in `(seed, days, policy)` —
+   *  three `it`s re-running 48 careers each would be the same 144 campaigns for
+   *  the same three numbers. */
+  let cached: ReturnType<typeof computePooled> | null = null;
+  const pooled = () => (cached ??= computePooled());
+
+  function computePooled() {
+    let hands = 0;
+    let playerWon = 0;
+    let netCredits = 0;
+    let sumSquaredNet = 0;
+    const byPool: Record<'roaming' | 'roster', { hands: number; netCredits: number }> = {
+      roaming: { hands: 0, netCredits: 0 },
+      roster: { hands: 0, netCredits: 0 },
+    };
+    let reportedDares = 0;
+    let reportedDaresWon = 0;
+    for (const seed of WIDE_GAMBLER_SEEDS) {
+      const { hangoutPlay } = runCampaign(seed, DAYS, 'gambler');
+      reportedDares += hangoutPlay.dares;
+      reportedDaresWon += hangoutPlay.daresWon;
+      for (const [key, cell] of Object.entries(hangoutPlay.dareCells) as [
+        DareCellKey,
+        DareCellStats,
+      ][]) {
+        hands += cell.hands;
+        playerWon += cell.playerWon;
+        netCredits += cell.netCredits;
+        // A per-cell mean-square, the coarsest dispersion the raw counters admit.
+        // Used ONLY to print an SE in a failure message, never to gate anything.
+        if (cell.hands > 0) sumSquaredNet += (cell.netCredits / cell.hands) ** 2 * cell.hands;
+        const pool = key.startsWith('roaming|') ? 'roaming' : 'roster';
+        byPool[pool].hands += cell.hands;
+        byPool[pool].netCredits += cell.netCredits;
+      }
+    }
+    const evPerHand = hands ? netCredits / hands : 0;
+    const variance = hands ? Math.max(0, sumSquaredNet / hands - evPerHand ** 2) : 0;
+    return {
+      hands,
+      playerWon,
+      netCredits,
+      evPerHand,
+      se: hands ? Math.sqrt(variance / hands) : 0,
+      byPool,
+      reportedDares,
+      reportedDaresWon,
+    };
+  }
+
+  it('the Dare is not a tax on a voluntary action: pooled EV/hand stays POSITIVE', () => {
+    const p = pooled();
+    // Vacuity guard, in the shape C3'(c) uses: an empty pool would pass anything.
+    expect(p.hands, 'the widened seed set played no settled hands at all').toBeGreaterThan(2_000);
+    expect(
+      p.evPerHand,
+      `pooled EV/hand = ${p.evPerHand.toFixed(1)} cr over n = ${p.hands} settled hands ` +
+        `(SE ${p.se.toFixed(1)}; roaming n=${p.byPool.roaming.hands}, ` +
+        `roster n=${p.byPool.roster.hands}). LD-28 requires it to stay ABOVE ZERO: the Dare is a ` +
+        `VOLUNTARY action whose headline value is the disposition channel ` +
+        `(docs/HANGOUT_REDESIGN.md §7 / §10.4), and a negative-EV table is one a rational player ` +
+        `never sits at, which closes that channel. The demonstrated violator is T-160 shape (a) ` +
+        `at -314.9 cr/hand (§18.6). IF THIS IS RED, WIDEN THE SAMPLE — NEVER MOVE THE BAR ` +
+        `(N4/N10, docs/VERSIONING.md).`,
+    ).toBeGreaterThan(0);
+  }, 480_000);
+
+  it("EV/hand stays far under T-148's money-printer signature", () => {
+    const p = pooled();
+    expect(p.hands).toBeGreaterThan(2_000);
+    expect(
+      p.evPerHand,
+      `pooled EV/hand = ${p.evPerHand.toFixed(1)} cr over n = ${p.hands} settled hands ` +
+        `(SE ${p.se.toFixed(1)}). C2's EV limb — the one limb LD-28 KEPT — bars ` +
+        `${T148_MONEY_PRINTER_EV_PER_HAND}, which is not a picked number: it is T-148's MEASURED ` +
+        `EV per hand on the pre-fix table whose openers were 100.00% guaranteed true. Reaching ` +
+        `it again means the money printer is back. IF THIS IS RED, WIDEN THE SAMPLE — NEVER MOVE ` +
+        `THE BAR (N4/N10, docs/VERSIONING.md).`,
+    ).toBeLessThan(T148_MONEY_PRINTER_EV_PER_HAND);
+  }, 480_000);
+
+  it('the per-pool cut is lossless and both pools are non-empty', () => {
+    // NOT a duplicate of the T-175 join block above, which asserts the sum over ALL
+    // 48 cells per seed. This asserts the PARTITION LD-28's per-pool table rests on:
+    // every cell belongs to exactly one pool, the two marginals reconstitute the
+    // total, and neither marginal is empty (a one-sided cut would make §20.3's
+    // headline table a relabelling of the aggregate).
+    const p = pooled();
+    expect(p.byPool.roaming.hands + p.byPool.roster.hands).toBe(p.hands);
+    expect(p.byPool.roaming.netCredits + p.byPool.roster.netCredits).toBeCloseTo(p.netCredits, 6);
+    expect(p.hands).toBe(p.reportedDares);
+    expect(p.playerWon).toBe(p.reportedDaresWon);
+    expect(p.byPool.roaming.hands, 'the roaming pool is empty').toBeGreaterThan(0);
+    expect(p.byPool.roster.hands, 'the roster pool is empty').toBeGreaterThan(0);
+  }, 480_000);
+
+  it("the ply-1 opening burden is the engine's own arithmetic, not a restated literal", () => {
+    // §20.2's REPLACEMENT ANCHOR, pinned. `minOpeningQuantity(m) = m + 1` forces the
+    // opener to claim strictly above their own count, and both house policies throw
+    // on `bid === null`, so THE OPENER IS ALWAYS THE PLAYER. The minimum legal
+    // opening claim is therefore true iff the other side holds at least one of the
+    // claimed face among its `dicePerSide` dice — `probAtLeast(1, d)`.
+    //
+    // The comparison is computed from the engine's OWN `DARE_MAX_FACE` rather than
+    // from a 1/6 written into this file, so a change to the dice model goes RED and
+    // RE-OPENS LD-28 rather than silently voiding its anchor (LD-27's
+    // `liarsDiceArchetypes.test.ts` pin is the precedent).
+    const widths = [0, 1, 2, 3, 4, 5].map((tier) => dicePerSideForTier(tier));
+    expect(new Set(widths)).toEqual(new Set([4, 5, 6]));
+
+    const missChance = (DARE_MAX_FACE - 1) / DARE_MAX_FACE;
+    for (const d of [4, 5, 6]) {
+      expect(probAtLeast(1, d), `d=${d}`).toBeCloseTo(1 - missChance ** d, 12);
+    }
+
+    // MONOTONE IN `d`: a wider opposing hand makes the same minimum claim likelier
+    // to be true, so the burden EASES up the ladder. This is the shape §20.3a's
+    // measured offsets track (roaming -5.03 / -4.34 / -7.70 pp; roster -21.35 /
+    // -19.57 / -19.84 pp against these three values).
+    expect(probAtLeast(1, 4)).toBeLessThan(probAtLeast(1, 5));
+    expect(probAtLeast(1, 5)).toBeLessThan(probAtLeast(1, 6));
+
+    // THE LOAD-BEARING SIGN, and the reason a 62.5%-centred band was never
+    // derivable from these rules: even the CHEAPEST legal opener is worse than a
+    // coin flip for the side forced to make it. Asserted as a strict inequality on
+    // a derived quantity — there is no tunable constant here to move.
+    expect(probAtLeast(1, Math.min(...widths))).toBeGreaterThan(0.5);
+    expect(1 - probAtLeast(1, Math.min(...widths))).toBeLessThan(0.5);
+  });
+});

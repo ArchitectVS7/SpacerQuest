@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 import {
   acknowledgeResolution,
   createReport,
@@ -82,6 +83,10 @@ test.beforeEach(async ({ page }) => {
   // value the instant it is read, and kill the coach fade (the same pattern the
   // dawn-hand / combat / onboarding specs use).
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 /** Play the whole Tour, day 1 through dusk of day 30, and hand back the report. */
@@ -90,7 +95,7 @@ async function flyTourOne(page: Page, branch: 'cleared' | 'unpaid'): Promise<Run
   const started = Date.now();
 
   await startCareer(page, TOUR_ONE_SEED, report);
-  // Day 1 opens at Sun-3, the only Tour One Hangout — the one day every screen
+  // Day 1 opens at Sol-3, the only Tour One Hangout — the one day every screen
   // is reachable at once. Every click in here is rng-free, so the tour is free.
   await sightseeingPass(page, report);
 

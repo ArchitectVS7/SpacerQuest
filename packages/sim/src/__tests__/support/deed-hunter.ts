@@ -40,9 +40,18 @@ import {
   PURCHASABLE_PORTS_BY_SYSTEM,
   STAR_SYSTEMS,
   STORYLETS,
+  distance,
   isPurchasablePort,
 } from '@spacerquest/content';
-import { crewCapacity, loanBandFor, type GameState, type PlayerAction } from '@spacerquest/engine';
+import {
+  crewCapacity,
+  liarsDiceOpponentsAt,
+  loanBandFor,
+  venueOffered,
+  wagerBandFor,
+  type GameState,
+  type PlayerAction,
+} from '@spacerquest/engine';
 import type { StoryletDefinition } from '@spacerquest/content';
 import { traderPolicy, veteranPolicy, type SimPolicy } from '../../index.js';
 
@@ -83,6 +92,26 @@ export const HUNTER_TARGET_DEED_IDS = [
   'rich_hulk',
   'signal_hunter',
   'cold_case',
+  // Liar's Dice roster (T-147). The fourteen port clears and the whole-roster
+  // capstone. EVERY ONE OF THESE IS READ by the roster-tour errand below — the
+  // capstone is the master switch, and each port id is the per-port
+  // continue-condition — so the list keeps its contract that it "adds a check, it
+  // does not change which ids the policy tests".
+  'liars_dice_cleared_sun_3',
+  'liars_dice_cleared_aldebaran_1',
+  'liars_dice_cleared_altair_3',
+  'liars_dice_cleared_arcturus_6',
+  'liars_dice_cleared_deneb_4',
+  'liars_dice_cleared_denebola_5',
+  'liars_dice_cleared_fomalhaut_2',
+  'liars_dice_cleared_mira_9',
+  'liars_dice_cleared_pollux_7',
+  'liars_dice_cleared_procyon_5',
+  'liars_dice_cleared_regulus_6',
+  'liars_dice_cleared_rigel_8',
+  'liars_dice_cleared_spica_3',
+  'liars_dice_cleared_vega_6',
+  'liars_dice_grand_slam',
 ] as const;
 
 /** The ids `need(…)` accepts. A typo or a stale rename fails the build. */
@@ -107,7 +136,7 @@ const PORT_HEADROOM = 3000;
 const REPAY_HEADROOM = 2000;
 /** The Guild marker's due day (PRD §5.1 / engine day.ts day-30 resolution). */
 const TOUR_ONE_LAST_DAY = 30;
-/** Sun-3. T-121 gave all fourteen core ports a bar, so this is no longer the only
+/** Sol-3. T-121 gave all fourteen core ports a bar, so this is no longer the only
  *  place a Dare or the Penny Wise desk exists — it is now only the errand's
  *  FALLBACK DESTINATION, the port the hunter flies to when it wants Hangout
  *  business and is not already standing at one. The `atHangout` test below reads
@@ -118,6 +147,39 @@ const TOUR_ONE_LAST_DAY = 30;
  *  errand deterministic across T-121's before/after measurement, which is the
  *  whole point of the task. Revisit when a port's Hangout actually differs. */
 const HANGOUT_SYSTEM = 1;
+
+/**
+ * T-147 · systemId → that port's Liar's Dice completion deed.
+ *
+ * The map is what makes all fourteen ids GENUINELY READ rather than decorative:
+ * the tour's per-port continue-condition is `need(ROSTER_PORT_DEED_ID[systemId])`,
+ * so a port whose set is already closed is skipped by the registry, not by a
+ * beaten-set recount. Local to this support file — it is harness steering, not a
+ * rule, and the engine's own `liarsDicePortCleared` remains the only thing that
+ * decides a set is closed.
+ */
+const ROSTER_PORT_DEED_ID: Readonly<Record<number, HunterDeedId>> = {
+  1: 'liars_dice_cleared_sun_3',
+  2: 'liars_dice_cleared_aldebaran_1',
+  3: 'liars_dice_cleared_altair_3',
+  4: 'liars_dice_cleared_arcturus_6',
+  5: 'liars_dice_cleared_deneb_4',
+  6: 'liars_dice_cleared_denebola_5',
+  7: 'liars_dice_cleared_fomalhaut_2',
+  8: 'liars_dice_cleared_mira_9',
+  9: 'liars_dice_cleared_pollux_7',
+  10: 'liars_dice_cleared_procyon_5',
+  11: 'liars_dice_cleared_regulus_6',
+  12: 'liars_dice_cleared_rigel_8',
+  13: 'liars_dice_cleared_spica_3',
+  14: 'liars_dice_cleared_vega_6',
+};
+
+/** How many roster hands the tour will queue on one day, dice permitting. One a
+ *  day does not fit 42 wins inside the coverage horizon alongside the rest of the
+ *  slate (measured); two does. The stake is the port band's MINIMUM either way,
+ *  so the extra hand adds reach, not variance. */
+const ROSTER_HANDS_PER_DAY = 2;
 
 /** Indices of dice the planned actions already claim. */
 function usedDice(actions: readonly PlayerAction[]): Set<number> {
@@ -207,7 +269,7 @@ function advancesAChain(choice: StoryletDefinition['choices'][number]): boolean 
  * choice — a CHAIN-ADVANCING one by preference. Costs no die and no credits, so it never competes
  * with the Tour One marker, and it is what walks the TOUR_ONE-gated chains (Doc
  * Salvage's distress-ping → follow-up is `beacon_keeper`'s only source, and its
- * head is only ever offered on a day the ship happens to share Sun-3 with Doc —
+ * head is only ever offered on a day the ship happens to share Sol-3 with Doc —
  * so taking it FIRST, rather than whichever offer sorts earliest, is what makes
  * that deed reachable at all). The shipped `veteranPolicy` already answers offers
  * in phase 2; the lean `traderPolicy` does not, so the hunter does it here.
@@ -299,7 +361,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
     // the day's Travel moves the ship out of the system that offered it — so a
     // beat appended AFTER the trader's plan is refused every time. (This is
     // exactly what kept `beacon_keeper` unreachable: Doc's distress-ping is a
-    // Sun-3 offer and the trader leaves Sun-3 on day 1.)
+    // Sol-3 offer and the trader leaves Sol-3 on day 1.)
     const offer = pickOffer(state, need);
     if (offer) actions.unshift(offer);
 
@@ -330,7 +392,6 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
           type: 'VisitHangout',
           venue: 'borrow',
           amount: LOAN_MAX_PRINCIPAL,
-          spendDie: die,
         });
       }
     }
@@ -348,7 +409,8 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
     return actions;
   }
 
-  const atHangout = STAR_SYSTEMS[state.player.currentSystemId]?.hasHangout === true;
+  const here = state.player.currentSystemId;
+  const atHangout = STAR_SYSTEMS[here]?.hasHangout === true;
   const flush = state.player.credits >= HUNTER_RESERVE;
 
   // STAY DIRTY (phase 2). The shipped veteran answers whatever storylet is on
@@ -374,7 +436,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
 
   // --- The Hangout errand (T-1303 gambling + T-1304 lending) ---------------
   // The shipped veteran never flies anywhere without a contract to deliver, and
-  // until T-121 Sun-3 was the ONLY `hasHangout` system — so a career left to
+  // until T-121 Sol-3 was the ONLY `hasHangout` system — so a career left to
   // itself passed the tables perhaps twice in three hundred days and the Dare /
   // Penny Wise deeds went begging. With fourteen core ports now running bars the
   // errand is far less often NEEDED (`atHangout` is true on most docked days), but
@@ -382,8 +444,8 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
   // incidental, and because the errand stops itself the moment the deeds land. When Hangout business is outstanding the hunter
   // makes a DELIBERATE ERRAND of it, exactly as the shipped explorer flies
   // straight to Polaris-1 for the Wise One (T-1310):
-  //   - away from Sun-3 with a free hold → refuel and fly there;
-  //   - at Sun-3 → spend the day AT THE TABLES (a standalone day, the same idiom
+  //   - away from Sol-3 with a free hold → refuel and fly there;
+  //   - at Sol-3 → spend the day AT THE TABLES (a standalone day, the same idiom
   //     the shipped policies use for storylets) so the errand never has to
   //     scavenge whatever die the veteran's trade day left over.
   // It is registry-driven: once the gambling and lending deeds are in the file
@@ -395,7 +457,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
 
   // Only make the trip when the errand can actually be transacted on arrival: a
   // Dare needs a stake, the desk needs either no marker (to borrow) or the price
-  // of clearing the one it has. Flying to Sun-3 to stare at an unaffordable
+  // of clearing the one it has. Flying to Sol-3 to stare at an unaffordable
   // balance just burned days.
   const loanErrand =
     wantsLoan &&
@@ -419,11 +481,15 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
         const affordable = Math.floor((state.player.credits - HUNTER_RESERVE / 2) / price);
         const units = Math.max(0, Math.min(room, affordable));
         if (state.player.ship.fuel < 250 && units > 0 && spare.length > 1) {
+          // T-196a: the fill costs no die (docs/DAWN-HAND-REDESIGN.md §3), but the
+          // spare-die LEDGER is left exactly as it was — this support policy's day
+          // budget is not this task's to change, and dropping the shift would move
+          // which die carries the pilot check below.
+          spare.shift();
           errand.push({
             type: 'Trade',
             action: 'buy-fuel',
             fuelAmount: units,
-            spendDie: spare.shift()!,
           });
         }
         // Best remaining die carries the pilot check for the hop.
@@ -448,7 +514,6 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
             venue: 'dare',
             opponentId,
             wager,
-            spendDie: spare.shift()!,
           });
         }
       }
@@ -467,7 +532,6 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
               type: 'VisitHangout',
               venue: 'borrow',
               amount: LOAN_MAX_PRINCIPAL,
-              spendDie: spare.shift()!,
             });
           }
         } else if (
@@ -482,7 +546,6 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
             type: 'VisitHangout',
             venue: 'repay',
             amount: loan.outstanding,
-            spendDie: spare.shift()!,
           });
         }
       }
@@ -490,10 +553,137 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
     }
   }
 
+  // --- The roster tour (T-147 Liar's Dice set completion) ------------------
+  // The fourteen port clears and the whole-roster capstone need 42 WINS over the
+  // AUTHORED seats — a finite gauntlet the shipped veteran never touches, because
+  // it only ever flies where a contract pays. So the tour is a deliberate errand
+  // in the same shape as the Hangout errand above: fly to the nearest port that
+  // still owes seats, then spend the day at that house's own table.
+  //
+  // IT IS REGISTRY-DRIVEN, twice over: the capstone deed is the master switch (a
+  // career that has banked it stops touring entirely) and each port's own deed is
+  // the per-port continue-condition. So a completed tour costs nothing and the
+  // veteran career resumes untouched — the same self-stopping property the
+  // Hangout errand has.
+  //
+  // THE TWO SEAT GUARDS MIRROR THE ENGINE, so `hangoutPlay.failedVisits === 0`
+  // stays honest rather than becoming a tolerance:
+  //   · a seat already in `liarsDiceBeaten` is skipped — a rematch is legal and
+  //     pays, but it writes nothing and closes no set (T-145 §6.2 step 1);
+  //   · a seat whose live purse has fallen to zero is skipped — the engine
+  //     refuses it with `HangoutEvent{failReason:'opponent-broke'}` and would burn
+  //     no die but log a failed visit. It can never strand the tour: BROKE IMPLIES
+  //     BEATEN (the theorem in `actions/hangout.ts`), so a broke seat is one the
+  //     first guard would have skipped anyway.
+  // The stake is the port band's MINIMUM, deliberately: the deed needs a WIN, not
+  // a big pot, and pool A is zero-sum, so a fat wager only adds variance.
+  const tourWanted = need('liars_dice_grand_slam');
+  const unbeatenSeatsAt = (systemId: number): string[] => {
+    if (STAR_SYSTEMS[systemId]?.hasHangout !== true) return [];
+    if (!venueOffered(systemId, 'dare')) return [];
+    if (!need(ROSTER_PORT_DEED_ID[systemId])) return [];
+    const beaten = new Set(state.player.liarsDiceBeaten);
+    return liarsDiceOpponentsAt(systemId)
+      .filter((seat) => !beaten.has(seat.id) && (state.liarsDicePurses[seat.id] ?? 0) > 0)
+      .map((seat) => seat.id);
+  };
+
+  if (tourWanted && flush) {
+    const hand = state.player.dawnHand;
+    const spare: number[] = [];
+    if (hand) {
+      for (let i = 0; i < hand.dice.length; i += 1) {
+        if (!hand.spent[i] && !used.has(i)) spare.push(i);
+      }
+    }
+    const seatsHere = unbeatenSeatsAt(here);
+
+    if (seatsHere.length > 0) {
+      // AT a house that still owes seats — sit down, on dice the veteran left
+      // unspent, and let the rest of its day stand.
+      //
+      // APPENDED-AND-UNSHIFTED, NOT RETURNED STANDALONE, and the difference is
+      // measured rather than stylistic. A standalone tables-day (the shape the
+      // Hangout errand uses, for the four one-off gambling deeds) is fine when it
+      // happens twice a career; this errand runs on the order of thirty days, and
+      // making each of those a non-travelling day starved the deeds that live
+      // downstream of FLYING — a patrol only scans a ship in transit, and a
+      // derelict is only boarded off a lane. Measured over seeds 1..65 at the
+      // coverage horizon: standalone tables-days left `slipped_the_scan` earned by
+      // ONE career in sixty-five, against fourteen before. Riding the veteran's
+      // spare dice costs the tour a little speed and costs the rest of the slate
+      // nothing.
+      //
+      // UNSHIFTED so the hands are played BEFORE the day's Travel: a
+      // `VisitHangout` resolves against `currentSystemId` AT EXECUTION TIME, so a
+      // dare queued behind a jump would sit down at the wrong house and typed-fail
+      // with `no-opponent`. Same ordering rule, and the same reason, as the Tour
+      // One storylet beat above. (`gamblerPolicy` puts its dares at the front of
+      // the plan for exactly this reason.)
+      const wager = wagerBandFor(here).min;
+      const sitDowns: PlayerAction[] = [];
+      for (const opponentId of seatsHere.slice(0, ROSTER_HANDS_PER_DAY)) {
+        const die = take();
+        if (die === undefined) break;
+        sitDowns.push({ type: 'VisitHangout', venue: 'dare', opponentId, wager });
+      }
+      actions.unshift(...sitDowns);
+    } else if (
+      // NOT at such a house, and the veteran has nowhere of its own to be — fly to
+      // the nearest port that still owes seats. Guarded on BOTH "no signed
+      // contract" (never abandon a run) and "the day plans no jump of its own"
+      // (never fight the veteran for the ship), so this only ever fills a day the
+      // career was going to spend docked.
+      !state.player.activeContract &&
+      !actions.some((action) => action.type === 'Travel') &&
+      spare.length > 0
+    ) {
+      // NEAREST, not a fixed hub like the Hangout errand's HANGOUT_SYSTEM: this
+      // leg runs fourteen times rather than once, so a hub-and-spoke tour would
+      // spend the horizon on fuel. Ties break to the lower systemId, so the tour
+      // is deterministic.
+      let destination: number | undefined;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const systemId of Object.keys(ROSTER_PORT_DEED_ID).map(Number)) {
+        if (systemId === here || unbeatenSeatsAt(systemId).length === 0) continue;
+        const hops = distance(here, systemId);
+        if (hops < bestDistance) {
+          bestDistance = hops;
+          destination = systemId;
+        }
+      }
+      if (destination !== undefined) {
+        const price = state.market.localFuelPrice || 5;
+        const room = state.player.ship.maxFuel - state.player.ship.fuel;
+        const affordable = Math.floor((state.player.credits - HUNTER_RESERVE / 2) / price);
+        const units = Math.max(0, Math.min(room, affordable));
+        if (state.player.ship.fuel < 250 && units > 0 && spare.length > 1) {
+          const fuelDie = take();
+          if (fuelDie !== undefined) {
+            actions.push({
+              type: 'Trade',
+              action: 'buy-fuel',
+              fuelAmount: units,
+            });
+            spare.splice(spare.indexOf(fuelDie), 1);
+          }
+        }
+        // Best remaining die carries the pilot check for the hop.
+        let best = spare[0];
+        for (const index of spare) {
+          if ((hand?.dice[index] ?? 0) > (hand?.dice[best] ?? 0)) best = index;
+        }
+        if (best !== undefined && !used.has(best)) {
+          used.add(best);
+          actions.push({ type: 'Travel', destinationId: destination, spendDie: best });
+        }
+      }
+    }
+  }
+
   // --- Property (T-1307) --------------------------------------------------
   // A controlling stake in the core port under the ship, while flush enough that
   // the 25,000 never strands it. Two stakes total (the `landlord` deed).
-  const here = state.player.currentSystemId;
   if (
     state.player.ports.length < MAX_PORTS &&
     isPurchasablePort(here) &&
@@ -502,7 +692,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
   ) {
     const die = take();
     if (die !== undefined) {
-      actions.push({ type: 'Port', action: 'buy', systemId: here, spendDie: die });
+      actions.push({ type: 'Port', action: 'buy', systemId: here });
     }
   }
 
@@ -515,7 +705,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
     if (role) {
       const die = take();
       if (die !== undefined) {
-        actions.push({ type: 'Crew', action: 'hire', roleId: role.id, spendDie: die });
+        actions.push({ type: 'Crew', action: 'hire', roleId: role.id });
       }
     }
   }

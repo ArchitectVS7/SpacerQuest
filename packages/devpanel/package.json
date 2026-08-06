@@ -1,0 +1,17 @@
+{
+  "name": "@spacerquest/devpanel",
+  "private": true,
+  "type": "module",
+  "description": "T-143 · The Tier 1.5 dev control panel: a local-only, dev-only Node process that spawns the existing balance CLIs as child processes. Never shipped, never imported by the game.",
+  "scripts": {
+    "build": "tsc -b",
+    "dev:panel": "tsx src/main.ts",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^1.5.0"
+  }
+}

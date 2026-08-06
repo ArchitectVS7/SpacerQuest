@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 
 // T-308 acceptance, driven entirely through the cockpit (nothing calls the
 // engine directly): buy an upgrade and watch the manifest/fuel instruments
@@ -12,6 +13,10 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 async function spentCount(page: Page): Promise<number> {
@@ -22,7 +27,12 @@ async function spentCount(page: Page): Promise<number> {
 }
 
 async function selectUnspentDie(page: Page): Promise<void> {
-  await page.locator('[data-testid="die"][data-spent="0"]').first().click();
+  // T-196a · IDEMPOTENT: the yard no longer consumes the armed die, so the previous
+  // selection survives and a blind second click would DISARM it (`store.ts`
+  // `selectDie`).
+  const die = page.locator('[data-testid="die"][data-spent="0"]').first();
+  if ((await die.getAttribute('aria-pressed')) !== 'true') await die.click();
+  await expect(die).toHaveAttribute('aria-pressed', 'true');
 }
 
 /** The component grid row for a given component id. */
@@ -56,7 +66,9 @@ test('buying an upgrade changes the ship instruments (manifest pods + fuel curve
   await expect(component(page, 'hull').getByTestId('component-strength')).toHaveText('10');
   // Cost 25 = tier-1 price 50 − trade-in 25 on the str-1 hull.
   await expect(page.getByTestId('credits')).toHaveText('975');
-  expect(await spentCount(page)).toBe(1);
+  // T-196a · the yard is a FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3) — the order
+  // is paid in credits and NOTHING else. Inverted from `toBe(1)`, not deleted.
+  expect(await spentCount(page)).toBe(0);
   // The pod-trap fix: a str-10 hull holds max 100 pods (was 0 before the engine's
   // `> 10` boundary fix), so cargoPods still reads 10/100 — the regression is gone.
   await expect(page.getByTestId('pods-block')).toContainText('10/100');
@@ -67,7 +79,7 @@ test('buying an upgrade changes the ship instruments (manifest pods + fuel curve
   await page.getByTestId('buy-pods').click();
 
   await expect(page.getByTestId('ship-pods')).toHaveText('20');
-  expect(await spentCount(page)).toBe(2);
+  expect(await spentCount(page)).toBe(0); // T-196a: still free
 
   // --- Upgrade the drives (str10 → 20): the FUEL CURVE drops ------------
   const fuelBefore = Number(await page.getByTestId('fuel-per-jump').innerText());
@@ -77,7 +89,7 @@ test('buying an upgrade changes the ship instruments (manifest pods + fuel curve
   await expect(component(page, 'drives').getByTestId('component-strength')).toHaveText('20');
   const fuelAfter = Number(await page.getByTestId('fuel-per-jump').innerText());
   expect(fuelAfter).toBeLessThan(fuelBefore);
-  expect(await spentCount(page)).toBe(3);
+  expect(await spentCount(page)).toBe(0); // T-196a: three yard orders, no dice
 });
 
 test('an exclusion conflict is shown WITH its reason and disabled, never hidden', async ({

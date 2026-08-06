@@ -3,6 +3,10 @@ import {
   EXPLORATION_FUEL_COST,
   FENCE_REP_FLAG,
   FLAWS,
+  // T-175 · The five unlock thresholds, IMPORTED rather than restated, so the
+  // sim's derived tier moves with content (see `derivedDareTier`).
+  LIARS_DICE_UNLOCK_GAMES,
+  NPC_PROFILES,
   SPECIAL_EQUIPMENT,
   STAR_SYSTEMS,
   Stat,
@@ -41,13 +45,36 @@ import {
   tributeForRound,
   loanBandFor,
   venueOffered,
+  // T-168 · `wagerBandFor` survives here as the MEASUREMENT's tier-0 reference
+  // ceiling only (`accumulateMetricEvents`' `DareHandStarted` arm). It is NO
+  // LONGER what sizes a stake — see `preHandWagerBand` below and §4.6a.
   wagerBandFor,
+  effectiveWagerBand,
+  liarsDiceOpponentsAt,
+  // T-197 · §4b's rounds cap, read through the engine's own accessor (never
+  // re-derived from the tier table) — the planner mirror and the gambler's loop
+  // bound are the two readers.
+  liarsDiceRoundsRemaining,
+  // T-168 · THE PRE-HAND STAKE BAND (§4.6a item 3). `planDare` sizes its wager off
+  // THIS, never off the raw port band — sizing off `wagerBandFor` is what F-148-4
+  // measured as "no career can ever request into the raised ceiling".
+  preHandWagerBand,
+  // T-175 · The tier→dice mapping, read through the engine's own accessor so the
+  // cell split's tier cross-check never restates it (see `derivedDareTier`).
+  dicePerSideForTier,
+  // T-176 · The ONE evidence bar the challenge instrument classifies BOTH sides
+  // with (F-160-2, §18 criterion C3'(b)). Imported, never restated, and never
+  // combined with either policy's own relaxations — see
+  // `isEvidenceBackedChallenge`.
+  DARE_AI_CHALLENGE_MARGIN,
   legalDareMoves,
+  minOpeningQuantity,
   applyPlayerAction,
   weaponVolleyDamage,
   SeededRng,
   type GameEvent,
   type GameState,
+  type NpcDecisionTraceSink,
   type NpcState,
   type PlayerAction,
   type PortStake,
@@ -298,6 +325,496 @@ export interface HangoutPlayStats {
    *  (the bid lattice bounds a hand at ~15 player actions), which is exactly why a
    *  non-zero count is a bug to fail on rather than a number to swallow. */
   dareGuardHits: number;
+  /** T-168 · Hands whose SEATED stake (`DareHandStarted.seedWager`, i.e. after the
+   *  resolver's band AND solvency clamps) exceeded the port's TIER-0 authored
+   *  ceiling `wagerBandFor(systemId).max` — a tier-4-or-better stake that both
+   *  sides could actually cover. STRUCTURALLY 0 BEFORE T-168: `planDare` sized its
+   *  request off the tier-0 band, so the raised ceiling was unreachable by
+   *  construction (F-148-4). This is the field that makes it measurable.
+   *  READERS: the tier-4 assertions in `campaign-smuggler-gambler.test.ts`, the
+   *  `npm run sim` CLI JSON, and `SeedRow.hangout` in the sweep. */
+  handsAboveBaseCeiling: number;
+  /** T-168 · ...and above the TIER-4 ceiling, read as
+   *  `effectiveWagerBand(systemId, 4).max` rather than by restating
+   *  `LIARS_DICE_RAISED_CEILING_MULT` here. Only tier 5's REMOVED band clamp can
+   *  reach above it, so this counts tier-5 stakes specifically. Same readers. */
+  handsAboveRaisedCeiling: number;
+  /** T-168 · The largest single SEATED stake over the run, in credits. The scale
+   *  reading that the two counters above give as frequencies. */
+  maxSeedWager: number;
+  /**
+   * T-175 · **THE ARCHETYPE-ORDERING SPLIT** (F-160-1) — settled Liar's Dice hands
+   * cut by `pool × archetype × unlock tier`, keyed by {@link DareCellKey}.
+   *
+   * WHY IT IS HERE AND NOT ON A PROBE. `docs/HANGOUT_REDESIGN.md` §10.7 retired the
+   * gitignored-`.scratch/`-probe lineage at T-173: "a new measurement reads the
+   * sweep's own rows instead of descending from this file". `SeedRow.hangout`
+   * carries this block WHOLE off the report (`balance/aggregate.ts`), so the cells
+   * reach the 8,000-row sweep with no aggregator edit at all.
+   *
+   * RAW COUNTERS, NOT RATES, deliberately — `aggregate.ts`'s own philosophy. A
+   * later re-cut (by pool only, by archetype only, EV per hand, bids per hand) is
+   * arithmetic over what is already here and needs no new sweep.
+   *
+   * EVERY KEY IS PRESENT AND ZERO-FILLED (T-173's `movesByReason` rule: *a missing
+   * key and a zero must not be the same reading*). The product is small and totally
+   * enumerable — 2 pools × 4 archetype slots × 6 tiers = 48 — so a cell that was
+   * never reached reads `hands: 0` rather than `undefined`.
+   */
+  dareCells: Record<DareCellKey, DareCellStats>;
+  /**
+   * T-175 · Settled hands whose ARITHMETIC tier disagreed with their own frozen
+   * `dicePerSide`. **MUST BE 0** — see {@link derivedDareTier}. Shipped as a
+   * counter rather than a `throw` for the same reason `dareGuardHits` is: a
+   * non-zero is a finding to file, and a sweep that dies mid-run reports nothing.
+   */
+  dareTierDisagreements: number;
+  /**
+   * T-176 · **THE CHALLENGER-WON SPLIT AT MATCHED EVIDENCE** (F-160-2) — hands
+   * settled by a CHALLENGE, cut by `pool × challenger × dicePerSide × k`, keyed by
+   * {@link DareChallengeCellKey}.
+   *
+   * `k = bid.quantity - own(bid.face)` off the CHALLENGER's own hand: the number of
+   * the claimed face the challenger still needs from the other side's `dicePerSide`
+   * dice, and the sufficient statistic both sides' challenge rules are written in.
+   * `docs/LIARS-DICE_REDESIGN.md` §18 derives criterion C3' over these cells; the
+   * raw per-pool split T-160's C3 reported is the `k`-marginal of the same table.
+   *
+   * ONLY THE CHALLENGE POPULATION LANDS HERE, by construction rather than by
+   * filter: `DareHandResolved.dealerDice` and `actualCount` ride the event on the
+   * two challenge outcomes ONLY (a fold never reveals, §6.1), which is precisely the
+   * population the criterion is about.
+   *
+   * RAW COUNTS, NOT RATES, and every derived quantity §18 reports — the raw split,
+   * the standardised split, `w`, `p_backed`, `p_unbacked`, the analytic null — is
+   * arithmetic over these 108 cells plus the engine's `probAtLeast`.
+   */
+  dareChallengeCells: Record<DareChallengeCellKey, DareChallengeCellStats>;
+  /**
+   * T-176 · The same challenges rolled up by `pool × archetype × challenger`
+   * ({@link DareChallengeSplitKey}), 16 zero-filled cells. NOT derivable from
+   * {@link dareChallengeCells}, which drops the archetype to keep the `k` axis
+   * bounded — and since T-175 `optimal` is a materially different challenger from
+   * `bad`, dropping it would send the next reader back for another sweep.
+   */
+  dareChallengeSplit: Record<DareChallengeSplitKey, DareChallengeCellStats>;
+  /**
+   * T-176 · Settled CHALLENGE hands that failed one of three structural checks.
+   * **MUST BE 0**, and `campaign-dare-challenges.test.ts` asserts it on every seed.
+   * A counter rather than a `throw`, for the same reason
+   * {@link dareTierDisagreements} is one.
+   *
+   * The three channels, all impossible if the stream is well-formed:
+   *   1. **THE TWO-DERIVATION IDENTITY.** `challengerWon` is derived from
+   *      `outcome` + the challenger's identity; `claimFalse` from
+   *      `actualCount < bid.quantity`. `resolveChallenge` makes these the same
+   *      fact, so a disagreement means the join or the identity is wrong.
+   *   2. **THE JOIN.** A challenge outcome must carry a standing `bid`, an
+   *      `actualCount`, a revealed `dealerDice`, and a parked last-bidder for its
+   *      `handId`. A miss on any of them is a lost hand, not a rounding error.
+   *   3. **THE ARITY.** Both revealed hands must hold the same number of dice, and
+   *      that number must be one the ladder can produce (4, 5 or 6).
+   */
+  dareChallengeDisagreements: number;
+}
+
+/**
+ * T-175 · The pool of a settled hand, taken FROM the engine event rather than
+ * restated, so the sim can never carry a pool the engine does not emit.
+ */
+export type DarePool = NonNullable<
+  Extract<GameEvent, { type: 'DareHandResolved' }>['opponentKind']
+>;
+/** T-175 · ...and the concrete archetype, same discipline. `null` on a roaming hand. */
+export type DareArchetype = NonNullable<
+  NonNullable<Extract<GameEvent, { type: 'DareHandResolved' }>['opponentArchetype']>
+>;
+
+/** T-175 · The archetype SLOT a cell key uses — the three concrete arms plus the
+ *  explicit `'none'` a roaming hand occupies. `'none'` is a value, not a gap. */
+export type DareArchetypeSlot = DareArchetype | 'none';
+
+/** T-175 · `pool|archetype|tN`. A template-literal type, so a typo in a key is a
+ *  compile error and the 48 cells are enumerable at the type level. */
+export type DareCellKey = `${DarePool}|${DareArchetypeSlot}|t${0 | 1 | 2 | 3 | 4 | 5}`;
+
+/** T-175 · One (pool × archetype × tier) cell. Raw counts only; every rate the
+ *  write-up reports is derived from these four numbers. */
+export interface DareCellStats {
+  /** Settled hands that landed in this cell. `Σ hands === HangoutPlayStats.dares`. */
+  hands: number;
+  /** ...of which the PLAYER took. `Σ playerWon === HangoutPlayStats.daresWon`. */
+  playerWon: number;
+  /** Sum of `DareHandResolved.creditsDelta` (player's view).
+   *  `Σ netCredits === HangoutPlayStats.netCredits`. */
+  netCredits: number;
+  /** `DareBidPlaced` beats attributed to this cell — BOTH sides, the same quantity
+   *  §12 reports as "bids per hand". Joined through `handId`. */
+  bids: number;
+}
+
+/** T-175 · The three concrete arms plus `'none'`, in the FIXED order the write-up
+ *  reports them. Not `resolveMixedArchetype`'s contract order (that one is a rules
+ *  contract and lives in the engine); this is a presentation order and says so. */
+const DARE_ARCHETYPE_SLOTS: readonly DareArchetypeSlot[] = ['optimal', 'bad', 'random', 'none'];
+const DARE_POOLS: readonly DarePool[] = ['roaming', 'roster'];
+const DARE_TIERS: readonly (0 | 1 | 2 | 3 | 4 | 5)[] = [0, 1, 2, 3, 4, 5];
+
+/** T-175 · The one place a cell key is spelled. Every reader and the zero-fill
+ *  below go through it, so the key format cannot drift between them. */
+export function dareCellKey(
+  pool: DarePool,
+  archetype: DareArchetypeSlot,
+  tier: 0 | 1 | 2 | 3 | 4 | 5,
+): DareCellKey {
+  return `${pool}|${archetype}|t${tier}`;
+}
+
+/** T-175 · All 48 cells, zero-filled. See {@link HangoutPlayStats.dareCells}. */
+export function zeroDareCells(): Record<DareCellKey, DareCellStats> {
+  const cells = {} as Record<DareCellKey, DareCellStats>;
+  for (const pool of DARE_POOLS) {
+    for (const archetype of DARE_ARCHETYPE_SLOTS) {
+      for (const tier of DARE_TIERS) {
+        cells[dareCellKey(pool, archetype, tier)] = {
+          hands: 0,
+          playerWon: 0,
+          netCredits: 0,
+          bids: 0,
+        };
+      }
+    }
+  }
+  return cells;
+}
+
+/**
+ * T-175 · THE TIER OF A HAND, DERIVED — never a fifth live `liarsDiceTier` read.
+ *
+ * `docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.6a CLOSES the licensed live-tier-read
+ * list at four and says adding a fifth requires amending the spec FIRST. This
+ * follows T-148's probe precedent instead (§12's "`liarsDiceTier` was NOT called a
+ * third time" paragraph): the tier is arithmetic over the run's OWN settled-hand
+ * count against the imported `LIARS_DICE_UNLOCK_GAMES` thresholds.
+ *
+ * THE OFF-BY-ONE IS THE ENGINE'S, restated here only because there is no hand to
+ * read it off: `player.liarsDiceGamesPlayed` is incremented BY `settleDareHand`
+ * (`packages/engine/src/actions/dare.ts`), so the hand being settled was OPENED
+ * while the counter still read `settledBefore` — the count of hands settled before
+ * it. That is exactly the value passed here.
+ *
+ * IT IS CROSS-CHECKED, NOT TRUSTED: {@link accumulateMetricEvents} compares this
+ * against the hand's FROZEN `dicePerSide` (4 → 0, 5 → 1, 6 → ≥2) on every hand and
+ * `campaign-dare-cells.test.ts` asserts ZERO disagreements — which turns the §4.6a
+ * constraint into a free correctness check on freeze-at-open.
+ */
+export function derivedDareTier(settledBefore: number): 0 | 1 | 2 | 3 | 4 | 5 {
+  const rungs = LIARS_DICE_UNLOCK_GAMES.filter((threshold) => settledBefore >= threshold).length;
+  return rungs as 0 | 1 | 2 | 3 | 4 | 5;
+}
+
+/**
+ * T-175 · The dice-per-side band a tier implies, for the cross-check above. Read
+ * through the ENGINE's `dicePerSideForTier` rather than restated, so the mapping
+ * exists in exactly one place; the comparison is a band because tiers 2..5 all
+ * hold six dice and are therefore not separable from `dicePerSide` alone.
+ */
+export function dicePerSideAgreesWithTier(dicePerSide: number, tier: number): boolean {
+  return dicePerSide === dicePerSideForTier(tier);
+}
+
+// ---------------------------------------------------------------------------
+// T-176 · THE CHALLENGER-WON SPLIT (F-160-2) — `docs/LIARS-DICE_REDESIGN.md` §18.
+//
+// WHAT THIS MEASURES, AND WHY IT IS NOT THE RAW SPLIT. T-160's criterion C3 asked
+// the two challenger rows to sit within 20 pp of each other and neither shape met
+// it. §18 re-derives the criterion as C3', which compares the two sides AT MATCHED
+// EVIDENCE — the sufficient statistic both sides' challenge rules are written in,
+// `k = bid.quantity - own(bid.face)` counted off the CHALLENGER's own hand, against
+// the `dicePerSide` unknown dice on the other side. `probAtLeast(k, dicePerSide)`
+// is the engine's own analytic prior for that statistic and is IMPORTED, never
+// restated here.
+//
+// THE INSTRUMENT MIRRORS NO POLICY. It stores raw `(challenges, won)` counts per
+// `pool × challenger × dicePerSide × k`; every rate, the evidence-backed split, the
+// standardisation and the mixture identity are arithmetic over those counts (see
+// `isEvidenceBackedChallenge`, which applies ONE engine-exported constant
+// identically to both sides). Copying `dealerMove`'s or `planDareMove`'s if-chain
+// into the sim is the drift failure this repo keeps naming, and it is not done.
+// ---------------------------------------------------------------------------
+
+/** T-176 · Which side played CALL. Derived from the actor of the LAST
+ *  `DareBidPlaced` on the hand — the challenger is by construction the other one
+ *  (`packages/engine/src/actions/dare.ts`, both challenge arms). */
+export type DareChallenger = 'player' | 'dealer';
+
+/** T-176 · The hand's dice-per-side. The ladder produces exactly 4, 5 or 6
+ *  (`dicePerSideForTier`), so the cell axis is closed at three values. */
+export type DareDiceArity = 4 | 5 | 6;
+
+/**
+ * T-176 · The `k` axis, BUCKETED and totally enumerable.
+ *
+ * `0` collects `k <= 0` — the claim is already true off the challenger's own dice
+ * alone, which is exactly the input `probAtLeast` answers `1` for, so collapsing
+ * them loses nothing. `8` collects `k >= 8`: `k > dicePerSide` makes the claim
+ * impossible for every legal arity, so every bucket at or above 7 carries the same
+ * analytic null of 1.
+ */
+export type DareKBucket = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
+/** T-176 · `pool|challenger|dN|kM`. A template-literal type, so a typo is a compile
+ *  error and the 2 × 2 × 3 × 9 = 108 cells are enumerable at the type level. */
+export type DareChallengeCellKey =
+  `${DarePool}|${DareChallenger}|d${DareDiceArity}|k${DareKBucket}`;
+
+/** T-176 · `pool|archetype|challenger` — the small rollup. Post-T-175 `optimal` is
+ *  a materially different challenger from `bad`, so a reader asking "who is
+ *  challenging well" needs the archetype cut and would otherwise have to re-run. */
+export type DareChallengeSplitKey = `${DarePool}|${DareArchetypeSlot}|${DareChallenger}`;
+
+/** T-176 · One challenge cell. RAW COUNTS ONLY — `aggregate.ts`'s own philosophy,
+ *  and the reason a later re-cut needs no new sweep. */
+export interface DareChallengeCellStats {
+  /** Hands settled by a CHALLENGE played by this side, at this evidence. */
+  challenges: number;
+  /** ...of which the CHALLENGER took the pot. */
+  won: number;
+}
+
+const DARE_CHALLENGERS: readonly DareChallenger[] = ['player', 'dealer'];
+const DARE_DICE_ARITIES: readonly DareDiceArity[] = [4, 5, 6];
+const DARE_K_BUCKETS: readonly DareKBucket[] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+
+/** T-176 · The one place a challenge-cell key is spelled. */
+export function dareChallengeCellKey(
+  pool: DarePool,
+  challenger: DareChallenger,
+  dicePerSide: DareDiceArity,
+  bucket: DareKBucket,
+): DareChallengeCellKey {
+  return `${pool}|${challenger}|d${dicePerSide}|k${bucket}`;
+}
+
+/** T-176 · ...and of a rollup key. */
+export function dareChallengeSplitKey(
+  pool: DarePool,
+  archetype: DareArchetypeSlot,
+  challenger: DareChallenger,
+): DareChallengeSplitKey {
+  return `${pool}|${archetype}|${challenger}`;
+}
+
+/** T-176 · `k` clamped onto the bucket axis. Both clamps are EXPLICIT rather than
+ *  implied by an index, because a silent clamp is how a tail quietly stops being
+ *  measured. */
+export function dareKBucket(k: number): DareKBucket {
+  if (k <= 0) return 0;
+  if (k >= 8) return 8;
+  return k as DareKBucket;
+}
+
+/**
+ * T-176 · THE POLICY-AGNOSTIC EVIDENCE CLASSIFIER (§18, criterion C3'(b)).
+ *
+ * A challenge is EVIDENCE-BACKED iff the claim outruns what the challenger's own
+ * dice plus the unknown half's EXPECTATION support by more than the engine's
+ * margin: `surplus = k - dicePerSide/6 > DARE_AI_CHALLENGE_MARGIN`.
+ *
+ * ONE CONSTANT, IMPORTED, APPLIED IDENTICALLY TO BOTH SIDES. It is deliberately
+ * NOT a mirror of either policy's if-chain: `dealerMove` branch 1 relaxes the same
+ * margin by `dealerGuile * DARE_AI_GUILE_PATIENCE` and `planDareMove` (c2) does
+ * not, so neither side's own test would classify the other's population. What is
+ * shared between them — and what `SIM_DARE_CHALLENGE_MARGIN`'s docblock says it
+ * mirrors "so the two sides fold on comparable evidence" — is exactly this bar.
+ *
+ * NOTE FOR THE READER OF THE CELLS: this predicate is a FUNCTION OF THE CELL KEY
+ * alone, and it lands on `k >= 3` at all three arities (`1.5 + 4/6 = 2.167`,
+ * `1.5 + 5/6 = 2.333`, `1.5 + 6/6 = 2.5`). That is why `w`, `p_backed` and
+ * `p_unbacked` are pure summation over `dareChallengeCells` and are not stored.
+ */
+export function isEvidenceBackedChallenge(k: number, dicePerSide: number): boolean {
+  return k - dicePerSide / 6 > DARE_AI_CHALLENGE_MARGIN;
+}
+
+/**
+ * T-176 · WHAT ONE SETTLED HAND SAYS ABOUT THE CHALLENGE, or why it says nothing.
+ *
+ *   * `not-a-challenge` — the hand folded (or timed out). `dealerDice`/`actualCount`
+ *     do not ride those outcomes (§6.1: a fold NEVER reveals), so there is nothing
+ *     to read and nothing wrong. The common case; not a disagreement.
+ *   * `join-miss` — a CHALLENGE outcome missing one of the four things it must
+ *     carry. Structurally impossible; counted, never dropped.
+ *   * `challenge` — the reading.
+ */
+export type DareChallengeReading =
+  | { kind: 'not-a-challenge' }
+  | { kind: 'join-miss' }
+  | {
+      kind: 'challenge';
+      /** The side that played CALL — the actor of the last `DareBidPlaced` is by
+       *  construction the other one. */
+      challenger: DareChallenger;
+      /** DERIVATION ONE — the engine's `outcome`, read through who called.
+       *  `challenge-win`/`challenge-loss` are the PLAYER's view of the pot. */
+      challengerWon: boolean;
+      /** DERIVATION TWO — the showdown arithmetic. `resolveChallenge` makes the
+       *  bidder win iff the claim holds, so these two are the SAME FACT and a
+       *  disagreement is a bug. Kept as a separate field rather than collapsed, so
+       *  the identity is asserted rather than assumed. */
+      claimFalse: boolean;
+      /** The UNKNOWN half's size — read off the OTHER side's revealed hand, which
+       *  is what `probAtLeast`'s second argument means. */
+      dicePerSide: DareDiceArity;
+      /** `bid.quantity − own(bid.face)` off the CHALLENGER's own hand. RAW: may be
+       *  ≤ 0 (the challenger already holds the claim) and is bucketed separately. */
+      k: number;
+      /** False iff the two derivations disagree, or the two revealed hands hold
+       *  different (or impossible) numbers of dice. MUST be true on every hand. */
+      wellFormed: boolean;
+    };
+
+/**
+ * T-176 · THE ONE PLACE A SETTLED HAND BECOMES A CHALLENGE READING (§18).
+ *
+ * Pure, and exported so `campaign-dare-challenges.test.ts` can drive REAL hands
+ * through the engine, read `state.eventLog`, and check this against a reference
+ * derivation written independently of it — rather than checking the fold against
+ * itself. {@link accumulateMetricEvents}'s `DareHandResolved` arm is its only
+ * production caller.
+ *
+ * IT MIRRORS NO POLICY. The only rule knowledge here is the pairing the engine
+ * states at both of its challenge arms (`packages/engine/src/actions/dare.ts`): the
+ * challenger is whoever did NOT place the standing bid, and the bidder wins iff the
+ * claim holds.
+ */
+export function readDareChallenge(
+  event: Extract<GameEvent, { type: 'DareHandResolved' }>,
+  lastBidder: DareChallenger | undefined,
+): DareChallengeReading {
+  if (event.outcome !== 'challenge-win' && event.outcome !== 'challenge-loss') {
+    return { kind: 'not-a-challenge' };
+  }
+  if (
+    event.bid === null ||
+    lastBidder === undefined ||
+    event.actualCount === undefined ||
+    event.dealerDice === undefined
+  ) {
+    return { kind: 'join-miss' };
+  }
+  const standing = event.bid;
+  const challenger: DareChallenger = lastBidder === 'player' ? 'dealer' : 'player';
+  const challengerWon =
+    challenger === 'player'
+      ? event.outcome === 'challenge-win'
+      : event.outcome === 'challenge-loss';
+  const claimFalse = event.actualCount < standing.quantity;
+  const ownDice = challenger === 'player' ? event.playerDice : event.dealerDice;
+  const otherDice = challenger === 'player' ? event.dealerDice : event.playerDice;
+  const arity = otherDice.length;
+  const wellFormed =
+    challengerWon === claimFalse && arity === ownDice.length && arity >= 4 && arity <= 6;
+  return {
+    kind: 'challenge',
+    challenger,
+    challengerWon,
+    claimFalse,
+    dicePerSide: Math.min(6, Math.max(4, arity)) as DareDiceArity,
+    k: standing.quantity - ownDice.filter((die) => die === standing.face).length,
+    wellFormed,
+  };
+}
+
+/** T-176 · All 108 cells, zero-filled (T-173's `movesByReason` rule: a missing key
+ *  and a zero must not be the same reading). */
+export function zeroDareChallengeCells(): Record<DareChallengeCellKey, DareChallengeCellStats> {
+  const cells = {} as Record<DareChallengeCellKey, DareChallengeCellStats>;
+  for (const pool of DARE_POOLS) {
+    for (const challenger of DARE_CHALLENGERS) {
+      for (const dicePerSide of DARE_DICE_ARITIES) {
+        for (const bucket of DARE_K_BUCKETS) {
+          cells[dareChallengeCellKey(pool, challenger, dicePerSide, bucket)] = {
+            challenges: 0,
+            won: 0,
+          };
+        }
+      }
+    }
+  }
+  return cells;
+}
+
+/** T-176 · All 16 rollup cells, zero-filled. The full cross product is enumerated
+ *  — including the eight structurally unreachable `roaming|optimal|*`-shaped pairs
+ *  — for the same reason `zeroDareCells`'s 48 include them: the key set is a
+ *  property of the axes, not of what a particular run happened to reach. */
+export function zeroDareChallengeSplit(): Record<DareChallengeSplitKey, DareChallengeCellStats> {
+  const cells = {} as Record<DareChallengeSplitKey, DareChallengeCellStats>;
+  for (const pool of DARE_POOLS) {
+    for (const archetype of DARE_ARCHETYPE_SLOTS) {
+      for (const challenger of DARE_CHALLENGERS) {
+        cells[dareChallengeSplitKey(pool, archetype, challenger)] = { challenges: 0, won: 0 };
+      }
+    }
+  }
+  return cells;
+}
+
+/** T-173 · The engine's own `DispositionChanged.reason` union, taken FROM the
+ *  event rather than restated, so the sim can never carry a reason the engine
+ *  does not emit (or miss one it does). */
+export type DispositionChangeReason = Extract<GameEvent, { type: 'DispositionChanged' }>['reason'];
+
+/**
+ * T-173 · STANDING, as the career actually moved it — the disposition half of the
+ * instrument gap BR-13 recorded and this task discharges. Every figure here was
+ * previously obtainable only from the gitignored `.scratch/t125-hangout.ts` probe
+ * (source fenced at `docs/HANGOUT_REDESIGN.md` §10.7), which is why four separate
+ * measurements (T-125, T-137, T-148, T-150) each had to re-derive it.
+ *
+ * TWO FOLDS, NOT ONE, and the split is the same one `SmugglingStats` makes:
+ *   * `movesByReason` is a pure EVENT fold (`accumulateMetricEvents`) — a move is
+ *     a beat, and `DispositionChanged` carries its own reason.
+ *   * the four state figures and the spans are sampled once per day AT DUSK over
+ *     `state.npcs`, because "the cast sits at exactly zero on N% of live
+ *     captain-days" is a CONDITION, not a beat, and no event can answer it. Dusk
+ *     is the moment decay runs (`day.ts` → `applyDisposition(..., 'decay')`), so a
+ *     dusk sample is the post-decay standing — exactly the state
+ *     `docs/HANGOUT_REDESIGN.md` §11.3's table reports.
+ *
+ * READERS (constraint 7): `packages/sim/src/__tests__/campaign-disposition.test.ts`,
+ * `SeedRow.disposition` in `balance/aggregate.ts`, and the CLI JSON that
+ * `reportToJson` emits for `npm run sim`.
+ */
+export interface DispositionStats {
+  /** `DispositionChanged` events by `reason`. EVERY reason is a key, 0 when it
+   *  never fired — a missing key and a zero must not be the same reading. */
+  movesByReason: Record<DispositionChangeReason, number>;
+  /** Live (non-dead) captain-records sampled at dusk, summed over the horizon —
+   *  THE denominator for the three figures below. All roster records, not just the
+   *  simulated field: a quest record is still a captain the player can hold a
+   *  standing with, and this is the sample §11.3's "live npc-days" reports. */
+  liveNpcDays: number;
+  /** ...of which sat at exactly 0. `zeroDispositionNpcDays / liveNpcDays` is the
+   *  inertness of the whole cast, the number behind the named pool's own. */
+  zeroDispositionNpcDays: number;
+  /** Σ |disposition| over the same sample — mean |disposition| is this over
+   *  `liveNpcDays`, computed by the reader rather than baked in here so an empty
+   *  sample cannot become a NaN on the row. */
+  absDispositionSum: number;
+  /** The largest |disposition| any captain reached at any dusk. The engine clamps
+   *  to [-10, 10], so a value above 10 is a clamp defect, not a balance number. */
+  peakAbsDisposition: number;
+  /** One entry per standing that both OPENED (0 → non-zero) and CLOSED (→ 0)
+   *  inside the horizon: the days it survived. Deliberately excludes standings
+   *  still open when the horizon ran out — see {@link standingsOpenAtHorizon} —
+   *  so the mean is not biased downward by truncation. */
+  standingSpanDays: number[];
+  /** Standings still open when the horizon ran out (including a captain who died
+   *  holding one), counted rather than dropped so the exclusion above is auditable
+   *  instead of invisible. */
+  standingsOpenAtHorizon: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -390,6 +907,49 @@ export interface CombatEncounterRecord {
   day: number;
   /** `EncounterStarted.encounter.interceptor.tier` (1..5). */
   interceptorTier: PowerTier;
+  /**
+   * T-173 · WHO answered the jump — `EncounterStarted.encounter.interceptor.id`.
+   * A named captain's roster id (`npc-…`) or an anonymous roster entry's id.
+   * ADDITIVE: nothing above or below this block changed shape.
+   */
+  interceptorId: string;
+  /** T-173 · `…interceptor.source`. The 0.25 named-pool gate in
+   *  `selectEncounterInterceptor` (`packages/engine/src/actions/travel.ts`) is a
+   *  measurable rate only if the instrument records which side of it each draw
+   *  landed on; before this field the four Hangout/disposition probes had to
+   *  reconstruct it out of a gitignored `.scratch/` script (BR-13). */
+  interceptorSource: 'named' | 'anonymous';
+  /** T-173 · The chosen captain's standing toward the PLAYER at the moment of the
+   *  draw, or null when the interceptor was anonymous (an anonymous candidate has
+   *  no disposition — `chooseWeighted` weights it exactly 1) or when the named
+   *  pool could not be reconstructed (see {@link namedPoolReconstructed}). */
+  interceptorDisposition: number | null;
+  /**
+   * T-173 · The dispositions of EVERY candidate the named pool held at the draw,
+   * in roster order — `[]` on an anonymous draw.
+   *
+   * RAW POOL, NOT A WEIGHT OR A LIFT, and deliberately so: the same "raw records,
+   * not pre-bucketed aggregates" argument the block comment above makes. From the
+   * raw pool, `balance/aggregate.ts` derives the inertness rate (every candidate at
+   * 0, so disposition changed nothing), the wronged share, and the ANALYTIC
+   * uniform counterfactual — and a future re-cut can derive a different weighting
+   * without re-running the sweep. Carrying a pre-computed weight instead would
+   * restate `chooseWeighted`'s rule inside the instrument, which is exactly the
+   * duplication that makes a before/after comparison unfalsifiable.
+   */
+  namedPoolDispositions: number[];
+  /**
+   * T-173 · False iff the chosen NAMED captain was not found in the pool this
+   * instrument rebuilt — i.e. the draw came from `selectEncounterInterceptor`'s
+   * THIRD, band-widening branch, which fires only when both pools are empty at the
+   * target tier and therefore reaches outside the single-tier pool rebuilt here.
+   *
+   * A FIELD RATHER THAN A FOOTNOTE so the case is COUNTED rather than assumed
+   * away: T-125 measured it at 0 of 11,566 named draws. A non-zero is a FINDING to
+   * file, never a number to widen a band around. True on every anonymous draw (no
+   * pool is claimed, so nothing can be missed).
+   */
+  namedPoolReconstructed: boolean;
   /** `state.player.tier` sampled at the encounter's open. Tier is STATE, not an
    *  event payload (`tier.ts` `syncPlayerTier` keeps it live at every chokepoint),
    *  so it can only be measured here — the same justification the T-1601a
@@ -558,6 +1118,9 @@ export interface CampaignStatsReport {
   /** T-1601b policy-behavior metrics — see the interfaces above for readers. */
   smuggling: SmugglingStats;
   hangoutPlay: HangoutPlayStats;
+  /** T-173 · Standing as the career moved it — see {@link DispositionStats}. The
+   *  capstone instrument's disposition blind spot, closed. */
+  disposition: DispositionStats;
   /** T-1603a balance-baseline instrumentation — see the interfaces above for
    *  readers. `tourOne` is null when the horizon never reached day 30. */
   tourOne: TourOneOutcomeStats | null;
@@ -756,10 +1319,19 @@ export interface MilestoneSample {
    *  R0a/R2a/N9/N4/N10 blind-spot class, closed ahead of the capstone rather than
    *  after it. */
   npcPortCount: number[];
+  /** T-173 · Every simulated captain's standing toward the player at this
+   *  milestone day, roster order — index-aligned with `npcCredits`,
+   *  `npcRenownRank` and `npcPortCount` above because all of them come out of the
+   *  ONE `sampleField` traversal. THE named deliverable of T-173's milestone limb:
+   *  the by-day disposition spread, which `SeedRow.disposition`'s run totals
+   *  cannot give (a run total cannot say whether the cast's standing had already
+   *  decayed away by day 30). Every entry is an integer in [-10, +10] — the
+   *  engine's clamp — and every entry is 0 at day 1 by construction. */
+  npcDisposition: number[];
 }
 
-/** N7 · Optional extras for `runCampaign`. Both are absent on every ordinary
- *  call, and both leave the report JSON byte-identical when absent. */
+/** N7 · Optional extras for `runCampaign`. All are absent on every ordinary
+ *  call, and all leave the report JSON byte-identical when absent. */
 export interface RunCampaignExtras {
   /**
    * Start from THIS state instead of `createInitialState(seed)`. The one and only
@@ -770,6 +1342,28 @@ export interface RunCampaignExtras {
   /** Days (by `state.day`, sampled at dawn before the day is played) to record a
    *  {@link MilestoneSample} for. */
   milestoneDays?: readonly number[];
+  /**
+   * T-140 · A sink for the dusk's NPC decision traces
+   * (docs/BALANCE-TELEMETRY_SPEC.md). Set ONLY by
+   * `balance/sweep.ts --trace-npc-decisions`; every other caller of `runCampaign`
+   * leaves it absent, and when absent nothing on the day loop's hot path changes —
+   * the report JSON is byte-identical, exactly as `milestoneDays` promises above.
+   *
+   * It is an OBSERVATION channel: the engine reads it to decide whether to build a
+   * trace entry, never to decide what a captain does, so a traced run and an
+   * untraced run of the same seed play the same career.
+   *
+   * F-140-3 · THIS FIELD IS WHY `instrumentFingerprint` MOVED, and that is worth
+   * saying at the site rather than only in a doc. This file is INSTRUMENT-hashed
+   * (`balance/rules-fingerprint.ts`, `SIM_INSTRUMENT_DIRECTORIES`), so adding the
+   * field and the branch at the `endDay` call below re-hashed the instrument —
+   * which `rules-fingerprint.ts` reads out as "the measurement changed". Here it
+   * did not: an untraced 350-run sweep is sha256-identical across the move, and
+   * every measured number in `docs/balance/smoke/tiers.json` is unchanged by the
+   * re-extraction. See `docs/BALANCE-TELEMETRY_SPEC.md` §7.5 for the evidence and
+   * §7.6 for why no arrangement of design (a) or (b) avoids it.
+   */
+  npcDecisionTrace?: NpcDecisionTraceSink;
 }
 
 export type SimPolicy = (context: {
@@ -829,7 +1423,7 @@ export function travelableSystemIds(): number[] {
 /** T-1601a: the systems that actually host a Spacers Hangout — the only places
  *  the Penny Wise desk (borrow/repay) is legal, per the engine's `hasHangout`
  *  gate in day.ts. DERIVED from content (`STAR_SYSTEMS[...].hasHangout`), never a
- *  hard-coded id: today Sun-3 is the only one, and a policy that hard-coded `1`
+ *  hard-coded id: today Sol-3 is the only one, and a policy that hard-coded `1`
  *  would silently stop finding the desk the moment content flags a second. */
 export function hangoutSystemIds(): number[] {
   return systemIds().filter((id) => STAR_SYSTEMS[id]?.hasHangout === true);
@@ -1057,6 +1651,15 @@ interface CampaignMetricAccumulator {
   equipmentUse: EquipmentUseStats;
   smuggling: SmugglingStats;
   hangoutPlay: HangoutPlayStats;
+  /** T-173 · Only the `movesByReason` half is folded from events here; the four
+   *  state figures and the spans are sampled at DUSK in `runCampaign`'s day loop,
+   *  for the reason {@link DispositionStats} states. */
+  disposition: DispositionStats;
+  /** T-173 · Open standings, npcId → the day the standing opened (0 → non-zero).
+   *  Held on the accumulator rather than in the day loop because a standing spans
+   *  days, exactly as an encounter does. An entry that never closes is counted as
+   *  `standingsOpenAtHorizon` after the loop, never as a truncated span. */
+  openStandingDays: Map<string, number>;
   /** T-1603a. `survival` is a plain counter fold like the blocks above.
    *  `tourOne` is a single-shot assignment (the event fires exactly once, at the
    *  dusk of day 30) rather than a counter, so it is a mutable member on the
@@ -1074,6 +1677,94 @@ interface CampaignMetricAccumulator {
    *  it belongs to no existing block: it is the machine READER for the new
    *  `SubsistenceIncome` event. Surfaced on the report as `subsistenceDays`. */
   subsistenceDays: number;
+  /**
+   * T-175 · Settled Liar's Dice hands SO FAR — the sim's own copy of what
+   * `player.liarsDiceGamesPlayed` reads, used to derive a hand's unlock tier
+   * without opening a fifth live `liarsDiceTier` read (§4.6a). Incremented by the
+   * `DareHandResolved` arm AFTER the hand has been attributed, because the hand
+   * being settled was opened while the counter still read the pre-increment value.
+   */
+  settledDareHands: number;
+  /**
+   * T-175 · Open hands, `handId` → `DareBidPlaced` beats seen so far. Held on the
+   * accumulator rather than in the fold, for the same reason `openStandingDays` is:
+   * a hand spans event batches. The entry is deleted at settlement, so a career
+   * that ends mid-hand leaves at most one live key.
+   */
+  openDareBids: Map<string, number>;
+  /**
+   * T-176 · Open hands, `handId` → the actor of the LAST `DareBidPlaced` seen.
+   * Parked the same way `openDareBids` is and for the same reason — a hand spans
+   * event batches — and read once at settlement, where the CHALLENGER is by
+   * construction the other actor (`packages/engine/src/actions/dare.ts`: the
+   * player's challenge arm resolves against `hand.bidder`, and the dealer's arm
+   * notes "the PLAYER owns the standing bid by construction"). The entry is deleted
+   * at settlement, so a career that ends mid-hand leaves at most one live key.
+   */
+  openDareLastBidder: Map<string, DareChallenger>;
+}
+
+/**
+ * T-173 · A zeroed counter for every `DispositionChanged.reason` the engine can
+ * emit.
+ *
+ * WRITTEN OUT LONGHAND ON PURPOSE, in place of `Object.fromEntries` over a
+ * `const` list: the object literal is checked against
+ * `Record<DispositionChangeReason, number>`, so a reason ADDED to the engine's
+ * union is a compile error here (missing property) and a reason misspelled here is
+ * a compile error too (excess property). A derived list would need a cast, and a
+ * cast is exactly how a counter comes to be silently missing — the failure mode
+ * the `POLICY_NAMES` `satisfies` idiom below guards against for policy names.
+ */
+function zeroMovesByReason(): Record<DispositionChangeReason, number> {
+  return {
+    tribute: 0,
+    defeat: 0,
+    'player-fled': 0,
+    decay: 0,
+    storylet: 0,
+    'contract-sniped': 0,
+    dare: 0,
+    befriend: 0,
+    insult: 0,
+    meet: 0,
+    'loan-default': 0,
+    'contraband-caught': 0,
+  };
+}
+
+/**
+ * T-173 · The DUSK disposition sample — the half of {@link DispositionStats} no
+ * event can answer ("how much of the time does the cast sit at exactly zero?" is a
+ * condition, not a beat), folded exactly where `daysWithLoan` and
+ * `daysCarryingIllicit` are and for the same reason.
+ *
+ * Pure: reads the post-dusk state, draws no rng, mutates nothing but the
+ * accumulator. Cost is one pass over the 41 roster records per simulated day.
+ */
+function sampleDispositionAtDusk(state: GameState, metrics: CampaignMetricAccumulator): void {
+  const stats = metrics.disposition;
+  for (const npc of state.npcs) {
+    // A dead captain holds no live standing. Its open span (if any) is left in
+    // `openStandingDays` and lands in `standingsOpenAtHorizon` — a standing that
+    // ended with the captain rather than with decay is not a measured survival.
+    if (npc.dead) continue;
+    stats.liveNpcDays += 1;
+    const standing = npc.disposition;
+    const magnitude = Math.abs(standing);
+    if (standing === 0) stats.zeroDispositionNpcDays += 1;
+    stats.absDispositionSum += magnitude;
+    if (magnitude > stats.peakAbsDisposition) stats.peakAbsDisposition = magnitude;
+    const openedOn = metrics.openStandingDays.get(npc.id);
+    if (standing === 0) {
+      if (openedOn !== undefined) {
+        stats.standingSpanDays.push(state.day - openedOn);
+        metrics.openStandingDays.delete(npc.id);
+      }
+    } else if (openedOn === undefined) {
+      metrics.openStandingDays.set(npc.id, state.day);
+    }
+  }
 }
 
 /** T-1601a · Fold one day's events into the run-level behavior metrics. Kept as
@@ -1122,6 +1813,13 @@ function accumulateMetricEvents(
       // constraint 7). A run with `subsistenceDays > 0` is a run the world had to
       // catch; T-1605b's poverty-trap property test reads the same signal.
       metrics.subsistenceDays += 1;
+    } else if (event.type === 'DispositionChanged') {
+      // T-173 · One arm, one counter, every reason a key. `reason` is the
+      // engine's own union, so this cannot drift: `movesByReason` is typed
+      // `Record<DispositionChangeReason, number>` and a reason added to the engine
+      // is a compile error at `zeroMovesByReason` below rather than a beat that
+      // silently stops being counted.
+      metrics.disposition.movesByReason[event.reason] += 1;
     } else if (event.type === 'FragmentAcquired') {
       fragments.acquired += 1;
     } else if (event.type === 'FragmentDecoded') {
@@ -1183,6 +1881,92 @@ function accumulateMetricEvents(
           hangoutPlay.socialBeats += 1;
         }
       }
+    } else if (event.type === 'DareHandStarted') {
+      // T-168 · THE RAISED-CEILING MEASUREMENT (F-148-4). It folds `DareHandStarted`
+      // and not `HangoutEvent` for one structural reason: `HangoutEvent` carries no
+      // `systemId`, so there is no band to compare its `wager` against, while
+      // `DareHandStarted` carries BOTH `systemId` and the SEATED `seedWager` —
+      // post-clamp, which is what "was actually staked" means.
+      //
+      // The tier-4 ceiling is read through the engine's `effectiveWagerBand`, NOT by
+      // restating `LIARS_DICE_RAISED_CEILING_MULT` here. That is an ordinary rule
+      // accessor call and not a live-tier read, so §4.6a's closed list is untouched.
+      const base = wagerBandFor(event.systemId).max;
+      const raised = effectiveWagerBand(event.systemId, 4).max ?? base;
+      if (event.seedWager > base) hangoutPlay.handsAboveBaseCeiling += 1;
+      if (event.seedWager > raised) hangoutPlay.handsAboveRaisedCeiling += 1;
+      hangoutPlay.maxSeedWager = Math.max(hangoutPlay.maxSeedWager, event.seedWager);
+    } else if (event.type === 'DareBidPlaced') {
+      // T-175 · One beat of the hand, either side. Attributed to a CELL only at
+      // settlement, because the cell key needs the pool/archetype/tier that only
+      // `DareHandResolved` carries — so the count is parked against the `handId`
+      // and joined there. `bid` and every `raise-*` land here alike; that is what
+      // "bids per hand" has always meant in §12's tables.
+      metrics.openDareBids.set(event.handId, (metrics.openDareBids.get(event.handId) ?? 0) + 1);
+      // T-176 · ...and WHO placed it. The last writer wins, which is exactly the
+      // semantics `hand.bidder` has in the engine: the standing claim belongs to
+      // whoever made the most recent one.
+      metrics.openDareLastBidder.set(event.handId, event.actor);
+    } else if (event.type === 'DareHandResolved') {
+      // T-175 · THE ARCHETYPE-ORDERING SPLIT (F-160-1). Folded off
+      // `DareHandResolved` and NOT off `HangoutEvent`, because the pool, the
+      // archetype and the frozen `dicePerSide` ride only here.
+      //
+      // `playerWon` is derived from the ENGINE's `outcome`, never re-derived from
+      // the paired `HangoutEvent` — one definition, and `campaign-dare-cells.test.ts`
+      // asserts the two agree rather than assuming it.
+      const playerWon = event.outcome === 'challenge-win' || event.outcome === 'dealer-fold';
+      const tier = derivedDareTier(metrics.settledDareHands);
+      // The FREE CORRECTNESS CHECK on freeze-at-open (T-148's precedent): the tier
+      // derived from the run's own settled-hand count must imply the dice-per-side
+      // the hand actually froze. A non-zero here is a FINDING, not a rounding
+      // error, and `campaign-dare-cells.test.ts` asserts it is zero.
+      if (event.dicePerSide !== undefined && !dicePerSideAgreesWithTier(event.dicePerSide, tier)) {
+        hangoutPlay.dareTierDisagreements += 1;
+      }
+      // A pre-T-175 event (or a save replayed through an older engine) carries no
+      // `opponentKind`. It is attributed to `roaming|none`, the only shape such a
+      // stream could have described, and NOT silently dropped — a dropped hand
+      // would break `Σ hands === dares`, which is the identity every split rests on.
+      const pool: DarePool = event.opponentKind ?? 'roaming';
+      const archetype: DareArchetypeSlot = event.opponentArchetype ?? 'none';
+      const cell = hangoutPlay.dareCells[dareCellKey(pool, archetype, tier)];
+      cell.hands += 1;
+      if (playerWon) cell.playerWon += 1;
+      cell.netCredits += event.creditsDelta;
+      cell.bids += metrics.openDareBids.get(event.handId) ?? 0;
+      metrics.openDareBids.delete(event.handId);
+
+      // T-176 · THE CHALLENGER-WON SPLIT AT MATCHED EVIDENCE (F-160-2, §18). Only
+      // the two CHALLENGE outcomes reach the body below, and they are the only ones
+      // that could: a fold reveals nothing (§6.1), so `dealerDice`/`actualCount` are
+      // absent on the other three by design.
+      const reading = readDareChallenge(event, metrics.openDareLastBidder.get(event.handId));
+      metrics.openDareLastBidder.delete(event.handId);
+      if (reading.kind === 'join-miss') {
+        hangoutPlay.dareChallengeDisagreements += 1;
+      } else if (reading.kind === 'challenge') {
+        if (!reading.wellFormed) hangoutPlay.dareChallengeDisagreements += 1;
+        const challengeCell =
+          hangoutPlay.dareChallengeCells[
+            dareChallengeCellKey(
+              pool,
+              reading.challenger,
+              reading.dicePerSide,
+              dareKBucket(reading.k),
+            )
+          ];
+        challengeCell.challenges += 1;
+        if (reading.challengerWon) challengeCell.won += 1;
+
+        const splitCell =
+          hangoutPlay.dareChallengeSplit[
+            dareChallengeSplitKey(pool, archetype, reading.challenger)
+          ];
+        splitCell.challenges += 1;
+        if (reading.challengerWon) splitCell.won += 1;
+      }
+      metrics.settledDareHands += 1;
     }
   }
 }
@@ -1203,6 +1987,20 @@ interface BalanceSample {
   fuelPrice: number;
   systemId: number;
   creditsAfter: number;
+  /**
+   * T-173 · The roster as it stood when the batch opened — the very array
+   * `selectEncounterInterceptor` was handed, since `EncounterStarted` has exactly
+   * one emitter (the player's own jump, `actions/travel.ts`) and this sample is
+   * taken on the PRE-action state. Read ONLY by the `EncounterStarted` branch of
+   * {@link ingestBalanceRecords}, to rebuild the named candidate pool the draw
+   * chose from.
+   *
+   * Carried BY REFERENCE, not copied: the engine clones state per step
+   * (`cloneState`), so the pre-action array is already a snapshot nothing will
+   * mutate, and copying 41 records per action would be a real cost on the sweep's
+   * hot path for no additional truth.
+   */
+  npcs: readonly NpcState[];
 }
 
 /** T-1603a · Mutable state for the encounter/route-leg folds. Both trackers span
@@ -1235,6 +2033,7 @@ function balanceSample(state: GameState, creditsAfter = state.player.credits): B
     fuelPrice: fuelPrice(state),
     systemId: state.player.currentSystemId,
     creditsAfter,
+    npcs: state.npcs,
   };
 }
 
@@ -1303,10 +2102,35 @@ function ingestBalanceRecords(
       // any event we will ever see, so it is closed as 'unresolved' rather than
       // overwritten (which would lose the record entirely).
       closeBalanceEncounter(tracker, 'unresolved', sample.creditsAfter);
+      // T-173 · The interceptor draw, recorded rather than reconstructed later.
+      // The named pool is rebuilt EXACTLY as `buildNamedCandidates`
+      // (`packages/engine/src/actions/travel.ts`) builds it — live captains whose
+      // content profile sits at the chosen tier — off the PRE-action roster, which
+      // is the same array `selectEncounterInterceptor` was handed. It draws no rng
+      // and mutates nothing; it is a read of the state that produced the event.
+      const chosen = event.encounter.interceptor;
+      const namedPool =
+        chosen.source === 'named'
+          ? sample.npcs.filter(
+              (npc) =>
+                !npc.dead &&
+                NPC_PROFILES.find((profile) => profile.id === npc.profileId)?.tier === chosen.tier,
+            )
+          : [];
+      const chosenIndex = namedPool.findIndex((npc) => npc.id === chosen.id);
       tracker.openEncounter = {
         encounterId: event.encounter.id,
         day: sample.day,
         interceptorTier: event.encounter.interceptor.tier,
+        interceptorId: chosen.id,
+        interceptorSource: chosen.source,
+        interceptorDisposition: chosenIndex >= 0 ? namedPool[chosenIndex].disposition : null,
+        namedPoolDispositions: namedPool.map((npc) => npc.disposition),
+        // True on every anonymous draw (no pool is claimed). On a named draw it is
+        // false only for `selectEncounterInterceptor`'s third, band-widening branch
+        // — measured at 0 of 11,566 named draws by T-125, and a non-zero is a
+        // finding to file rather than a number to accept.
+        namedPoolReconstructed: chosen.source !== 'named' || chosenIndex >= 0,
         playerTier: sample.tier,
         prepared: weaponVolleyDamage(sample.ship) > 1,
         rounds: 0,
@@ -1422,11 +2246,23 @@ function ingestBalanceRecords(
   }
 }
 
+/** Queue an action that really does spend a die, handing it the next unused die
+ *  index and refusing once the five-die hand is committed.
+ *
+ *  T-196b · THE COUNT IS OF DIE ACTIONS, NOT OF ACTIONS. It used to be
+ *  `actions.filter(a => a.type !== 'Wait').length`, which was the same number only
+ *  while every non-Wait action cost a die. M17 freed nine action types
+ *  (docs/DAWN-HAND-REDESIGN.md §3), so a `Trade/buy-fuel` sitting in the batch must
+ *  not consume a `spendDie` index — counting it would hand the day's jump index 1
+ *  while die 0 sat unspent, and would spend the budget five actions into a day that
+ *  had rolled nothing. The filter now names the property it always meant. */
 function appendDieAction(
   actions: PlayerAction[],
   makeAction: (spendDie: number) => PlayerAction,
 ): void {
-  const dieActionCount = actions.filter((action) => action.type !== 'Wait').length;
+  const dieActionCount = actions.filter(
+    (action) => 'spendDie' in action && action.spendDie !== undefined,
+  ).length;
 
   if (dieActionCount < 5) {
     actions.push(makeAction(dieActionCount));
@@ -1450,12 +2286,17 @@ export function availablePlannedActions(state: GameState): PlayerAction[] {
 
   const fuelToBuy = affordableFuelAmount(state);
   if (state.player.ship.fuel < state.player.ship.maxFuel && fuelToBuy >= 1) {
-    appendDieAction(actions, (spendDie) => ({
+    // T-196b: buy-fuel is a FREE ACTION (T-196a freed the engine rule), so it no
+    // longer goes through `appendDieAction` at all — the die budget is for jumps
+    // and checks. Its REAL bounds are the two already tested on the line above:
+    // tank capacity and what the purse can afford. Note the knock-on: because this
+    // no longer consumes a `dieActionCount` slot, the `Travel` below now receives
+    // `spendDie: 0` on a day that also buys fuel (it used to receive 1).
+    actions.push({
       type: 'Trade',
       action: 'buy-fuel',
       fuelAmount: fuelToBuy,
-      spendDie,
-    }));
+    });
   }
 
   const destinationId = state.player.activeContract
@@ -1581,12 +2422,19 @@ export const greedyTraderPolicy: SimPolicy = ({ state }) => {
 
   const fuelToBuy = affordableFuelAmount(state);
   if (state.player.ship.fuel < 200 && fuelToBuy >= 1) {
+    // T-196b · THE RESIDUAL `spendDie: 0` T-196a's compile sweep could not see.
+    // `PlayerAction` is a union and `Trade` is one member with several sub-action
+    // shapes; TypeScript's excess-property check against a union admits any key
+    // that is present in SOME member, and `Trade/haggle` still has `spendDie` — so
+    // a `spendDie` on the (now field-less) `buy-fuel` shape compiled clean. The
+    // zod schema strips it before the engine sees it, so it was dead payload, but
+    // dead payload in a swept instrument is exactly the "field that silently does
+    // nothing" M17 exists to remove.
     return [
       {
         type: 'Trade',
         action: 'buy-fuel',
         fuelAmount: fuelToBuy,
-        spendDie: 0,
       },
     ];
   }
@@ -1596,7 +2444,6 @@ export const greedyTraderPolicy: SimPolicy = ({ state }) => {
       type: 'Trade',
       action: 'sign-contract',
       contractIndex: 0,
-      spendDie: 0,
     },
   ];
 
@@ -1643,9 +2490,16 @@ export function isIncomeAction(action: PlayerAction): boolean {
 /**
  * A per-day die ledger. The dawn hand is sorted DESCENDING (index 0 = the
  * highest-value die), so `takeBest` pops the sharpest remaining die (for skill
- * checks — travel, explore, combat) and `takeWorst` pops the dullest (for rote
- * actions that roll no check — signing, refuelling, buying upgrades). Returns
+ * checks — travel, explore, combat) and `takeWorst` pops the dullest. Returns
  * `undefined` once the hand is exhausted so callers stop queueing actions.
+ *
+ * T-196b · WHAT `takeWorst` IS STILL FOR. It used to serve "rote actions that
+ * roll no check — signing, refuelling, buying upgrades"; M17 freed every one of
+ * those (docs/DAWN-HAND-REDESIGN.md §3) and no planner spends a die on them any
+ * more. What is left on the dull end are the die-costed verbs a policy wants to
+ * take WITHOUT giving up the sharp die the day's real check needs: the veteran's
+ * `haggle`, and the Hangout's borrow/repay/dare (T-197's to revisit). Everything
+ * this ledger hands out now is a Main Action.
  */
 interface DieLedger {
   takeBest(): number | undefined;
@@ -1821,8 +2675,12 @@ function rankedContracts(state: GameState): RankedContract[] {
 const FUEL_REFUEL_THRESHOLD = 180;
 const FUEL_REFUEL_TARGET = 300;
 
-/** Queue a refuel (dull die) when the tank dips below the working threshold,
- *  buying up to the target, capped by what's affordable above `keepFloor`.
+/** Queue a refuel when the tank dips below the working threshold, buying up to
+ *  the target, capped by what's affordable above `keepFloor`.
+ *  T-196b: buying fuel is a FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3), so this
+ *  planner takes no die and no longer needs the `DieLedger` at all. Its REAL
+ *  bounds are unchanged and all still enforced below: tank capacity
+ *  (`maxFuel - fuel`), the working target, and the credits left above `keepFloor`.
  *  Returns the action and its credit cost (so debt planning can reserve it).
  *  T-1601a `extraCredits`: credits the day's plan has ALREADY arranged to have on
  *  hand before this action runs (today only: a Penny Wise advance queued earlier
@@ -1833,7 +2691,6 @@ const FUEL_REFUEL_TARGET = 300;
  *  byte-identical. */
 function planRefuel(
   state: GameState,
-  ledger: DieLedger,
   keepFloor: number,
   threshold = FUEL_REFUEL_THRESHOLD,
   target = FUEL_REFUEL_TARGET,
@@ -1847,10 +2704,8 @@ function planRefuel(
   const affordable = Math.floor(spendable / price);
   const units = Math.min(want, affordable);
   if (units < 1) return null;
-  const die = ledger.takeWorst();
-  if (die === undefined) return null;
   return {
-    action: { type: 'Trade', action: 'buy-fuel', fuelAmount: units, spendDie: die },
+    action: { type: 'Trade', action: 'buy-fuel', fuelAmount: units },
     cost: units * price,
   };
 }
@@ -1880,19 +2735,21 @@ const CRIPPLED_FUEL_FRACTION = 0.7;
  *      a full 210 tank, every board contract 221–494 fuel away). Repairing the
  *      hull restores the 300 tank and reopens the near runs. Reader:
  *      campaign.test.ts poverty-trap invariant (streak < 5).
- *  Returns null when the ship is healthy, unaffordable, or out of dice. */
+ *  Returns null when the ship is healthy or the yard bill is unaffordable.
+ *  T-196b: the yard is a FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3), so this
+ *  takes no die and the `DieLedger` parameter is gone. Its REAL bound is the one
+ *  it always had and still enforces: the quoted repair must clear `reserve` out
+ *  of the purse. It is still at most ONE repair-all per day by construction —
+ *  `crippledRepairNeed` reads the dawn state and returns a single quote. */
 function planCrippledRepair(
   state: GameState,
-  ledger: DieLedger,
   reserve: number,
   extraCredits = 0,
 ): PlayerAction | null {
   const need = crippledRepairNeed(state);
   if (!need.needed || !need.repairable) return null;
   if (state.player.credits + extraCredits - need.cost < reserve) return null;
-  const die = ledger.takeWorst();
-  if (die === undefined) return null;
-  return { type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: die };
+  return { type: 'Shipyard', action: 'repair', repairMode: 'all' };
 }
 
 /**
@@ -1935,7 +2792,6 @@ function crippledRepairNeed(state: GameState): {
     type: 'Shipyard',
     action: 'repair',
     repairMode: 'all',
-    spendDie: 0,
   });
   const repairable = quote.ok || quote.failure?.reason === 'INSUFFICIENT_CREDITS';
   return { needed: true, repairable, cost: quote.cost };
@@ -1946,10 +2802,19 @@ function crippledRepairNeed(state: GameState): {
  * encounter by talk or fight COMPLETES the interrupted delivery; running only
  * escapes back to the origin (delivery lost). So prefer to talk it down when the
  * tribute is affordable and the interceptor will actually take credits; fall
- * back to a getaway otherwise. Exactly ONE combat action per day — queueing more
+ * back to a getaway otherwise. An unresolved encounter simply carries to the next
+ * dawn and is retried, at the cost of one dusk pressure roll.
+ *
+ * T-199 · THE ONE-ACTION-PER-DAY CAP IS GONE, AND ITS RATIONALE WAS STALE.
+ * This comment used to read "Exactly ONE combat action per day — queueing more
  * would crash the moment one resolves the encounter (no encounter left to
- * target). An unresolved encounter simply carries to the next dawn and is
- * retried, at the cost of one dusk pressure roll.
+ * target)". That crash is no longer reachable from a batch driver: BOTH drivers
+ * that apply a policy's plan now skip an orphaned Combat before it reaches the
+ * engine — `runCampaign` (this file, "T-1205: a queued Combat can now be orphaned
+ * mid-batch") and `driveFrom` (`__tests__/support/campaign-drivers.ts`, T-1603c),
+ * each carrying the same `if (action.type === 'Combat' && !dayState.encounter)
+ * continue;`. The cap was a workaround for a hazard those two guards removed, and
+ * leaving it in place cost a real out (below).
  */
 function planPacifistCombat(state: GameState, ledger: DieLedger): PlayerAction[] {
   const encounter = state.encounter;
@@ -1990,12 +2855,227 @@ function planPacifistCombat(state: GameState, ledger: DieLedger): PlayerAction[]
   if (!refusesTribute && canPay) {
     return [{ type: 'Combat', stance: 'talk', targetId, spendDie: die }];
   }
+
+  // T-199 · THE DAY DOES NOT HAVE TO END AT THE FIRST REFUSED STANCE. Until now
+  // this branch played exactly one move — a `run` if the tank could pay for one,
+  // otherwise a plea — and then let the encounter carry to the next dawn. That
+  // single move is kept, in the same order and on the same die, so a prepared ship
+  // still tries the getaway it has always tried. What is added is a SECOND stance
+  // behind it, taken only if the first one did not end the encounter (both batch
+  // drivers skip an orphaned Combat, see the header).
+  //
+  // THE SECOND STANCE IS THE PLEA, AND `canPay === false` WAS NEVER THE ENGINE'S
+  // GATE ON IT. `canPay` compares the purse to the DEMAND; `resolveTalk`
+  // (`engine/src/actions/combat.ts`) charges `paid = max(1, floor(amount × (1 −
+  // 0.05 × margin)))` on a success and WAIVES THE TOLL ENTIRELY on a natural 20.
+  // So the old code declined a deal the engine might still have closed — the same
+  // class of mistake the R0a block above fixed for the demand itself ("an
+  // instrument that is wrong about the one number a decision turns on cannot grade
+  // a change to that number"), and the same reasoning the dry-tank fallback below
+  // already used in its own words ("a nat-20 waves the ship through, and it costs
+  // no fuel"). That fallback stops being a dry-tank corner and becomes the general
+  // second try.
+  //
+  // WHY THE GETAWAY STAYS FIRST, and this ordering is MEASURED, not aesthetic. A
+  // plea-first version was written and run: it moved
+  // `balance-combat-survival.test.ts`'s "preparation pays off when outgunned" band
+  // from 0.5333 to 0.4542 against a bar of 0.50 (confirmed causal, not noise, at a
+  // 3x-widened sample: 0.4340 over 360 seeds × 60 days, n = 4,636 / 826 in the two
+  // graded cells). The mechanism is plain once seen — a PREPARED ship outguns the
+  // interceptor and usually escapes, so making it open its purse before it opens
+  // the throttle makes it PAY for encounters it used to leave, and the band that
+  // exists to say "preparation pays" is exactly the thing that dulls. The band was
+  // not moved to accommodate the ordering; the ordering was moved to respect the
+  // band.
+  //
+  // HONEST TRADE-OFF, stated because a reviewer will ask: a `talk` anywhere in the
+  // plan makes an encounter-pinned day income-classified (`isIncomeAction` counts
+  // Combat talk, not run), so `assertNoIncomeStall` can no longer fire from a
+  // carried encounter for the five policies sharing this planner. That is a
+  // CONSEQUENCE of the fix, not its justification — the justification is the
+  // engine mirror above, and it would stand if the invariant did not exist.
+  //
+  // REJECTED: `fight` as a last resort. It converts five deliberately pacifist
+  // instruments into fighters, moves `ship-loss-share-of-encounters` and
+  // `combat-win-share`, and would change what the trader/explorer/smuggler rows
+  // measure. NAMED, NOT CLOSED: `refusesTribute` is still a wrong mirror in the
+  // other direction — `interceptorRefusesTribute` (`engine/src/rules/combatRules.ts`)
+  // is a per-attempt d20 against `flawDc`, not a certainty, so a flawed
+  // interceptor is treated here as never negotiable when the engine says
+  // "usually not". Left as-is: closing it would widen this change past its root.
+  const actions: PlayerAction[] = [];
   if (state.player.ship.fuel >= RUN_FUEL_COST) {
-    return [{ type: 'Combat', stance: 'run', targetId, spendDie: die }];
+    actions.push({ type: 'Combat', stance: 'run', targetId, spendDie: die });
+    // The plea rides the NEXT die. If the hand is empty the getaway simply stands
+    // alone, which is exactly what this branch did before.
+    const pleaDie = ledger.takeBest();
+    if (pleaDie !== undefined) {
+      actions.push({ type: 'Combat', stance: 'talk', targetId, spendDie: pleaDie });
+    }
+    return actions;
   }
-  // Dry tank and can't buy the interceptor off with credits: talk anyway (a
-  // nat-20 waves the ship through, and it costs no fuel).
+  // Dry tank and can't buy the interceptor off at the asking price: plead anyway,
+  // on the die the getaway would have used.
   return [{ type: 'Combat', stance: 'talk', targetId, spendDie: die }];
+}
+
+/**
+ * THE ANTI-IDLE REPOSITIONING BURN, shared. Lifted VERBATIM at T-199 from
+ * `fighterPolicy`'s T-159 second pass, whose original reasoning is preserved
+ * below word for word because it is the justification for every caller, not just
+ * for the fighter:
+ *
+ *   "NOTHING ON THE BOARD IS FLYABLE AT ALL: FLY HOME. The relaxation above
+ *   closes the case where the margin cap is the only thing in the way. It CANNOT
+ *   close the harder rim corner, and measurement said so: with the relaxation
+ *   alone, seed 35's fighter still sat 8 consecutive zero-income days at Algol-2
+ *   (system 20) because after a succession left it on a 240-unit tank and a
+ *   junker drive, EVERY leg the board offered cost 252-602 fuel — `reachable` is
+ *   empty even at `maxFuel`, so there is no filter to relax.
+ *
+ *   So this is the gambler's fallback, not the trader's: an explicit ANTI-IDLE
+ *   MOVE (`index.ts` gamblerPolicy, "Nothing to fly? Go where the tables are" —
+ *   "`Travel` IS an income action, and without it a rich gambler simply stops").
+ *   The fighter's version of "where the tables are" is HOMEWARD: the lanes around
+ *   the Hangout, where the legs are short enough that a junker drive can fly them
+ *   and where the interceptor traffic this policy exists to shoot actually is.
+ *
+ *   Three guards keep this a repositioning burn and not a metric-gaming twitch:
+ *     1. It fires ONLY when the day has queued no income action at all, so it can
+ *        never displace a run the fighter could have flown.
+ *     2. The destination must be affordable on the tank the day will ACTUALLY
+ *        have (`availableFuel`, post-refuel) — never a leg the engine refuses.
+ *     3. STRICT PROGRESS: the target must be closer to a Hangout than the current
+ *        port is, so a stranded fighter walks in toward the core instead of
+ *        ping-ponging between two rim ports to keep an income counter warm."
+ *
+ * WHY IT IS SHARED NOW (F-199-1). The rim corner T-159 measured is not a fighter
+ * property — it is a property of the BOARD, and the 1,000-seed × 35-day sweep
+ * caught `traderPolicy` in exactly it (seeds 371 and 571: a full 240/240 tank,
+ * `TRADER_RESERVE` in the purse, `reachable` empty even at `maxFuel`, and no
+ * anti-idle move of any kind, so the day fell through to a bare `Wait`). Rather
+ * than write the same walk out again, T-159's is lifted here unchanged — and the
+ * extraction was proven INERT before any new caller was wired in: with the fighter
+ * calling this function and nothing else changed, `campaign-degraded.test.ts`'s
+ * `fighter` fingerprint came back byte-identical to its pre-T-199 pin and the
+ * 200-seed × 35-day strand scan reported the same two offending seeds.
+ *
+ * CALLERS: `fighterPolicy` (its original home), `traderPolicy` and
+ * `smugglerPolicy`. `veteranPolicy` is DELIBERATELY NOT WIRED, and the omission is
+ * measured, not forgotten: the veteran is exempt from `assertNoIncomeStall`
+ * (`balance/gate.ts` GATE_COMPETENT_POLICIES — "an endgame grinder, not a lean
+ * balance instrument"), and wiring it moved `balance-combat-survival.test.ts`'s
+ * "preparation pays off when outgunned" band from 0.5333 to 0.4801 against a bar of
+ * 0.50 (the veteran is one of that slice's four policies; the trader is not, which
+ * is why the trader could be wired and the veteran could not). Carried as an open
+ * residual under F-199-1 in TASKS.md rather than paid for by moving a band.
+ *
+ * `refuelCost` is the CREDITS the day has already committed to refuelling; it is
+ * converted back to fuel units at the port's price, exactly as the fighter did.
+ * Guard 1 is enforced here rather than at the call sites so a new caller cannot
+ * forget it. Readers: `assertNoIncomeStall` in `balance/gate.ts`, and the `< 5`
+ * poverty-trap invariant in `campaign-policies.test.ts`.
+ */
+function planHomewardBurn(
+  state: GameState,
+  ledger: DieLedger,
+  actions: readonly PlayerAction[],
+  refuelCost: number,
+): PlayerAction | null {
+  // Guard 1.
+  if (state.player.activeContract) return null;
+  if (actions.some(isIncomeAction)) return null;
+
+  const from = state.player.currentSystemId;
+  const homewardDistance = (systemId: number): number =>
+    Math.min(...hangoutSystemIds().map((id) => systemDistance(systemId, id)));
+  const boughtFuel = refuelCost > 0 ? refuelCost / fuelPrice(state) : 0;
+  const availableFuel = Math.min(state.player.ship.maxFuel, state.player.ship.fuel + boughtFuel);
+  const currentHomeward = homewardDistance(from);
+  let target: number | null = null;
+  let targetHomeward = currentHomeward;
+  let targetFuel = Infinity;
+  for (const id of travelableSystemIds()) {
+    if (id === from) continue;
+    const jumpFuel = playerJumpFuel(state, systemDistance(from, id));
+    // Guard 2.
+    if (jumpFuel > availableFuel) continue;
+    const homeward = homewardDistance(id);
+    // Guard 3 in code: a candidate no closer to the desk than the current port
+    // is not a repositioning burn, it is a twitch, and is never taken.
+    if (homeward >= currentHomeward) continue;
+    // Closest to the desk wins; ties go to the cheaper burn, then to the lower
+    // id (loop order) so the choice is deterministic.
+    if (
+      target === null ||
+      homeward < targetHomeward ||
+      (homeward === targetHomeward && jumpFuel < targetFuel)
+    ) {
+      target = id;
+      targetHomeward = homeward;
+      targetFuel = jumpFuel;
+    }
+  }
+  if (target === null) return null;
+  const die = ledger.takeBest();
+  if (die === undefined) return null;
+  return { type: 'Travel', destinationId: target, spendDie: die };
+}
+
+/**
+ * THE SECOND RUNG OF THE ANTI-IDLE FALLBACK (T-199, F-199-2) · WHEN NOT EVEN THE
+ * WALK HOME IS FLYABLE. {@link planHomewardBurn} needs one leg the tank can pay
+ * for. The harder corner has none: the tank is at max and EVERY leg on the map —
+ * contract, homeward or otherwise — costs more than the whole tank, which is the
+ * state seed 74's fighter woke into after spending 6,652 → 400 credits at the
+ * yard and coming out with a 60-unit tank it could not use and no credits to
+ * enlarge it. Twenty-six consecutive zero-income days followed, and no travel
+ * rule can reach that: there is nowhere to travel TO.
+ *
+ * The out that remains is the one verb that costs fuel but no distance. Explore
+ * is an income action (`isIncomeAction`), it is what a stranded captain would
+ * actually do with a part tank, and the evidence it is enough is `explorerPolicy`
+ * itself — which builds a whole career on this verb and never stalls in any
+ * window measured for this task (worst zero-income streak 0 over 200 seeds × 35
+ * days after the T-199 combat fix).
+ *
+ * The guards mirror the burn's: it fires only after a day has queued no income
+ * action and no leg was flyable, and it is offered only when the engine will
+ * actually accept the verb — `EXPLORATION_FUEL_COST` of fuel in the tank and no
+ * open recovery (`engine/src/actions/exploration.ts` refuses with
+ * `ExplorationFailed{'recovery-in-progress'}`, the same F-116-1 mirror the
+ * explorer's and smuggler's own loops carry). One Explore, not a drain loop: this
+ * is a last resort, not a strategy, and a stranded captain with a part tank should
+ * not spend all of it in a day.
+ *
+ * CALL IT LAST, AFTER EVERY OTHER DIE-COSTED ACTION IN THE DAY — this is an engine
+ * rule, not a preference. A band-3/4 find charges `apCost`: 2 or 3 EXTRA dice out
+ * of the same dawn hand, taken AT CLAIM (`engine/src/exploreOutcomes.ts`, owner
+ * ruling D1). An Explore placed mid-plan therefore spends dice that later actions
+ * in the same batch have already been assigned, and the engine throws `Die already
+ * spent` on whichever one follows. Not hypothetical: a first pass at this change
+ * put the call before `veteranPolicy`'s yard block and crashed on seed 194, day 22
+ * (Explore on die 0, then `buy-cargo-pods` on die 2). `explorerPolicy` and
+ * `smugglerPolicy` have always put their Explore loops last for exactly this
+ * reason; the tail placement is that same rule, not a new one.
+ *
+ * ORDERING AGAINST {@link planHomewardBurn} NEEDS NO COORDINATION, even though the
+ * two are called from different points in the plan: the walk home is the better
+ * out (it reaches ports that have BOARDS on them; an Explore does not move the ship
+ * at all), and if it queued a Travel then `actions.some(isIncomeAction)` is already
+ * true by the time this runs, so this returns null on its own first guard.
+ */
+function planStrandedExplore(
+  state: GameState,
+  ledger: DieLedger,
+  actions: readonly PlayerAction[],
+): PlayerAction | null {
+  if (actions.some(isIncomeAction)) return null;
+  if (state.player.recovery !== null) return null;
+  if (state.player.ship.fuel < EXPLORATION_FUEL_COST) return null;
+  const die = ledger.takeBest();
+  if (die === undefined) return null;
+  return { type: 'Explore', spendDie: die };
 }
 
 /** Amount to pay toward the Guild marker this dusk. Computed from PLAN-TIME
@@ -2057,7 +3137,14 @@ const TRADER_LOAN_HOME_WINDOW = 5;
  * shortfall plan, which is the F-121-1 "the policy's guards are the engine's
  * guards" argument applied to an amount rather than to a gate.
  *
- * The die is the DULLEST remaining: borrowing rolls no check.
+ * T-197 · NO DIE AT ALL. Borrowing is a Free Action
+ * (docs/DAWN-HAND-REDESIGN.md §3) and draws from NEITHER of the two daily caps —
+ * §4a's social pool covers meet/befriend/insult only, and §4b's rounds cap covers
+ * the dare open only. The desk was always bounded by the single-active-loan slot
+ * (the `state.player.loan` guard below, the engine's own `already-has-loan`
+ * refusal mirrored) and by the port's principal band, which is exactly why §3
+ * ruled it free with no new cap owed. The `DieLedger` parameter is gone with the
+ * spend, the T-196b treatment applied to the Hangout.
  *
  * CRITICAL: the caller must queue this as an EXTRA action on an otherwise normal
  * working day, never as a standalone day. A borrow-only day has
@@ -2067,7 +3154,6 @@ const TRADER_LOAN_HOME_WINDOW = 5;
  */
 function planLoanBorrow(
   state: GameState,
-  ledger: DieLedger,
   shortfall: number,
 ): { action: PlayerAction; principal: number } | null {
   if (state.encounter) return null;
@@ -2078,10 +3164,8 @@ function planLoanBorrow(
   if (!(shortfall >= 1)) return null;
   const band = loanBandFor(state.player.currentSystemId);
   const principal = Math.max(band.min, Math.min(band.max, Math.ceil(shortfall)));
-  const die = ledger.takeWorst();
-  if (die === undefined) return null;
   return {
-    action: { type: 'VisitHangout', venue: 'borrow', amount: principal, spendDie: die },
+    action: { type: 'VisitHangout', venue: 'borrow', amount: principal },
     principal,
   };
 }
@@ -2093,10 +3177,14 @@ function planLoanBorrow(
  * rather than let it flip. A default is not a slap on the wrist: it applies
  * LOAN_DEFAULT_DISPOSITION to Penny Wise (grudge-weighting her into the
  * interceptor draw) and multiplies the realized encounter chance by
- * COLLECTION_ENCOUNTER_MULTIPLIER until the balance is cleared. Dull die — a
- * repayment rolls no check.
+ * COLLECTION_ENCOUNTER_MULTIPLIER until the balance is cleared.
+ *
+ * T-197 · NO DIE, AND NO CAP (docs/DAWN-HAND-REDESIGN.md §3/§4a). Repaying is a
+ * Free Action outside the social pool: credits and the outstanding balance were
+ * always its real bounds, and the engine clamps the payment to
+ * `min(requested, credits, outstanding)` regardless.
  */
-function planLoanRepay(state: GameState, ledger: DieLedger): PlayerAction | null {
+function planLoanRepay(state: GameState): PlayerAction | null {
   const loan = state.player.loan;
   if (!loan) return null;
   if (state.encounter) return null;
@@ -2110,9 +3198,7 @@ function planLoanRepay(state: GameState, ledger: DieLedger): PlayerAction | null
     ? state.player.credits >= outstanding
     : state.player.credits >= outstanding + TRADER_RESERVE;
   if (!affordable) return null;
-  const die = ledger.takeWorst();
-  if (die === undefined) return null;
-  return { type: 'VisitHangout', venue: 'repay', amount: outstanding, spendDie: die };
+  return { type: 'VisitHangout', venue: 'repay', amount: outstanding };
 }
 
 // ---------------------------------------------------------------------------
@@ -2203,12 +3289,16 @@ function expectedFreshDieFace(state: GameState): number {
  * a fresh one would be expected to be.
  *
  * WHY THE SHARPEST AND NOT THE DULLEST. The hand is dealt descending, and every
- * planner in this file spends `takeBest()` (index 0) on the day's one action that
- * actually rolls a check — the jump, the stance, the sweep — and `takeWorst()` on
- * the rote ones (sign, refuel, yard, hire), which roll nothing. Improving the
- * dull end therefore buys nothing at all; improving the top of the hand is the
- * whole value of the charge. And if the sharpest die is below the expected fresh
- * face, so is every other die in the hand, so the re-roll is +EV by construction.
+ * planner in this file spends `takeBest()` (index 0) on the day's actions that
+ * actually roll a check — the jump, the stance, the sweep. Improving the dull end
+ * buys nothing at all; improving the top of the hand is the whole value of the
+ * charge. And if the sharpest die is below the expected fresh face, so is every
+ * other die in the hand, so the re-roll is +EV by construction.
+ *
+ * T-196b: this used to add "and `takeWorst()` on the rote ones (sign, refuel,
+ * yard, hire), which roll nothing" — M17 freed all four, so they take no die at
+ * all now and the dull end serves only `haggle` and the Hangout verbs. The
+ * conclusion is unchanged and, if anything, stronger.
  *
  * COSTS NO DIE — only a `rerollsRemaining` charge (engine `resolveReroll`), so
  * this never competes with the day's income actions and takes nothing from the
@@ -2279,10 +3369,12 @@ function crewBenefitRank(benefit: DiceBenefit): number {
   return 2;
 }
 
-/** One die-costed captain's-overhead purchase, priced before it is committed. */
+/** One captain's-overhead purchase, priced before it is committed. T-196b: the
+ *  builder takes no argument — all three verbs (berth tier, crew hire, port
+ *  stake) are Free Actions and their shapes carry no `spendDie`. */
 interface OverheadPick {
   cost: number;
-  make: (spendDie: number) => PlayerAction;
+  make: () => PlayerAction;
 }
 
 /** What `planCaptainOverhead` decided: the queued actions and the credits they
@@ -2314,12 +3406,14 @@ function planBerthUpgrade(state: GameState, spendable: number): OverheadPick | n
   if (!Number.isFinite(cost) || cost > spendable) return null;
   return {
     cost,
-    make: (spendDie) => ({
+    // T-196a: the shipyard is FREE, so the builder takes no die; T-196b removed
+    // the die budget in `planCaptainOverhead` that used to ration it. The
+    // ONE-per-day rule there is not a die rule and survives untouched.
+    make: () => ({
       type: 'Shipyard',
       action: 'buy-component-tier',
       component: 'cabin',
       tier,
-      spendDie,
     }),
   };
 }
@@ -2349,7 +3443,8 @@ function planCrewHire(state: GameState, spendable: number): OverheadPick | null 
     if (role.hirePrice + role.dailyWage * CREW_WAGE_RUNWAY_DAYS > spendable) continue;
     return {
       cost: role.hirePrice,
-      make: (spendDie) => ({ type: 'Crew', action: 'hire', roleId: role.id, spendDie }),
+      // T-196a: a hire is FREE now — no die in the built action.
+      make: () => ({ type: 'Crew', action: 'hire', roleId: role.id }),
     };
   }
   return null;
@@ -2384,14 +3479,15 @@ function planPortStake(state: GameState, spendable: number): OverheadPick | null
   if (quote.cost * PORT_SURPLUS_COVER > spendable) return null;
   return {
     cost: quote.cost,
-    make: (spendDie) => ({ type: 'Port', action: 'buy', systemId, spendDie }),
+    // T-196a: a port buy is FREE now — no die in the built action.
+    make: () => ({ type: 'Port', action: 'buy', systemId }),
   };
 }
 
 /**
- * THE CAPTAIN'S OVERHEAD — at most ONE die-costed purchase a day, taken with the
- * DULLEST remaining die, after the day's income actions are already queued, and
- * only out of the surplus left once the whole Guild marker is held back.
+ * THE CAPTAIN'S OVERHEAD — at most ONE purchase a day, after the day's income
+ * actions are already queued, and only out of the surplus left once the whole
+ * Guild marker is held back.
  *
  * THE MARKER-FIRST RULE IS THE HOUSE RULE, and it is recorded here with the
  * measurement that put it back, per BALANCE-POLICY Part B rule 3. It is the same
@@ -2420,30 +3516,39 @@ function planPortStake(state: GameState, spendable: number): OverheadPick | null
  * of the argument for skipping the gate are therefore refuted, and the gate goes
  * back where every other discretionary purchase in this file already has one.
  *
- * Three further properties, each deliberate:
- *   * ONE per day. Berths, hires and stakes all read the DAWN state, so two in a
- *     batch would be planned against preconditions the first one has already
- *     moved (a hire into a berth the same batch is still buying). Mirroring the
- *     engine exactly means planning against the state the engine will see.
- *   * DULLEST die, like every other rote purchase in this file — none of these
- *     three actions rolls a check.
- *   * LAST in the plan, so the ledger is already empty on a full working day and
- *     the shopping simply does not happen. That is what keeps `incomeActionCount`
- *     where it was and the poverty-trap invariant (`longestZeroIncomeStreak < 5`)
- *     untouched — the same rule `planLoanBorrow` states for itself.
+ * Two further properties, each deliberate:
+ *   * ONE per day, and this survives M17 intact. Berths, hires and stakes all
+ *     read the DAWN state, so two in a batch would be planned against
+ *     preconditions the first one has already moved (a hire into a berth the same
+ *     batch is still buying). Mirroring the engine exactly means planning against
+ *     the state the engine will see. The die was never what enforced this, so
+ *     "no longer costs a die" does NOT become "may be taken N times".
+ *   * LAST in the plan, so it can never displace an income action.
+ *
+ * T-196b · THE OLD THIRD PROPERTY IS GONE AND ITS RATIONALE MUST NOT SURVIVE IT.
+ * This block used to read "DULLEST die … LAST in the plan, so the ledger is
+ * already empty on a full working day and the shopping simply does not happen.
+ * That is what keeps `incomeActionCount` where it was and the poverty-trap
+ * invariant (`longestZeroIncomeStreak < 5`) untouched." Both halves are now
+ * false: berths, hires and stakes are Free Actions (docs/DAWN-HAND-REDESIGN.md
+ * §3), so there is no ledger left to be empty and the shopping DOES happen on a
+ * full working day. The invariant is untouched for a stronger reason than the old
+ * accident of ordering: this planner consumes NO die at all, so it cannot take
+ * one from an income action however busy the day is. `incomeActionCount` counts
+ * sign/Travel/Explore/fight-or-talk (`isIncomeAction`) and none of the three
+ * verbs here is one — they neither add to it nor subtract from it. What DID
+ * change, and is the single biggest mechanism in this arm's sweep, is the
+ * FREQUENCY: the throttle was real, and these three verbs now fire on every day
+ * where `spendable > 0` rather than only on days the working plan left a die.
  *
  * `committed` is the credits the rest of today's plan has already spent (refuel,
- * repayment, less any advance), so affordability is judged on what will really be
- * in the purse, not on the dawn balance.
+ * repayment, yard, less any advance), so affordability is judged on what will
+ * really be in the purse, not on the dawn balance. Callers that can now queue
+ * several freed purchases in one day MUST thread their running total through it —
+ * before M17 the die scarcity made that collision rare; it is the common case now.
  */
-function planCaptainOverhead(
-  state: GameState,
-  ledger: DieLedger,
-  reserve: number,
-  committed = 0,
-): CaptainOverhead {
+function planCaptainOverhead(state: GameState, reserve: number, committed = 0): CaptainOverhead {
   if (state.encounter) return NO_OVERHEAD;
-  if (ledger.remaining() === 0) return NO_OVERHEAD;
   // THE MARKER COMES OUT FIRST. `spendable` is what is left after the operating
   // reserve, what the rest of today's plan has already committed, AND THE WHOLE
   // OUTSTANDING GUILD MARKER — see the block comment above for the capstone that
@@ -2463,9 +3568,7 @@ function planCaptainOverhead(
     planCrewHire(state, spendable) ??
     planPortStake(state, spendable);
   if (!pick) return NO_OVERHEAD;
-  const die = ledger.takeWorst();
-  if (die === undefined) return NO_OVERHEAD;
-  return { actions: [pick.make(die)], cost: pick.cost };
+  return { actions: [pick.make()], cost: pick.cost };
 }
 
 // T-1102: the largest share of the tank a single contract's jump may cost. Below
@@ -2630,7 +3733,7 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
   //    25,000 marker and a month to clear it BORROWS. Every real spacer does; the
   //    advance buys the fuel for the runs that pay the Guild, and the strict
   //    duress cases above almost never coincide with being AT the desk (measured
-  //    over seeds 1..50: the trader passes through Sun-3 about five dawns per 60
+  //    over seeds 1..50: the trader passes through Sol-3 about five dawns per 60
   //    days, and is rarely there on the one day the tank runs dry). Without this
   //    case the lending band ships unexercised by any policy, which is precisely
   //    what this task exists to prevent.
@@ -2644,7 +3747,7 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
     markerShortfall,
     workingCapitalShortfall,
   );
-  const borrow = planLoanBorrow(state, ledger, shortfall);
+  const borrow = planLoanBorrow(state, shortfall);
   let borrowed = 0;
   if (borrow) {
     // FIRST in the day's plan — and an EXTRA action on a normal working day, so
@@ -2655,7 +3758,7 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
 
   // Settle the Penny Wise balance before the day's spending starts, so the
   // repayment is never lost to a refuel that drained the purse first.
-  const repay = planLoanRepay(state, ledger);
+  const repay = planLoanRepay(state);
   let repaid = 0;
   if (repay) {
     actions.push(repay);
@@ -2679,7 +3782,6 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
   const refuelTarget = Math.min(ship.maxFuel, Math.max(workingTarget, primaryFuelNeed));
   const refuel = planRefuel(
     state,
-    ledger,
     // T-1601a: hold back exactly the repayment queued above (it runs first, but
     // these planners all read the DAWN state), so the tank is never filled with
     // the money that was going to clear the marker.
@@ -2702,7 +3804,11 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
   // advance funds the repair, a repayment is money already spent). The refuel is
   // deliberately NOT subtracted — that was never modelled here, and changing it
   // would move the T-1302 stranding fix this planner exists for.
-  const repair = planCrippledRepair(state, ledger, TRADER_RESERVE, borrowed - repaid);
+  // T-196b: the refuel is STILL deliberately not netted off, for the reason the
+  // comment above already gives — this pair could always co-occur (both were
+  // reachable on a five-die day), so freeing the die did not create the collision
+  // and closing it here would be a behaviour change this task does not own.
+  const repair = planCrippledRepair(state, TRADER_RESERVE, borrowed - repaid);
   if (repair) actions.push(repair);
 
   // The tank the trader will actually have when it flies today — current fuel
@@ -2727,27 +3833,31 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
     // T-1601a: `preferred` is `reachable[0]` unless the rim or head-home
     // preference above swapped in another member of the SAME fundable set.
     const best = preferred;
-    const signDie = ledger.takeWorst();
+    // T-196b · SIGNING IS FREE (docs/DAWN-HAND-REDESIGN.md §3), so the pair is
+    // gated on the TRAVEL die alone — the jump is the only half that rolls a
+    // check. The sign's real bounds are unchanged and both still enforced: the
+    // engine refuses a second active contract (`trade.ts:67`), and `preferred` is
+    // drawn from the already fuel- and net-filtered `reachable` set.
     const travelDie = ledger.takeBest();
-    if (signDie !== undefined && travelDie !== undefined) {
+    if (travelDie !== undefined) {
       actions.push({
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: best.index,
-        spendDie: signDie,
       });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
 
       // Second run while the debt still bites: throughput matters more than the
       // marginal encounter risk when 25,000 credits are due by day 30.
-      if (state.player.debt > 5000 && reachable.length > 1 && ledger.remaining() >= 2) {
+      // T-196b: `>= 2` became `>= 1` — the second sign is free, so only the
+      // second TRAVEL die has to still be in the hand.
+      if (state.player.debt > 5000 && reachable.length > 1 && ledger.remaining() >= 1) {
         // T-1601a: the richest OTHER fundable run — `reachable[1]` unless a
         // preference above made `best` something other than `reachable[0]`.
         const second = reachable.find((c) => c.index !== best.index)!;
         // The board shifts when the first contract is spliced off; correct the
         // live index for the second sign.
         const liveIndex = second.index > best.index ? second.index - 1 : second.index;
-        const secondSignDie = ledger.takeWorst();
         const secondTravelDie = ledger.takeBest();
         // T-1102: the second leg is flown FROM the first delivery's system, not
         // from here — price it on that leg (distance best.destination → second),
@@ -2759,16 +3869,11 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
           systemDistance(best.destination, second.destination),
         );
         const projectedFuel = availableFuel - primaryFuelNeed;
-        if (
-          secondSignDie !== undefined &&
-          secondTravelDie !== undefined &&
-          projectedFuel >= secondLegFuel
-        ) {
+        if (secondTravelDie !== undefined && projectedFuel >= secondLegFuel) {
           actions.push({
             type: 'Trade',
             action: 'sign-contract',
             contractIndex: liveIndex,
-            spendDie: secondSignDie,
           });
           actions.push({
             type: 'Travel',
@@ -2780,6 +3885,22 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
     }
   }
 
+  // ---- T-199 · F-199-1 · THE TRADER'S MISSING ANTI-IDLE MOVE.
+  // The full-tank relaxation above closes the case where the margin cap is the only
+  // thing in the way; it cannot close the rim corner where EVERY leg on the board
+  // costs more than the whole tank, and until now the trader had no answer to that
+  // at all. Measured at 1,000 seeds × 35 days, on HEAD and unmoved by anything else
+  // in this task: seeds 371 and 571 sat 6 and 7 consecutive zero-income days with a
+  // FULL 240/240 tank and exactly `TRADER_RESERVE` in the purse, `reachable` empty
+  // even at `maxFuel`, falling through to a bare `Wait`. `fighterPolicy` has had the
+  // walk-home fix since T-159; this is that same code, now shared. Placed here —
+  // after the day's contract and travel work, before the overhead and the marker —
+  // so it can only ever fill an idle day. (The second rung, `planStrandedExplore`,
+  // is called at the TAIL of this plan; its own doc explains why it cannot be queued
+  // beside the burn.)
+  const homewardBurn = planHomewardBurn(state, ledger, actions, refuelCost);
+  if (homewardBurn) actions.push(homewardBurn);
+
   // T-1601a: PROTECT THE PENNY WISE REPAYMENT FROM THE GUILD MARKER. While a loan
   // is live and unpaid this day, hold its whole balance back on top of the
   // operating reserve. Sending it to the Guild instead is a false economy: the
@@ -2790,16 +3911,23 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
   // that costs far more than the days of marker payment it defers. A repayment
   // queued TODAY needs no such hold; it is already committed spending instead.
   const loanHold = state.player.loan && !repay ? state.player.loan.outstanding : 0;
-  // N9 · The captain's overhead — berths, crew, a port stake — with whatever dull
-  // die the working day left over, and BEFORE the marker payment is sized so the
-  // money it commits is held back from the Guild exactly as the refuel is.
+  // N9 · The captain's overhead — berths, crew, a port stake — BEFORE the marker
+  // payment is sized, so the money it commits is held back from the Guild exactly
+  // as the refuel is. T-196b: it no longer waits on a leftover die (it costs
+  // none), so it now fires on every day the surplus allows.
   const overhead = planCaptainOverhead(
     state,
-    ledger,
     TRADER_RESERVE + loanHold,
     refuelCost + repaid - borrowed,
   );
   actions.push(...overhead.actions);
+
+  // T-199 · F-199-2 · the second rung, at the tail (see `planStrandedExplore` for
+  // why it cannot sit beside the burn above). Fires only when the walk home found
+  // no flyable leg either, i.e. the day is otherwise a bare `Wait`.
+  const strandedExplore = planStrandedExplore(state, ledger, actions);
+  if (strandedExplore) actions.push(strandedExplore);
+
   const debtPayment = planDebtPayment(
     state,
     TRADER_RESERVE + loanHold,
@@ -3020,17 +4148,22 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   // finish solvent. Component tiers are not renown-gated, so this is reachable
   // from day one; gated above a working reserve so it never spends the last
   // credits at the yard.
+  // T-196b · The yard is FREE, so no die is taken here. The bounds that actually
+  // hold this are the ones already on the branch: the component is bought only
+  // while its strength is below tier 3 (so it fires at most once per component
+  // per career), the two branches are mutually exclusive (`else if`), and the
+  // purse must clear half the working reserve. `yardCommitted` carries the net
+  // cost forward so the refuel/repair/overhead below cannot spend it twice — a
+  // collision that was rare while the die rationed these and is now routine.
+  let yardCommitted = 0;
   if (ship.drives.strength < 30 && state.player.credits >= SMUGGLER_RESERVE / 2) {
-    const die = ledger.takeWorst();
-    if (die !== undefined) {
-      actions.push({
-        type: 'Shipyard',
-        action: 'buy-component-tier',
-        component: 'drives',
-        tier: 3,
-        spendDie: die,
-      });
-    }
+    actions.push({
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'drives',
+      tier: 3,
+    });
+    yardCommitted += Math.max(0, componentTierNetCost(state, 'drives', 3));
   } else if (ship.navigation.strength < 30 && state.player.credits >= SMUGGLER_RESERVE / 2) {
     // THEN THE NAV COMPUTER. `navBonus` adds `floor((score - 10) / 10)` to every
     // pilot check, so a tier-3 navigation (+2) buys 4 units of extra reach
@@ -3038,16 +4171,13 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     // rim port being a place you can leave under the NAV GATE below and a place
     // you are stuck at. Also ~0 net at the yard (the strength-10 trade-in covers
     // the tier-3 sticker), so it is affordable the moment the drives are done.
-    const die = ledger.takeWorst();
-    if (die !== undefined) {
-      actions.push({
-        type: 'Shipyard',
-        action: 'buy-component-tier',
-        component: 'navigation',
-        tier: 3,
-        spendDie: die,
-      });
-    }
+    actions.push({
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'navigation',
+      tier: 3,
+    });
+    yardCommitted += Math.max(0, componentTierNetCost(state, 'navigation', 3));
   }
 
   // ---- Contract pick (trader machinery, plus a NAV gate) -------------------
@@ -3153,7 +4283,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   // interdiction is enough to leave a smuggler holding a contract it can neither
   // fly nor abandon — the activeContract lock the T-1310 comments call a silent
   // strand. Measured without this block (seeds 1..8 × 300 days): seeds 3, 5, 7
-  // and 8 locked inside the first week and never recovered (seed 3 sat at Sun-3
+  // and 8 locked inside the first week and never recovered (seed 3 sat at Sol-3
   // re-attempting the same jump for 294 days on 1 credit). The trader survives
   // the identical day-1 corner precisely BECAUSE it borrows. Sized to the larger
   // of the day's fuel shortfall and the working-capital gap, clamped by
@@ -3166,7 +4296,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     state.player.debt > 0 && state.player.credits < SMUGGLER_RESERVE
       ? SMUGGLER_RESERVE - state.player.credits
       : 0;
-  const borrow = planLoanBorrow(state, ledger, Math.max(fuelShortfall, workingCapitalShortfall));
+  const borrow = planLoanBorrow(state, Math.max(fuelShortfall, workingCapitalShortfall));
   let borrowed = 0;
   if (borrow) {
     // An EXTRA action on a normal working day (never a standalone day) — the
@@ -3176,7 +4306,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   }
   // Settle the balance before the day's spending starts, so a refuel can never
   // eat the money that was going to clear the desk.
-  const repay = planLoanRepay(state, ledger);
+  const repay = planLoanRepay(state);
   let repaid = 0;
   if (repay) {
     actions.push(repay);
@@ -3185,10 +4315,12 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
 
   // Size the refuel to guarantee today's leg (capped at the tank), never below
   // the working defaults — the T-1102 scarcity fix.
+  // T-196b: `repaid + yardCommitted` is the keep-floor — the tank is never filled
+  // with money the day has already spent at the yard, which before this task the
+  // die scarcity made an unlikely pairing and now is an ordinary day.
   const refuel = planRefuel(
     state,
-    ledger,
-    repaid,
+    repaid + yardCommitted,
     Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_THRESHOLD, primaryFuelNeed)),
     Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_TARGET, primaryFuelNeed)),
     borrowed,
@@ -3199,7 +4331,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     refuelCost = refuel.cost;
   }
 
-  const repair = planCrippledRepair(state, ledger, SMUGGLER_RESERVE, borrowed - repaid);
+  const repair = planCrippledRepair(state, SMUGGLER_RESERVE, borrowed - repaid - yardCommitted);
   if (repair) {
     actions.push(repair);
   } else if (ship.drives.condition < SMUGGLER_DRIVE_REPAIR_CONDITION) {
@@ -3208,21 +4340,23 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     // 7 TRIPLES the fuel bill of every leg this policy flies — and it flies the
     // long ones. `planCrippledRepair` above only fires on the HULL's fuel-ceiling
     // collapse, so nothing else in the sim ever notices a worn drive. Affordable
-    // above the working reserve, dull die (a repair rolls no check).
+    // above the working reserve; T-196b took its die (the yard is free) and added
+    // `yardCommitted` to the affordability sum, so a tier bought at the top of
+    // this same day is money this repair can no longer also spend. It stays at
+    // most one repair per day: the `else` arm of `planCrippledRepair`, guarded by
+    // a single dawn-read condition.
     const quote = quoteShipyard(state.player, {
       type: 'Shipyard',
       action: 'repair',
       repairMode: 'all',
-      spendDie: 0,
     });
     if (
       quote.ok &&
-      state.player.credits + borrowed - repaid - refuelCost - quote.cost >= SMUGGLER_RESERVE
+      state.player.credits + borrowed - repaid - refuelCost - yardCommitted - quote.cost >=
+        SMUGGLER_RESERVE
     ) {
-      const die = ledger.takeWorst();
-      if (die !== undefined) {
-        actions.push({ type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: die });
-      }
+      actions.push({ type: 'Shipyard', action: 'repair', repairMode: 'all' });
+      yardCommitted += Math.max(0, quote.cost);
     }
   }
 
@@ -3242,14 +4376,15 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     }
   } else if (preferred && postRefuelFuel >= primaryFuelNeed) {
     const best = preferred;
-    const signDie = ledger.takeWorst();
+    // T-196b: free sign, so the pair is gated on the travel die alone. The sign's
+    // real bounds hold: one active contract (engine `trade.ts`), and `preferred`
+    // comes from the nav-gated, fuel-capped, net-positive `reachable` set.
     const travelDie = ledger.takeBest();
-    if (signDie !== undefined && travelDie !== undefined) {
+    if (travelDie !== undefined) {
       actions.push({
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: best.index,
-        spendDie: signDie,
       });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
       projectedFuel -= primaryFuelNeed;
@@ -3315,19 +4450,22 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
       action: 'buy-component-tier',
       component: 'drives',
       tier: 3,
-      spendDie: 0,
     });
-    if (refitQuote.ok && refitQuote.cost <= state.player.credits + borrowed - repaid - refuelCost) {
-      const die = ledger.takeWorst();
-      if (die !== undefined) {
-        actions.push({
-          type: 'Shipyard',
-          action: 'buy-component-tier',
-          component: 'drives',
-          tier: 3,
-          spendDie: die,
-        });
-      }
+    // T-196b: free at the yard now, and `yardCommitted` joins the sum so a tier or
+    // repair already queued today cannot be paid for twice. Reachable only when
+    // the day produced no income action at all, and the drives block at the top of
+    // this policy would have fired instead if it could — so this stays one refit.
+    if (
+      refitQuote.ok &&
+      refitQuote.cost <= state.player.credits + borrowed - repaid - refuelCost - yardCommitted
+    ) {
+      actions.push({
+        type: 'Shipyard',
+        action: 'buy-component-tier',
+        component: 'drives',
+        tier: 3,
+      });
+      yardCommitted += Math.max(0, refitQuote.cost);
     }
   }
 
@@ -3351,25 +4489,61 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   // neither.
   const loanHold = state.player.loan && !repay ? state.player.loan.outstanding : 0;
 
-  // N9 · The captain's overhead. Placed AHEAD of the Explore loop below and
-  // nowhere else it could go: that loop drains every remaining die by design, so
-  // a shopping planner queued after it would be handed an empty ledger on every
-  // fuelled, solvent day — the smuggler and the explorer would have gone on
-  // emitting the three verbs exactly zero times. It still runs after the day's
-  // contract and travel actions, so it never displaces the income work.
+  // N9 · The captain's overhead. It used to have to sit AHEAD of the Explore loop
+  // below, because that loop drains every remaining die by design and a shopping
+  // planner queued after it would have been handed an empty ledger on every
+  // fuelled, solvent day. T-196b removes that constraint (the three verbs take no
+  // die), but the placement is KEPT: it still runs after the day's contract and
+  // travel actions so it never displaces the income work, and its `overhead.cost`
+  // is a term of the Explore floor below, which reads it from here.
   const overhead = planCaptainOverhead(
     state,
-    ledger,
     SMUGGLER_RESERVE + loanHold,
-    refuelCost + repaid - borrowed,
+    refuelCost + repaid + yardCommitted - borrowed,
   );
   actions.push(...overhead.actions);
 
   const exploreFloor = actions.some(isIncomeAction)
     ? SMUGGLER_EXPLORE_RESERVE
     : SMUGGLER_IDLE_EXPLORE_RESERVE;
+  // F-150-2, CLOSED AT T-199 · this is F-116-1's twin and it now carries the same
+  // `state.player.recovery === null` term the explorer's loop does. The full
+  // reasoning for the guard — the engine's `ExplorationFailed{'recovery-in-progress'}`
+  // refusal, why it is scoped to the queue rather than to the policy, and the named
+  // dawn-pure residual — lives at `explorerPolicy`'s loop and is not restated here;
+  // the two loops are identical again, on purpose. T-150 wrote this guard, measured
+  // it and backed it out because it re-seeded the smuggler onto a stall in the
+  // SHARED `planPacifistCombat`; T-199 fixed that planner first (see its header),
+  // which is what made this line safe to add.
+  //
+  // F-196b-1 · THE LOOP'S CREDIT BOUND IS NOW CHARGED PER SWEEP, and this is a
+  // T-196b fix, filed and measured. The credit test above used to be a ONE-SHOT
+  // check taken before the first sweep: it asked "can the purse afford to be
+  // exploring today", never "can it afford THIS MANY sweeps". That was survivable
+  // only while the sign, the refuel and the yard each took a die, which held the
+  // loop to one or two iterations; T-196b freed all three, so the same fuelled day
+  // now hands the loop four dice and it burns 320 fuel instead of 160 — fuel the
+  // NEXT dawn has to buy back at the pump. MEASURED over seeds 1..1000 × 120 days:
+  // before this term the smuggler's longest zero-income streak developed a tail it
+  // never had (seed 42: 6 days, seed 216: 8, against a HEAD maximum of 1 across
+  // the whole 1,000), both stranded at Polaris-1 on the 100-credit subsistence
+  // floor with a tank too thin to sweep and no fundable run. `sweepReplacement`
+  // charges each queued sweep the credits its fuel will cost to replace, which is
+  // the REAL bound the task's own F-116-1/F-150-2 clause demands be enforced IN
+  // THE PLANNER. Note it does NOT cap the iteration count: a rich, fuelled day
+  // still sweeps its whole hand, which is the pacing the loop is there for.
+  const sweepReplacementCost = EXPLORATION_FUEL_COST * fuelDepotPrice;
+  let sweepReplacement = 0;
   while (
-    state.player.credits + borrowed - refuelCost - repaid - overhead.cost > exploreFloor &&
+    state.player.recovery === null &&
+    state.player.credits +
+      borrowed -
+      refuelCost -
+      repaid -
+      overhead.cost -
+      yardCommitted -
+      sweepReplacement >
+      exploreFloor &&
     projectedFuel >= EXPLORATION_FUEL_COST &&
     ledger.remaining() > 0
   ) {
@@ -3377,12 +4551,40 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     if (die === undefined) break;
     actions.push({ type: 'Explore', spendDie: die });
     projectedFuel -= EXPLORATION_FUEL_COST;
+    sweepReplacement += sweepReplacementCost;
   }
 
+  // ---- T-199 · F-199-1 · THE WALK HOME, AS THE LAST RUNG.
+  // Deliberately placed AFTER the T-1603c drive refit and after the Explore sweep
+  // above, not up with the contract block — both of those are gated on
+  // `!actions.some(isIncomeAction)` and both are BETTER outs than a repositioning
+  // burn (the refit ends a strand permanently by making the whole board flyable
+  // again; the sweep feeds the pod supply line). Queueing a Travel ahead of them
+  // would have switched them off. So the shared move goes last: it fires only on a
+  // day where the yard, the board and the sweep floor all had nothing.
+  //
+  // WHY THE SMUGGLER AND NOT THE OTHER TWO. This wiring is here because leaving it
+  // out WOKE A STRAND: on the 1,000-seed × 35-day map, seed 970 went from clean to
+  // 5 consecutive zero-income days — the F-199-3 re-seeding effect, i.e. a defect
+  // this change moved rather than caused, but moved INTO the sample, which makes it
+  // this change's to close. `traderPolicy` and `veteranPolicy` are deliberately NOT
+  // wired (see TASKS.md F-199-1): their strands are pre-existing and unmoved, and
+  // widening to them measurably dulled `balance-combat-survival.test.ts`'s
+  // preparation band.
+  const homewardBurn = planHomewardBurn(state, ledger, actions, refuelCost);
+  if (homewardBurn) actions.push(homewardBurn);
+  const strandedExplore = planStrandedExplore(state, ledger, actions);
+  if (strandedExplore) actions.push(strandedExplore);
+
+  // T-196b: the yard spend joins "everything already committed this day". Unlike
+  // `fighterPolicy`'s equivalent hole (F-199-1, deliberately left open there),
+  // this one is NEW — before this task the smuggler's yard buys competed with the
+  // day's dice and now they do not, so netting them is closing a hole this change
+  // would otherwise open, not re-litigating a filed one.
   const debtPayment = planDebtPayment(
     state,
     SMUGGLER_RESERVE + loanHold,
-    refuelCost + repaid + overhead.cost,
+    refuelCost + repaid + overhead.cost + yardCommitted,
     borrowed,
   );
   if (debtPayment) actions.push(debtPayment);
@@ -3399,21 +4601,32 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
 // and wagers on opposed-GUILE Dares while it is standing there.
 //
 // Policy tuning, not game data (same justification as the smuggler's constants
-// above): the Dare's own band is CONTENT, and after T-120/T-121 it is PER-PORT —
-// read through the engine's `wagerBandFor` accessor, never restated and no longer
-// even read as a global constant, exactly as planLoanBorrow treats the (still
-// global, §2.2 ruling 5) lending band.
+// above): the Dare's own band is CONTENT, and after T-120/T-121 it is PER-PORT and
+// after T-146 it is PER-TIER — read through the engine's `preHandWagerBand`
+// accessor (T-168, §4.6a item 3), never restated and no longer even read as a
+// global constant, exactly as planLoanBorrow treats the (still global, §2.2 ruling
+// 5) lending band.
 // ---------------------------------------------------------------------------
 
-/** The working float the gambler never stakes into. Mirrors TRADER_RESERVE, and
- *  is deliberately larger than a full day of dares (GAMBLER_MAX_DARES_PER_DAY ×
- *  the default band's max = 1,000) so that even a total wipeout at the tables leaves the
- *  day's refuel/repair budget intact — which is what makes it safe to settle the
- *  stakes FIRST in the day's plan. */
+/** The working float the gambler never stakes into. Mirrors TRADER_RESERVE.
+ *
+ *  T-168 · WHAT THIS RESERVE ACTUALLY BOUNDS, restated honestly. It was
+ *  documented as "deliberately larger than a full day of dares
+ *  (GAMBLER_MAX_DARES_PER_DAY × the default band's max = 1,000)", and that stopped
+ *  being true the moment the planner could request into the raised ceiling: at
+ *  tier 4 the ceiling is ×3, and at tier 5 the band has no ceiling at all (§4.8),
+ *  so two hands can exceed 3,000. What bounds exposure past tier 4 is
+ *  GAMBLER_BANKROLL_FRACTION — 10% of the surplus above this reserve — together
+ *  with the resolver's solvency clamp, which §4.8 names as the SOLE ceiling at
+ *  tier 5. The reserve still does its original job at tiers 0-3, and it is still
+ *  what makes it safe to settle the stakes FIRST in the day's plan: the fraction
+ *  is taken of the surplus, so the float itself is never staked. */
 const GAMBLER_RESERVE = 3000;
 /** Share of the bankroll ABOVE the reserve the gambler is willing to put on one
- *  hand. The engine clamps the request into the content band regardless, so this
- *  only decides where inside that band a given day's stake lands. */
+ *  hand. The engine clamps the request into the effective band regardless, so at
+ *  tiers 0-4 this only decides where inside that band a given day's stake lands.
+ *  T-168 · At tier 5 there is no band ceiling to land inside, so this fraction
+ *  becomes the instrument's own exposure bound. */
 const GAMBLER_BANKROLL_FRACTION = 0.1;
 /** Dice budget guard: at most two hands a day, so a Hangout dawn still has dice
  *  left for the sign/travel pair that keeps the day an income day. */
@@ -3435,9 +4648,22 @@ const GAMBLER_MAX_DARES_PER_DAY = 2;
  *     0 — the one value the acceptance forbids;
  *   - the purse is above the reserve and the dealer can cover the minimum stake.
  *
- * The die is the BEST remaining, unlike planLoanBorrow / planLoanRepay which take
- * the dullest: borrowing and repaying roll no check, but a Dare is a real opposed
- * GUILE check against the dealer's live total — the sharper die wins hands.
+ * T-197 · NO DIE, AND A REAL DAILY BOUND IN ITS PLACE
+ * (docs/DAWN-HAND-REDESIGN.md §3/§4b). Opening a hand is a Free Action, so the
+ * `DieLedger` is gone; what bounds the tables now is the ROUNDS-PER-DAY cap, which
+ * scales with the captain's Liar's Dice unlock tier. This planner mirrors it the
+ * same way it already mirrors `venueOffered` and the two broke rules — an open
+ * past the cap earns a typed `daily-round-limit`, and burning a plan on a knowable
+ * refusal is precisely what `hangoutPlay.failedVisits === 0` forbids.
+ *
+ * WHY THAT MIRROR IS NOT ENOUGH ON ITS OWN, and why the caller's loop counter is
+ * the second half: these planners are PURE over the DAWN state, so
+ * `state.player.dareRoundsToday` is the count at dawn — accurate for the first
+ * queued hand and stale for every one after it. The caller carries the day's
+ * allowance forward in its loop bound, exactly as it already carries `purse` and
+ * `committedStakes` forward for the same reason. (This is the F-116-1 / F-150-2
+ * class in its natural habitat: a free action inside a loop needs the loop to
+ * hold the bound, because the state the planner reads no longer moves.)
  *
  * CRITICAL (same warning planLoanBorrow carries): the caller must queue this as
  * an EXTRA action on an otherwise normal working day, never as a standalone day.
@@ -3448,7 +4674,46 @@ const GAMBLER_MAX_DARES_PER_DAY = 2;
  * passes the DAWN credits for the first hand and subtracts each queued stake for
  * the next, because these planners are pure and read the dawn state.
  */
-function planDare(state: GameState, ledger: DieLedger, credits: number): PlayerAction | null {
+function planDare(
+  state: GameState,
+  credits: number,
+  /**
+   * T-145 · Roster opponents this day has ALREADY queued a hand against. These
+   * planners are pure and read the DAWN state, so `state.liarsDicePurses` is the
+   * purse at dawn — accurate for the first hand and stale for the second. A
+   * ROAMING dealer whose purse the first hand emptied is merely clamped to a
+   * zero-stake hand by the engine, but a ROSTER opponent is REFUSED outright with
+   * `HangoutEvent{failReason:'opponent-broke'}` (§7.4), and burning a die on a
+   * knowable refusal is exactly what `hangoutPlay.failedVisits === 0` forbids. So
+   * the caller carries the ids forward, the same way it already carries the
+   * credits the previous stake would leave behind.
+   */
+  committedRosterIds: ReadonlySet<string> = new Set(),
+  /**
+   * F-123-3 (docs/HANGOUT_REDESIGN.md §7, fixed at T-150) · THE ROAMING HALF of
+   * the same carry-forward, and the half T-145 deliberately left. Credits this
+   * day's already-queued hands could take OFF each dealer, keyed by NPC id.
+   *
+   * STILL APPLICABLE AFTER THE LIAR'S DICE REDESIGN — checked, not assumed. M4d/M4e
+   * replaced the HAND (the single opposed-GUILE check became the full bid/raise/
+   * challenge resolver); they did not touch the DEALER PICK, which still runs once
+   * off the dawn state right here. `docs/LIARS-DICE_REDESIGN.md` §16 re-confirms it
+   * under the new resolver: "the seed is clamped to the dealer's purse, and a broke
+   * dealer deals a free hand. Unchanged by this redesign, still not fixed here."
+   *
+   * THE WORST CASE IS THE DEALER LOSING THE QUEUED STAKE, which is the identical
+   * convention the caller already applies to the player's own purse (`purse -=
+   * dare.wager`). The symmetry is the argument: a planner that will not over-commit
+   * the player's credits must not over-commit the other side of the table either.
+   *
+   * TWO MECHANISMS, TWO REASONS, both kept: `committedRosterIds` is CATEGORICAL (a
+   * roster seat at purse <= 0 is REFUSED outright with `HangoutEvent{failReason:
+   * 'opponent-broke'}`), this map is QUANTITATIVE (a drained roaming dealer is
+   * merely clamped to a worthless sub-floor or zero stake). Collapsing them would
+   * lose the distinction the engine itself draws.
+   */
+  committedStakes: ReadonlyMap<string, number> = new Map(),
+): PlayerAction | null {
   if (state.encounter) return null;
   if (!isHangoutSystem(state.player.currentSystemId)) return null;
   // T-123 · THE PORT MUST ACTUALLY DEAL. Mirrors the engine's
@@ -3459,8 +4724,35 @@ function planDare(state: GameState, ledger: DieLedger, credits: number): PlayerA
   // and that is precisely why it lands now, on the T-121 precedent of shipping a
   // mirror while it is provably inert rather than after a later row makes it a bug.
   if (!venueOffered(state.player.currentSystemId, 'dare')) return null;
+  // T-197 · THE DAY'S ROUNDS ARE THE NEW BOUND (§4b). Read through the engine's
+  // own `liarsDiceRoundsRemaining`, never re-derived from the tier table here —
+  // the same "the policy's guards are the engine's guards" argument F-121-1 made
+  // for `!npc.dead`. See the docstring for why the CALLER's loop bound is the
+  // other half of this: a pure planner over the dawn state cannot see the hands
+  // this same day has already queued.
+  if (liarsDiceRoundsRemaining(state) <= 0) return null;
 
-  let dealer: GameState['npcs'][number] | null = null;
+  // T-145 · THE CANDIDATE SET NOW SPANS BOTH POOLS
+  // (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §8 row 38). Without this no sweep row
+  // and no deed-coverage career ever plays a roster opponent, and the whole
+  // milestone is unmeasured — which is why the row is T-145's rather than a later
+  // task's. The selection RULE is unchanged: the richest candidate, first-wins on
+  // a tie. The ordering is deterministic — the in-system NPCs are considered
+  // first, so at equal credits a roaming captain still wins the seat and the
+  // pre-T-145 behaviour survives wherever the roster does not out-bank the field.
+  // T-169 · THE RICHEST-CANDIDATE RULE BELOW IS RULED, NOT OVERLOOKED
+  // (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.9 F-148-2, shape (b)). It has no
+  // idea a *set* exists, which is why the M4e sweep reports 0 `liars_dice_grand_slam`
+  // in 720 careers. That zero is a fact about THIS policy, not about the deed:
+  // deliberate set-seeking play is measured on a different instrument —
+  // `__tests__/support/deed-hunter.ts`'s roster tour, driven by
+  // `__tests__/deed-coverage.test.ts`, where the grand slam lands in 75 of 76
+  // careers. Do NOT teach this loop set-completion: it is the shared seat-picker
+  // every dice sweep row reads off (§12.2, §12.3, §12.5, §12.6, §12.11), so
+  // changing it re-bases every baseline in the same commit that measures it. If a
+  // set-seeking number is ever wanted FROM THE SWEEP, add a probe policy beside
+  // `gambler` on the `degradedTraderPolicy` precedent instead.
+  let dealer: { id: string; credits: number } | null = null;
   for (const npc of state.npcs) {
     // F-121-1 · `!npc.dead` MIRRORS THE ENGINE'S N3 GUARD (`actions/hangout.ts`:
     // "a dead captain cannot deal a hand of Spacer's Dare"), and its absence here
@@ -3472,7 +4764,25 @@ function planDare(state: GameState, ledger: DieLedger, credits: number): PlayerA
     // the gambler at a table on most days instead of a handful.
     if (npc.dead) continue;
     if (npc.currentSystemId !== state.player.currentSystemId) continue;
-    if (dealer === null || npc.credits > dealer.credits) dealer = npc;
+    // F-123-3 · the purse this dealer would still have AFTER losing every stake
+    // today's earlier hands already committed against them. Reading `npc.credits`
+    // raw is what made the second hand of the day a zero-stake wager (34 of 1,319
+    // hands at T-123, 2.67% at T-125) — the dawn purse is accurate for the first
+    // hand and stale for the second.
+    const purse = npc.credits - (committedStakes.get(npc.id) ?? 0);
+    if (purse <= 0) continue;
+    if (dealer === null || purse > dealer.credits) dealer = { id: npc.id, credits: purse };
+  }
+  // T-145 · Pool A, mirroring the engine's §7.4 broke refusal exactly the way the
+  // `!npc.dead` and `venueOffered` mirrors above already work: an opponent whose
+  // LIVE purse has fallen to zero will not sit, and advertising them here would
+  // burn a die on a guaranteed 'opponent-broke' — which is precisely what
+  // `hangoutPlay.failedVisits === 0` exists to forbid.
+  for (const opponent of liarsDiceOpponentsAt(state.player.currentSystemId)) {
+    if (committedRosterIds.has(opponent.id)) continue;
+    const purse = state.liarsDicePurses[opponent.id] ?? 0;
+    if (purse <= 0) continue;
+    if (dealer === null || purse > dealer.credits) dealer = { id: opponent.id, credits: purse };
   }
   if (dealer === null) return null;
   // T-121 · THE BAND IS THE PORT'S, read through the same engine accessor
@@ -3484,20 +4794,45 @@ function planDare(state: GameState, ledger: DieLedger, credits: number): PlayerA
   // (`docs/HANGOUT_REDESIGN.md` §4.2). Arithmetically inert today — all fourteen
   // rows inherit `DEFAULT_PORT_HANGOUT`'s band — and that is the point: it lands
   // while it is provably inert, ahead of the authored bands at T-123.
-  const band = wagerBandFor(state.player.currentSystemId);
+  //
+  // T-168 · ...AND THE BAND IS THE TIER'S EFFECTIVE BAND, not the port's raw one
+  // (§4.6a item 3, F-148-4). Sizing off `wagerBandFor` meant this planner could
+  // never REQUEST a stake above the tier-0 ceiling, so no sweep row and no UGT
+  // career ever exercised the raised bounded-betting ceiling or tier 5's removed
+  // clamp — the ×3 multiplier was worth +43.7% bids per hand and nothing else.
+  // Read through the engine's own accessor, which takes the whole state precisely
+  // so this file cannot supply a tier of its own.
+  const band = preHandWagerBand(state);
+  // Tier 5 removes the band ceiling entirely (§4.8); the solvency clamps below and
+  // in the resolver are what bound the stake there.
+  const ceiling = band.max ?? Number.MAX_SAFE_INTEGER;
+  // THE INSTRUMENT'S OWN FLOOR, and a POLICY CHOICE rather than a game rule. At
+  // tiers 0-4 this IS the port's authored floor and is byte-identical to the
+  // pre-T-168 `band.min`. At tier 5 the band has no floor (§4.8 — "a veteran may
+  // sit at Regulus-6 for 10 credits"), so the planner supplies a 1-credit floor of
+  // its own rather than seating a FREE hand: a zero stake still counts as a dare
+  // and drags `expectedValuePerDare` toward 0, which is the one number this
+  // instrument exists to measure.
+  const floor = Math.max(1, band.min);
   // A dealer who cannot cover the minimum stake makes a zero-EV hand — skip it.
-  if (dealer.credits < band.min) return null;
+  // F-123-3 · with `dealer.credits` now carrying the day's committed stakes, this
+  // ONE pre-existing guard closes BOTH halves of the finding for free: the zero
+  // stake (34 of 1,319 hands) and the sub-floor stake (3 more) it also measured.
+  // No new downstream guard is owed.
+  //
+  // T-168 · RE-DERIVED AGAINST THE EFFECTIVE BAND (F-148-4's last clause). Against
+  // the raw port band this gate was wrong at tier 5, where the band's floor is 0
+  // and the only honest floor is the instrument's own.
+  if (dealer.credits < floor) return null;
 
   const bankroll = credits - GAMBLER_RESERVE;
-  if (bankroll < band.min) return null;
+  if (bankroll < floor) return null;
   const wager = Math.max(
-    band.min,
-    Math.min(band.max, Math.floor(bankroll * GAMBLER_BANKROLL_FRACTION)),
+    floor,
+    Math.min(ceiling, Math.floor(bankroll * GAMBLER_BANKROLL_FRACTION)),
   );
 
-  const die = ledger.takeBest();
-  if (die === undefined) return null;
-  return { type: 'VisitHangout', venue: 'dare', opponentId: dealer.id, wager, spendDie: die };
+  return { type: 'VisitHangout', venue: 'dare', opponentId: dealer.id, wager };
 }
 
 // ---------------------------------------------------------------------------
@@ -3524,13 +4859,17 @@ const SIM_DARE_FOLD_QUANTITY = 5;
 /** Mirrors the engine dealer's `DARE_AI_CHALLENGE_MARGIN`, for the same reason. */
 const SIM_DARE_CHALLENGE_MARGIN = 1.5;
 /**
- * A TRIPWIRE, NOT A POLICY. The bid lattice bounds a hand at 12 raises (every
- * raise strictly increases quantity or face and decreases neither, with
- * quantity ≤ 8 and face ≤ 6), so with the opening bid and the terminal move a hand
- * is at most ~15 player actions long and this can never fire. `dareGuardHits` is
- * asserted ZERO by the sim suite precisely because the guard is provably
- * unreachable — a non-zero count is a bug worth failing on, never something to
- * swallow.
+ * A TRIPWIRE, NOT A POLICY. The bid lattice bounds a hand's raises: every raise
+ * strictly increases quantity or face and decreases neither, so the number of
+ * raises is bounded by `(maxQuantity - 1) + (DARE_MAX_FACE - 1)`.
+ *
+ * T-146 · STATED AT THE LADDER'S CEILING rather than at tier 0, because the hand's
+ * quantity bound is now the hand's frozen `maxQuantity` (4 → 5 → 6 dice per side,
+ * HARD-CAPPED AT SIX): at 6 dice that is `(12-1) + (6-1) = 16` raises, so with the
+ * opening bid and the terminal move a hand is at most ~18 player actions long.
+ * Still comfortably under 32, so the guard remains PROVABLY UNREACHABLE at every
+ * tier and `dareGuardHits === 0` stays an assertion rather than a hope. **The
+ * constant does not move** — only the argument for it got wider.
  */
 export const DARE_MAX_MOVES_PER_HAND = 32;
 
@@ -3544,9 +4883,16 @@ export const DARE_MAX_MOVES_PER_HAND = 32;
  * returned state is always player-to-act):
  *   (a) no hand              → `null`; the loop's condition is already false.
  *   (b) a hand, no bid       → an OPENING BID is always legal: any held face is in
- *                              1..6, `max(1, own(F*))` is in 1..4 ⊆ 1..8, and an
- *                              opening bid costs no ante, so neither headroom nor
- *                              credits can refuse it.
+ *                              1..6, and T-160's opening floor
+ *                              `minOpeningQuantity(own(F*)) = own(F*) + 1` is in
+ *                              `1..dicePerSide + 1` ⊆ `1..maxQuantity` (T-146:
+ *                              `maxQuantity` is `2 × dicePerSide`, and
+ *                              `dicePerSide + 1 ≤ 2 × dicePerSide` for every
+ *                              `dicePerSide ≥ 1`, so the floor can never exceed
+ *                              the ceiling at ANY tier — including a six-dice
+ *                              hand showing all six faces). An opening bid costs
+ *                              no ante, so neither headroom nor credits can
+ *                              refuse it either.
  *   (c) a hand, a bid stands → CHALLENGE is legal unconditionally (its single
  *                              precondition is `bid !== null`, it costs nothing,
  *                              and no clamp applies), and the fallback reaches it
@@ -3576,11 +4922,13 @@ export function planDareMove(state: GameState): PlayerAction | null {
   const own = (face: number) => hand.playerDice.filter((d) => d === face).length;
   const legal = legalDareMoves(hand, 'player', state.player.credits);
 
-  // (b) No bid stands — open truthfully on the face we hold most of.
+  // (b) No bid stands — open at the engine's OPENING FLOOR on the face we hold
+  // most of.
   if (hand.bid === null) {
     let bestFace = 1;
     // Ascending, with `>=`, so ties go to the HIGHER face: a claim on a taller
-    // face leaves the opponent fewer face-raise steps to answer with.
+    // face leaves the opponent fewer face-raise steps to answer with. UNCHANGED
+    // at T-160 — the selection rule is not what moved.
     for (let face = 1; face <= 6; face += 1) {
       if (own(face) >= own(bestFace)) bestFace = face;
     }
@@ -3588,12 +4936,28 @@ export function planDareMove(state: GameState): PlayerAction | null {
       type: 'Dare',
       move: 'bid',
       face: bestFace,
-      quantity: Math.max(1, own(bestFace)),
+      // T-160 · `minOpeningQuantity(own(bestFace))`, asked of the ENGINE rather
+      // than restated as `own + 1` here — the same mirror discipline the raise
+      // branches keep by filtering through `legalDareMoves`.
+      //
+      // THIS IS NOT §16.2'S BANNED THIRD SHAPE. The banned shape was "teach
+      // `planDareMove` to open above its own count" as the FIX — moving the
+      // measurement while the rule stayed put, so a human opening truthfully
+      // would still play the old, broken game. Here the RULE moved underneath
+      // the planner: `isLatticeMove` now REFUSES `quantity <= own(face)` for
+      // every actor, human included, and this line is the minimum legal
+      // adaptation forced by that refusal. The planner is still not bluffing —
+      // it makes the smallest claim the lattice permits and nothing taller.
+      quantity: minOpeningQuantity(own(bestFace)),
     };
   }
 
   const bid = hand.bid;
-  const expected = own(bid.face) + 4 / 6;
+  // T-146 · the unknown half is the HAND'S frozen `dicePerSide` (§8 row 39), not a
+  // hardcoded four — otherwise the baseline would systematically under-credit the
+  // other side of the table at tiers 1 and 2 and challenge true claims too often.
+  // Identical at four dice, so T-137's pool-B baseline stays comparable.
+  const expected = own(bid.face) + hand.dicePerSide / 6;
 
   // (c1) Hopeless: none of the claimed face and a tall claim.
   if (own(bid.face) === 0 && bid.quantity >= SIM_DARE_FOLD_QUANTITY && legal.includes('fold')) {
@@ -3700,13 +5064,13 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
     state.player.debt > 0 && state.player.credits < GAMBLER_RESERVE
       ? GAMBLER_RESERVE - state.player.credits
       : 0;
-  const borrow = planLoanBorrow(state, ledger, Math.max(fuelShortfall, workingCapitalShortfall));
+  const borrow = planLoanBorrow(state, Math.max(fuelShortfall, workingCapitalShortfall));
   let borrowed = 0;
   if (borrow) {
     actions.push(borrow.action);
     borrowed = borrow.principal;
   }
-  const repay = planLoanRepay(state, ledger);
+  const repay = planLoanRepay(state);
   let repaid = 0;
   if (repay) {
     actions.push(repay);
@@ -3715,7 +5079,6 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
 
   const refuel = planRefuel(
     state,
-    ledger,
     repaid,
     Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_THRESHOLD, primaryFuelNeed)),
     Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_TARGET, primaryFuelNeed)),
@@ -3727,7 +5090,7 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
     refuelCost = refuel.cost;
   }
 
-  const repair = planCrippledRepair(state, ledger, GAMBLER_RESERVE, borrowed - repaid);
+  const repair = planCrippledRepair(state, GAMBLER_RESERVE, borrowed - repaid);
   if (repair) actions.push(repair);
 
   const boughtFuel = refuel ? refuel.cost / fuelDepotPrice : 0;
@@ -3744,14 +5107,14 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
     }
   } else if (preferred && availableFuel >= primaryFuelNeed) {
     const best = preferred;
-    const signDie = ledger.takeWorst();
+    // T-196b: free sign — gated on the travel die alone. Bounds unchanged: one
+    // active contract (engine), and `preferred` is inside the fundable set.
     const travelDie = ledger.takeBest();
-    if (signDie !== undefined && travelDie !== undefined) {
+    if (travelDie !== undefined) {
       actions.push({
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: best.index,
-        spendDie: signDie,
       });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
     }
@@ -3784,6 +5147,33 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
     }
   }
 
+  // T-175 · THE TWO SHARED ANTI-IDLE RUNGS (F-199-1 / F-199-2), AND THE SMUGGLER'S
+  // PRECEDENT APPLIES TO THIS WIRING VERBATIM: "a defect this change moved rather
+  // than caused, but moved INTO the sample, which makes it this change's to close"
+  // (see `smugglerPolicy`'s own note). T-175 changed an ENGINE RULE — `optimal` now
+  // reads the standing claim — which re-phases every gambler career from the first
+  // hand it plays, and two of the 1,000 capstone seeds landed on a rim strand this
+  // policy could not leave: seed 819 sat at system 17 for days 45-49 and seed 485
+  // at system 18 for days 80-84, both on a FULL TANK and **67,913 credits** in the
+  // second case. That is not a poverty trap and it was never about money.
+  //
+  // WHY THE BLOCK ABOVE IS NOT ENOUGH. "Go where the tables are" only ever
+  // considers `hangoutSystemIds()`, and from the deep rim EVERY Hangout can be out
+  // of tank range at once — the exact corner `planHomewardBurn`'s own docblock
+  // describes ("distance 5, so `reachable` is empty most dawns"). The shared rung
+  // takes ANY reachable leg, which is why it closes what the Hangout-seeking move
+  // cannot.
+  //
+  // IT CANNOT DISPLACE A RUN. Both rungs return `null` the moment
+  // `actions.some(isIncomeAction)` is true, so they only ever fill a day the board,
+  // the tank and the Hangout search all left empty — and they are placed AFTER that
+  // search for the same reason `smugglerPolicy` places them last: queueing a Travel
+  // ahead of a better out would switch the better out off.
+  const homewardBurn = planHomewardBurn(state, ledger, actions, refuelCost);
+  if (homewardBurn) actions.push(homewardBurn);
+  const strandedExplore = planStrandedExplore(state, ledger, actions);
+  if (strandedExplore) actions.push(strandedExplore);
+
   // T-1601a's protection: while a Penny Wise balance is live and unpaid today,
   // hold it back from the Guild marker (a default grudge-weights Penny Wise into
   // the interceptor draw and multiplies the encounter chance until cleared).
@@ -3793,7 +5183,6 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
   // has already staked.
   const overhead = planCaptainOverhead(
     state,
-    ledger,
     GAMBLER_RESERVE + loanHold,
     refuelCost + repaid - borrowed,
   );
@@ -3811,11 +5200,37 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
   // the worst case (a loss), so two queued stakes can never over-commit the purse.
   const dares: PlayerAction[] = [];
   let purse = state.player.credits - overhead.cost;
-  for (let hand = 0; hand < GAMBLER_MAX_DARES_PER_DAY; hand += 1) {
-    const dare = planDare(state, ledger, purse);
+  // T-145 · …and the same carry-forward for the ROSTER opponent's side of the
+  // table, for the reason `planDare`'s own parameter documents.
+  const committedRosterIds = new Set<string>();
+  // F-123-3 · …and the DEALER's side of the same carry-forward, for the roaming
+  // pool T-145's set does not cover. Worst case per dealer = they lose every stake
+  // queued against them today, the same convention `purse` above applies to the
+  // player. See `planDare`'s parameter doc for why the two mechanisms stay
+  // separate rather than being collapsed into one.
+  const committedStakes = new Map<string, number>();
+  // T-197 · THE LOOP BOUND IS NOW THE DAY'S REMAINING ROUNDS AS WELL
+  // (docs/DAWN-HAND-REDESIGN.md §4b). `planDare` mirrors the engine's cap, but it
+  // is PURE over the DAWN state — `dareRoundsToday` does not move between two
+  // calls in this loop, so the planner alone would happily queue a second hand a
+  // tier-0 captain's cap forbids and earn a typed `daily-round-limit`. The loop
+  // counter is what carries the allowance forward, exactly as `purse` and
+  // `committedStakes` above carry the credits and the dealers' purses forward for
+  // the identical reason. `hangoutPlay.failedVisits === 0` is the mechanical proof
+  // this mirror is right; if it ever goes non-zero, THIS is the line to read first.
+  const roundsToday = Math.min(GAMBLER_MAX_DARES_PER_DAY, liarsDiceRoundsRemaining(state));
+  for (let hand = 0; hand < roundsToday; hand += 1) {
+    const dare = planDare(state, purse, committedRosterIds, committedStakes);
     if (!dare) break;
     dares.push(dare);
     purse -= dare.type === 'VisitHangout' ? (dare.wager ?? 0) : 0;
+    if (dare.type === 'VisitHangout' && dare.opponentId !== undefined) {
+      committedStakes.set(
+        dare.opponentId,
+        (committedStakes.get(dare.opponentId) ?? 0) + (dare.wager ?? 0),
+      );
+      if (dare.opponentId.startsWith('ld-')) committedRosterIds.add(dare.opponentId);
+    }
   }
 
   const plan = [...dares, ...actions];
@@ -3850,7 +5265,6 @@ function componentTierNetCost(
     action: 'buy-component-tier',
     component,
     tier,
-    spendDie: 0,
   }).cost;
 }
 
@@ -3912,7 +5326,14 @@ const FIGHTER_EQUIPMENT_PRIORITY: readonly SpecialEquipmentId[] = [
  * list is unchanged, only its ceiling. Shared with the veteran policy, which
  * calls this function too.
  */
-function planFighterUpgrade(state: GameState, ledger: DieLedger): PlayerAction | null {
+/** T-196b · `committed` is what the rest of today's plan has already promised to
+ *  spend. The yard is a Free Action now, so this planner and
+ *  `planSpecialEquipment` / `planCaptainOverhead` can all fire on the SAME day —
+ *  before M17 the die scarcity made that collision rare, and each one reading the
+ *  dawn balance would now let the same credits be spent three times over. Still at
+ *  most ONE wishlist entry per day (the `return` inside the loop): that cap was
+ *  never the die's doing. */
+function planFighterUpgrade(state: GameState, committed = 0): PlayerAction | null {
   const ship = state.player.ship;
   const wishlist: { component: 'weapons' | 'hull' | 'shields' | 'drives'; tier: number }[] = [];
   if (ship.weapons.strength < 30) wishlist.push({ component: 'weapons', tier: 3 });
@@ -3927,19 +5348,25 @@ function planFighterUpgrade(state: GameState, ledger: DieLedger): PlayerAction |
 
   for (const pick of wishlist) {
     const cost = componentTierNetCost(state, pick.component, pick.tier);
-    if (state.player.credits >= FIGHTER_RESERVE + cost) {
-      const die = ledger.takeWorst();
-      if (die === undefined) return null;
+    if (state.player.credits - committed >= FIGHTER_RESERVE + cost) {
       return {
         type: 'Shipyard',
         action: 'buy-component-tier',
         component: pick.component,
         tier: pick.tier,
-        spendDie: die,
       };
     }
   }
   return null;
+}
+
+/** The net yard price of a `buy-component-tier` this policy has just queued, for
+ *  the running `committed` total the next planner is judged against. */
+function upgradeCost(state: GameState, upgrade: PlayerAction | null): number {
+  if (!upgrade || upgrade.type !== 'Shipyard' || upgrade.action !== 'buy-component-tier') return 0;
+  if (upgrade.component === undefined || upgrade.tier === undefined) return 0;
+  const cost = componentTierNetCost(state, upgrade.component, upgrade.tier);
+  return Number.isFinite(cost) ? Math.max(0, cost) : 0;
 }
 
 /**
@@ -3991,7 +5418,32 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   }
 
   const actions: PlayerAction[] = [];
-  const refuel = planRefuel(state, ledger, 0);
+
+  // ---- T-199 · F-199-2 · THE CRIPPLED REPAIR THE FIGHTER WAS THE LAST POLICY
+  // WITHOUT. `planCrippledRepair` (T-1205/T-1302) is carried by `traderPolicy`,
+  // `smugglerPolicy`, `gamblerPolicy`, `explorerPolicy` and `veteranPolicy`; the
+  // fighter — the ONE archetype that deliberately stands and trades fire, and so
+  // the one whose hull is chipped most — had no repair of any kind. That is the
+  // same omission shape T-159 and T-161 each closed for this file (the last
+  // policy without the full-tank relaxation), and it produced the same result.
+  //
+  // Seed 74 is the picture, and it is not a fuel problem or a credit problem:
+  // enemy fire ground the hull to condition 1, which collapses the tank to
+  // `(1+1)·1·30 = 60` units. At 60 the ship is below the 80-unit Explore floor
+  // FOREVER, and on junker drives (strength 10) it can only reach systems within
+  // distance 5, so `reachable` is empty most dawns, `planHomewardBurn` finds no
+  // leg and `planStrandedExplore` cannot fire. Nine to twenty-six consecutive
+  // zero-income days followed. No anti-idle rule can reach that state; the only
+  // move that reopens the map is the one every other policy already makes.
+  //
+  // Placed FIRST, ahead of the refuel, for the reason `planRefuel` itself needs:
+  // a repair lifts `maxFuel`, so buying fuel into the collapsed ceiling first
+  // would cap the top-up at the broken tank. Same reserve the rest of the day
+  // spends against, so it cannot itself strand the purse.
+  const crippledRepair = planCrippledRepair(state, FIGHTER_RESERVE);
+  if (crippledRepair) actions.push(crippledRepair);
+
+  const refuel = planRefuel(state, 0);
   if (refuel) actions.push(refuel.action);
 
   // T-1104: only sign a contract whose jump fits inside SIGN_FUEL_FRACTION of the
@@ -4004,7 +5456,36 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   // intent while refusing the unwinnable rim temptation.
   const ranked = rankedContracts(state);
   const signFuelCap = state.player.ship.maxFuel * SIGN_FUEL_FRACTION;
-  const reachable = ranked.filter((c) => c.fuel <= signFuelCap);
+  let reachable = ranked.filter((c) => c.fuel <= signFuelCap);
+  // T-159: the T-1104 full-tank RELAXATION, ported (not invented) from the four
+  // policies that already carry it verbatim — `traderPolicy`, `smugglerPolicy`,
+  // `gamblerPolicy` and `explorerPolicy`. The fighter was the last gated policy
+  // without it, and the omission read from the outside as a monoculture: parked
+  // at a RIM port where every reachable leg exceeds 0.6 of the tank, `reachable`
+  // comes back empty every day, so the fighter signs nothing and Waits.
+  //
+  // Why the streak climbs instead of self-correcting: refuel, special equipment,
+  // component tiers, captain overhead and debt payment all still QUEUE below, so
+  // the ship looks busy — but none of them is an income action (`isIncomeAction`,
+  // this file, ~L1659-1665, counts only sign-contract / Travel / Explore /
+  // fight-or-talk). A busy, earning-nothing day is still a zero-income day.
+  //
+  // Measured before this line (the sweep gate's own first honest CI run, seeds
+  // 1..200 at 35 days): fighter's longest zero-income streak 32 against a limit
+  // of 5, with six seeds >= 5 (35, 54, 75, 80, 115, 181) — every other gated
+  // policy sat at 2-4. Seed 35 is the picture: parked at Algol-2 from day 7 with
+  // 2,825cr and a live 2-4 offer board it could not sign from, debt compounding
+  // 20,970 -> 23,156 by day 36.
+  //
+  // The trade this accepts is the SAME one T-1104 argued for in the trader: a
+  // full-tank run leaves a thinner re-flight margin after an interrupted
+  // delivery. Taking the completable run beats idling at the rim.
+  //
+  // Readers: `assertNoIncomeStall` / `INCOME_STALL_LIMIT` in `balance/gate.ts`,
+  // and the `< 5` poverty-trap invariant in `campaign-policies.test.ts`.
+  if (reachable.length === 0) {
+    reachable = ranked.filter((c) => c.fuel <= state.player.ship.maxFuel);
+  }
   if (state.player.activeContract) {
     const die = ledger.takeBest();
     if (die !== undefined) {
@@ -4016,18 +5497,36 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
     }
   } else if (reachable.length > 0) {
     const best = reachable[0];
-    const signDie = ledger.takeWorst();
+    // T-196b: free sign — gated on the travel die alone. Bounds unchanged: one
+    // active contract (engine), and `reachable` is the fuel-capped set.
     const travelDie = ledger.takeBest();
-    if (signDie !== undefined && travelDie !== undefined) {
+    if (travelDie !== undefined) {
       actions.push({
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: best.index,
-        spendDie: signDie,
       });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
     }
   }
+
+  // ---- T-159 (second pass) · NOTHING ON THE BOARD IS FLYABLE AT ALL: FLY HOME
+  // The relaxation above closes the case where the margin cap is the only thing
+  // in the way. It CANNOT close the harder rim corner — see `planHomewardBurn`,
+  // which is this pass, lifted verbatim at T-199 so the trader and the smuggler
+  // (which had the same hole, F-199-1) can share it. The fighter's
+  // behaviour is unchanged by that extraction (proved before the second rung was
+  // added: this row's fingerprint came back byte-identical to its pre-T-199 pin,
+  // and the 200-seed × 35-day strand scan reported the same two offenders).
+  //
+  // The SECOND rung (`planStrandedExplore`) is new and is the fighter's own
+  // finding — F-199-2, measured at 1,000 seeds × 35 days: seeds 74, 747 and 916 sat
+  // 9, 26 and 24 consecutive zero-income days at rim ports where not even the walk
+  // home was affordable — but it is queued at the TAIL of
+  // this plan, not here, because an Explore can charge `apCost` dice at claim and
+  // would orphan the yard purchases below. See its doc.
+  const homewardBurn = planHomewardBurn(state, ledger, actions, refuel ? refuel.cost : 0);
+  if (homewardBurn) actions.push(homewardBurn);
 
   // T-1601a: special equipment goes FIRST for the fighter. AUTO_REPAIR is priced
   // off the CURRENT hull strength, so buying it before `planFighterUpgrade` lands
@@ -4062,20 +5561,66 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   // ARCH_ANGEL (10,000 each) and ASTRAXIAL_HULL (100,000), and letting it through
   // while the marker is open reproduced the full spiral (seed 1 x 300 days: debt
   // back to 4,253,290). Both planners have to wait.
+  // T-196b · THE RUNNING CREDIT COMMITMENT, threaded through the three shopping
+  // planners below. Each of them reads the DAWN balance, and until this task the
+  // die budget made "special equipment AND a component tier AND a berth on one
+  // day" a rarity; now that all three are Free Actions it is the ordinary day, and
+  // without netting the same credits would fund all three. The refuel leads the
+  // total because it is queued above and runs first.
+  let committed = refuel?.cost ?? 0;
   const special = kitAllowed
-    ? planSpecialEquipment(state, ledger, FIGHTER_RESERVE, FIGHTER_EQUIPMENT_PRIORITY)
+    ? planSpecialEquipment(state, FIGHTER_RESERVE, FIGHTER_EQUIPMENT_PRIORITY, committed)
     : null;
   if (special) actions.push(special);
+  committed += specialEquipmentCost(state, special);
 
-  const upgrade = planFighterUpgrade(state, ledger);
+  const upgrade = planFighterUpgrade(state, committed);
   if (upgrade) actions.push(upgrade);
+  committed += upgradeCost(state, upgrade);
 
   // N9 · The captain's overhead, after the gun budget: a fighter fits its ship
   // first and its cabin second.
-  const overhead = planCaptainOverhead(state, ledger, FIGHTER_RESERVE, refuel?.cost ?? 0);
+  const overhead = planCaptainOverhead(state, FIGHTER_RESERVE, committed);
   actions.push(...overhead.actions);
 
+  // T-199 · F-199-2 · the second rung, at the tail (see `planStrandedExplore`).
+  const strandedExplore = planStrandedExplore(state, ledger, actions);
+  if (strandedExplore) actions.push(strandedExplore);
+
   // Keep the marker from festering, but never at the cost of the war chest.
+  //
+  // T-199 · F-199-2 · A SPEND-SIDE FIX WAS WRITTEN HERE, MEASURED, AND BACKED OUT.
+  // `planDebtPayment`'s third argument is documented at its own site as "everything
+  // already committed this day" (T-1601a), and this call lists the refuel and the
+  // overhead but NOT the component tier / special equipment queued twenty lines
+  // above — so on a heavy shopping day the yard and the marker can each respect
+  // `FIGHTER_RESERVE` on their own and clear it together. Seed 74's day 15 is the
+  // picture: a 2,600cr tier AND a 3,412cr marker payment out of a 6,652cr purse,
+  // waking on 400 credits.
+  //
+  // Adding `yardCost` to this call closed that arithmetic — and cost far more than
+  // it bought, measured over 100 seeds x 120 days: median final credits
+  // 79,494 -> 5,877 and the debt-clear rate 0.580 -> 0.510, because a smaller
+  // payment leaves the COMPOUNDING Guild marker open for longer, and `kitAllowed`
+  // (this policy's `debt === 0` gate) then withholds the special equipment that
+  // pays for the rest of the career. The 8,000-row capstone diff put the same
+  // number at `fighter.finalCredits.median` 46,242 -> 3,000 (-93.5%) with
+  // `tourOneClearRate` -9.2%. So it is NOT applied.
+  //
+  // The strand it was aimed at is closed at the top of this policy instead, by the
+  // `planCrippledRepair` every other policy already had: seed 74's real problem was
+  // a hull ground to condition 1 (a 60-unit tank), not the credits. With the repair
+  // in and this call left alone, seed 74 clears, median credits RISE to 79,494 and
+  // the debt-clear rate rises to 0.580 — better than before the task on every one
+  // of the three. The arithmetic hole is real and stays FILED (F-199-2 in TASKS.md)
+  // rather than being paid for by a 93% credit regression.
+  //
+  // T-196b · STILL NOT APPLIED, and deliberately so. This task threads a running
+  // `committed` total through the three SHOPPING planners above (they now co-occur
+  // routinely, so each must see what the last one spent) but leaves THIS call
+  // exactly as it was: adding `yardCost` here is the change measured above and
+  // rejected, and re-making it under cover of a different task would silently
+  // re-buy a 93% credit regression. F-199-1 stays filed.
   const debtPayment = planDebtPayment(state, FIGHTER_RESERVE, (refuel?.cost ?? 0) + overhead.cost);
   if (debtPayment) actions.push(debtPayment);
 
@@ -4206,7 +5751,7 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
 
   // T-1205: repair a hull chipped down enough to collapse the fuel ceiling before
   // the explorer strands (it burns fuel fastest, so it feels a shrunk tank first).
-  const crippledRepair = planCrippledRepair(state, ledger, EXPLORER_RESERVE);
+  const crippledRepair = planCrippledRepair(state, EXPLORER_RESERVE);
   if (crippledRepair) actions.push(crippledRepair);
 
   /** What today's plan has already promised the yard, tracked so the remittance
@@ -4243,18 +5788,19 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   // the explorer's income, so gating them behind the marker gates the explorer
   // out of ever paying the marker. The remittance below is what actually settles
   // the Guild, and it settles it in full.
+  // T-196b: the yard is FREE, so no die is taken. The real bound is the branch's
+  // own: it fires only while the drives are below tier 3 — i.e. at most once per
+  // ship, since the very purchase it queues falsifies the condition — and only
+  // above half the working reserve. `drivesCost` was already threaded into the
+  // remittance below and now matters on many more days.
   if (state.player.ship.drives.strength < 30 && state.player.credits >= EXPLORER_RESERVE / 2) {
-    const die = ledger.takeWorst();
-    if (die !== undefined) {
-      actions.push({
-        type: 'Shipyard',
-        action: 'buy-component-tier',
-        component: 'drives',
-        tier: 3,
-        spendDie: die,
-      });
-      drivesCost = componentTierNetCost(state, 'drives', 3);
-    }
+    actions.push({
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'drives',
+      tier: 3,
+    });
+    drivesCost = componentTierNetCost(state, 'drives', 3);
   }
 
   const from = state.player.currentSystemId;
@@ -4269,7 +5815,7 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   // Wise One's 500cr fragment is NOT protected by the floor (a high floor re-strands);
   // instead the flight to Polaris-1 below only launches once the ship can afford it.
   const refuelFloor = EXPLORER_FUEL_RESERVE;
-  const refuel = planRefuel(state, ledger, refuelFloor, 200, 400);
+  const refuel = planRefuel(state, refuelFloor, 200, 400);
   // T-1310: refuel BEFORE the jump. The old order pushed the refuel AFTER the travel
   // action, so the ship jumped on its current (possibly near-empty) tank, failed the
   // jump, and then got stuck on an active contract it could neither reach nor abandon
@@ -4375,14 +5921,14 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
       const sageRun = reachable.find((c) => c.destination === SAGE_SYSTEM_ID);
       if (sageRun) best = sageRun;
     }
-    const signDie = ledger.takeWorst();
+    // T-196b: free sign — gated on the travel die alone. Bounds unchanged: one
+    // active contract (engine), and `best` comes from the funded, capped set.
     const travelDie = ledger.takeBest();
-    if (signDie !== undefined && travelDie !== undefined) {
+    if (travelDie !== undefined) {
       actions.push({
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: best.index,
-        spendDie: signDie,
       });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
     }
@@ -4398,10 +5944,15 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   // pursuing the arc the explorer banks its contract income instead, so the tier and
   // the fragment become affordable; normal off-lane charting resumes the moment the
   // fragment is in hand (pursuit ends) or before day 25.
-  // N9 · The captain's overhead, ahead of the Explore loop for the reason the
-  // smuggler's copy states: that loop consumes every remaining die by design, so
-  // anything queued after it would never be handed one.
-  const overhead = planCaptainOverhead(state, ledger, EXPLORER_RESERVE, refuel?.cost ?? 0);
+  // N9 · The captain's overhead, kept ahead of the Explore loop. The original
+  // reason (that loop consumes every remaining die by design, so anything queued
+  // after it would never be handed one) is void as of T-196b — the overhead takes
+  // no die — but the placement stands: the loop's credit floor reads
+  // `overhead.cost`, so the overhead has to be decided first.
+  // T-196b: `drivesCost` joins the committed total. The tier-3 drive buy at the
+  // top of this policy no longer competes with the day's dice, so it and a hire
+  // now land on the same day routinely and must not spend the same credits.
+  const overhead = planCaptainOverhead(state, EXPLORER_RESERVE, (refuel?.cost ?? 0) + drivesCost);
   actions.push(...overhead.actions);
 
   if (!pursuingArc) {
@@ -4409,8 +5960,45 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
     if (actions.some((action) => action.type === 'Travel')) {
       projectedFuel -= playerJumpFuel(state, 5);
     }
+    // F-116-1 (docs/EXPLORE_REDESIGN.md §9.7, fixed at T-150) · THE RECOVERY
+    // GATE. `packages/engine/src/actions/exploration.ts:52` refuses the verb with
+    // `ExplorationFailed{'recovery-in-progress'}` while `player.recovery !== null`
+    // — no die spent, no fuel burned, nothing gained. `packages/sim/src/protocol.ts`
+    // (`legalActions`) already withholds Explore on exactly this condition and its
+    // comment names this exact risk, but `runCampaign` NEVER CALLS `legalActions`,
+    // so that gate was never on the path the sim actually takes. This line is the
+    // mirror landing on the path the sim takes — the same "policy guard mirrors the
+    // engine guard" shape as `planDare`'s `!npc.dead` (F-121-1) and its
+    // `venueOffered` mirror.
+    //
+    // THE 22.5% IN §9.7 IS A PRE-T-131 NUMBER and must not be restated as current:
+    // D1 moved bands 3 and 4 off calendar recoveries onto same-day `apCost` dice, so
+    // `player.recovery` now governs BAND 2 ONLY (`engine/src/types.ts` RecoveryState).
+    // The post-fix rate is re-measured in §10 of the same doc.
+    //
+    // SCOPED TO THE EXPLORE QUEUE, deliberately: it is a term of THIS loop and not
+    // an early return from the policy, so the contract run, the refuel, the
+    // captain's overhead, the yard buy and `planDebtPayment` all still run on a
+    // recovery day. Gating the whole policy would invent a poverty-trap regression.
+    //
+    // RESIDUAL, NAMED NOT CLOSED: these planners are pure and read the DAWN state,
+    // so a band-2 find claimed by the FIRST Explore of a day opens a recovery
+    // mid-batch and a second queued Explore can still be refused. Mid-day
+    // re-planning is refused for the reason T-135 gives for not re-invoking a policy
+    // mid-batch, and capping the loop at one Explore per day would be a pacing
+    // change by fiat. Measured and reported in §10 as a bounded limitation.
+    //
+    // F-196b-1 · the per-sweep credit charge the smuggler's twin carries, applied
+    // here for the reason the two loops have always been kept identical: the same
+    // one-shot credit test, the same four-dice-instead-of-two after T-196b freed
+    // the sign/refuel/yard, and the same fuel bill landing on the next dawn. Full
+    // provenance and the seeds 1..1000 measurement live at `smugglerPolicy`'s
+    // copy and are not restated.
+    const sweepReplacementCost = EXPLORATION_FUEL_COST * fuelPriceNow;
+    let sweepReplacement = 0;
     while (
-      state.player.credits - overhead.cost > EXPLORER_RESERVE &&
+      state.player.recovery === null &&
+      state.player.credits - overhead.cost - drivesCost - sweepReplacement > EXPLORER_RESERVE &&
       projectedFuel >= EXPLORATION_FUEL_COST &&
       ledger.remaining() > 0
     ) {
@@ -4418,6 +6006,7 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
       if (die === undefined) break;
       actions.push({ type: 'Explore', spendDie: die });
       projectedFuel -= EXPLORATION_FUEL_COST;
+      sweepReplacement += sweepReplacementCost;
     }
   }
 
@@ -4497,13 +6086,15 @@ function simEquipmentInstalled(state: GameState, equipment: SpecialEquipmentId):
  */
 function planSpecialEquipment(
   state: GameState,
-  ledger: DieLedger,
   reserve: number,
   // T-1601a: the priority list is now a PARAMETER, defaulting to the veteran's
   // original three so `veteranPolicy` (the T-114a pinned-seed ASTRAXIAL_HULL
   // reachability proof) is byte-for-byte unchanged. The fighter passes its own
   // list, which leads with AUTO_REPAIR — see `FIGHTER_EQUIPMENT_PRIORITY`.
   priority: readonly SpecialEquipmentId[] = ['STAR_BUSTER', 'ARCH_ANGEL', 'ASTRAXIAL_HULL'],
+  /** T-196b · credits the rest of today's plan has already committed. Same reason
+   *  `planFighterUpgrade` grew one: with the yard free, both fire the same day. */
+  committed = 0,
 ): PlayerAction | null {
   const ship = state.player.ship;
   for (const equipment of priority) {
@@ -4527,12 +6118,20 @@ function planSpecialEquipment(
       continue;
     }
     const cost = simSpecialEquipmentCost(state, equipment);
-    if (state.player.credits < reserve + cost) continue;
-    const die = ledger.takeWorst();
-    if (die === undefined) return null;
-    return { type: 'Shipyard', action: 'buy-special-equipment', equipment, spendDie: die };
+    if (state.player.credits - committed < reserve + cost) continue;
+    return { type: 'Shipyard', action: 'buy-special-equipment', equipment };
   }
   return null;
+}
+
+/** The price of a `buy-special-equipment` this policy has just queued, for the
+ *  running `committed` total (see `upgradeCost`). */
+function specialEquipmentCost(state: GameState, special: PlayerAction | null): number {
+  if (!special || special.type !== 'Shipyard' || special.action !== 'buy-special-equipment') {
+    return 0;
+  }
+  if (special.equipment === undefined) return 0;
+  return Math.max(0, simSpecialEquipmentCost(state, special.equipment));
 }
 
 const VETERAN_RESERVE = 3000;
@@ -4547,6 +6146,16 @@ const VETERAN_RESERVE = 3000;
  * encounter deeds, a low-fuel arrival for the fuel-fumes deed), then trades to
  * fund the fit. It is NOT in COMPETENT_POLICIES: it is an endgame grinder, not
  * a lean balance baseline, so it is exempt from the poverty-trap sweep.
+ *
+ * T-161 · THE EXEMPTION IS NARROWER THAN IT USED TO SOUND, and the honest number
+ * lives here and in `GATE_COMPETENT_POLICIES` (`balance/gate.ts`) rather than in
+ * a rationale nobody measured. Being out of scope for the gate never licensed a
+ * missing fallback: the full-tank relaxation below is the same branch every other
+ * gated policy carries, and this policy was the last in the file without it
+ * (finding F-159-1). What is still open after that fix is F-161-1 — the storylet
+ * branch a few lines down takes EVERY offered storylet as a standalone day, so on
+ * a port with a live queue the grinder never reaches the contract block at all.
+ * That, not dice-banking and not reachability, is what the residual stall is.
  */
 export const veteranPolicy: SimPolicy = ({ state }) => {
   const ledger = dieLedger(state);
@@ -4614,20 +6223,34 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
     return withReroll(state, planPacifistCombat(state, ledger));
   }
 
-  // A storylet in the queue is taken as a standalone day (matches the other
-  // policies) so its die spend never collides with the trade-day ledger — this
-  // is how beacon_keeper and chained storylets progress.
-  const storyletAction = chooseStoryletAction(state);
-  if (storyletAction) return withReroll(state, [storyletAction]);
-
   const actions: PlayerAction[] = [];
   const ship = state.player.ship;
   const from = state.player.currentSystemId;
   const board = state.market.manifestBoard;
 
+  // A storylet in the queue is taken as a standalone day so its die spend never
+  // collides with the trade-day ledger — this is how beacon_keeper and chained
+  // storylets progress.
+  //
+  // F-161-1 (OPEN, measured at T-161, `docs/BALANCE-POLICY.md` D.2a) · THIS
+  // BRANCH DOES NOT "MATCH THE OTHER POLICIES", as the comment here used to
+  // claim. `smugglerPolicy`, `gamblerPolicy` and `explorerPolicy` all SPLIT it:
+  // a choice that spends no die resolves INLINE and the trade day continues
+  // around it; only a die-spending choice takes the day, because only that can
+  // collide with the ledger — which is the reason this comment itself gives for
+  // a rule it then applies far too widely. Taking the whole day for a free
+  // narrative beat is what leaves the veteran's residual stall at 197 of 200
+  // seeds even after the F-159-1 relaxation below: a `Storylet` is not an income
+  // action (`isIncomeAction`, ~L1660). NOT fixed here — T-161's scope is the
+  // contract filter, and the ported split is measured to cost the deed slate
+  // (`deed-coverage.test.ts` full slates 2 -> 0 over seeds 1..76), so it needs a
+  // task that owns the deed-hunter instrument. See F-161-1 for the numbers.
+  const storyletAction = chooseStoryletAction(state);
+  if (storyletAction) return withReroll(state, [storyletAction]);
+
   // T-1205: repair a hull the enemy has chipped down enough to collapse the fuel
   // ceiling, before it strands the grinder and starves its deed income.
-  const repair = planCrippledRepair(state, ledger, VETERAN_RESERVE);
+  const repair = planCrippledRepair(state, VETERAN_RESERVE);
   if (repair) actions.push(repair);
 
   // T-1102: choose the destination FIRST so the refuel can be sized to reach it —
@@ -4636,11 +6259,54 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   // upgrade — pinned at the junker hull for the whole 500-day campaign.
   const fuelDepotPrice = state.market.localFuelPrice || 5;
   const ranked = rankedContracts(state);
-  const reachable = ranked
-    .filter((c) => c.fuel <= ship.maxFuel * SIGN_FUEL_FRACTION)
-    .map((c) => ({ ...c, net: c.payment - c.fuel * fuelDepotPrice }))
-    .filter((c) => c.net > 0)
-    .sort((a, b) => b.net - a.net || a.index - b.index);
+  const signableWithin = (cap: number) =>
+    ranked
+      .filter((c) => c.fuel <= cap)
+      .map((c) => ({ ...c, net: c.payment - c.fuel * fuelDepotPrice }))
+      .filter((c) => c.net > 0)
+      .sort((a, b) => b.net - a.net || a.index - b.index);
+  let reachable = signableWithin(ship.maxFuel * SIGN_FUEL_FRACTION);
+  // T-161: the T-1104 full-tank RELAXATION, ported (not invented) from the five
+  // policies that already carry it verbatim — `traderPolicy`, `smugglerPolicy`,
+  // `gamblerPolicy`, `explorerPolicy` and (from T-159) `fighterPolicy`. The
+  // veteran was the LAST un-relaxed contract filter in this file (finding
+  // F-159-1, `docs/BALANCE-POLICY.md` D.2a), and the omission cost exactly what
+  // the fighter's did: parked at a RIM port where every leg on the board exceeds
+  // 0.6 of the tank, `reachable` comes back empty every dawn, `idx` falls through
+  // to -1, and the grinder signs nothing and never travels.
+  //
+  // Why the streak climbs instead of self-correcting: refuel, crippled repair,
+  // cargo pods, component tiers, special equipment, captain overhead and debt
+  // payment all still QUEUE below, so the ship looks busy — but none of them is
+  // an income action (`isIncomeAction`, this file, ~L1660), so a busy,
+  // earning-nothing day is still a zero-income day.
+  //
+  // Measured before this line on this tree (seeds 1..200 x 35 days): the
+  // veteran's longest zero-income streak was 31 against a limit of 5, with 198 of
+  // 200 seeds at or over the limit — every other gated policy sat at 2-4 (bar the
+  // fighter's one F-159-2 strand at seed 157). Seed 4 is the picture: parked at
+  // system 18 from day 5 on a FULL 300 tank with 2,825cr and a live 2-4 offer
+  // board it could not sign from, debt compounding 20,727 -> 22,886 by day 36.
+  //
+  // Measured AFTER this line, same rig: worst streak 31 -> 13, and the nine seeds
+  // that held the 31-day strand (4, 10, 56, 62, 82, 91, 135, 155, 185) fall to
+  // 5-10. The COUNT of seeds at or over the limit barely moves (198 -> 197), and
+  // that is not this branch failing — it is F-161-1, the un-split storylet branch
+  // above, which on a busy port eats the whole day before the code here is ever
+  // reached. Depth is what the relaxation owns, and depth is what it fixed.
+  //
+  // The trade this accepts is the SAME one T-1104 argued for in the trader: a
+  // full-tank run leaves a thinner re-flight margin after an interrupted
+  // delivery. Taking the completable run beats idling at the rim. The `net > 0`
+  // filter stays in the relaxed pass (as it does for trader/smuggler/gambler) —
+  // dropping it would be new behaviour, not a port — and the existing
+  // `availableFuel >= primaryFuelNeed` sign guard below still refuses a relaxed
+  // pick the purse cannot fuel.
+  //
+  // Readers: `assertNoIncomeStall` / `INCOME_STALL_LIMIT` in `balance/gate.ts`.
+  if (reachable.length === 0) {
+    reachable = signableWithin(ship.maxFuel);
+  }
   const reachableByFullTank = (dest: number): boolean =>
     playerJumpFuel(state, systemDistance(from, dest)) <= ship.maxFuel;
 
@@ -4675,14 +6341,12 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   const refuel = wantFumes
     ? planRefuel(
         state,
-        ledger,
         0,
         Math.min(ship.maxFuel, primaryFuelNeed),
         Math.min(ship.maxFuel, primaryFuelNeed + 24),
       )
     : planRefuel(
         state,
-        ledger,
         0,
         Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_THRESHOLD, primaryFuelNeed)),
         Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_TARGET, primaryFuelNeed)),
@@ -4704,9 +6368,12 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
       });
     }
   } else if (idx >= 0 && availableFuel >= primaryFuelNeed) {
-    // Haggle the chosen board offer before signing → broker_shark. Needs three
-    // dice for haggle + sign + travel, so gate on the remaining budget.
-    if (need('broker_shark') && !board[idx].haggled && ledger.remaining() >= 3) {
+    // Haggle the chosen board offer before signing → broker_shark.
+    // T-196b: `>= 3` became `>= 2`. The gate used to read "needs three dice for
+    // haggle + sign + travel"; the sign is a Free Action now (§3), so the only two
+    // die spends left in this branch are the haggle's TRADE check and the jump's
+    // pilot check. Haggle keeps its die for real — it IS the check.
+    if (need('broker_shark') && !board[idx].haggled && ledger.remaining() >= 2) {
       const haggleDie = ledger.takeWorst();
       if (haggleDie !== undefined) {
         actions.push({
@@ -4717,14 +6384,13 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
         });
       }
     }
-    const signDie = ledger.takeWorst();
+    // T-196b: free sign — gated on the travel die alone.
     const travelDie = ledger.takeBest();
-    if (signDie !== undefined && travelDie !== undefined) {
+    if (travelDie !== undefined) {
       actions.push({
         type: 'Trade',
         action: 'sign-contract',
         contractIndex: idx,
-        spendDie: signDie,
       });
       actions.push({
         type: 'Travel',
@@ -4737,28 +6403,40 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   // Yard: a cargo-pod expansion (earns yard_rat + cargo_expansion), then combat
   // tiers (weapons first, so first_combat_win becomes winnable), then the
   // renown-gated special equipment once the rank opens.
-  if (
-    need('cargo_expansion') &&
-    state.player.credits >= VETERAN_RESERVE + 1000 &&
-    ledger.remaining() > 0
-  ) {
-    const die = ledger.takeWorst();
-    if (die !== undefined) {
-      actions.push({ type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1, spendDie: die });
-    }
+  // T-196b · Free at the yard, so no die and no `ledger.remaining()` gate. The
+  // REAL bounds, both already here and both non-die: the `cargo_expansion` deed is
+  // still unearned (one pod purchase earns it, so this cannot repeat once the
+  // registry catches up) and the purse clears the reserve plus the pod price.
+  // `yardCommitted` then carries the spend into the two planners below, which
+  // before this task were rationed apart by the die and now fire together.
+  let yardCommitted = 0;
+  if (need('cargo_expansion') && state.player.credits >= VETERAN_RESERVE + 1000) {
+    const podAction: PlayerAction = { type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1 };
+    actions.push(podAction);
+    // Priced through the engine's own quote rather than re-stating the 1,000 the
+    // gate above assumes — content owns the number.
+    yardCommitted += Math.max(0, quoteShipyard(state.player, podAction).cost);
   }
-  const upgrade = planFighterUpgrade(state, ledger);
+  const upgrade = planFighterUpgrade(state, yardCommitted);
   if (upgrade) actions.push(upgrade);
-  const special = planSpecialEquipment(state, ledger, VETERAN_RESERVE);
+  yardCommitted += upgradeCost(state, upgrade);
+  const special = planSpecialEquipment(state, VETERAN_RESERVE, undefined, yardCommitted);
   if (special) actions.push(special);
+  yardCommitted += specialEquipmentCost(state, special);
 
   // N9 · The captain's overhead. The veteran is the LONG-HORIZON archetype — the
   // one whose whole premise is that the career outlives the measurement window —
   // so it is the policy a port stake's 154-to-1,043-dusk payback is least unfair
   // to. It plays the verbs on exactly the same rules as everyone else regardless.
-  const overhead = planCaptainOverhead(state, ledger, VETERAN_RESERVE, refuelCost);
+  const overhead = planCaptainOverhead(state, VETERAN_RESERVE, refuelCost + yardCommitted);
   actions.push(...overhead.actions);
 
+  // T-199 · F-199-1 · the yard spend is NOT netted off this payment, and that is a
+  // KNOWN, FILED hole, not an oversight — `fighterPolicy`'s equivalent call carries
+  // the fix and the reasoning. It is left alone here because the veteran is exempt
+  // from `assertNoIncomeStall` and because widening this change to a fourth policy
+  // moved `balance-combat-survival.test.ts`'s preparation band (see TASKS.md,
+  // F-199-1). Closing it belongs to the task that owns that band.
   const debtPayment = planDebtPayment(state, VETERAN_RESERVE, refuelCost + overhead.cost);
   if (debtPayment) actions.push(debtPayment);
 
@@ -4942,6 +6620,15 @@ export function runCampaign(
     socialBeats: 0,
     failedVisits: 0,
     dareGuardHits: 0,
+    handsAboveBaseCeiling: 0,
+    handsAboveRaisedCeiling: 0,
+    maxSeedWager: 0,
+    // T-175 · all 48 cells present and zero-filled (F-160-1's split).
+    dareCells: zeroDareCells(),
+    dareTierDisagreements: 0,
+    dareChallengeCells: zeroDareChallengeCells(),
+    dareChallengeSplit: zeroDareChallengeSplit(),
+    dareChallengeDisagreements: 0,
   };
   // T-1603a balance-baseline instrumentation (see the interface doc comments).
   const survival: SurvivalStats = {
@@ -4951,15 +6638,31 @@ export function runCampaign(
     lifeSupportScares: 0,
     successions: 0,
   };
+  // T-173 · standing instrumentation (see {@link DispositionStats}).
+  const disposition: DispositionStats = {
+    movesByReason: zeroMovesByReason(),
+    liveNpcDays: 0,
+    zeroDispositionNpcDays: 0,
+    absDispositionSum: 0,
+    peakAbsDisposition: 0,
+    standingSpanDays: [],
+    standingsOpenAtHorizon: 0,
+  };
   const metrics: CampaignMetricAccumulator = {
     loanUsage,
     fragments,
     equipmentUse,
     smuggling,
     hangoutPlay,
+    disposition,
+    openStandingDays: new Map<string, number>(),
     survival,
     tourOne: null,
     subsistenceDays: 0,
+    // T-175 · the cell split's two running fields (F-160-1).
+    settledDareHands: 0,
+    openDareBids: new Map<string, number>(),
+    openDareLastBidder: new Map<string, DareChallenger>(),
   };
   const balance = newBalanceRecordTracker();
 
@@ -5082,7 +6785,12 @@ export function runCampaign(
     // and `resolveNpcDay` assigns a `structuredClone` copy back, so this total is a
     // reading of the field BEFORE the dusk and cannot be mutated out from under us.
     const preDuskGatedWorn = gatedEquipmentWorn(dayState);
-    const dusk = endDay(dayState);
+    // T-140 · The options object is built ONLY for a traced run; an ordinary sweep
+    // still calls the one-argument `endDay(dayState)` it always called.
+    const dusk =
+      extras.npcDecisionTrace === undefined
+        ? endDay(dayState)
+        : endDay(dayState, { npcDecisionTrace: extras.npcDecisionTrace });
     state = dusk.state;
     dayEvents.push(...dusk.events);
     // T-1603a: dusk closes encounters (a bond drive-off's `resolveInterceptorFled`)
@@ -5115,6 +6823,11 @@ export function runCampaign(
     if (state.flags[FENCE_REP_FLAG] === true) {
       smuggling.fenceRepDays += 1;
     }
+    // T-173 · The third dusk-STATE fold, beside the two above and for the same
+    // reason: "the cast sits at exactly zero" is a condition no event reports.
+    // Taken AFTER the dusk, so the standing read is the post-decay one — decay is
+    // itself a dusk step (`day.ts` → `applyDisposition(..., 'decay')`).
+    sampleDispositionAtDusk(state, metrics);
 
     const counts = countDailyEvents(dayEvents);
     accumulateMetricEvents(dayEvents, metrics);
@@ -5168,6 +6881,10 @@ export function runCampaign(
   // T-1603a: the horizon ended mid-fight / mid-delivery. Both are flushed rather
   // than dropped so counts stay honest, and both are labelled so an aggregate can
   // exclude them (an unfinished leg has no payout to price).
+  // T-173 · Standings still open when the horizon ran out. COUNTED, never pushed
+  // into `standingSpanDays` as a truncated survival — a span that has not closed
+  // is not a span, and averaging it in would bias every survival figure downward.
+  disposition.standingsOpenAtHorizon = metrics.openStandingDays.size;
   closeBalanceEncounter(balance, 'unresolved', state.player.credits);
   if (balance.openLeg) {
     balance.legs.push({ ...balance.openLeg, outcome: 'open-at-end' });
@@ -5192,6 +6909,7 @@ export function runCampaign(
     equipmentUse,
     smuggling,
     hangoutPlay,
+    disposition,
     tourOne: metrics.tourOne,
     subsistenceDays: metrics.subsistenceDays,
     // N10 · Summed from the per-day series rather than kept as a second running
@@ -5249,8 +6967,9 @@ function npcPortCount(npc: NpcState & { readonly ports?: readonly PortStake[] })
   return npc.ports?.length ?? 0;
 }
 
-/** The seven per-captain arrays behind {@link MilestoneSample}, over the SIMULATED
- *  roster only. One traversal, one filter, so the seven arrays cannot fall out of
+/** The eight per-captain arrays behind {@link MilestoneSample} (seven until T-173
+ *  added `npcDisposition`), over the SIMULATED
+ *  roster only. One traversal, one filter, so the arrays cannot fall out of
  *  step with each other — index i is the same captain in all of them. That
  *  property is load-bearing rather than tidy since N11/T-022: `npcDeedCount[i]`
  *  and `npcRenownRank[i]` are only readable together (a rank is a step function of
@@ -5270,6 +6989,7 @@ function sampleField(
   | 'npcDeedCount'
   | 'npcRenownRank'
   | 'npcPortCount'
+  | 'npcDisposition'
 > {
   const field = state.npcs.filter((npc) => isSimulatedCaptain(npc.profileId));
   return {
@@ -5280,6 +7000,11 @@ function sampleField(
     npcDeedCount: field.map((npc) => npc.registry.earned.length),
     npcRenownRank: field.map((npc) => npc.registry.renownRank),
     npcPortCount: field.map((npc) => npcPortCount(npc)),
+    // T-173 · The eighth array, in the SAME traversal for the same reason: a
+    // captain's standing is only readable against the purse and the rank beside
+    // it, and a second `state.npcs.filter` would make that alignment a
+    // coincidence.
+    npcDisposition: field.map((npc) => npc.disposition),
   };
 }
 

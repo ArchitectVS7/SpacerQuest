@@ -23,7 +23,7 @@
  *   - sim `protocol.ts` calls crew "the dice-progression source";
  *   - `App.tsx` labels the crew grant "Crew-granted dawn-hand progression".
  * And gating the HANGOUT wholesale is ruled out on evidence, not taste:
- * `e2e/hangout.spec.ts` proves the launcher open at Sun-3 from day 1, the
+ * `e2e/hangout.spec.ts` proves the launcher open at Sol-3 from day 1, the
  * `first-loan` onboarding coach fires INSIDE the open Hangout panel during Tour
  * One, and PRD §7.3/§7.5 set two Tour-One sample turns there (the Day-23
  * Spacer's Dare; the bad-day Penny Wise loan). A demo that shut the Hangout

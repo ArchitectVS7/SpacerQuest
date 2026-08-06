@@ -12,6 +12,10 @@ import {
   type GameEvent,
   type CheckResult,
   type DareMoveKind,
+  // T-141 · TYPE-ONLY, deliberately: the playtest tap below names the engine's
+  // own action union so the seam stays typed, and a type import compiles away —
+  // no engine source file is touched by the telemetry feature (spec §7).
+  type PlayerAction,
 } from '@spacerquest/engine';
 import type { Stat } from '@spacerquest/content';
 import type { ShipComponentId, SpecialEquipmentId, ShipyardFail } from '@spacerquest/engine';
@@ -32,6 +36,11 @@ import {
   type SuccessionSummary,
 } from './format';
 import * as sound from './sound';
+// T-185 · The procedural score. A CLIENT of `sound.ts` (it borrows that module's
+// context and `music` bus, and owns no rule) and a CLIENT of this store's state:
+// `moodForState` is a pure function of `CockpitState`, so NO `if` about audio
+// lives in this file. Inert without a `window`, exactly like `sound.ts`.
+import * as music from './music';
 // T-1702a · The Steam achievement mirror. Like `sound.ts`, a pure CLIENT of the
 // event stream the store already scans — the engine emits nothing new for it,
 // and no `GameState` field or `GameEvent` was added. See `steam.ts`'s header.
@@ -42,12 +51,44 @@ import * as steam from './steam';
 // the store must never reach around it (structurally asserted in
 // `__tests__/storage.test.ts`).
 import { storage } from './storage';
+// T-141 · The opt-in playtest log (`docs/PLAYTEST-TELEMETRY_SPEC.md`). Like
+// `sound.ts` and `steam.ts`, a pure CLIENT of what the store already has: it
+// reads the action and the events the engine already returned, owns no rule, and
+// adds no `GameState` field. Default (on/off) lives in `playtestLog.ts`, not
+// here — every recorder re-checks the player's toggle at call time, so with
+// logging off this import costs one `storage.getItem` per action and stores
+// nothing.
+import * as playtest from './playtestLog';
 // T-1703 · THIS BUNDLE'S EDITION, compiled in by Vite. The store is the only
 // place that stamps it: `newGame` births a career in it, and every load path
 // (`init` / `loadSlot` / `importCareer`) runs the loaded career through the
 // engine's `promoteEdition` so the BUILD — never the save — decides which rules
 // apply. See `edition.ts`.
 import { BUILD_EDITION } from './edition';
+// T-187 · The first-turn walkthrough. Like `onboardingSeen`, its record is CLIENT
+// meta-state persisted beside the save and NEVER inside it — see the module
+// header for why no save migration is owed. The store is the only writer.
+import {
+  armedWalkthrough,
+  ackWalkthroughStep as ackWalkthroughRecord,
+  nextWalkthroughFlags,
+  parseWalkthrough,
+  serializeWalkthrough,
+  settleWalkthrough,
+  walkthroughActive,
+  type WalkthroughRecord,
+} from './walkthrough';
+// T-200 · The opening marker (the debt as a cold open). Same shape of dependency
+// as the walkthrough above: a CLIENT meta-state record persisted beside the save
+// and never inside it, so no save migration is owed. The store is the only writer.
+import {
+  armedOpeningMarker,
+  openingMarkerPending,
+  parseOpeningMarker,
+  seenOpeningMarker,
+  serializeOpeningMarker,
+  type OpeningMarkerRecord,
+} from './opening';
 
 /**
  * React to an action's emitted event stream — the store's ONE presentation-side
@@ -72,6 +113,26 @@ function reactToEvents(events: GameEvent[], committed: boolean): void {
   if (committed) sound.play('commit');
   for (const cue of sound.cuesForEvents(events)) sound.play(cue);
   steam.unlock(steam.achievementsForEvents(events, BUILD_EDITION));
+  // T-187 · THE THIRD CLIENT, folded in here for exactly the reason the two above
+  // are: this is the ONE funnel every one of the ~22 action thunks already calls,
+  // so the walkthrough's completion signals cost one edit rather than twenty-two
+  // and cannot be forgotten at a new call site. It runs AFTER the thunk's own
+  // `set()`, and only issues a second `set()` when the record actually changed —
+  // the honest cost of a single choke point.
+  advanceWalkthrough(events);
+}
+
+/**
+ * T-187 · Fold an action's events into the walkthrough record and persist/publish
+ * it if anything landed. A no-op unless the walkthrough is running.
+ */
+function advanceWalkthrough(events: GameEvent[]): void {
+  if (!walkthroughActive(state.walkthrough)) return;
+  const folded = nextWalkthroughFlags(events, state.walkthrough);
+  if (folded === state.walkthrough) return;
+  const next = settleWalkthrough(folded);
+  writeWalkthrough(next);
+  set({ walkthrough: next });
 }
 
 /**
@@ -100,6 +161,15 @@ function mirrorEarned(game: GameState): void {
 const SAVE_KEY = 'sq.save.v1';
 const FX_KEY = 'sq.fx';
 const ONBOARDING_KEY = 'sq.onboarding.v1';
+// T-187 · The first-turn walkthrough record. The `sq.` prefix is LOAD-BEARING:
+// the desktop shell's one-time migration copies web-profile keys BY PREFIX
+// (`storage.ts`), so this key rides along with the save and the settings for
+// free rather than needing its own migration clause.
+const WALKTHROUGH_KEY = 'sq.walkthrough.v1';
+// T-200 · The opening marker record. The `sq.` prefix is load-bearing for the
+// same reason the walkthrough's is — the desktop shell migrates web-profile keys
+// BY PREFIX, so this rides along with the save for free.
+const OPENING_KEY = 'sq.opening.v1';
 const DEFAULT_SEED = 424242;
 
 // ---- T-312 settings & save-slot keys ------------------------------------
@@ -152,6 +222,16 @@ export interface CockpitState {
   fx: boolean;
   /** Last engine refusal / error, surfaced to the player — never swallowed. */
   notice: string | null;
+  /**
+   * T-162 · F-162-2 — bumped every time a notice is RAISED, including when the
+   * new notice reads exactly like the one already on screen. Without it, a
+   * second identical refusal ("Not enough credits to make that payment." twice)
+   * changed nothing in the DOM at all, so the cockpit looked broken rather than
+   * refusing again. Rendered as the notice element's React `key` (so its reveal
+   * replays) and as `data-notice-key` (so a test can see the raise happened).
+   * Same shape and same argument as `lastCheckKey` directly above.
+   */
+  noticeKey: number;
   /** Bumped on every new day so the boot sweep + dice roll replay. */
   bootKey: number;
   /**
@@ -286,6 +366,46 @@ export interface CockpitState {
    */
   onboardingSeen: Record<string, true>;
   /**
+   * T-187 · The first-turn walkthrough — the scripted, on-rails seven-step run a
+   * brand-new career opens with (see `walkthrough.ts` for the whole decision
+   * record, including why it coexists with T-311's contextual coach above rather
+   * than replacing it).
+   *
+   * Like `onboardingSeen` / `fx` / `patrolScan` / `saveWriteFailed`, this is
+   * CLIENT presentation meta-state, NOT GameState — so a JSON round-trip of game
+   * state is unaffected, `CURRENT_SAVE_VERSION` does not move and NO save
+   * migration is owed. Persisted under `sq.walkthrough.v1`.
+   *
+   * ARMED ONLY FOR A GENUINELY FIRST-TIME PLAYER: `init()` arms it when there is
+   * no save at all AND the record has never run; `newGame` arms it when the
+   * record has never run. A booted save, a slot load and an imported career never
+   * arm it — that is the Accept's "returning/expert player" clause, discharged by
+   * the arming rule rather than by a button the veteran has to find.
+   *
+   * READERS: `App.tsx`'s `WalkthroughCard` (the step popup) and its `railsOff`
+   * helper (which `inert`s every non-scripted region).
+   */
+  walkthrough: WalkthroughRecord;
+  /**
+   * T-200 · The opening marker — the Guild dispatch a career opens on, carrying
+   * the debt figure as the largest thing on screen (see `opening.ts` for the
+   * whole decision record, including why it is a THIRD system beside T-187's
+   * rails and T-311's coach rather than a step or a prompt inside either).
+   *
+   * Like `onboardingSeen` / `walkthrough` / `fx`, this is CLIENT presentation
+   * meta-state, NOT GameState — so a JSON round-trip of game state is unaffected,
+   * `CURRENT_SAVE_VERSION` does not move and NO save migration is owed. Persisted
+   * under `sq.opening.v1`.
+   *
+   * ARMED ONCE PER CAREER, which is deliberately NOT the walkthrough's rule
+   * above: `init()` arms it only on a virgin boot (no save at all), `newGame`
+   * arms it UNCONDITIONALLY (every career opens under its own marker), and a slot
+   * load / import RETIRES it (a mid-career save off disk is not a new run).
+   *
+   * READER: `App.tsx`'s `OpeningMarker`.
+   */
+  openingMarker: OpeningMarkerRecord;
+  /**
    * T-312/T-1002. The current career's seed — the reader for the bezel display
    * AND the reproducibility metadata. Now persisted in the versioned save
    * envelope (engine `createSave`), recovered on load via `loadSave().seed`, with
@@ -365,6 +485,40 @@ export interface CockpitState {
    * T-312.
    */
   saveWriteFailed: boolean;
+  /**
+   * T-141 · Whether the opt-in playtest log is capturing (spec §3).
+   *
+   * Default is set in `playtestLog.ts` (ON for the pre-public build, per its
+   * file header — revert before public release), persisted under
+   * `sq.playtest.logging` through the SAME `storage.ts` `KeyValueStore`
+   * `fx` / `reducedMotion` / `textSize` use. Like
+   * every one of those, this is CLIENT presentation state, NOT `GameState`: a
+   * JSON round-trip of game state is unaffected, `CURRENT_SAVE_VERSION` does not
+   * move and NO save migration is owed. Spec §3 requires exactly that — the
+   * toggle "must not round-trip through the save file".
+   *
+   * READER: `App.tsx`'s Settings → Playtest row (`set-playtest-logging`), which
+   * also renders `PLAYTEST_DISCLOSURE` beside it.
+   */
+  playtestLogging: boolean;
+  /**
+   * T-141 · How many entries this session has captured.
+   *
+   * It exists so capture is VISIBLE: a tester who enabled logging an hour ago
+   * needs to see the count moving to trust that the export will contain
+   * anything. Client presentation state on exactly the terms
+   * {@link CockpitState.playtestLogging} states; it is never persisted at all
+   * (the buffer is per-session by design, spec §2's per-session id).
+   *
+   * RECONCILED IN `set()`, the store's one state-update choke point, so it is
+   * live the moment a Settings popover opens rather than stale until the player
+   * touches a control. `playtestLog.ts`'s `playtestLogSize` is O(1) precisely so
+   * that can be true without putting the log on the hot path — a diagnostic that
+   * costs the cockpit a frame is a diagnostic nobody leaves on.
+   *
+   * READER: `App.tsx`'s Settings → Playtest row (`playtest-entry-count`).
+   */
+  playtestLogEntries: number;
 }
 
 let state: CockpitState = init();
@@ -375,6 +529,32 @@ let state: CockpitState = init();
 // contract and is a no-op with no shell, so it cannot throw out of module init
 // where no error boundary could catch it.
 steam.syncPresence(state.game);
+// T-185 · Start the ambient drive-hum bed for the BOOTED career, on exactly the
+// argument the `syncPresence` line above carries: a career restored from the
+// autosave is in the cockpit before the player touches anything, so it owes the
+// same presence the fresh one gets.
+//
+// THE BUG THIS FIXES (measured, F-185-1). `setDriveHum(true)` had exactly two
+// call sites — `newGame` and `endDay` — and neither is on the path a RETURNING
+// player takes: `init()` here and `loadSlot` both left the bed off. A Playwright
+// probe tapping `ctx.destination` measured a peak of EXACTLY 0.000 on a plain
+// boot, i.e. a returning captain heard nothing but sub-100 ms blips until they
+// happened to end a day. That is most of the owner's "there is just zero
+// feedback" on its own.
+//
+// Safe at MODULE SCOPE for the same reason `syncPresence` is: `startHum` defers
+// itself via `pendingHum` until the first gesture unlocks the AudioContext (so
+// no autoplay-policy error), is a no-op with no `window` or no `AudioContext`
+// (so node-side tooling that imports this module is unaffected), and early-
+// returns when the bed is already running — which is what keeps `newGame`'s and
+// `endDay`'s existing calls harmless rather than duplicative. It cannot throw
+// out of module init, where no error boundary could catch it.
+sound.setDriveHum(true);
+// T-185 · And the score, for the same booted career. `syncScene` is idempotent
+// and defers itself through `sound.onUnlock`, so this is the same autoplay-safe
+// shape as the line above. See the `set()` call site for why the score is
+// reconciled at the store's one choke point rather than per action.
+music.syncScene(state);
 const listeners = new Set<() => void>();
 
 // T-1605a · `init()` runs at MODULE SCOPE, outside React, so an error boundary
@@ -396,12 +576,39 @@ function init(): CockpitState {
   // where no error boundary could catch it. On a fresh career this is an empty
   // list.
   mirrorEarned(game);
+  // T-187 · ARM THE FIRST-TURN WALKTHROUGH — but only on a genuinely virgin
+  // profile: the record has never run (`off`) AND `readSaveResult` found no save
+  // at all, which is exactly the boot that lands on the fresh DEFAULT_SEED career
+  // above. A player booting back into their autosave is by definition not a
+  // first-time player, so their cockpit is untouched. Persisted immediately so a
+  // reload mid-walkthrough resumes on the same step.
+  const storedWalkthrough = readWalkthrough();
+  const walkthrough =
+    storedWalkthrough.status === 'off' && loaded == null ? armedWalkthrough() : storedWalkthrough;
+  if (walkthrough !== storedWalkthrough) writeWalkthrough(walkthrough);
+  // T-200 · ARM THE OPENING MARKER on the same virgin boot, and ONLY there: NO
+  // stored record at all AND `readSaveResult` found no save, which is exactly the
+  // boot that lands on the fresh DEFAULT_SEED career above. A player booting back
+  // into their autosave is mid-career and gets `seen` regardless of what is on
+  // disk. A stored record on a save-less profile is CARRIED, not re-armed, so a
+  // reload part-way through day 1 resumes rather than dropping the dispatch twice.
+  //
+  // `readOpeningMarker` returns null ONLY for a genuinely absent key — a CORRUPT
+  // value parses to `seen` (see `parseOpeningMarker`'s default-closed contract),
+  // so a damaged record can never manufacture a virgin profile.
+  const storedOpening = readOpeningMarker();
+  const openingMarker =
+    loaded == null ? (storedOpening ?? armedOpeningMarker()) : seenOpeningMarker();
+  if (storedOpening === null || storedOpening.status !== openingMarker.status) {
+    writeOpeningMarker(openingMarker);
+  }
   return {
     game,
     selectedDie: null,
     bloomDie: null,
     fx,
     notice: null,
+    noticeKey: 0,
     bootKey: 1,
     lastCheck: null,
     lastCheckKey: 0,
@@ -414,6 +621,8 @@ function init(): CockpitState {
     socialOutcome: null,
     patrolScan: null,
     onboardingSeen: readOnboarding(),
+    walkthrough,
+    openingMarker,
     seed,
     reducedMotion: readReducedMotion(),
     textSize: readTextSize(),
@@ -423,6 +632,11 @@ function init(): CockpitState {
     // about. A blocked/full store raises it on the first autosave instead — and a
     // blocked READ is already `recovery: 'storage-unavailable'`.
     saveWriteFailed: false,
+    // T-141 · The consent flag, read from the local-preference layer. A virgin
+    // profile has no key, which reads as OFF — the spec's default, discharged by
+    // the read rather than by a constant.
+    playtestLogging: playtest.isPlaytestLoggingEnabled(),
+    playtestLogEntries: 0,
   };
 }
 
@@ -640,7 +854,27 @@ function emit(): void {
   for (const l of listeners) l();
 }
 function set(patch: Partial<CockpitState>): void {
-  state = { ...state, ...patch };
+  // T-141 · The captured-entry count is refreshed HERE, at the same one
+  // state-update choke point rich presence uses and for the same argument: the
+  // count must be live the moment a Settings popover opens, and reconciling it
+  // at ~20 action call sites would be twenty places to forget. `playtestLogSize`
+  // is O(1) by design (never `snapshotPlaytestLog`, which copies) and reads a
+  // module-local array length, so an ordinary UI-only patch pays one integer
+  // compare. It goes AFTER the patch so a caller can never accidentally pin a
+  // stale count.
+  // T-162 · F-162-2 · THE NOTICE SEQUENCE, at the same one choke point and for
+  // the same argument as the two comments above: a raise must be visible even
+  // when the words are identical to the last one, and bumping it at ~25 action
+  // call sites would be twenty-five places to forget. A patch that does not
+  // carry a notice (the ordinary UI-only patch) leaves the counter alone, so
+  // opening a panel never re-plays a stale refusal.
+  const raised = patch.notice !== undefined && patch.notice !== null;
+  state = {
+    ...state,
+    ...patch,
+    noticeKey: raised ? state.noticeKey + 1 : (patch.noticeKey ?? state.noticeKey),
+    playtestLogEntries: playtest.playtestLogSize(),
+  };
   // T-1702b · Rich presence, at the store's ONE state-update choke point rather
   // than at ~20 action call sites — the same argument that folded the achievement
   // mirror into `reactToEvents`: an action added later cannot forget it.
@@ -650,6 +884,17 @@ function set(patch: Partial<CockpitState>): void {
   // reason `reactToEvents` is unwrapped: a wrapper would hide a real regression.
   // No `CockpitState` field is added for it.
   steam.syncPresence(state.game);
+  // T-185 · The score's mood, at the SAME one state-update choke point and for
+  // the identical argument the two comments above make: reconciling it at ~20
+  // action call sites would be twenty places to forget, and the mood must change
+  // the instant an encounter opens rather than on the next action. `syncScene`
+  // derives the mood with a pure function and returns immediately when it has
+  // not changed, so an ordinary UI-only patch costs one string compare and never
+  // touches the audio graph. It never throws by contract (see `music.ts`), so it
+  // is deliberately UNWRAPPED here for the same reason `reactToEvents` and
+  // `syncPresence` are: a wrapper would hide a real regression. No
+  // `CockpitState` field is added for it.
+  music.syncScene(state);
   emit();
 }
 
@@ -864,6 +1109,71 @@ function readSlots(): SlotSummary[] {
 
 // ---- T-311 onboarding-seen persistence ----------------------------------
 
+// ---- T-187 first-turn walkthrough persistence ---------------------------
+// Guarded exactly like the onboarding pair above: storage may be blocked, and a
+// missing tutorial record is never worth a lost turn. `parseWalkthrough` is TOTAL
+// over any input (see its contract), so a corrupt value degrades to `off` rather
+// than throwing out of `init()`, which runs at module scope.
+
+function readWalkthrough(): WalkthroughRecord {
+  try {
+    return parseWalkthrough(storage.getItem(WALKTHROUGH_KEY));
+  } catch {
+    return parseWalkthrough(null);
+  }
+}
+function writeWalkthrough(record: WalkthroughRecord): void {
+  try {
+    storage.setItem(WALKTHROUGH_KEY, serializeWalkthrough(record));
+  } catch {
+    /* storage unavailable — non-fatal for play */
+  }
+}
+/** Retire a running walkthrough (a slot load / import replaced the career it was
+ *  scripting). `skipped`, not `off`: the player has played before, so it must not
+ *  re-arm on their next New Game either. A no-op when nothing was running. */
+function retireWalkthrough(): WalkthroughRecord {
+  if (!walkthroughActive(state.walkthrough)) return state.walkthrough;
+  const next: WalkthroughRecord = { ...state.walkthrough, status: 'skipped' };
+  writeWalkthrough(next);
+  return next;
+}
+
+// ---- T-200 opening-marker persistence -----------------------------------
+// Guarded exactly like the walkthrough pair above: storage may be blocked, and a
+// missing dispatch record is never worth a lost turn. `parseOpeningMarker` is
+// TOTAL over any input, so a corrupt value degrades to `seen` rather than
+// throwing out of `init()`, which runs at module scope.
+
+/** The stored record, or NULL when the key is genuinely absent. The null case is
+ *  load-bearing — it is the only signal that distinguishes a virgin profile from
+ *  a career that has already read its marker (a CORRUPT value parses to `seen`,
+ *  never to null). */
+function readOpeningMarker(): OpeningMarkerRecord | null {
+  try {
+    const raw = storage.getItem(OPENING_KEY);
+    return raw == null ? null : parseOpeningMarker(raw);
+  } catch {
+    return null;
+  }
+}
+function writeOpeningMarker(record: OpeningMarkerRecord): void {
+  try {
+    storage.setItem(OPENING_KEY, serializeOpeningMarker(record));
+  } catch {
+    /* storage unavailable — non-fatal for play */
+  }
+}
+/** Retire a pending marker (a slot load / import replaced the career it was
+ *  addressed to). A career coming back off disk is mid-flight, not a new run, so
+ *  its stakes have long since been established. A no-op when nothing is pending. */
+function retireOpeningMarker(): OpeningMarkerRecord {
+  if (!openingMarkerPending(state.openingMarker)) return state.openingMarker;
+  const next = seenOpeningMarker();
+  writeOpeningMarker(next);
+  return next;
+}
+
 function readOnboarding(): Record<string, true> {
   try {
     const raw = storage.getItem(ONBOARDING_KEY);
@@ -895,6 +1205,42 @@ function reconcileOnboarding(prev: GameState, next: GameState): Record<string, t
   return seen;
 }
 
+/**
+ * T-141 · THE ONE PLACE THE COCKPIT CALLS THE ENGINE'S ACTION ENTRY POINT.
+ *
+ * Behaviour-preserving by construction: it takes the action, hands it to
+ * `applyPlayerAction` against the live `state.game`, and returns exactly what
+ * the engine returned. Every one of the 20 action thunks below used to call the
+ * engine inline with the live state as its first argument; they now call this
+ * wrapper with the action alone, which is a rename at each site and nothing else.
+ *
+ * WHY IT EXISTS. `docs/PLAYTEST-TELEMETRY_SPEC.md` §1 taps "every `PlayerAction`
+ * passed to `applyPlayerAction`" — the existing, single, typed seam. Twenty
+ * inline call sites are twenty places a later action can forget the tap; one
+ * choke point is one. This is the same argument `reactToEvents` above makes for
+ * the audio/achievement clients, and it is why the capture hook lives HERE
+ * rather than in each thunk.
+ *
+ * THE ENGINE IS UNTOUCHED. `applyPlayerAction` is the engine's own public
+ * surface and `PlayerAction` is a type-only import — no engine source file is
+ * modified by the telemetry feature (spec §7).
+ */
+function applyAction(action: PlayerAction): { state: GameState; events: GameEvent[] } {
+  const result = applyPlayerAction(state.game, action);
+  // T-141 · The opt-in playtest tap. A NO-OP unless the player turned logging on
+  // in Settings — `playtest.recordAction` re-reads the toggle on every call. It
+  // may never throw into the action, for the same reason `storage.ts`'s
+  // `unlockAchievement` may not: a diagnostic must not be able to cost a player
+  // their turn. The PRE-action day is recorded, because that is the day the
+  // player took the action on.
+  try {
+    playtest.recordAction(state.game.day, action, result.events);
+  } catch {
+    /* a lost log line is diagnostic; a lost action is a turn — see playtestLog.ts */
+  }
+  return result;
+}
+
 // ---- actions ------------------------------------------------------------
 
 export function newGame(seed: number): void {
@@ -915,6 +1261,23 @@ export function newGame(seed: number): void {
   // A fresh career re-teaches Tour One: wipe the onboarding-seen record so the
   // contextual prompts fire again from the top.
   writeOnboarding({});
+  // T-187 · A fresh career re-arms the first-turn walkthrough ONLY if it has
+  // never run. Once the player has finished it or skipped it, New Game does NOT
+  // put them back on rails — a captain rolling their fourth seed is not a
+  // first-time player, and re-teaching them would be the "modal tutorial wall"
+  // T-311 exists to avoid. The Settings row (`restartWalkthrough`) is the
+  // deliberate way back.
+  const walkthrough = readWalkthrough().status === 'off' ? armedWalkthrough() : readWalkthrough();
+  writeWalkthrough(walkthrough);
+  // T-200 · A fresh career ALWAYS re-arms the opening marker, and that
+  // unconditional is the one place this differs from the walkthrough directly
+  // above — deliberately. The walkthrough teaches the CONTROLS, which a captain
+  // on their fourth seed already knows. The marker establishes THIS CAREER's
+  // stakes, and every career is out there under a marker of its own: a new Tour
+  // One that opened without one would be a stat line again, which is the exact
+  // thing this task exists to remove.
+  const openingMarker = armedOpeningMarker();
+  writeOpeningMarker(openingMarker);
   set({
     game,
     seed,
@@ -932,6 +1295,8 @@ export function newGame(seed: number): void {
     socialOutcome: null,
     patrolScan: null,
     onboardingSeen: {},
+    walkthrough,
+    openingMarker,
     // T-1605a: the boot's corrupt-save notice is stale the moment the player
     // deliberately starts a career of their own — the fallback career it was
     // explaining no longer exists. The quarantined blob is untouched.
@@ -951,10 +1316,25 @@ export function newGame(seed: number): void {
 export function selectDie(index: number): void {
   const hand = state.game.player.dawnHand;
   if (!hand || hand.spent[index]) return;
+  const armingDie = state.selectedDie !== index;
+  // T-187 · Arming a die is a store-local selection — the engine emits no event
+  // for it, so the walkthrough's step-2 signal cannot come through
+  // `reactToEvents` and is folded in here instead. Set only when a die is
+  // actually being ARMED (clicking the armed die again disarms it, which is not
+  // the taught action), and only while the walkthrough is running.
+  const walkthrough =
+    armingDie && walkthroughActive(state.walkthrough) && !state.walkthrough.flags.dieAssigned
+      ? settleWalkthrough({
+          ...state.walkthrough,
+          flags: { ...state.walkthrough.flags, dieAssigned: true },
+        })
+      : state.walkthrough;
+  if (walkthrough !== state.walkthrough) writeWalkthrough(walkthrough);
   // A fresh selection resets the resolved-check readout AND any prior sweep
   // outcome, so a stale off-lane summary never lingers next to a new action.
   set({
     selectedDie: state.selectedDie === index ? null : index,
+    walkthrough,
     notice: null,
     lastCheck: null,
     explorationOutcome: null,
@@ -966,109 +1346,96 @@ export function selectDie(index: number): void {
 }
 
 export function signContract(contractIndex: number): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then sign.' });
-    return;
-  }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Trade',
       action: 'sign-contract',
       contractIndex,
-      spendDie: die,
     });
     autosave(next, state.seed);
-    // Signing is a die-cost, not a check: it emits no StatCheck, so lastCheck
-    // resolves to null here — the readout stays cleared, which is honest.
+    // Signing emits no StatCheck, so this resolves to null — the readout stays
+    // cleared, which is honest. (HAGGLE is the manifest's one real TRADE roll.)
     const lastCheck = lastCheckFrom(events);
     // Surface an engine refusal (already carrying a contract) instead of a
-    // silent die-deselect. On success this scan returns null and the notice
-    // clears — the previous behaviour, preserved.
+    // silent no-op. On success this scan returns null and the notice clears.
     const notice = failNoticeFrom(events);
+    // T-196c · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3). It neither requires,
+    // consumes, nor DISARMS a die: `selectedDie` / `bloomDie` are deliberately
+    // absent from this patch, so a die armed for the next Main Action survives a
+    // signature untouched. `reactToEvents(_, false)` for the same reason — the
+    // commit cue is the die-spend cue, and no die was spent.
     set({
       game: next,
-      // On refusal the engine spent no die; keep the selection so the player can
-      // retry, and don't bloom a die that was never consumed.
-      selectedDie: notice ? die : null,
-      bloomDie: notice ? null : die,
       notice,
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, !notice);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That action could not be resolved.' });
   }
 }
 
 /**
- * T-1604b · Dump the run riding in the hold (UGT finding F2). Costs a die and the
- * whole payment, so it mirrors `signContract` exactly: a die must be armed first,
- * the ENGINE owns the refusal (nothing in the hold → a failed `TradeEvent` that
- * `failNoticeFrom` surfaces as a visible notice, never a silent no-op), and the
- * die only blooms when the engine actually spent it. No rule lives here — the UI
- * is a client of `resolveTrade`, not its owner.
+ * T-1604b · Dump the run riding in the hold (UGT finding F2). It mirrors
+ * `signContract` exactly: the ENGINE owns the refusal (nothing in the hold → a
+ * failed `TradeEvent` that `failNoticeFrom` surfaces as a visible notice, never a
+ * silent no-op). No rule lives here — the UI is a client of `resolveTrade`, not
+ * its owner. The whole forfeited payment is the cost.
+ *
+ * T-196c · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3) — see `signContract`.
  */
 export function abandonContract(): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then abandon the run.' });
-    return;
-  }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Trade',
       action: 'abandon-contract',
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = failNoticeFrom(events);
+    // T-196c · no die is required, consumed or DISARMED: `selectedDie` /
+    // `bloomDie` are deliberately absent from this patch.
     set({
       game: next,
-      // On refusal the engine spent no die; keep the selection so the player can
-      // retry, and don't bloom a die that was never consumed.
-      selectedDie: notice ? die : null,
-      bloomDie: notice ? null : die,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, !notice);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That action could not be resolved.' });
   }
 }
 
 /**
- * Top up fuel at the local depot. Fueling consumes a die (engine PRD §7: every
- * meaningful action spends a die), so this requires a selection. A shortfall
- * (not enough credits) comes back as a failed TradeEvent and is surfaced via
- * `notice` — never a silent no-op.
+ * Top up fuel at the local depot. A shortfall (not enough credits) comes back as
+ * a failed TradeEvent and is surfaced via `notice` — never a silent no-op.
+ *
+ * T-196c · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3). This verb is where
+ * F-162-1 was found — the old code read the authoritative `spent` flag because
+ * `resolveTrade`'s `buy-fuel` branch used to burn the die BEFORE its
+ * affordability gate, so an unaffordable fill left the whole cockpit rendering
+ * as ARMED over a die the engine had already eaten. M17 removed the burn
+ * entirely, so there is no flag left to read and no way to desynchronise: fuel
+ * neither requires, consumes nor DISARMS a die. Buying fuel silently dropping
+ * your jump die is exactly the regression this shape prevents.
  */
 export function buyFuel(amount: number): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then buy fuel.' });
-    return;
-  }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Trade',
       action: 'buy-fuel',
       fuelAmount: amount,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = failNoticeFrom(events);
+    // `selectedDie` / `bloomDie` are deliberately absent from this patch.
     set({
       game: next,
-      selectedDie: notice ? die : null,
-      bloomDie: notice ? null : die,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, !notice);
+    reactToEvents(events, false);
   } catch (err) {
     set({
       notice: err instanceof Error ? err.message : 'The fuel purchase could not be resolved.',
@@ -1085,7 +1452,7 @@ export function buyFuel(amount: number): void {
  */
 export function payDebt(amount: number): void {
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Trade',
       action: 'pay-debt',
       amount,
@@ -1114,7 +1481,7 @@ export function haggleContract(contractIndex: number): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Trade',
       action: 'haggle',
       contractIndex,
@@ -1160,7 +1527,7 @@ export function travelTo(destinationId: number): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Travel',
       destinationId,
       spendDie: die,
@@ -1252,7 +1619,7 @@ export function explore(): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Explore',
       spendDie: die,
     });
@@ -1327,34 +1694,32 @@ function dareBeatsFrom(events: GameEvent[]): DareBeat[] {
  * `ActionBlocked{active-dare-hand}`. THE SUCCESS SIGNAL IS NOW `next.dareHand !==
  * null` — the scene opened — not an outcome event.
  *
- * A `no-opponent` / `venue-not-offered` / malformed-die fail spends NO die (read
- * the authoritative spent flag), keeps the selection, and surfaces a visible
- * notice, exactly as before.
+ * A `no-opponent` / `venue-not-offered` / `daily-round-limit` fail costs NOTHING,
+ * keeps the selection, and surfaces a visible notice, exactly as before.
+ *
+ * T-197 · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3). Opening a hand no longer
+ * requires, consumes or DISARMS a die, so `selectedDie` survives untouched and no
+ * bloom fires — a player who armed a die for their next Main Action still has it
+ * after sitting down. What bounds the tables now is §4b's rounds-per-day cap,
+ * which the engine enforces and `hangoutRoundsLeft` renders BEFORE the click.
+ * THE SUCCESS SIGNAL IS `next.dareHand !== null` (the scene opened) — the old
+ * `dawnHand.spent[die]` probe no longer exists to be read. The commit CUE does not
+ * fire: it is a die-spend cue and this verb spends no die, the same call T-196c
+ * made for the nine administrative Free Actions.
  */
 export function visitDare(opponentId: string, wager: number): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then wager.' });
-    return;
-  }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'VisitHangout',
       venue: 'dare',
       opponentId,
       wager,
-      spendDie: die,
     });
     autosave(next, state.seed);
-    // The die is spent the instant the Dare commits (past the no-opponent /
-    // malformed-die guards). Read the authoritative spent flag rather than infer.
-    const committed = next.player.dawnHand?.spent[die] === true;
     const failNotice = hangoutFailNoticeFrom(events);
     const opened = next.dareHand !== null;
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice: failNotice,
       // The opening visit rolls nothing the player committed a die to a CHECK for
       // — clear lastCheck so no stale readout lingers over the new table.
@@ -1368,7 +1733,7 @@ export function visitDare(opponentId: string, wager: number): void {
       socialOutcome: null,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That wager could not be resolved.' });
   }
@@ -1402,7 +1767,7 @@ export function dareMove(move: DareMoveKind, quantity?: number, face?: number): 
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Dare',
       move,
       ...(quantity !== undefined ? { quantity } : {}),
@@ -1453,7 +1818,7 @@ export function darePeek(): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Dare',
       move: 'peek',
       spendDie: die,
@@ -1520,28 +1885,34 @@ export function clearDareBeats(): void {
  * affordance would be strictly dominated by the free one already on screen. That is
  * why F-101-4 counts "three of six venues" over a SEVEN-member venue union.
  *
- * A typed fail (`no-opponent`, `venue-not-offered`, malformed die) spends NO die —
- * read the authoritative spent flag rather than infer — keeps the selection, and
- * surfaces a visible notice.
+ * A typed fail (`no-opponent`, `venue-not-offered`, `social-limit-reached`) costs
+ * NOTHING, keeps the selection, and surfaces a visible notice.
+ *
+ * T-197 · ALL THREE ARE FREE ACTIONS (docs/DAWN-HAND-REDESIGN.md §3/§4a). No die
+ * is required, consumed or DISARMED — `selectedDie` / `bloomDie` are deliberately
+ * absent from the patch below, and the commit cue (a die-spend cue) does not fire.
+ * What bounds them now is the SOCIAL POOL: `SOCIAL_PLAYS_PER_DAY` plays shared by
+ * the three, spent on RESOLUTION whatever the outcome (a failed Befriend check
+ * spends one), refused with a typed `social-limit-reached` once out. The remaining
+ * count is rendered beside these controls (`hangoutSocialPlays`) so a refusal is
+ * never the first the player hears of the cap.
+ *
+ * `befriend` STILL ROLLS: the engine draws an internal d20 against the port's
+ * authored DC now that there is no die to aim (§5, owner ruling 2026-08-04), and
+ * still emits the `StatCheck` this function captures into `socialOutcome.check`.
+ * So the honest-dice readout below is unchanged.
  */
 export function visitSocial(venue: 'meet' | 'befriend' | 'insult', opponentId: string): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then approach the tables.' });
-    return;
-  }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'VisitHangout',
       venue,
       opponentId,
-      spendDie: die,
     });
     autosave(next, state.seed);
-    const committed = next.player.dawnHand?.spent[die] === true;
     const failNotice = hangoutFailNoticeFrom(events);
     let socialOutcome: CockpitState['socialOutcome'] = null;
-    if (committed && !failNotice) {
+    if (!failNotice) {
       const hangout = events.find(
         (e): e is Extract<GameEvent, { type: 'HangoutEvent' }> =>
           e.type === 'HangoutEvent' && e.venue === venue,
@@ -1572,8 +1943,6 @@ export function visitSocial(venue: 'meet' | 'befriend' | 'insult', opponentId: s
     }
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice: failNotice,
       // The befriend check rides `socialOutcome.check`, its own readout, not the
       // shared single-check one — clear lastCheck so no stale check lingers.
@@ -1583,7 +1952,7 @@ export function visitSocial(venue: 'meet' | 'befriend' | 'insult', opponentId: s
       socialOutcome,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({
       notice: err instanceof Error ? err.message : 'That was not something the room allowed.',
@@ -1595,33 +1964,30 @@ export function visitSocial(venue: 'meet' | 'befriend' | 'insult', opponentId: s
  * T-1404 · Borrow from Penny Wise's desk (PRD §7.5). A pure CLIENT of the T-1304
  * `VisitHangout{borrow}` venue. The engine clamps the requested principal into the
  * content band, advances it to credits and records the loan (interest accrues later
- * at dusk — never here). A lending precondition refusal (`already-has-loan`) spends
- * NO die and surfaces as a visible notice; on commit the die blooms.
+ * at dusk — never here). A lending precondition refusal (`already-has-loan`) costs
+ * NOTHING and surfaces as a visible notice.
+ *
+ * T-197 · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3), and outside BOTH daily
+ * caps: the desk was always bounded by the single-active-loan slot and the port's
+ * principal band, which is exactly why §3 ruled it free with no new cap owed. No
+ * die is required, consumed or DISARMED — `selectedDie` / `bloomDie` are
+ * deliberately absent from the patch below.
  */
 export function borrowLoan(amount: number): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then borrow.' });
-    return;
-  }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'VisitHangout',
       venue: 'borrow',
       amount,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = loanFailNoticeFrom(events);
-    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That loan could not be resolved.' });
   }
@@ -1631,33 +1997,28 @@ export function borrowLoan(amount: number): void {
  * T-1404 · Repay the Penny Wise loan (PRD §7.5). A pure CLIENT of the T-1304
  * `VisitHangout{repay}` venue. The engine clamps the payment to
  * `min(requested, credits, outstanding)` and clears the whole loan when the balance
- * hits zero. A `no-loan` / `insufficient-credits` refusal spends NO die and surfaces
- * as a visible notice; on commit the die blooms.
+ * hits zero. A `no-loan` / `insufficient-credits` refusal costs NOTHING and
+ * surfaces as a visible notice.
+ *
+ * T-197 · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3), and outside BOTH daily
+ * caps for the reason `borrowLoan` above states: credits and the outstanding
+ * balance were always the real bounds. No die is required, consumed or DISARMED.
  */
 export function repayLoan(amount: number): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then repay.' });
-    return;
-  }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'VisitHangout',
       venue: 'repay',
       amount,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = loanFailNoticeFrom(events);
-    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That payment could not be resolved.' });
   }
@@ -1669,33 +2030,28 @@ export function repayLoan(amount: number): void {
  * role, and this is the single engine call. Crew grant the dawn-hand progression
  * (extra die / re-roll charge / roll floor) at the NEXT dawn — `dawnDiceModifiers`
  * is read in `startDay`, so a mid-day hire does not re-roll the live hand. A typed
- * `CrewEvent{failed}` (no berth / unaffordable / already aboard) spends NO die (read
- * the authoritative spent flag), keeps the selection, and surfaces a visible notice.
+ * `CrewEvent{failed}` (no berth / unaffordable / already aboard) surfaces a visible
+ * notice.
+ *
+ * T-196c · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3): no die is required,
+ * consumed or DISARMED, so `selectedDie` / `bloomDie` are deliberately absent
+ * from the patch below and the commit cue (a die-spend cue) does not fire.
  */
 export function hireCrew(roleId: string): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then hire.' });
-    return;
-  }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Crew',
       action: 'hire',
       roleId,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = crewFailNoticeFrom(events);
-    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That hire could not be resolved.' });
   }
@@ -1703,33 +2059,28 @@ export function hireCrew(roleId: string): void {
 
 /**
  * T-1405 · Dismiss a crew role (PRD §7). A pure CLIENT of the T-1306 `Crew` action's
- * dismiss path — costs a die (like a hire), frees a cabin berth, no refund. A typed
- * `CrewEvent{failed:'not-hired'}` spends NO die and surfaces a visible notice.
+ * dismiss path — frees a cabin berth, no refund. A typed
+ * `CrewEvent{failed:'not-hired'}` surfaces a visible notice.
+ *
+ * T-196a made this a FREE ACTION (no die at all); T-196c retired the UI's
+ * armed-die gate to match (docs/DAWN-HAND-REDESIGN.md §3). No die is required,
+ * consumed or DISARMED — `selectedDie` / `bloomDie` are deliberately untouched.
  */
 export function dismissCrew(roleId: string): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then dismiss.' });
-    return;
-  }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Crew',
       action: 'dismiss',
       roleId,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = crewFailNoticeFrom(events);
-    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That dismissal could not be resolved.' });
   }
@@ -1745,7 +2096,7 @@ export function dismissCrew(roleId: string): void {
  */
 export function reroll(dieIndex: number): void {
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Reroll',
       dieIndex,
     });
@@ -1766,37 +2117,32 @@ export function reroll(dieIndex: number): void {
 
 /**
  * T-1405 · Buy a controlling stake in the local port authority (PRD §9). A pure
- * CLIENT of the T-1307 `Port` action: the trade pane arms a die and this is the
+ * CLIENT of the T-1307 `Port` action: the trade pane names the buy and this is the
  * single engine call. `systemId` is always the current system — the engine requires
  * you buy the port you stand in. The stake accrues per-dusk launch-fee income
  * (surfaced in the ledger, accrued by day.ts endDay). A typed `PortEvent{failed}`
- * (not-at-port / not-purchasable / already-owned / unaffordable) spends NO die and
- * surfaces a visible notice; on commit the die blooms.
+ * (not-at-port / not-purchasable / already-owned / unaffordable) surfaces a visible
+ * notice.
+ *
+ * T-196c · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3): no die is required,
+ * consumed or DISARMED, so `selectedDie` / `bloomDie` are deliberately absent
+ * from the patch below.
  */
 export function buyPort(): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then buy the port.' });
-    return;
-  }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Port',
       action: 'buy',
       systemId: state.game.player.currentSystemId,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const notice = portFailNoticeFrom(events);
-    const committed = next.player.dawnHand?.spent[die] === true;
     set({
       game: next,
-      selectedDie: committed ? null : die,
-      bloomDie: committed ? die : null,
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    reactToEvents(events, committed);
+    reactToEvents(events, false);
   } catch (err) {
     set({
       notice: err instanceof Error ? err.message : 'That port purchase could not be resolved.',
@@ -1824,7 +2170,7 @@ export function combat(stance: 'run' | 'talk' | 'fight'): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Combat',
       stance,
       targetId: encounter.interceptor.id,
@@ -1913,21 +2259,21 @@ function shipyardFailFrom(events: GameEvent[]): ShipyardFail | null {
 /**
  * Commit a shipyard purchase / repair (T-308). The pane previews every action
  * through the engine's pure `quoteShipyard` and only enables a button when the
- * quote is `ok`, so a die is never wasted on a predictable refusal — important
- * because the engine (by the established ShipyardFail convention) spends the die
- * BEFORE the business checks. If a refusal does slip through (e.g. a race with
- * state change) it is surfaced as a visible notice via the typed reason, never a
- * silent no-op. On success the spent die blooms and the selection clears; the
- * shipyard emits no StatCheck, so `lastCheck` stays null.
+ * quote is `ok`; if a refusal does slip through (e.g. a race with state change)
+ * it is surfaced as a visible notice via the typed reason, never a silent no-op.
+ * The shipyard emits no StatCheck, so `lastCheck` stays null.
+ *
+ * T-196c · A FREE ACTION, all four kinds (docs/DAWN-HAND-REDESIGN.md §3). This
+ * was the ONE creator that cleared `selectedDie` unconditionally and bloomed the
+ * die — a bloom is the die-spent flash, and T-196a stopped spending, so both
+ * were a visual lie about a die the yard no longer touches. Neither key appears
+ * in the patch below: a Free Action must not disarm the die a player armed for
+ * their next Main Action. (`bloomDie` is OMITTED, not nulled — nulling it would
+ * kill an in-flight bloom from a preceding Main Action, which `clearBloom` owns.)
  */
 export function shipyard(request: ShipyardRequest): void {
-  const die = state.selectedDie;
-  if (die === null) {
-    set({ notice: 'Pick a die from the hand first, then buy.' });
-    return;
-  }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Shipyard',
       action: request.action,
       component: request.component,
@@ -1935,24 +2281,19 @@ export function shipyard(request: ShipyardRequest): void {
       repairMode: request.repairMode,
       quantity: request.quantity,
       equipment: request.equipment,
-      spendDie: die,
     });
     autosave(next, state.seed);
     const fail = shipyardFailFrom(events);
     const notice = fail ? shipyardFailureExplanation(fail) : null;
     set({
       game: next,
-      // The die is spent either way (engine convention). Bloom it and clear the
-      // selection; on a refusal the notice explains what happened.
-      selectedDie: null,
-      bloomDie: die,
       notice,
       lastCheck: null,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    // The shipyard spends the die before its business checks (engine convention),
-    // so this is always committed; a refusal emits ShipyardFail → the fail cue.
-    reactToEvents(events, true);
+    // No die was committed, so the commit cue must not fire. The FAIL cue is
+    // unaffected: `cuesForEvents` reads ShipyardFail unconditionally.
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That yard order could not be resolved.' });
   }
@@ -1977,7 +2318,7 @@ export function resolveStorylet(storyletId: string, choiceId: string, needsDie: 
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Storylet',
       storyletId,
       choiceId,
@@ -2172,6 +2513,14 @@ export function loadSlot(n: number): void {
     // the player since T-312 — see the `Slot N is corrupt` notice above.)
     recovery: null,
     // Do NOT reset onboardingSeen — loading a mid-career save shouldn't re-teach.
+    // T-187 · An active walkthrough is scripting a career that no longer exists,
+    // so a slot load RETIRES it rather than pointing at panes belonging to a
+    // different day. Skipped, not reset: the player has demonstrably played
+    // before, so it must not re-arm on their next New Game either.
+    walkthrough: retireWalkthrough(),
+    // T-200 · Same reasoning: the loaded career is mid-flight, and its stakes
+    // were established the day it was born. A slot load is not a new run.
+    openingMarker: retireOpeningMarker(),
   });
   // T-1702a · A slot can hold a career earned long before this build (or on the
   // web build), so its Registry is reconciled the same way the autosave's is.
@@ -2295,6 +2644,12 @@ export async function importCareer(file: File): Promise<void> {
     // The boot recovery notice (if any) described the career this one replaces.
     recovery: null,
     // Do NOT reset onboardingSeen — importing a mid-career save shouldn't re-teach.
+    // T-187 · Same reasoning as `loadSlot`: the imported career is not the one
+    // the walkthrough was scripting, and its owner is not a first-time player.
+    walkthrough: retireWalkthrough(),
+    // T-200 · Same reasoning as `loadSlot`: an imported career is mid-flight, so
+    // its marker was called long before this install ever saw it.
+    openingMarker: retireOpeningMarker(),
   });
   // The imported Registry may have been earned on another install entirely.
   mirrorEarned(game);
@@ -2332,6 +2687,135 @@ export function setTextSize(size: TextSize): void {
   set({ textSize: size });
 }
 
+// ---- T-141 opt-in playtest logging --------------------------------------
+//
+// The player-operated half of `docs/PLAYTEST-TELEMETRY_SPEC.md`. Four actions,
+// all of them Settings-panel controls, none of them on the hot path:
+//
+//   * `setPlaytestLogging` — the consent toggle (OFF by default, spec §3);
+//   * `flagPlaytestMoment` — the "flag this moment" annotation (spec §1);
+//   * `recordPlaytestCrash` — the `ErrorBoundary`'s entry point (spec §1);
+//   * `exportPlaytestLog`   — the player-triggered export (spec §5).
+//
+// NO NETWORK CALL EXISTS ANYWHERE IN THIS FEATURE. Spec §5 settles submission as
+// an explicit export the player performs, because this repository has no server
+// to submit to and standing one up is a separate, larger feature with its own
+// disclosure and retention policy. `__tests__/playtest-no-network.test.ts` scans
+// this file for every transport by name (its FORBIDDEN list is the authority),
+// and `__tests__/playtest-log.test.ts` runs a real export with throwing spies
+// installed on all of them.
+
+/**
+ * Turn playtest capture on or off, and persist the answer.
+ *
+ * The one place consent is granted or withdrawn. Turning it OFF stops capture
+ * immediately — `playtestLog.ts`'s recorders re-read the key on every call — and
+ * deliberately does NOT discard what was already captured: a tester who toggles
+ * off to end a session still wants to export it.
+ */
+export function setPlaytestLogging(on: boolean): void {
+  playtest.setPlaytestLoggingEnabled(on);
+  set({
+    playtestLogging: on,
+    notice: on
+      ? `Playtest logging on. ${playtest.PLAYTEST_DISCLOSURE}`
+      : 'Playtest logging off. Nothing further will be recorded.',
+  });
+}
+
+/**
+ * T-141 · "Flag this moment" — tag the current point in the stream with the
+ * tester's own words (spec §1).
+ *
+ * WITH LOGGING OFF THIS IS NOT SILENT. The note would be dropped by the recorder
+ * (correctly — capture is opt-in), so the player is told why instead, on the
+ * same "every refusal reaches the player, never a silent no-op" rule the engine
+ * refusals follow. An empty note is likewise reported rather than swallowed.
+ */
+export function flagPlaytestMoment(note: string): void {
+  if (!playtest.isPlaytestLoggingEnabled()) {
+    set({ notice: 'Turn on Playtest logging in Settings first — nothing is being recorded.' });
+    return;
+  }
+  const before = playtest.playtestLogSize();
+  playtest.recordAnnotation(state.game.day, note);
+  set({
+    notice:
+      playtest.playtestLogSize() > before
+        ? `Moment flagged on day ${state.game.day}.`
+        : 'Write a note to flag first.',
+  });
+}
+
+/**
+ * T-141 · Record a caught render fault into the playtest log (spec §1).
+ *
+ * THE ENTRY POINT `ErrorBoundary` CALLS, and it lives here rather than in the
+ * boundary on purpose: the boundary's hard rule is that its crash screen reads
+ * NO game state and formats NO numbers, because a recovery screen that re-enters
+ * the code that just failed is not a recovery screen. The day the entry needs is
+ * read HERE, inside a `try/catch` that swallows, so the boundary hands over an
+ * error and nothing else.
+ *
+ * NEVER THROWS. A logger that faults while logging a fault would turn one crash
+ * into two, and the second would land outside any boundary.
+ */
+export function recordPlaytestCrash(error: unknown): void {
+  try {
+    playtest.recordError(state.game.day, error);
+  } catch {
+    /* a crash must not be able to crash the crash handler */
+  }
+}
+
+/**
+ * T-141 · Write the session's captured log out as a file the player keeps
+ * (spec §5).
+ *
+ * A CLONE OF `exportCareer` ABOVE, deliberately and structurally: Blob → object
+ * URL → synthetic anchor click → revoke on the next tick. That path works
+ * identically on the web build and inside the Electron shell (a Chromium
+ * renderer with a real download manager), which is why this task adds no
+ * save-dialog IPC channel. Nothing here reaches a network.
+ *
+ * `json` writes JSONL bytes — spec §6 settles JSONL as THE format and §5's
+ * "JSON or CSV" is the two flavours of that one record (see
+ * `playtestLogFileName`).
+ *
+ * Never throws into the caller: a failed export is a notice, not a lost turn.
+ */
+export function exportPlaytestLog(format: 'json' | 'csv'): void {
+  const entries = playtest.snapshotPlaytestLog();
+  if (entries.length === 0) {
+    // An empty file is worse than a refusal: the tester attaches it to a report
+    // and nobody notices it says nothing until the triage call.
+    set({
+      notice: playtest.isPlaytestLoggingEnabled()
+        ? 'Nothing captured yet — take an action first.'
+        : 'Playtest logging is off, so there is nothing to export.',
+    });
+    return;
+  }
+  try {
+    const body = format === 'csv' ? playtest.toCsv(entries) : playtest.toJsonl(entries);
+    const blob = new Blob([body], {
+      type: format === 'csv' ? 'text/csv' : 'application/x-ndjson',
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = playtest.playtestLogFileName(format, entries.length);
+    anchor.click();
+    // Revoke on the next tick, for the reason `exportCareer` states.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    set({
+      notice: `Playtest log exported — ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}.`,
+    });
+  } catch {
+    set({ notice: 'That playtest log could not be exported.' });
+  }
+}
+
 export function clearBloom(): void {
   if (state.bloomDie !== null) set({ bloomDie: null });
 }
@@ -2346,6 +2830,57 @@ export function dismissOnboarding(id: string): void {
   const seen: Record<string, true> = { ...state.onboardingSeen, [id]: true };
   writeOnboarding(seen);
   set({ onboardingSeen: seen });
+}
+
+// ---- T-187 first-turn walkthrough actions --------------------------------
+
+/**
+ * Acknowledge the current step — the card's "Next" button, and the ONLY way the
+ * two reading steps (1 · the dawn hand, 5 · the payout) advance. Flips the
+ * record to `done` when that was the last step.
+ */
+export function ackWalkthroughStep(): void {
+  const next = ackWalkthroughRecord(state.walkthrough);
+  if (next === state.walkthrough) return;
+  writeWalkthrough(next);
+  set({ walkthrough: next });
+}
+
+/**
+ * "Skip tutorial" — the Accept's explicit escape, on every card. Retires the run
+ * for good: every region un-inerts on the next render and the card unmounts. A
+ * player who wants it back uses the Settings row below.
+ */
+export function skipWalkthrough(): void {
+  if (state.walkthrough.status === 'skipped') return;
+  const next: WalkthroughRecord = { ...state.walkthrough, status: 'skipped' };
+  writeWalkthrough(next);
+  set({ walkthrough: next });
+}
+
+/**
+ * Settings → "Replay first-turn walkthrough". Resets the record to `off`, which
+ * is the ONE state `newGame` re-arms from — so the replay lands on a fresh
+ * career at step 1 rather than dropping rails over a career already in flight.
+ */
+export function restartWalkthrough(): void {
+  const next: WalkthroughRecord = { v: 1, status: 'off', acked: {}, flags: {} };
+  writeWalkthrough(next);
+  set({ walkthrough: next });
+}
+
+// ---- T-200 opening-marker action -----------------------------------------
+
+/**
+ * "SIGN AND UNDOCK" — the dispatch's one control. Marks the marker read for this
+ * career and releases the cockpit underneath (which was alive the whole time,
+ * just covered). A no-op once seen, so a double-click cannot write twice.
+ */
+export function dismissOpeningMarker(): void {
+  if (!openingMarkerPending(state.openingMarker)) return;
+  const next = seenOpeningMarker();
+  writeOpeningMarker(next);
+  set({ openingMarker: next });
 }
 
 export function dayIsOver(): boolean {

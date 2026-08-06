@@ -369,11 +369,11 @@ describe('Encounter system', () => {
       { actionType: 'Travel', action: { type: 'Travel', destinationId: 2, spendDie: 0 } },
       {
         actionType: 'Trade',
-        action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+        action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
       },
       {
         actionType: 'Shipyard',
-        action: { type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1, spendDie: 0 },
+        action: { type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1 },
       },
     ];
 

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 import { createInitialState, startDay, createSave, type GameState } from '@spacerquest/engine';
 import { FENCE_REP_FLAG, PURCHASABLE_PORTS_BY_SYSTEM } from '@spacerquest/content';
 
@@ -27,7 +28,7 @@ import { FENCE_REP_FLAG, PURCHASABLE_PORTS_BY_SYSTEM } from '@spacerquest/conten
 const CREW_SEED = 1;
 
 // ---- Test B: seeded patrol contraband scan ----------------------------------
-// Seed 11 deals [20,15,13,12,11] on Sun-3. Carrying a sealed contraband pod AND a
+// Seed 11 deals [20,15,13,12,11] on Sol-3. Carrying a sealed contraband pod AND a
 // known fence reputation (FENCE_REP_FLAG lowers the scan DC by 4), the 1→2 jump is
 // intercepted by the PATROL "Lt.Savage", who rolls a GUILE scan: die 9 vs DC 6 →
 // CAUGHT. The pod is confiscated and a 500cr fine is levied. Derived offline; the
@@ -39,7 +40,7 @@ const PATROL_CHECK_DIE = 9;
 const PATROL_CHECK_DC = 6;
 
 // ---- Test C: buy a port, income ticks at dusk -------------------------------
-// Seed 1 starts on Sun-3 (system 1, a purchasable core port). The purse is staked
+// Seed 1 starts on Sol-3 (system 1, a purchasable core port). The purse is staked
 // to the price plus headroom, the buy commits, and the stake accrues its base
 // income at dusk (no era event modulates system 1 at day 1).
 //
@@ -51,7 +52,7 @@ const PATROL_CHECK_DC = 6;
 // says rather than a number someone typed twice. Same idiom `derule.spec.ts`
 // enforces on the rest of the cockpit.
 const PORT_SEED = 1;
-const PORT_SYSTEM = 1; // Sun-3 — where seed 1 starts.
+const PORT_SYSTEM = 1; // Sol-3 — where seed 1 starts.
 const PORT_PRICE = PURCHASABLE_PORTS_BY_SYSTEM[PORT_SYSTEM].purchasePrice;
 const PORT_DUSK_INCOME = PURCHASABLE_PORTS_BY_SYSTEM[PORT_SYSTEM].baseDuskIncome;
 /** Enough to buy outright and still fly afterwards — never a bare-minimum purse,
@@ -63,6 +64,10 @@ test.beforeEach(async ({ page }) => {
   // the instant we read it. Each test injects its own fixture (Playwright gives
   // every test an isolated context, so localStorage starts empty — no clear needed).
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 /** Boot the store straight into a scenario via the save envelope, then navigate. */
@@ -94,18 +99,23 @@ test('with a hired crew the dock shows 6 dice and the re-roll works through the 
   // A fresh (crewless) dawn hand is the base 5 dice.
   await expect(page.getByTestId('die')).toHaveCount(5);
 
-  // Hire all three roles through the ShipPane — each spends a die.
-  const hire = async (dieIdx: number, roleId: string) => {
-    await page.locator('[data-testid="die"][data-spent="0"]').nth(0).click();
+  // Hire all three roles through the ShipPane. T-196a: a hire is a FREE ACTION
+  // (docs/DAWN-HAND-REDESIGN.md §3), so no die is consumed; T-196c retired the
+  // cockpit's armed-die gate on the button to match, so no die needs arming here
+  // at all — the whole arm-only-if-not-armed scaffold this loop used to carry is
+  // gone with it.
+  const hire = async (roleId: string) => {
     await page.locator(`[data-testid="hire-crew"][data-role-id="${roleId}"]`).click();
     await expect(
       page.locator(`[data-testid="crew-member"][data-role-id="${roleId}"]`),
     ).toBeVisible();
-    void dieIdx;
   };
-  await hire(0, 'crew-second'); // First Officer — +1 die
-  await hire(1, 'crew-navigator'); // Navigator — one re-roll/day
-  await hire(2, 'crew-quartermaster'); // Quartermaster — floor 5
+  await hire('crew-second'); // First Officer — +1 die
+  await hire('crew-navigator'); // Navigator — one re-roll/day
+  await hire('crew-quartermaster'); // Quartermaster — floor 5
+  // Nothing was armed and nothing was spent: three Free Actions left the hand
+  // exactly as dawn dealt it.
+  await expect(page.locator('[data-testid="die"][data-spent="1"]')).toHaveCount(0);
 
   // Crew benefits land at DAWN (dawnDiceModifiers is read in startDay), so roll
   // into the next day, then read the grown hand.

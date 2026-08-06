@@ -55,6 +55,13 @@ this one dates that change, because "same game, rewritten explanation" is worth 
 when a comment disagrees with a number. Report it, never gate on it. Fixtures extracted
 before N7-FP simply lack the field, which is not a mismatch.
 
+**T-183 (2026-08-04) gave the AGGREGATE a stamp of its own.** Since then
+`npm run balance:sweep -- --merge` writes `rulesFingerprint`, `instrumentFingerprint` and
+`gitCommit` onto `docs/balance/baseline-<label>.json` at write time (closing F-142-1), so a
+freshly merged aggregate answers "which ruleset?" without borrowing this fixture's answer.
+`npm run balance:report -- --provenance docs/balance/smoke/tiers.json` is therefore now needed
+only for **pre-T-183** aggregates, which carry no stamp and are deliberately never rewritten.
+
 The fixture in this folder is `tiers.json`. Regenerate it with
 `npm run balance:extract` (never by hand); check it with `npm run balance:smoke`.
 
@@ -81,6 +88,14 @@ change to *code* — a constant, an operator, an import — still moves the hash
 When the fingerprint moves, that is not a problem to route around: it means the rules
 changed, the checkpoints describe the old rules, and the honest fix is a new capstone.
 
+**Which fields a re-extraction may move is CHECKED, not remembered** (T-166).
+`packages/sim/src/__tests__/smoke-reextraction.test.ts` re-extracts `tiers.json` from the
+baseline its own `provenance.sweepLabel` names and requires that only `productVersion`, the
+three fingerprints and `provenance` differ — every checkpoint, tier spread, seed list and
+`saveSchemaVersion` byte-identical. The same rule is asserted against the T-110 precedent
+(`3468ef5f`) that BR-8 cites, read out of git rather than out of a summary. If it goes red,
+re-extract; never hand-edit this fixture.
+
 **The one exception, and it is narrow.** If the hash *algorithm* changes, every fingerprint
 moves at once while no rule has changed — re-extract from the unchanged baseline of record
 rather than re-measuring, and say so explicitly in the commit. This has happened twice: at
@@ -92,10 +107,102 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t137-liars-dice.json`, re-pinned at T-137
-2026-07-31; this line was left stale at `baseline-t125-hangout.json` through T-131 and T-133
-and is corrected here) used `--milestone-days 21,29,30,41,60,120` over all eight policies including
+exactly like drift. The current baseline (`baseline-t175-archetype-ordering.json`, re-pinned at
+T-175 2026-08-06 — F-160-1's close, which makes `archetypeMove`'s `optimal` branch READ the
+standing claim (`probClaimTrue` / `creditedClaimSupport`, `minOpeningQuantity` read backwards,
+no free parameter) instead of pricing it with the unconditioned Binomial. The archetype
+ordering un-inverts at every tier: bad − optimal −6.64 pp (z −12.74) -> +16.09 pp (z +28.99).
+BOTH fingerprints move — `rulesFingerprint` f264d7f4a2d56fde -> cabd2112ccf4cefb and
+`instrumentFingerprint` b8894cb6c678fce6 -> e84d8e074fde0b98 — so it is deliberately NOT a
+single-arm attribution. TWO OF THE TEN ROWS MOVED — fleet and gambler; the other seven came
+back byte-identical — PREDICTED IN WRITING BEFORE THE RUN with its containment argument
+(`archetypeMove` has one call site, reachable only through an open Liar's Dice hand, and
+`planDare` is queued by `gamblerPolicy` and by nothing else). Gambler `finalCredits.median`
+115,612 -> 63,653. One shape change reported and not suppressed:
+`byPolicy[gambler].renownRanks.ADMIRAL`. Gate PASS, 0 invariant violations, nothing tuned in
+response. The one before it was `baseline-t168-effective-band.json` (T-168) — F-148-4's fix,
+which makes `planDare` and the UGT protocol enumerator size
+the Dare wager domain off the engine's new `preHandWagerBand` (the unlock tier's EFFECTIVE
+band) instead of the port's raw tier-0 band, so a career can at last REQUEST into the raised
+tier-4 ceiling and tier 5's removed clamp. It moves BOTH fingerprints — `rulesFingerprint`
+2f93098dc9ab15f0 -> f264d7f4a2d56fde and `instrumentFingerprint` 5c230e99648cddee ->
+b8894cb6c678fce6 — so it is deliberately NOT a single-arm attribution. TWO OF THE TEN ROWS
+MOVED — fleet and gambler; explorer, fighter, greedy, smuggler, trader, trader-degraded and
+veteran came back byte-identical — which was PREDICTED IN WRITING BEFORE THE RUN with its
+containment argument (`planDare` is called by `gamblerPolicy` and by nothing else, and fleet
+pools it). Gambler `finalCredits.median` 80,244 -> 115,612. One shape change reported and not
+suppressed: `byPolicy[gambler].renownRanks.GIGA_HERO`. Gate PASS, 0 invariant violations,
+nothing tuned in response. The one before it was
+`baseline-t208-quest-captain-ports.json` (T-208), the M19 milestone closer, giving the 11
+`QUEST_PROFILES` captains a
+DECLARED HOME PORT (`NpcProfile.homePortSystemId`) instead of the arbitrary
+`(index % 20) + 1` seed that had frozen six of them at rim systems with no Cantina for a whole
+career. It moves `rulesFingerprint` (cbb087860825aa35 -> 2f93098dc9ab15f0 — content is hashed
+wholesale, and `state.ts` / `save.ts` are hashed engine rule modules) and NOT
+`instrumentFingerprint` (unmoved at 5c230e99648cddee). SIX OF THE TEN ROWS MOVED — fleet,
+explorer, gambler, greedy, smuggler, veteran; fighter, trader and trader-degraded came back
+byte-identical — which was PREDICTED IN WRITING BEFORE THE RUN with its channel named
+(`resolveVisitHangout` picks a co-located Dare dealer with no `isSimulatedCaptain` filter, and
+the bond hook requires co-location). Headline movement is small in every direction: fleet
+`tourOneClearRate` 0.6329 -> 0.6348, fleet `finalCredits.median` 49,839 -> 49,687. Gate PASS,
+0 invariant violations, nothing tuned in response. The one before it was
+`baseline-t206-captain-voice.json` (T-206), a CONTENT-ONLY capstone shipping the cast's
+authored VOICE, where EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL — "NOTHING
+MOVED. Every compared field is equal on both sides." — predicted in writing before the run
+(`TASKS.md` T-206), where a moved row was pre-committed as a finding to escalate rather than
+something to re-baseline around. Gate PASS, 0 invariant violations;
+before that `baseline-t204-cantina-rename.json` at T-204 — a TEXT-ONLY capstone shipping the player-facing "Hangout" -> "Cantina"
+rename: authored prose STRING VALUES only, with no rule, DC, band, threshold or code path
+changed. It moves `rulesFingerprint` (f33b6af1ee21dffa -> 5ae9a5d473827024 — content is hashed
+wholesale, so even pure text moves it) and NOT `instrumentFingerprint` (unmoved at
+5c230e99648cddee), so it is a clean single-arm attribution. EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK BYTE-IDENTICAL — "NOTHING
+MOVED. Every compared field is equal on both sides." That was predicted in writing before the
+run and is an INSTRUMENT-GAP NULL RESULT rather than a verdict that the new ceiling is
+balanced: the sim's gambler is the only policy that plays a Dare and is bounded at
+`GAMBLER_MAX_DARES_PER_DAY = 2`, below the ruled ceiling, so it plays the same 1,2,2,2,2,2
+hands by tier under both tables (F-202-1, `TASKS.md` T-202);
+before that `baseline-t197-hangout-caps.json` at T-197 — the M17 MILESTONE CLOSER, which freed
+all seven Hangout venues and replaced the die with two daily caps
+(`docs/DAWN-HAND-REDESIGN.md` §3/§4a/§4b). It is the first capstone
+of the arc to move BOTH `rulesFingerprint` (10e19c88e9a07856) and `instrumentFingerprint`
+(5c230e99648cddee), so unlike the arm-1/arm-2 pair before it its diff cannot be split into
+rule effect and exploitation effect. THREE of the eight policy rows moved — `gambler`,
+`smuggler`, `trader-degraded` — and `fighter` came back BYTE-IDENTICAL, which is the
+measured answer to the Insult farming question: no sim policy plays a social venue, so the
+loop cannot be exhibited by this instrument at all;
+before that `baseline-t196b-instruments.json` at T-196b — the M17 arm-2 capstone, which taught the eight sim policies and the protocol
+enumerator to stop budgeting a dawn die for those nine (`docs/DAWN-HAND-REDESIGN.md` §3). It
+moves `instrumentFingerprint` and NOT `rulesFingerprint`, and moves seven of the eight policy
+rows — all but `greedy`, whose day plan did not change;
+before that `baseline-t196a-free-actions.json` at T-196a — the M17 arm-1 capstone, which freed
+those nine in the ENGINE while deliberately leaving the instruments budgeting for them, and
+moved exactly two policy rows, `explorer` and `smuggler` — the only two that queue `Explore`;
+before that `baseline-t199-pacifist.json` at T-199 — the F-150-2 capstone, which took
+`assertNoIncomeStall` from 7 violations to 0 and moved all eight policy rows except `greedy`;
+before that `baseline-t195-dawn-dice.json` at T-195 — the travel-die bake-off, a real and
+intended broad easing in which all eight policies moved; before that
+`baseline-t188-orbital-3d.json` at T-188 — proven inert for its own changes, its movement being
+T-161's already-accepted `veteranPolicy` fix getting its first capstone; before that
+`baseline-t160-dealer-fix.json` at T-160 — the F-137-1 capstone, which shipped the Liar's Dice
+OPENING FLOOR and moves exactly the `gambler` and `fleet` rows against `t182-reroll-fix`;
+before that `baseline-t182-reroll-fix.json` at T-182 — the F-156-1 `spendDie` capstone, which
+moved `rulesFingerprint` and moved NO number, `balance:diff` from `n13-shipped` reporting
+NOTHING MOVED; before that `baseline-n13-shipped.json` at T-156,
+`baseline-t150-postfix.json` at T-150, `baseline-t148-roster-ladder.json` at T-148
+and `baseline-t137-liars-dice.json` at T-137.) Every capstone in that chain used
+`--milestone-days 21,29,30,41,60,120` over all eight policies including
 `trader-degraded` — the same shape every capstone back to `baseline-r2c-explorer-remit.json`.
+
+**This line has now gone stale twice, and is no longer enforced by hand.** It sat at
+`baseline-t125-hangout.json` through T-131 and T-133 before T-137 caught it; it then went stale
+AGAIN through T-188, T-195 and T-199, each of which re-pinned the baseline without moving this
+pointer (T-199 moved two of the five sites and said so), and was corrected at T-165. That task
+is also why it should not happen a third time:
+`packages/sim/src/__tests__/baseline-pointers.test.ts` reads all five pointer sites — this line,
+`balance-targets.test.ts`'s `BASELINE_OF_RECORD_PATH`, `docs/NPC_REDESIGN.md`'s status banner and
+standing amendment 1, and BR-14's own sentence in `docs/BALANCE-RIG-DECISIONS.md` — and fails
+when any of them disagrees.
+
 Note also that `docs/balance/` keeps every historical capstone: **`baseline-n9-shipped.json`
 is superseded**, and diffing against it reports ~2,000 already-accounted-for fields.
 

@@ -44,8 +44,15 @@ function shipyardState(credits = 200000): GameState {
   return state;
 }
 
-function expectSpentDie(state: GameState, index = 0): void {
-  expect(state.player.dawnHand?.spent[index]).toBe(true);
+/**
+ * T-196a · INVERTED, NOT DELETED. This helper asserted `spent[index] === true` until
+ * M17 made the whole yard a FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3). Every one of
+ * its ~20 call sites is a place the old rule was proven, so each is now a place the
+ * NEW rule is proven: a yard order — bought, refused, conflicted or rank-gated —
+ * leaves the dawn hand exactly as it found it. The name changed with the meaning.
+ */
+function expectDieUntouched(state: GameState, index = 0): void {
+  expect(state.player.dawnHand?.spent[index]).toBe(false);
 }
 
 describe('shipyard', () => {
@@ -61,12 +68,11 @@ describe('shipyard', () => {
         action: 'buy-component-tier',
         component: 'weapons',
         tier,
-        spendDie: 0,
       });
 
       expect(result.state.player.credits).toBe(startingCredits - expectedCost);
       expect(result.state.player.ship.weapons).toEqual({ strength: tier * 10, condition: 9 });
-      expectSpentDie(result.state);
+      expectDieUntouched(result.state);
       expect(result.events).toEqual([
         {
           type: 'ShipyardEvent',
@@ -89,7 +95,6 @@ describe('shipyard', () => {
       action: 'buy-component-tier',
       component: 'hull',
       tier: 1,
-      spendDie: 0,
     });
 
     expect(result.state.player.ship.hull).toEqual({ strength: 10, condition: 9 });
@@ -109,7 +114,6 @@ describe('shipyard', () => {
       action: 'buy-component-tier',
       component: 'hull',
       tier: 2,
-      spendDie: 0,
     });
 
     expect(after.player.ship.hull.strength).toBe(20);
@@ -140,11 +144,10 @@ describe('shipyard', () => {
       type: 'Shipyard',
       action: 'buy-special-equipment',
       equipment,
-      spendDie: 0,
     });
 
     expect(result.state.player.credits).toBe(startingCredits - expectedCost);
-    expectSpentDie(result.state);
+    expectDieUntouched(result.state);
     expect(result.events).toEqual([
       {
         type: 'ShipyardEvent',
@@ -194,7 +197,6 @@ describe('shipyard', () => {
         type: 'Shipyard',
         action: 'buy-special-equipment',
         equipment,
-        spendDie: 0,
       });
 
       expect(result.state.player.credits).toBe(startingCredits - 20000);
@@ -252,14 +254,13 @@ describe('shipyard', () => {
         type: 'Shipyard',
         action: 'buy-special-equipment',
         equipment,
-        spendDie: 0,
       });
 
       expect(result.state.player.credits).toBe(startingCredits);
       expect(result.state.player.ship).toEqual(startingShip);
       // Shipyard spends the die before business checks (established ShipyardFail
       // convention) — the refusal still consumes the die.
-      expectSpentDie(result.state);
+      expectDieUntouched(result.state);
       expect(result.events).toEqual([
         {
           type: 'ShipyardFail',
@@ -311,12 +312,11 @@ describe('shipyard', () => {
         type: 'Shipyard',
         action: 'buy-special-equipment',
         equipment: attempted,
-        spendDie: 0,
       });
 
       expect(result.state.player.credits).toBe(startingCredits);
       expect(result.state.player.ship).toEqual(startingShip);
-      expectSpentDie(result.state);
+      expectDieUntouched(result.state);
       expect(result.events).toEqual([
         {
           type: 'ShipyardFail',
@@ -337,7 +337,6 @@ describe('shipyard', () => {
       type: 'Shipyard',
       action: 'buy-cargo-pods',
       quantity: 3,
-      spendDie: 0,
     });
 
     expect(success.state.player.ship.cargoPods).toBe(8);
@@ -353,7 +352,6 @@ describe('shipyard', () => {
       type: 'Shipyard',
       action: 'buy-cargo-pods',
       quantity: 1,
-      spendDie: 0,
     });
 
     expect(failed.state.player.ship.cargoPods).toBe(10);
@@ -376,7 +374,6 @@ describe('shipyard', () => {
       action: 'repair',
       component: 'drives',
       repairMode: 'single',
-      spendDie: 0,
     });
     expect(singleResult.state.player.credits).toBe(199990);
     expect(singleResult.state.player.ship.drives.condition).toBe(9);
@@ -397,7 +394,6 @@ describe('shipyard', () => {
       action: 'repair',
       component: 'drives',
       repairMode: 'single',
-      spendDie: 0,
     });
     expect(rebuildResult.state.player.credits).toBe(197990);
     expect(rebuildResult.state.player.ship.drives.condition).toBe(1);
@@ -409,7 +405,6 @@ describe('shipyard', () => {
       action: 'repair',
       component: 'drives',
       repairMode: 'all',
-      spendDie: 0,
     });
     expect(allOneResult.state.player.credits).toBe(199980);
     expect(allOneResult.state.player.ship.drives.condition).toBe(9);
@@ -421,7 +416,6 @@ describe('shipyard', () => {
       type: 'Shipyard',
       action: 'repair',
       repairMode: 'all',
-      spendDie: 0,
     });
     expect(allComponentsResult.state.player.credits).toBe(197809);
     expect(allComponentsResult.state.player.ship.hull.condition).toBe(9);
@@ -438,7 +432,6 @@ describe('shipyard', () => {
       action: 'repair',
       component: 'hull',
       repairMode: 'single',
-      spendDie: 0,
     });
 
     expect(result.events).toEqual([
@@ -450,7 +443,7 @@ describe('shipyard', () => {
         reason: 'AT_MAX_CONDITION',
       },
     ]);
-    expectSpentDie(result.state);
+    expectDieUntouched(result.state);
   });
 
   it('emits typed insufficient-credit failures without mutating ship or credits', () => {
@@ -462,12 +455,11 @@ describe('shipyard', () => {
       action: 'buy-component-tier',
       component: 'weapons',
       tier: 2,
-      spendDie: 0,
     });
 
     expect(result.state.player.credits).toBe(49);
     expect(result.state.player.ship).toEqual(startingShip);
-    expectSpentDie(result.state);
+    expectDieUntouched(result.state);
     expect(result.events[0]).toMatchObject({
       type: 'ShipyardFail',
       action: 'buy-component-tier',
@@ -488,7 +480,6 @@ describe('shipyard', () => {
       type: 'Shipyard',
       action: 'buy-cargo-pods',
       quantity: 1,
-      spendDie: 0,
     });
 
     expect(result.state.player.ship.cargoPods).toBe(10);
@@ -516,7 +507,6 @@ describe('quoteShipyard (T-308 preview)', () => {
       action: 'buy-component-tier',
       component: 'weapons',
       tier: 4,
-      spendDie: 0,
     });
 
     // Input untouched: no die spent, no credits deducted, no ship change.
@@ -530,7 +520,6 @@ describe('quoteShipyard (T-308 preview)', () => {
       action: 'buy-component-tier',
       component: 'weapons',
       tier: 4,
-      spendDie: 0,
     };
     const quote = quoteShipyard(shipyardState().player, action);
     const resolved = resolveShipyard(shipyardState(), action);
@@ -550,7 +539,6 @@ describe('quoteShipyard (T-308 preview)', () => {
       type: 'Shipyard',
       action: 'buy-cargo-pods',
       quantity: 3,
-      spendDie: 0,
     });
 
     expect(quote.ok).toBe(true);
@@ -569,7 +557,6 @@ describe('quoteShipyard (T-308 preview)', () => {
       type: 'Shipyard',
       action: 'buy-special-equipment',
       equipment: 'AUTO_REPAIR',
-      spendDie: 0,
     });
 
     expect(quote.ok).toBe(false);
@@ -587,7 +574,6 @@ describe('quoteShipyard (T-308 preview)', () => {
       type: 'Shipyard',
       action: 'buy-special-equipment',
       equipment: 'STAR_BUSTER',
-      spendDie: 0,
     });
 
     expect(quote.ok).toBe(false);
@@ -602,7 +588,6 @@ describe('quoteShipyard (T-308 preview)', () => {
       type: 'Shipyard',
       action: 'buy-cargo-pods',
       quantity: 1,
-      spendDie: 0,
     });
 
     expect(quote.ok).toBe(false);
@@ -619,7 +604,6 @@ describe('quoteShipyard (T-308 preview)', () => {
       action: 'buy-component-tier',
       component: 'drives',
       tier: 2, // strength 10 → 20
-      spendDie: 0,
     });
 
     expect(quote.after.component?.strength).toBe(20);
@@ -777,7 +761,6 @@ describe('N11 · a captain goes through the SAME renown gate', () => {
     type: 'Shipyard',
     action: 'buy-special-equipment',
     equipment,
-    spendDie: 0,
   });
 
   it('actorRankIndex returns a REAL standing (>= 0) for a captain carrying a registry', () => {

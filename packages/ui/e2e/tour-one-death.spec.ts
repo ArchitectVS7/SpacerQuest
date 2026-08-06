@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 import {
   applyDisposition,
   applyReputation,
@@ -120,7 +121,18 @@ import { ALL_NPC_PROFILES } from '@spacerquest/content';
 // re-hunt above. Ownership now passes to whatever task next moves those rules.
 // ---------------------------------------------------------------------------
 
-const DEATH_SEED = 192;
+// T-195 (re-hunted at T-162) · RE-PINNED from seed 192 to seed 12. `navDieEvasionFactor`
+// shaves up to 20% off the encounter chance for the ARMED die, and this scenario
+// jumps on the HIGHEST die in hand — i.e. at maximum evasion — so seed 192's rim
+// lane stopped drawing an interception at all and the test hung waiting for an
+// overlay that would never mount. That is a dead fixture, not a passing one.
+// THE SEED WAS RE-HUNTED, NOT THE ASSERTION LOOSENED: seeds 1..4000 were swept
+// offline against the built engine replaying THIS test's exact decision rule
+// (wreckedCareer → sign the lowest-DC flyable job on the lowest die → jump on the
+// highest die → fight with the lowest combat die each round), keeping only seeds
+// that draw a NAMED hunter and lose the ship inside five rounds with the hand
+// still in hand. Seed 12: "Zero Risk" takes the ship on the third round.
+const DEATH_SEED = 12;
 const LIFE_SUPPORT_SEED = 3;
 
 /** Every NAMED hunter the game can cast, name → content id, read off the shipped
@@ -184,6 +196,10 @@ function wreckedCareer(seed: number, opts: { lifeSupportCritical?: boolean } = {
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 /** Every first-time coach id in `format.ts` ONBOARDING_PROMPTS. */

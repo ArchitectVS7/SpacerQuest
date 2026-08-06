@@ -30,8 +30,25 @@ import type { BaselineAggregate } from './aggregate.js';
  * moved" to the exact question N1 asked, and the finding would have to be
  * re-established by hand. Ignoring it is a deliberate judgment, so the report
  * carries `ignoredPaths` and prints it: the differ says what it did not look at.
+ *
+ * T-183 · THE THREE STAMPS JOIN IT, for `label`'s reason one step on. Since T-183
+ * `./sweep.ts --merge` writes `rulesFingerprint`/`instrumentFingerprint`/`gitCommit`
+ * onto every merged aggregate: they describe the MEASUREMENT — which ruleset, which
+ * thermometer, which commit — never the game. Leaving them in would report three
+ * SHAPE CHANGES and `identical: false` for a freshly merged aggregate diffed against
+ * a pre-T-183 one that measured the identical thing, which breaks the "NOTHING
+ * MOVED" verdict every inertness proof in this repo depends on.
+ *
+ * Ignoring them silently would be a real loss, so it is not silent:
+ * {@link formatAggregateDiff} prints a PROVENANCE banner built from
+ * {@link AggregateDiff.provenance} above the row summary.
  */
-export const IGNORED_PATHS: readonly string[] = ['label'];
+export const IGNORED_PATHS: readonly string[] = [
+  'label',
+  'rulesFingerprint',
+  'instrumentFingerprint',
+  'gitCommit',
+];
 
 export interface NumericChange {
   path: string;
@@ -62,9 +79,30 @@ export interface ShapeChange {
   presentIn: 'before' | 'after';
 }
 
+/**
+ * T-183 · The two aggregates' stamps, carried so the PURE half owns the data and
+ * the formatter owns the words — the same split `report-model`/`report-html` keep.
+ * Every field is optional because a pre-T-183 aggregate carries none of them.
+ */
+export interface DiffProvenance {
+  beforeRules?: string;
+  afterRules?: string;
+  beforeInstrument?: string;
+  afterInstrument?: string;
+  beforeCommit?: string;
+  afterCommit?: string;
+  /** Three-state, exactly as `./report-model.ts`'s `RulesetVerdict`: `unknown` is a
+   *  state of its own and MUST NEVER read as `same`. */
+  rules: 'same' | 'different' | 'unknown';
+  instrument: 'same' | 'different' | 'unknown';
+}
+
 export interface AggregateDiff {
   beforeLabel: string;
   afterLabel: string;
+  /** T-183 · What ruleset and instrument each side declares. See
+   *  {@link IGNORED_PATHS} for why these are reported here rather than diffed. */
+  provenance: DiffProvenance;
   /** True when every compared path is equal and no path is missing on either
    *  side. THE machine-checkable "nothing moved". */
   identical: boolean;
@@ -156,6 +194,22 @@ export function rowOf(path: string): string {
   return 'header';
 }
 
+/**
+ * T-183 · The three-state stamp comparison, in four lines.
+ *
+ * DELIBERATE DUPLICATION of `./report-model.ts`'s `compareRulesets` logic, in
+ * spirit: that module already imports THIS one, so importing it back would be a
+ * cycle. Four lines is the right amount of duplication, and the rule it encodes —
+ * `unknown` is never `same` — is stated in both places rather than shared.
+ */
+function compareStamp(
+  before: string | undefined,
+  after: string | undefined,
+): DiffProvenance['rules'] {
+  if (before === undefined || after === undefined) return 'unknown';
+  return before === after ? 'same' : 'different';
+}
+
 export function diffAggregates(
   before: BaselineAggregate,
   after: BaselineAggregate,
@@ -220,6 +274,16 @@ export function diffAggregates(
   return {
     beforeLabel: before.label,
     afterLabel: after.label,
+    provenance: {
+      beforeRules: before.rulesFingerprint,
+      afterRules: after.rulesFingerprint,
+      beforeInstrument: before.instrumentFingerprint,
+      afterInstrument: after.instrumentFingerprint,
+      beforeCommit: before.gitCommit,
+      afterCommit: after.gitCommit,
+      rules: compareStamp(before.rulesFingerprint, after.rulesFingerprint),
+      instrument: compareStamp(before.instrumentFingerprint, after.instrumentFingerprint),
+    },
     identical:
       numericChanges.length === 0 && valueChanges.length === 0 && shapeChanges.length === 0,
     movedRows,
@@ -270,12 +334,50 @@ function formatChange(change: NumericChange): string {
   return `${formatNumber(change.before)} -> ${formatNumber(change.after)}${pct}`;
 }
 
+/**
+ * T-183 · The stamps, said out loud — because {@link IGNORED_PATHS} excludes them
+ * from "what moved" and a fact excluded from the table must not be a fact lost.
+ * Printed ABOVE the row summary: whether the two sides even measured the same
+ * ruleset decides how everything below should be read.
+ */
+function provenanceLines(provenance: DiffProvenance): string[] {
+  const lines: string[] = [];
+  if (provenance.rules === 'same') {
+    lines.push(`SAME RULESET: ${provenance.beforeRules ?? ''}`);
+  } else if (provenance.rules === 'different') {
+    lines.push(
+      `DIFFERENT RULESETS: ${provenance.beforeRules ?? ''} vs ${provenance.afterRules ?? ''} — ` +
+        'nothing below is a same-ruleset comparison',
+    );
+  } else {
+    lines.push('RULESET UNKNOWN on one or both sides (pre-T-183 aggregate; see F-142-1)');
+  }
+  if (provenance.instrument === 'same') {
+    lines.push(`SAME INSTRUMENT: ${provenance.beforeInstrument ?? ''}`);
+  } else if (provenance.instrument === 'different') {
+    lines.push(
+      `DIFFERENT INSTRUMENTS: ${provenance.beforeInstrument ?? ''} vs ` +
+        `${provenance.afterInstrument ?? ''} — the same game measured with two thermometers`,
+    );
+  } else {
+    lines.push('INSTRUMENT UNKNOWN on one or both sides (pre-T-183 aggregate; see F-142-1)');
+  }
+  if (provenance.beforeCommit !== undefined || provenance.afterCommit !== undefined) {
+    lines.push(
+      `commits: ${provenance.beforeCommit ?? 'unknown'} -> ${provenance.afterCommit ?? 'unknown'}`,
+    );
+  }
+  return lines;
+}
+
 /** A human-readable report. Deliberately leads with the verdict, because that is
  *  the sentence a worklist entry quotes. */
 export function formatAggregateDiff(diff: AggregateDiff, maxPerRow = 12): string {
   const lines: string[] = [];
   lines.push(`# balance diff: ${diff.beforeLabel} -> ${diff.afterLabel}`);
   lines.push(`# ignored (deliberately): ${diff.ignoredPaths.join(', ')} · epsilon ${diff.epsilon}`);
+  lines.push('');
+  lines.push(...provenanceLines(diff.provenance));
   if (diff.identical) {
     lines.push('');
     lines.push('NOTHING MOVED. Every compared field is equal on both sides.');

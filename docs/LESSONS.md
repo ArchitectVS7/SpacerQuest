@@ -1,0 +1,247 @@
+# Lessons
+
+This file holds one entry per **defect CLASS**, never one per task. Before adding an entry,
+check whether an existing one already describes the same failure mode and strengthen that
+one instead — note the second occurrence and sharpen the rule. Every entry names the check
+that now makes the mistake impossible; when a check has become permanent and its rule
+obvious, the entry is deleted, because **the check is the real memory** and this file is only
+the part of it a person still has to read. Decisions live in their own documents and are
+indexed at the bottom — pointers only, never content.
+
+---
+
+## Standards
+
+- When a spec adds a content field or a venue, name its reader in the same spec and walk every authored row through that reader in a test.
+- Player-visible copy is validated at the content layer — non-empty, mutually distinct and template-safe for every shipped row — never left to a silent resolver-side guard.
+- Every switch over a typed union is exhaustive by compilation — a `never` default in the engine, no `default` and no trailing return in `format.ts` — so a new or removed member fails `tsc` rather than silently no-opping or rendering nothing.
+- A value-scaled mechanic knob lives on the band/tier table and is read through a helper; authored rows never carry the key, and a content-shape test asserts its absence.
+- Before writing a state field, check whether a sync/recompute function owns it; if so store the delta as a separate term folded inside that one chokepoint, and assert it through a real `applyPlayerAction`.
+- Before deleting or renaming a content id a persisted save can reference, prove by a load-path test that the stale id degrades to a typed no-mutation refusal — otherwise it is a migration, not a content edit.
+- Before deleting or re-pointing a content leg that supplies a deed, check the deed's trigger probability against the replacement rows; a red coverage run is root-caused, never fixed by widening the sample or lowering the threshold.
+- Content that names an entity id is validated against the LIVE seeded state and against the context the content places it in — membership of the definition table is not reachability.
+- A seeded draw consumes a fixed number of rng values regardless of table shape; a content edit inside a band must never re-phase the stream.
+- Renormalise weights over the entries actually present after filtering, and assert both the resulting distribution and the content invariant that no bucket is empty.
+- Never chain off `.find(...)!` on a large `as const` collection — bind the found entry to a named const and assert it explicitly; when it breaks after content is added, fix the binding, never widen the type.
+- When a policy or enumerator plans an action, it applies the exact filter set the resolver accepts, read through the engine's own accessor — `legalActions` passing is not proof, because the campaign runner never calls it.
+- When fixing a loop or guard in one sim policy, grep the sibling policies for the same shape and either fix each or pin it with a tripwire before closing the finding.
+- When a constant moves into content behind an accessor, move every mirror of it in the same change and pin each with a test that reads the accessor, never a restated literal.
+- A selector that picks one global winner among mount-scoped candidates must be mount-aware; whenever a feature's reach widens, re-run the specs that assert each candidate fires in its own scope.
+- Any test that quantifies over a derived, enumerated or scanned set must prove it is non-vacuous: assert the set non-empty, pin its cardinality to the source in both directions, name every location inspected in the failure message, and count skips as failures.
+- To prove content is authored, assert against the shape a generator would have produced — and that the generator itself is gone from the source — never merely against the fallback default value.
+- Any test asserting an input is ACCEPTED must, in the same test, assert a deliberately invalid input is REJECTED, and any concurrency claim is asserted with a barrier a serial implementation cannot satisfy.
+- Information the player or an AI must not have is structurally unavailable — absent from the function's declared inputs and absent from the DOM — and is proved at that boundary, never on outputs alone.
+- A precondition or absence guarantee stated in prose — a doc comment, a docstring, an Accept clause — is not a check; land a test that exercises the violating case at the consuming boundary.
+- A known-failing balance target stays an `it.fails` tripwire across every baseline re-pin, and the re-pin is explicitly re-read against it in the delivery note.
+- Instrument-shape changes get their own commit, with the fixture re-extracted and the baseline re-pinned there; a capstone commit adds no instrument field.
+- When a tool's flag can be dropped without failing and the loss is invisible to every fingerprint, assert the SHIPPED artifact's provenance value as its own test; the remedy is re-running the tool, never editing the assertion.
+- `npm run format:check` is a mandatory, non-optional gate step on every task — a formatting-red tree is a failed gate, not a cleanup to do later.
+- Every source under a hashed root is either hashed or listed in its NON_INSTRUMENT map with a written reason; there is no third, silent state.
+- Any type that carries a delta carries the sample sizes of both sides as non-optional fields, and a test regexes the rendered output for both counts alongside the delta.
+- A generator that claims self-contained output has a test asserting the rendered string matches none of `https?://`, `<script`, `<link`, `@import`, `url(`.
+- Any locally-bound HTTP server passes the host explicitly, pairs it with a `Host`-header allowlist, and has a test that reads back the actually-bound address.
+- New private workspaces omit `version` entirely; when a repo-wide invariant test fires on a new file, remove the offending declaration rather than loosening the invariant.
+- Any engine flavor string that reaches the player and asserts a venue or facility is gated on the same content flag the UI reads, via one content lookup — never a per-system id ladder.
+- Every policy branch that gates the headline income verb carries a non-empty fallback: a full-tank second-pass relaxation, or an anti-idle move fired only on a no-income day.
+- A fix for a measured defect is not done until the exact measurement that found it is re-run and passes; state the before/after numbers rather than asserting the branch was sufficient.
+- Any registry-plus-composer pair needs a totality guard proving the composer reaches every member the registry exports.
+- A table that claims a check covers a requirement is itself tested: every mapped row resolves to a real exported symbol, and every unmapped row carries a null coverage plus a named owning task — never a loose analogue mapped in to make the table read complete.
+- Every measured figure quoted from a document carries a resolvable pin checked against the live file in both directions, and is transcribed from the source document, never from a summary of it.
+- Narrow a CI workflow by `paths`, never by branch name; a job-level "already covered by the push run" skip is valid only when the push trigger covers every branch that skip applies to, and the trigger array is asserted whole so a re-added allowlist goes red.
+
+---
+
+## Failed patterns
+
+### L-001 · A content field with no reader ships invisible
+T-101 specced `HangoutProse` (`houseName`, `roomLine`, `flavour`) and three social venues as part of the parameter surface without naming who renders them. Findings F-101-4 and F-101-6 then recorded that after three content passes authored 14 houses, 14 room lines and 28 flavour lines, NOTHING read any of them — a port's identity reached the player through `wager` and `venues` alone, `App.tsx` printed only `"Spacers Hangout · {systemName}"`, and grep found no consumer of `prose` outside content. The voice was dark at all 14 ports until T-132.
+**Enforced by:** `packages/ui/src/__tests__/hangout-pane.test.ts` ("authors a house name at every port the engine opens a Hangout at"; venue-for-venue agreement with the engine) + `packages/ui/e2e/hangout.spec.ts` ("the house speaks"; meet/befriend/insult each dispatchable)
+**Rule:** When a spec adds a content field or a venue, name its reader in the same spec and walk EVERY authored row through that reader in a test — otherwise the content pass is graded on differentiation the player cannot see.
+
+### L-002 · A content row with empty player-facing copy is a silent-outcome bug
+T-110's 12 `legacy-` rows shipped `wireFound: ''` while `resolveExploreOutcome` guarded on non-empty, so a boarded POI could cost 80 fuel and a die and emit no line at all (F-110-B). The guard hid the gap instead of failing on it. T-113 re-authored the same class: legacy Explore rows carrying empty copy, closed by authoring non-empty, mutually distinct copy on every row so the engine's `wireFound !== ''` guard is vacuous rather than load-bearing.
+**Enforced by:** `packages/engine/src/__tests__/exploreContent.test.ts` — 'EVERY row in the table SPEAKS — non-empty copy, distinct, and {name} at most once'
+**Rule:** Player-visible copy is validated at the content layer — non-empty, mutually distinct, template-safe for every shipped row — never left to a silent resolver-side guard; a row that can be selected and say nothing is a bug, not a null case.
+
+### L-003 · A union member with no handler is silence
+Four occurrences of one class. **Engine side (T-110):** `resolveExploreOutcome` resolves one arm per kind, and without an exhaustive `never` default a new content-supplied kind would be silently swallowed; the check demonstrably bites — deleting the `contraband` member turns the `case 'contraband':` into a compile error (F-113-B). **UI side:** `hangoutFailNoticeFrom` had no arm for `'venue-not-offered'`, so a social-venue refusal rendered NOTHING (F-123-1, unreachable only by accident until Deneb-4 omitted `meet`); `explorationFailNoticeFrom` switched inline, handled five of six shipped reasons and fell through to `return null` on `'recovery-in-progress'` — silence since T-111 — while its docstring claimed full coverage (T-131); and `loanFailNoticeFrom` had a `default` arm, so it was not silent but answered an absent credit desk with "Penny Wise turned that request down", a sentence about a lender who considered and declined, at a port with no lender (T-132).
+**Enforced by:** `npm run typecheck` (engine `never` defaults) + `packages/ui/src/format.ts` `explorationFailExplanation` / `hangoutFailExplanation` / `loanFailExplanation` (exhaustive, no `default`, no trailing return) + `packages/ui/src/__tests__/exploration-notice.test.ts` and `hangout-pane.test.ts` (literal `as const` reason arrays; every reason renders a distinct visible line)
+**Rule:** Every switch over a typed union is exhaustive by compilation — a `never` default in the engine, no `default` and no trailing return in `format.ts` — so a new or removed member fails `tsc` rather than silently no-opping or rendering nothing; the store-side function is only the FINDER of the event.
+
+### L-004 · A tuning knob duplicated onto authored rows drifts from its band table
+T-111 made recovery length derive from `EXPLORE_VALUE_BANDS` rather than a per-row `recoveryDays`, so authored rows cannot disagree with the ladder. T-131 added `apCost` on identical terms and the same test caught it — a band-level rule that an authored row could silently shadow with a per-row constant, with nothing structural stopping one band from charging calendar days AND extra dice at once.
+**Enforced by:** `packages/engine/src/__tests__/exploreContent.test.ts` — "NO authored row carries a recoveryDays or apCost key, and both are its BAND's": asserts `Object.keys(row)` excludes both, that each reader's value equals the band value, that no band has both non-zero, and that the ladder is exactly `[0, 0, 0, 2, 3]`
+**Rule:** A value-scaled mechanic knob lives on the band/tier table and is read through a helper; authored rows never carry the key, and a content-shape test asserts its absence — a comment is not enforcement.
+
+### L-005 · A delta written onto a DERIVED field is erased at the next recompute
+T-112 had to implement a `{ maxFuel: +40 }` unique-item grant, but `maxFuel` is derived: `syncMaxFuel` recomputes it from the hull at the end of EVERY `applyPlayerAction` and again on load, so a value written onto `ship.maxFuel` would be wiped inside the same action. It ships instead as a stored `bonusMaxFuel` folded in at that one chokepoint, so there is still exactly one place `maxFuel` is decided, and a dead hull still holds nothing.
+**Enforced by:** `packages/engine/src/__tests__/uniqueItem.test.ts`
+**Rule:** Before writing a state field, check whether a sync/recompute function owns it; if so, store the delta as a separate term folded inside that single chokepoint, and assert it through a real `applyPlayerAction`, not a direct call to the sync function.
+
+### L-006 · A deleted content id is a save-drift case, not a delete
+T-114 deleted `legacy-salvage-derelict` and T-117 deleted the `legacy-contraband-*` rows while in-flight saves could still hold those ids in `player.recovery.outcomeId`. Both retirements were safe only because the stored id resolves to `RecoveryAbandoned{unknown-outcome}` and mutates nothing — which is what let two tasks retire rows with no save-version bump.
+**Enforced by:** `packages/engine/src/__tests__/recovery.test.ts` — describe 'T-111 · a stored outcome id that no longer resolves' ("clears the slot as unknown-outcome and mutates nothing else"; "an IN-FLIGHT save holding the retired legacy-salvage-derelict is safe")
+**Rule:** Before deleting or renaming a content id a persisted save can reference, prove by a load-path test that the stale id degrades to a typed no-mutation refusal — otherwise it is a migration, not a content edit.
+
+### L-007 · Retiring or diluting a content leg can make a deed arithmetically unreachable
+In T-113, retiring `legacy-salvage-derelict` would have made the `rich_hulk` deed (fires on a `SalvageRecovered` of 400cr+) unreachable, and merely diluting its leg with six authored rows cut it to missed-by-21-of-24 careers and dropped whole-slate careers to one — turning `deed-coverage.test.ts` red for a reason no wider sample could fix. The red run was root-caused rather than dismissed, which is what surfaced F-113-D.
+**Enforced by:** `packages/sim/src/__tests__/deed-coverage.test.ts` + `packages/engine/src/__tests__/exploreContent.test.ts` ("the rich_hulk deed keeps its supply under the WEIGHTED DRAW")
+**Rule:** Before deleting or re-pointing a content leg that supplies a deed, check the deed's trigger probability against the replacement rows; a red deed-coverage run is root-caused, never fixed by widening the sample or lowering the threshold.
+
+### L-008 · A real id is not a reachable id
+T-114 authored 6 NPC-introduction rows whose `profileId` had to be checked against BOTH `ALL_NPC_PROFILES` and the live `createInitialState().npcs` roster, because `applyEffects`'s disposition arm does `state.npcs.find(...)` and silently `continue`s on a miss. T-124 found the sharper form (F-124-1): a `clientele.regulars` entry naming a QUEST captain is permanently dead content — the eleven quest-frozen captains take no turn in the dusk loop and sit at their day-1 system for a whole career, and `rankClientele` returns its input unchanged on an empty intersection, so the row looks authored, passes every well-formedness check and ranks nobody forever. Both thematically obvious regulars hit it exactly and would have shipped dead.
+**Enforced by:** `packages/engine/src/__tests__/exploreContent.test.ts` ("every npc row names a profile the CAST table and the LIVE roster both hold") + `packages/engine/src/__tests__/hangoutContent.test.ts:314`
+**Rule:** Content that names an entity id is validated against the LIVE seeded state and against the context the content places it in — membership of the definition table is not reachability, wherever the consuming effect fails silently on a miss.
+
+### L-009 · A draw's rng cost must not depend on how much content an author wrote
+T-117: the legacy `drawLegacyLoot` short-circuited the uniform pick when a leg held a single id, so the number of rng draws — and therefore the phase of the whole day's stream — depended on how many ids an author happened to write on that leg. `drawOutcome` replaced it with a flat two draws, always.
+**Enforced by:** `packages/engine/src/__tests__/exploreOutcomes.test.ts` — 'consumes EXACTLY two rng draws, always — even for a one-row band'
+**Rule:** A seeded draw consumes a fixed number of rng values regardless of table shape; a content edit inside a band must never re-phase the stream.
+
+### L-010 · A weighted draw over a filtered subset must renormalise over what is actually present
+T-117: `drawOutcome` filters `EXPLORE_OUTCOMES` by pool before drawing a band, so a band with no row in that pool would silently hand its share (15% or 3%) to whichever band came last in the cumulative walk, and §5.3's sweep sizing would describe a table that does not exist.
+**Enforced by:** `packages/engine/src/__tests__/exploreOutcomes.test.ts` — 'honours the §5.2 band weights within sampling error'; `packages/engine/src/__tests__/exploreContent.test.ts` — 'EVERY BAND HAS A ROW IN EVERY POOL'
+**Rule:** Renormalise weights over the entries actually present after filtering, and assert both the resulting distribution and the content invariant that no bucket is empty.
+
+### L-011 · A non-null assertion does not survive a growing `as const` tuple
+In T-115, adding eight explore episodes to `STORYLETS` widened its `as const` tuple far enough that TypeScript stopped carrying the non-null assertion through the chained access `STORYLETS.find(...)!.wireResolution.wireMessage`, reporting the object as possibly undefined. The fix bound the found storylet to a named const and added an explicit `toBeDefined()` — asserting strictly more than the line it replaced.
+**Enforced by:** `npm run typecheck`
+**Rule:** Never chain off `.find(...)!` on a large `as const` collection — bind the found entry to a named const and assert it explicitly (the shape `npc-chains.test.ts` and `alliance-arcs.test.ts` already use); when the assertion breaks after content is added, fix the binding, never widen the type or weaken the assertion.
+
+### L-012 · A planner that does not mirror the resolver's guards burns the verb
+Four occurrences. T-116/T-150 (F-116-1): `explorerPolicy` queued Explores without consulting `state.player.recovery`, so 3,204 of 23,858 queued Explores landed on a recovery dawn — guaranteed `recovery-in-progress` refusals burning a plan slot each. Both the engine and `legalActions` gated correctly; the gate simply was not on the path `runCampaign` takes, **because the runner never calls `legalActions`**, so any balance number measured over those days was measuring refusals. T-121 (F-121-1): `planDare`, `legalActions` and the deed hunter's `dealerHere` all selected an in-system dealer WITHOUT the resolver's `!npc.dead` guard, invisible while exactly one port had a bar (0 failures over 10 seeds × 120 days) and live the moment reach went 1-of-28 → 14-of-28. T-123: three policy planners went out of step when a port withdrew `borrow`/`repay`, emitting a typed refusal and a different fingerprint.
+**Enforced by:** `packages/sim/src/__tests__/campaign-policies.test.ts` (describe 'T-150 · F-116-1 · explorerPolicy never queues an Explore the engine will refuse') + `packages/sim/src/__tests__/campaign-smuggler-gambler.test.ts:238` (dead-dealer selection; driven campaigns asserting `play.failedVisits === 0`)
+**Rule:** When a policy or enumerator plans an action, it applies the exact filter set the resolver accepts, read through the engine's own accessor — `legalActions` passing is not proof — and asserts refusal-freedom on a driven campaign with a paired non-vacuous control, because this class stays latent while the affordance is reachable at one place only.
+
+### L-013 · Fix one policy loop, check every byte-identical twin
+T-150: after fixing `explorerPolicy`'s unguarded Explore loop (F-116-1), `smugglerPolicy` was found to carry a byte-identical copy of the same defect (F-150-2, 3,891 of 23,192 queued on a recovery dawn) that the original finding never named.
+**Enforced by:** `packages/sim/src/__tests__/campaign-policies.test.ts`
+**Rule:** When fixing a loop or guard in one sim policy, grep the sibling policies in `packages/sim/src/index.ts` for the same shape and either fix each or pin it with a tripwire before closing the finding.
+
+### L-014 · An extraction is not behaviour-preserving until every consumer reads the accessor
+In T-120 the Hangout wager band and check DCs moved out of `hangout.ts`'s constants into content behind `wagerBandFor` / `venueParamsFor`, but `legalActions` and `packages/ui/src/format.ts`'s `dareWagerBounds` / `hangoutNpcs` still clamped and advertised against the old `DARE_MIN_WAGER` / `DARE_MAX_WAGER` / `BEFRIEND_DC` constants — the UGT harness and the Hangout pane would have offered a band the engine no longer read.
+**Enforced by:** `packages/sim/src/__tests__/protocol.test.ts:1268` (wager domain asserted equal to `wagerBandFor(portId)` with a non-vacuity check that the port band differs from the global one) + `packages/ui/src/__tests__/liars-dice-pane.test.ts:416`
+**Rule:** When a constant moves into content behind an accessor, move every mirror of it (sim protocol, UI format) in the same change and pin each with a test that reads the accessor, never a restated literal.
+
+### L-015 · A one-global-winner selector is a latent single-scope assumption
+T-122 found F-121-2: `activeOnboardingPrompt` picks ONE global winner, and `first-loan` — predicate `hangoutOpen(game) && loan == null`, mounted inside the *closed* Hangout panel — took that slot at every `hasHangout` port, rendering nothing and blocking `first-contraband`, `first-port` and `first-explore`. Latent at 1 of 28 ports, live at 14 of 28 the moment T-121 widened Hangout reach.
+**Enforced by:** `packages/ui/e2e/onboarding.spec.ts`
+**Rule:** A selector that picks one global winner among mount-scoped candidates must be mount-aware; whenever a feature's reach widens, re-run the specs that assert each candidate fires in its own scope, positive and negative.
+
+### L-016 · A green test that quantifies over nothing
+Six occurrences of one class — green while asserting nothing. T-122: an Accept clause named a literal grep over a content file, executed from a test in a different package, so a wrong path, an emptied file or a moved table would pass vacuously. T-124: `AUTHORED_PORTS` / `MECHANICALLY_DEVIANT_PORTS` drive every `it.each` in the file, so a dropped row would quietly stop being tested by every block and nothing would go red. T-124 again: T-121's "the unauthored rows are still BASELINE rows" test would have become a loop over an empty id list once the last four ports were authored — green forever. T-149: flavor tests iterate port sets derived from `STAR_SYSTEMS`, so a content edit flagging the whole rim would have emptied them. T-143: the "panel is not shipped" test greps eight build-output directories, and on a machine where nothing has been built an unrecorded pass would report green having checked nothing. T-153: the clean gate fixture would have reported all-pass while several `EXPECTED_EVENT_RATES` bands were merely SKIPPED for want of sample size.
+**Enforced by:** `packages/engine/src/__tests__/hangoutContent.test.ts:537` (enumeration pinned to the table's key set in both directions plus cardinality) and `:550`; `packages/engine/src/__tests__/hangoutRules.test.ts:265` (inverted to the positive claim with a cardinality guard); `packages/engine/src/__tests__/npc.test.ts` ('has both port sets non-empty, so nothing below can pass vacuously'); `packages/devpanel/src/__tests__/not-shipped.test.ts` (records `absent (not built)` per directory in the assertion message); `packages/sim/src/__tests__/sweep-gate.test.ts` ('the clean sample passes every band, and SKIPS none of them'; 'SKIPPED is a third value, not a quiet pass')
+**Rule:** Any test that quantifies over a derived, enumerated or scanned set must prove it is non-vacuous — assert the set non-empty, pin its cardinality to the source in both directions, first assert the scanned file is non-trivial and holds the symbols claimed, enumerate every location inspected in the failure message, and count skips as failures; when a task empties the set a test quantifies over, invert it into the positive claim over the new set rather than leaving a loop that can pass over nothing.
+
+### L-017 · Assert against the generator's shape, not against the fallback constant
+The existing "not the DEFAULT house name" check did NOT catch a T-121 baseline row, because `baselineHangout` generated `the <system> Hangout` per port — a name of its own that passed the default check while carrying no authored voice. The teeth came from asserting `houseName !== \`the ${STAR_SYSTEMS[id]?.name} Hangout\`` and from grepping the source for a surviving `baselineHangout` call.
+**Enforced by:** `packages/engine/src/__tests__/hangoutContent.test.ts:550`
+**Rule:** To prove content is authored, assert against the shape a generator would have produced — and that the generator itself is absent from the source — not merely against the fallback default value.
+
+### L-018 · An acceptance assertion with no negative control passes against a no-op
+T-143 twice. (a) Proving every panel flag is a real parsed argument: spawning each CLI with all panel flags and asserting no `Unknown argument:` / `Missing value for` would pass identically against a parser that validated nothing at all. (b) Proving sweep shards launch concurrently: timing-based assertions ("it was faster") pass by luck on a serial implementation.
+**Enforced by:** `packages/devpanel/src/__tests__/commands.test.ts` (each accept assertion pairs with a deliberately invalid input asserted rejected) + `packages/devpanel/src/__tests__/sharding.test.ts` (a barrier `SpawnFn` whose children exit only once N are simultaneously live, so a serial implementation deadlocks and times out, plus a real-process overlap check on top)
+**Rule:** Any test asserting an input is ACCEPTED must, in the same test, assert a deliberately invalid input is REJECTED; assert concurrency with a barrier a serial implementation cannot satisfy, so the serial case is an outright failure rather than a slower pass.
+
+### L-019 · Hidden information must be structurally unavailable, proven at the boundary
+Three occurrences. T-134 named cheating-AI as a bug class no existing verb guarded against and specified the Liar's Dice dealer as a pure function of its own hidden dice, the current bid and `dealerGuile` — but nothing structural stops a policy from reading the opposing hand. T-135: an outputs-only test passes just as happily for a policy that cheats, so the check had to inspect the function's declared inputs as well as sweep varying hidden dice for move invariance. T-136: a merely CSS-hidden dealer face would have passed a naive visibility check while sitting in the page source.
+**Enforced by:** `packages/engine/src/__tests__/liarsDice.test.ts` — describe "the dealer policy cannot read the player's hand", arms "(a) the signature has no channel for hidden player information" and "(b) varying the player's hidden dice never changes the dealer's moves" + `packages/ui/e2e/liars-dice.spec.ts` `expectDealerHidden` (no `data-face` attribute, no `.d6` mounted, and a sweep of the scene's innerHTML for the reveal-only class; takes a `peeked` count so a legitimately Peek-revealed die is not forbidden)
+**Rule:** Information the player or an AI must not have is structurally unavailable — absent from the function's declared inputs and absent from the DOM before the reveal frame — and is proved at that boundary by invariance under varying the hidden state, never on outputs alone.
+
+### L-020 · Prose is not enforcement
+Two occurrences. T-132/F-101-5: `rankClientele`'s doc comment states its contract explicitly — "the caller passes the ALREADY-FILTERED live in-system, non-dead set" — and the UI caller `hangoutNpcs` filtered on `currentSystemId` only, so the opponent list could offer a dead captain. T-140: an instrument-only `NpcDecisionTraceSink` seam was threaded through `pickIntent`/`pickContract`/`resolveNpcDay`, and the Accept clause asked only for a manual `grep` under `packages/ui` and `packages/desktop` — a sink attached in the cockpit would be a per-captain-per-day allocation on the player's dusk and a diagnostic channel on the save-writing path.
+**Enforced by:** `packages/ui/src/__tests__/hangout-pane.test.ts` (exercises a mixed live/dead roster and an all-dead roster) + `packages/ui/src/__tests__/npc-trace-absent.test.ts` (source scan forbidding `npcDecisionTrace`, `NpcDecisionTraceSink`, `NpcDecisionTrace`, `EndDayOptions` in every shipped root)
+**Rule:** A precondition or absence guarantee stated in prose — a doc comment, a docstring, an Accept clause — is not a check; land a test that exercises the violating case at the consuming boundary, and never leave an absence to a grep someone has to remember to run.
+
+### L-021 · A re-pin must be re-read against the known-red tripwires, never chosen to make them pass
+T-125 re-pinned the baseline of record to an 8,000-row aggregate and re-read the trader clear-day tripwire against it: still RED at `debtClearedDay.median` 21 vs `[22, 30]`, n = 987. It was not converted from `it.fails` to `it`, and the baseline was not selected to move the number into band.
+**Enforced by:** `packages/sim/src/__tests__/balance-targets.test.ts:225`
+**Rule:** A known-failing balance target stays an `it.fails` tripwire across every baseline re-pin — never converted, never deleted — and the re-pin is explicitly re-read against it in the delivery note.
+
+### L-022 · Do not move `instrumentFingerprint` in the commit that takes the capstone
+T-125's five questions needed hangout, disposition and interceptor-source fields the aggregate does not carry; adding them would have moved `instrumentFingerprint` in the same commit that took the capstone and extracted the fixture from it, so the fixture would have recorded numbers measured under a different instrument. The measurement was routed to a gitignored two-arm probe instead.
+**Enforced by:** `packages/sim/src/__tests__/balance-smoke.test.ts` ("the fixture describes the ruleset in the working tree / is not stale", via `fixtureFreshness` in `packages/sim/src/balance/checkpoints.ts`)
+**Rule:** Instrument-shape changes get their own commit, with the fixture re-extracted and the baseline re-pinned there — a capstone commit adds no instrument field.
+
+### L-023 · A dropped tool flag can silently downgrade a shipped fixture
+T-146 found F-146-0, a regression T-145 left behind: `balance:extract` was run with NO `--aggregate`, so it defaulted to a baseline carrying no `fleet.milestones`, flipping `docs/balance/smoke/tiers.json`'s `provenance.spreadSource` from `harvested` to `estimated` and replacing harvested tier spreads with synthetic ones — a silent quality regression that survived a whole milestone unnoticed. T-148 made it loud and named why it was invisible: omitting the flag does not fail, and the loss moves none of `rulesFingerprint` / `instrumentFingerprint` / `docsFingerprint`, so the freshness check never trips and a whole milestone can pass green on a degraded rig.
+**Enforced by:** `packages/sim/src/__tests__/balance-smoke.test.ts:100` (asserts `provenance.spreadSource === 'harvested'` as its own test, alongside — never instead of — the enum-legal-range assertion)
+**Rule:** When a committed fixture records the PROVENANCE of its own data and the tool flag that sets it can be dropped without failing, assert the good value as its own test; the remedy is re-running the extract, never editing the assertion.
+
+### L-024 · An optional format step lets a fingerprint-moving commit land
+At T-130 finding V-2 was confirmed: a commit landed with `npm run format:check` RED because the orchestrator's format step was optional. The residue was real, not cosmetic — the standing "run `npm run format` BEFORE the capstone" constraint assumes an already-formatted tree, and `rulesFingerprint` is not formatting-invariant, so a later whitespace reflow of a hashed source silently changes what a capstone hashes.
+**Enforced by:** `.github/workflows/ci.yml` (`npm run format:check`) plus the mandatory gate line in the task-list standing constraints
+**Rule:** `npm run format:check` is a mandatory, non-optional gate step on every task — a formatting-red tree is a failed gate, not a cleanup to do later.
+
+### L-025 · A new file under a hashed root must declare its fingerprint class
+T-157 added `packages/sim/src/balance/coverage.ts`; leaving it unclassified would have moved `instrumentFingerprint`, staled every committed smoke fixture and owed a capstone. It was declared NON-INSTRUMENT with its reason in `SIM_NON_INSTRUMENT_SOURCES`, which is also what satisfies the undeclared-file guard.
+**Enforced by:** `packages/sim/src/__tests__/balance-rig.test.ts` — the classification-totality check over `allSourceKeys` / `SIM_NON_INSTRUMENT_SOURCES`
+**Rule:** Every source under a hashed root is either hashed or listed in its NON_INSTRUMENT map with a written reason; there is no third, silent state.
+
+### L-026 · A delta without its sample size is a bare delta — enforce it in the type
+T-142's before/after view compares aggregates of different size (7 policies/500 seeds vs 8/1,000). A rendered delta with no n beside it invites exactly the Appendix A failure — passed at n=100, failed at n=1,000. Fixed structurally: every `BeforeAfterRow` carries non-optional `beforeSeeds` / `afterSeeds` / `beforeRuns` / `afterRuns` (plus `beforeN` / `afterN` for distributions), so a renderer physically cannot emit a delta without them.
+**Enforced by:** `packages/sim/src/__tests__/balance-report.test.ts`
+**Rule:** Any type that carries a delta carries the sample sizes of both sides as non-optional fields, and a test regexes the rendered output for both counts alongside the delta.
+
+### L-027 · "Self-contained" output decays silently
+T-142's report is specified as self-contained static HTML written to a gitignored path and opened straight from disk; a single CDN font, `<link>`, `@import` or `url(...)` would break that with no visible symptom on the author's machine. The generator emits inline `<style>` + inline `<svg>` and zero JavaScript, with `<title>` as the no-script hover layer.
+**Enforced by:** `packages/sim/src/__tests__/balance-report.test.ts`
+**Rule:** A generator that claims self-contained output must have a test asserting the rendered string matches none of `https?://`, `<script`, `<link`, `@import`, `url(`.
+
+### L-028 · Node's `listen(port)` without a host publishes to the LAN
+The devpanel server spawns processes; omitting the host argument in `listen()` would have exposed it on every interface, and loopback binding alone still would not stop DNS rebinding.
+**Enforced by:** `packages/devpanel/src/__tests__/not-shipped.test.ts`
+**Rule:** Any locally-bound HTTP server must pass the host explicitly (`listen(port, '127.0.0.1')`), pair it with a `Host`-header allowlist, and have a test that reads back the actually-bound address rather than trusting the call.
+
+### L-029 · A new workspace manifest must not declare a version
+`packages/devpanel/package.json` initially declared `0.5.2` and broke the invariant that exactly ONE workspace declares a version in `package-lock.json`; the fix was to drop the field, since a private never-published dev tool has no product version to state, rather than widen the invariant.
+**Enforced by:** `packages/ui/src/__tests__/version.test.ts`
+**Rule:** New private workspaces omit `version` entirely; when a repo-wide invariant test fires on a new file, remove the offending declaration rather than loosening the invariant.
+
+### L-030 · Engine flavor text is player-facing prose, not debug text
+T-149: `executeSocialize` narrated "cleaned up at the {system} Hangout tables" / "bought a round at the {system} Hangout" without ever reading `hasHangout`, so at 18 of 28 ports — six of them reachable by the cast — the wire told the player about a bar the game's own UI says does not exist. `hangoutRumors` interpolates `lastAction.details` VERBATIM into `RUMOR_TEMPLATES.Socialize`.
+**Enforced by:** `packages/engine/src/__tests__/npc.test.ts` — describe('T-149 Socialize flavor respects hasHangout')
+**Rule:** Any engine flavor string that reaches the player and asserts a venue or facility is gated on the same content flag the UI reads, via one content lookup — never a per-system id ladder.
+
+### L-031 · A gated headline verb with no fallback is a poverty trap
+T-159: `fighterPolicy`'s contract-signing branch filtered `rankedContracts` to `maxFuel * SIGN_FUEL_FRACTION` (0.6) with no second pass, unlike the four other gated policies that all carried the T-1104 full-tank relaxation. At a rim port where every leg exceeded the margin the filtered set was empty every day, and since `isIncomeAction` counts only sign-contract / Travel / Explore / Combat, the ship queued refuel and debt payments while its zero-income streak climbed to 30 days on seed 35 (limit 5).
+**Enforced by:** `packages/sim/src/balance/gate.ts` (`assertNoIncomeStall`, `INCOME_STALL_LIMIT = 5`), run by `.github/workflows/sweep-gate.yml` and covered by `packages/sim/src/__tests__/sweep-gate.test.ts`
+**Rule:** Every policy branch that gates the headline income verb carries a non-empty fallback — one of D.2a's two shapes: a full-tank second-pass relaxation, or an anti-idle move fired only on a no-income day.
+
+### L-032 · A one-branch diagnosis is a hypothesis until the failing measurement is re-run
+T-159's brief diagnosed one missing branch. The T-1104 relaxation alone took seed 35 from 32 consecutive zero-income days to 8 — still over the limit of 5 — because after a succession the ship had a 240-unit tank and every leg on offer cost 252–602 fuel, so `reachable` was empty even at `maxFuel` and there was no filter left to relax. Only a second, anti-idle homeward-burn branch closed it (seeds 1..200: longest streak 32 → 19, seeds ≥ 5 six → one).
+**Enforced by:** `packages/sim/src/balance/gate.ts` `assertNoIncomeStall`, re-run through the exact CI invocation in `.github/workflows/sweep-gate.yml` (shard 1/2, 2/2, `--merge`), which stays red on a partially fixed policy
+**Rule:** A fix for a measured defect is not done until the exact measurement that found it is re-run and passes; state the before/after numbers rather than asserting the branch was sufficient.
+
+### L-033 · An exported predicate the composer never calls silently never runs
+Nothing structurally forced `runGate` in `packages/sim/src/balance/sweep.ts` to call every `assert*` that `gate.ts` exports; a tenth invariant added to `gate.ts` but never wired in would have sat green forever.
+**Enforced by:** `packages/sim/src/__tests__/sweep-gate.test.ts` — 'runGate reaches EVERY invariant gate.ts exports (the kitchen sink)'
+**Rule:** Any registry-plus-composer pair needs a totality guard proving the composer reaches every member the registry exports.
+
+### L-034 · A coverage table can claim coverage that does not exist
+T-152 wired the T-1604a invariant set into the sweep as a gate, but three of the eight are protocol-seam statements no sweep can observe. Rather than mapping them onto a loosely related assertion to make the coverage table read 8/8, they were recorded as `disposition: 'not-observable'` with `coveredBy: null` and an owning task named in `why`. T-153 then closed the other half of the hole: a `mapped`/`analogue` row naming a non-existent function, or a `not-observable` row quietly carrying a `coveredBy` value, would fake Tier-1 coverage.
+**Enforced by:** `packages/sim/src/__tests__/sweep-gate.test.ts` — 'SWEEP_INVARIANT_DISPOSITIONS is honest about all eight UGT predicates' (asserts 8 entries, exactly 3 not-observable, each with `coveredBy: null` and an owner matching the task pattern, and every mapped entry's `coveredBy` resolving to a real exported assert)
+**Rule:** A table that claims a check covers a requirement is itself tested: every mapped row resolves to a real exported symbol, and every unmapped row carries a null coverage plus a named owning task — never map a check onto an adjacent assertion to make a coverage table read complete.
+
+### L-035 · A figure transcribed from a document goes stale against nothing
+Two occurrences at T-157. `ACKNOWLEDGED_COVERAGE_GAPS.gambler`'s evidence quoted the PARITY LEDGER's ruling-time figures `+4.86cr/captain-day` and `95.91%` as "still true" when the re-ask the ledger row itself points at had already re-measured them at `+3.44cr/captain-day` and `37.97%` — the status half of `coverage.ts` was machine-checked, the evidence half was trusted prose. Separately, the Accept clause took "the two most distinctive archetypes" from a SUMMARY document instead of from the two source documents, and was wrong by one row (F-157-1), halting the task for an owner ruling on what was pure transcription.
+**Enforced by:** `packages/sim/src/__tests__/archetype-coverage.test.ts` — 'pins every measured figure an acknowledgement quotes to its live document row'; 'mirrors docs/TESTING-STRATEGY.md Part C, in both directions'; "mirrors docs/NPC_REDESIGN.md's PARITY LEDGER row by row"
+**Rule:** Every measured figure quoted from a document carries a resolvable pin (document · section · row · value) checked against the live file AND asserted still quoted by the prose, and every transcribed constant is asserted equal to the parsed source in BOTH directions — transcribed from the source document, never from a summary of it; an empty pin list is a checked claim with a stated reason, never a blank field.
+
+### L-036 · A CI trigger enumerated by branch name is a gate that does not run on the branch that needs it
+Twice, a fortnight apart, on the same mechanism. **F-112-D:** T-1605 deleted the travel PILOT check while `starmap.spec.ts` still asserted it, and 7 of 95 specs sat red on `main@74403ab4` from 2026-07-28 until T-112 tripped over them. **F-162-3:** T-195 shipped `navDieFuelDiscount` / `navDieEvasionFactor` without an e2e run, and six specs sat red on `redesign/explore-hangout` until T-162 tripped over them. Root cause both times: `ci.yml` triggered `push` on the hand-maintained list `[main, rimward-redesign]` **and** every job skipped same-repo PRs on the grounds that the push run of the same commit had already tested it — a premise that is false on an unlisted branch, so the commit about to merge got no run at all. Neither change "touched the cockpit", so `ENGINEERING-POLICY.md` §2's local e2e requirement did not fire either. `sweep-gate.yml` showed the rot in progress: someone had hand-added `redesign/explore-hangout` to its list, one branch at a time.
+**Enforced by:** `packages/ui/src/__tests__/ci-workflow.test.ts` — 'ci.yml triggers `push` on `**`, or is a declared narrowing'; 'NEGATIVE CONTROL: the pre-fix trigger fails the same check the live one passes'; 'every job carries the IDENTICAL same-repo-PR skip — no duplicate runs' · `.github/workflows/{ci,sweep-gate,e2e-flake}.yml` (`branches: ['**']`)
+**Rule:** Narrow a workflow by `paths` — a cost argument, which re-opens itself when the measured thing changes — never by branch name, which is a coverage argument that rots one branch at a time; and a job-level "already covered by the push run" skip is only valid when the push trigger covers every branch that skip applies to. Assert the whole trigger array, not membership, so a re-added allowlist goes red.
+
+---
+
+## Decisions index
+
+- `docs/CONTENT-ENGINE-DECISIONS.md` — where a rule lives, what may be added to a content table, naming, and the authored house voice (`CE-*`).
+- `docs/SAVE-FORMAT-DECISIONS.md` — when a `CURRENT_SAVE_VERSION` bump is and is not owed, and what schema drift protection each layer has (`SF-*`).
+- `docs/BALANCE-RIG-DECISIONS.md` — fingerprints, capstones, the baseline of record, measurement discipline, fixtures and goldens, the sweep gate and CI, archetype norms, and the owner-gated knobs (`BR-*`).
+- `docs/TASK-PROCESS-DECISIONS.md` — task scope by kind, acceptance criteria and amendment, correcting documents, refactors and deferred defects, versioning ceremony (`TP-*`).
+- `docs/EXPLORE-DECISIONS.md` — the Explore outcome table, recovery and AP cost, the Class-A/Class-B/stat power surfaces, and the verdict of record (`EX-*`).
+- `docs/HANGOUT-DECISIONS.md` — Hangout reach, the authored register, venues, the lending desk, and the measured record (`HO-*`).
+- `docs/LIARS-DICE-DECISIONS.md` — the Dare scene, its presentation, the fixed roster, the unlock ladder, and the open owner call (`LD-*`).
+- `docs/DEV-TOOLING-DECISIONS.md` — NPC decision telemetry, playtest telemetry, the balance report generator, and the dev control panel (`DT-*`).

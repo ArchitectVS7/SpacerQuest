@@ -12,13 +12,19 @@ import {
   NpcArchetype,
   NAV_FUEL_FLOOR,
   NPC_CHECK_DCS,
+  // T-149 · the socialize mint, pinned unchanged on both sides of the hasHangout read
+  NPC_SOCIALIZE_WIN_CREDITS,
+  NPC_SOCIALIZE_LOSS_CREDITS,
   ALL_NPC_PROFILES,
   NpcIntentType,
+  NpcProfile,
   STAR_SYSTEMS,
   distance,
   // N3
   COMBAT_SALVAGE_PER_TIER,
   NPC_ENCOUNTER_MAX_ROUNDS,
+  // N13/T-156 · the virtual hand's size, read from the same constant the deal uses
+  DAWN_BASE_HAND_SIZE,
   // N11 · the ONE deed slate — a captain's earned ids are asserted to be members of it
   DEEDS,
   // N11/T-021 · the gated rows the captain's refit ladder now asks the yard for
@@ -29,9 +35,13 @@ import {
   applyDisposition,
   npcDrives,
   npcShipForProfile,
+  pickContract,
   pickIntent,
   resolveNpcDay,
   NpcDayContext,
+  // T-140 · the decision-trace surface (docs/BALANCE-TELEMETRY_SPEC.md §3)
+  type NpcDecisionEvidence,
+  type NpcDecisionTrace,
 } from '../npc.js';
 import { componentTierForStrength, maxCargoPodsForShip } from '../actions/shipyard.js';
 // N3 · the interceptor pool (dead-captain skip) and the shared tribute schedule
@@ -48,6 +58,7 @@ import {
 import { accrueDeeds, emptyDeedRegistry, rankForDeedCount } from '../deeds.js';
 import { hasSpecialEquipment, navFuelFactor } from '../components.js';
 import { advanceDay } from '../day.js';
+import { CURRENT_SAVE_VERSION } from '../save.js';
 
 /** Longest route the cast can fly (systems 1-20): Cygnus-16 → Rigel-19. The
  *  worst case the hull-derived fuel ceiling has to clear — computed from the
@@ -60,7 +71,7 @@ const MAX_NPC_ROUTE_DISTANCE = Math.max(
 );
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { SeededRng } from '../rng.js';
-import { GameEvent, NpcState, SpecialEquipmentId } from '../types.js';
+import { CargoContract, GameEvent, NpcState, SpecialEquipmentId } from '../types.js';
 
 /** The eight ship components, in content order — the fit an N2 captain buys
  *  across. Named here so the assertions below read as "the whole ship". */
@@ -177,6 +188,26 @@ describe('NPC Resolution', () => {
 // the file still fails loudly if the seed drifts back.
 // ---------------------------------------------------------------------------
 describe('N2 · the day-1 seed (calibration)', () => {
+  it('T-208 · the 30 SIMULATED captains keep the `(index % 20) + 1` spread, untouched', () => {
+    // T-208 changed where the ELEVEN quest captains are born (to the core port their
+    // content declares) and nothing else. This is the inertness proof for the other
+    // thirty: `QUEST_PROFILES` are still APPENDED AFTER `NPC_PROFILES`, so the 30
+    // occupy indices 0-29 and every one lands on exactly the system it landed on
+    // before. Pinned against the expression itself so that a future reordering of
+    // the roster arrays — or a change to the seed — reddens HERE rather than
+    // silently re-rolling the whole simulated field and every position percentile
+    // this project has measured.
+    const state = createInitialState(31337);
+    NPC_PROFILES.forEach((profile, index) => {
+      const npc = state.npcs.find((n) => n.profileId === profile.id)!;
+      expect(npc.currentSystemId, `${profile.id} at roster index ${index}`).toBe((index % 20) + 1);
+      // The mirror `castValidation.ts` enforces at import, restated at the reader:
+      // a simulated captain declares no home port, because their position is state
+      // the dusk loop earns rather than content.
+      expect(profile.homePortSystemId, `${profile.id} declares no home port`).toBeUndefined();
+    });
+  });
+
   it('still hands rollContract the pods/hull-condition/drives spec the phantom did', () => {
     // UNCHANGED ACROSS N2, and deliberately: `contractSpecFromShip` reads pods,
     // hull CONDITION and drives, none of which this step re-seeds. So NPC contract
@@ -649,6 +680,149 @@ describe('T-1201 NPCs roll real checks', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// T-149 · THE RUMOR MILL KNOWS WHERE THE BARS AREN'T.
+//
+// `executeSocialize`'s `details` clause is interpolated VERBATIM into the
+// player-facing rumor mill (`actions/hangout.ts` `hangoutRumors` →
+// RUMOR_TEMPLATES.Socialize), so before this fix the wire told the player a
+// captain "cleaned up at the Antares-5 Hangout tables" at a port the game's own
+// UI (`ui/format.ts` `hangoutOpen`) tells them has no bar at all. Fourteen of
+// the twenty-eight systems carry `hasHangout`, and the cast flies ids 1-20, so
+// six reachable rim ports have none.
+//
+// The fix is FICTION ONLY: one boolean read off content selects prose. The roll,
+// the DC, and the credit mint are identical on both sides — which is exactly what
+// these tests pin, in both directions.
+// ---------------------------------------------------------------------------
+describe('T-149 Socialize flavor respects hasHangout', () => {
+  /** Derived from content, never restated as literals — if the rim is ever
+   *  flagged `hasHangout` these sets move with it rather than going stale. Only
+   *  ids 1-20 matter: that is the cast's route pool (`NPC_SYSTEM_IDS`). */
+  const REACHABLE = Object.values(STAR_SYSTEMS).filter((s) => s.id <= 20);
+  const OFF_HANGOUT_IDS = REACHABLE.filter((s) => s.hasHangout !== true).map((s) => s.id);
+  const HANGOUT_IDS = REACHABLE.filter((s) => s.hasHangout === true).map((s) => s.id);
+  /** GUILE-leaning, the same driver the T-1201 DC test uses for Socialize. */
+  const SOCIALIZER = 'npc-silk-dagger';
+  /** Any venue word. The rumor mill must name none of these off-Hangout. */
+  const VENUE = /hangout|cantina|\bbar\b|tables?/i;
+
+  it('has both port sets non-empty, so nothing below can pass vacuously', () => {
+    expect(OFF_HANGOUT_IDS.length).toBeGreaterThan(0);
+    expect(HANGOUT_IDS.length).toBeGreaterThan(0);
+  });
+
+  it('never narrates a Hangout at a port with no bar, on either outcome branch', () => {
+    for (const id of OFF_HANGOUT_IDS) {
+      let sawWin = false;
+      let sawLoss = false;
+      for (let seed = 1; seed <= 400; seed += 1) {
+        const before = npcFor(SOCIALIZER, { currentSystemId: id });
+        const startCredits = before.credits;
+        const { npc } = resolveNpcDay(before, new SeededRng(seed), NO_BOARD);
+        if (npc.lastAction?.type !== 'Socialize') continue;
+        const details = npc.lastAction.details ?? '';
+        expect(details, `${STAR_SYSTEMS[id].name} (seed ${seed}) has no bar`).not.toMatch(VENUE);
+        // ...and it still says WHERE, so the rumor line keeps its place.
+        expect(details).toContain(STAR_SYSTEMS[id].name);
+        if (npc.credits > startCredits) sawWin = true;
+        else if (npc.credits < startCredits) sawLoss = true;
+      }
+      // Both branches must have been exercised, or one flavor line is unasserted.
+      expect(sawWin, `saw a socialize win at ${STAR_SYSTEMS[id].name}`).toBe(true);
+      expect(sawLoss, `saw a socialize loss at ${STAR_SYSTEMS[id].name}`).toBe(true);
+    }
+  });
+
+  it('still names the Hangout where there is one, on either outcome branch', () => {
+    // The contrapositive: the fix must not be "delete the word Hangout everywhere".
+    for (const id of HANGOUT_IDS.slice(0, 2)) {
+      let sawWin = false;
+      let sawLoss = false;
+      for (let seed = 1; seed <= 400; seed += 1) {
+        const before = npcFor(SOCIALIZER, { currentSystemId: id });
+        const startCredits = before.credits;
+        const { npc } = resolveNpcDay(before, new SeededRng(seed), NO_BOARD);
+        if (npc.lastAction?.type !== 'Socialize') continue;
+        expect(npc.lastAction.details ?? '').toMatch(/Cantina/);
+        if (npc.credits > startCredits) sawWin = true;
+        else if (npc.credits < startCredits) sawLoss = true;
+      }
+      expect(sawWin).toBe(true);
+      expect(sawLoss).toBe(true);
+    }
+  });
+
+  it('still fires the GUILE check at a port with no bar (verb ⟺ StatCheck holds)', () => {
+    for (const id of OFF_HANGOUT_IDS) {
+      let socializeDays = 0;
+      for (let seed = 1; seed <= 400; seed += 1) {
+        const { npc, events } = resolveNpcDay(
+          npcFor(SOCIALIZER, { currentSystemId: id }),
+          new SeededRng(seed),
+          NO_BOARD,
+        );
+        if (npc.lastAction?.type !== 'Socialize') continue;
+        socializeDays += 1;
+        const checks = events.filter(
+          (e) => e.type === 'StatCheck' && e.actionContext === VERB_CONTEXT.Socialize,
+        );
+        expect(checks, `one npc-socialize check at ${STAR_SYSTEMS[id].name}`).toHaveLength(1);
+        const check = checks[0];
+        if (check.type !== 'StatCheck') throw new Error('unreachable');
+        expect(check.dc).toBe(NPC_CHECK_DCS.Socialize);
+        expect(check.stat).toBe(INTENT_STAT_AFFINITY.Socialize);
+      }
+      expect(socializeDays).toBeGreaterThan(0);
+    }
+  });
+
+  it('pays the identical mint on both sides of the boolean', () => {
+    // 400cr: above the 150cr ante, below NPC_YARD_RESERVE (1000), so
+    // `considerRefit` returns early and the socialize mint is the day's ONLY
+    // credit mutation. One rim id and one core id, so the amounts are pinned
+    // across the branch rather than only inside it.
+    const probes = [OFF_HANGOUT_IDS[0], HANGOUT_IDS[0]];
+    for (const id of probes) {
+      let sawWin = false;
+      let sawLoss = false;
+      for (let seed = 1; seed <= 400; seed += 1) {
+        const { npc } = resolveNpcDay(
+          npcFor(SOCIALIZER, { currentSystemId: id, credits: 400 }),
+          new SeededRng(seed),
+          NO_BOARD,
+        );
+        if (npc.lastAction?.type !== 'Socialize') continue;
+        const delta = npc.credits - 400;
+        if (delta > 0) {
+          expect(delta).toBe(NPC_SOCIALIZE_WIN_CREDITS);
+          sawWin = true;
+        } else {
+          expect(delta).toBe(-NPC_SOCIALIZE_LOSS_CREDITS);
+          sawLoss = true;
+        }
+      }
+      expect(sawWin, `saw a win at system ${id}`).toBe(true);
+      expect(sawLoss, `saw a loss at system ${id}`).toBe(true);
+    }
+  });
+
+  it('gates on a single content boolean, never a per-system id ladder', () => {
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../npc.ts'),
+      'utf8',
+    );
+    // Comments are prose about the rule; the guard is about the CODE, so strip
+    // them first (otherwise this passes or fails on documentation edits).
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(code.match(/hasHangout/g) ?? []).toHaveLength(1);
+    expect(code).toMatch(/STAR_SYSTEMS\[npc\.currentSystemId\]\?\.hasHangout === true/);
+    // No id ladder may ever stand in for the flag.
+    expect(code).not.toMatch(/currentSystemId\s*===\s*\d/);
+    expect(code).not.toMatch(/systemId\s*===\s*\d/);
+  });
+});
+
 describe('Disposition helper', () => {
   function stateWithNpc(disposition: number) {
     const state = createInitialState(1);
@@ -1108,6 +1282,239 @@ describe('N4 · the intent blend', () => {
 });
 
 // ---------------------------------------------------------------------------
+// T-140 · NPC DECISION TRACING (docs/BALANCE-TELEMETRY_SPEC.md §6).
+// ---------------------------------------------------------------------------
+//
+// The spec's §2 finding is that `pickIntent` and `pickContract` compute a full
+// distribution and then throw everything but the winner away. These cases assert
+// that the trace recovers it — against a KNOWN weight table, not against the
+// function's own arithmetic re-derived in the test, which would only assert that
+// the code equals itself.
+//
+// The last case is the one that matters most: a sink must not be able to perturb
+// the run. Everything else in this file, every golden and every balance fixture,
+// rests on that.
+
+describe('T-140 · decision tracing', () => {
+  /** A synthetic Ideal so the weight table under test is stated here, not read
+   *  out of shipped content (which would make the assertion move with a content
+   *  edit). Same injection shape as the all-zero corner above. */
+  const T140_IDEAL = '__t140__';
+  const T140_WEIGHTS = { Trade: 6, Travel: 2, Combat: 0, Patrol: 1, Socialize: 1 } as const;
+
+  /** `trader` multiplies Trade by 2 and leaves the rest at 1, so the table above
+   *  becomes {12,2,0,1,1} — total 16. That is the owner ruling's own worked
+   *  example (ideals.ts:164), which is why this row was chosen. */
+  const EXPECTED_CANDIDATES = [
+    { option: 'Trade', weight: 12 },
+    { option: 'Travel', weight: 2 },
+    { option: 'Combat', weight: 0 },
+    { option: 'Patrol', weight: 1 },
+    { option: 'Socialize', weight: 1 },
+  ];
+
+  function withSyntheticIdeal<T>(
+    weights: Record<NpcIntentType, number>,
+    body: (profile: NpcProfile) => T,
+  ): T {
+    IDEAL_WEIGHTS[T140_IDEAL] = { ...weights };
+    try {
+      const base = ALL_NPC_PROFILES.find((p) => p.id === 'npc-cargo-king')!;
+      return body({ ...base, ideal: T140_IDEAL });
+    } finally {
+      delete IDEAL_WEIGHTS[T140_IDEAL];
+    }
+  }
+
+  /** One `pickIntent` call, returning both halves: what it answered and what it
+   *  reported answering. */
+  function tracedIntent(
+    profile: NpcProfile,
+    credits: number,
+    rng: SeededRng,
+  ): { chosen: NpcIntentType | 'Idle'; entries: NpcDecisionEvidence[] } {
+    const entries: NpcDecisionEvidence[] = [];
+    const chosen = pickIntent(profile, credits, rng, (evidence) => entries.push(evidence));
+    return { chosen, entries };
+  }
+
+  it('reports the whole distribution the draw was made from, in content order', () => {
+    withSyntheticIdeal({ ...T140_WEIGHTS }, (profile) => {
+      const rng = new SeededRng(20260731);
+      for (let i = 0; i < 200; i++) {
+        const { chosen, entries } = tracedIntent(profile, 5000, rng);
+        expect(entries).toHaveLength(1);
+        const entry = entries[0];
+        expect(entry.kind).toBe('intent');
+        expect(entry.candidates).toEqual(EXPECTED_CANDIDATES);
+        // §3: `chosen` is the same value the function returns today.
+        expect(entry.chosen).toBe(chosen);
+        // §3: `roll` is `rng.next() * total`, so it lives in [0, 16).
+        expect(entry.roll).not.toBeNull();
+        expect(entry.roll!).toBeGreaterThanOrEqual(0);
+        expect(entry.roll!).toBeLessThan(16);
+
+        // THE ASSERTION THAT MAKES THIS A TRACE AND NOT A RE-DERIVATION: the
+        // prefix-sum bucket the reported roll lands in must be the reported
+        // winner. A trace that recomputed the distribution instead of recording
+        // the actual draw would pass every line above and fail this one.
+        let cumulative = 0;
+        let bucket = '';
+        for (const candidate of entry.candidates) {
+          cumulative += candidate.weight;
+          if (entry.roll! < cumulative) {
+            bucket = candidate.option;
+            break;
+          }
+        }
+        expect(bucket).toBe(entry.chosen);
+      }
+    });
+  });
+
+  it('shows poverty pressure as a WEIGHT on Trade, leaving every other candidate alone', () => {
+    withSyntheticIdeal({ ...T140_WEIGHTS }, (profile) => {
+      const solvent = tracedIntent(profile, 5000, new SeededRng(11)).entries[0];
+      const broke = tracedIntent(profile, 0, new SeededRng(11)).entries[0];
+      const weightOf = (entry: NpcDecisionEvidence, option: string) =>
+        entry.candidates.find((c) => c.option === option)!.weight;
+
+      // 12 x NPC_POVERTY_TRADE_MULTIPLIER (3, documented at its declaration in
+      // npc.ts and deliberately a multiplier rather than a flat term). This line
+      // moves only when that pacing constant is deliberately re-tuned.
+      expect(weightOf(broke, 'Trade')).toBe(weightOf(solvent, 'Trade') * 3);
+      for (const intent of NPC_INTENT_TYPES) {
+        if (intent === 'Trade') continue;
+        expect(weightOf(broke, intent), `${intent} under poverty`).toBe(weightOf(solvent, intent));
+      }
+    });
+  });
+
+  it('records the Idle corner as a decision with no draw behind it', () => {
+    withSyntheticIdeal({ Trade: 0, Travel: 0, Combat: 0, Patrol: 0, Socialize: 0 }, (profile) => {
+      const { chosen, entries } = tracedIntent(profile, 0, new SeededRng(3));
+      expect(chosen).toBe('Idle');
+      expect(entries).toHaveLength(1);
+      expect(entries[0].chosen).toBe('Idle');
+      // Nothing was drawn, so nothing is reported. This is why §3 types `roll`
+      // `number | null` rather than defaulting it to 0 — a 0 would read as a draw.
+      expect(entries[0].roll).toBeNull();
+      expect(entries[0].candidates.map((c) => c.weight)).toEqual([0, 0, 0, 0, 0]);
+    });
+  });
+
+  // A board built so that one archetype has a strict argmax and another has a
+  // real tie — the tie is the thing §2 says is discarded today. Origin is Sol-3.
+  const OFFERS: CargoContract[] = [
+    { destination: 2, cargoType: 9, payment: 40000, pods: 4 },
+    { destination: 2, cargoType: 1, payment: 20000, pods: 2 },
+    { destination: 20, cargoType: 5, payment: 30000, pods: 3 },
+    { destination: 15, cargoType: 10, payment: 25000, pods: 2 },
+  ];
+  const ORIGIN = 1;
+
+  function tracedContract(
+    archetype: NpcArchetype,
+    rng: SeededRng,
+  ): { chosen: number; entry: NpcDecisionEvidence } {
+    const entries: NpcDecisionEvidence[] = [];
+    const chosen = pickContract(archetype, OFFERS, ORIGIN, rng, (evidence) =>
+      entries.push(evidence),
+    );
+    expect(entries).toHaveLength(1);
+    return { chosen, entry: entries[0] };
+  }
+
+  it("reports a trader's per-offer scores — which are the cheques themselves", () => {
+    const { chosen, entry } = tracedContract('trader', new SeededRng(42));
+    expect(entry.kind).toBe('contract');
+    expect(entry.candidates).toEqual([
+      { option: '0', weight: 40000 },
+      { option: '1', weight: 20000 },
+      { option: '2', weight: 30000 },
+      { option: '3', weight: 25000 },
+    ]);
+    // §3: the same value the function returns today — an INDEX (F-140-2).
+    expect(entry.chosen).toBe(String(chosen));
+    expect(entry.chosen).toBe('0');
+  });
+
+  it("makes the fighter's TIE visible, which is exactly what is discarded today", () => {
+    const { chosen, entry } = tracedContract('fighter', new SeededRng(42));
+    // The fighter scores by destination danger: offers 2 and 3 are both rim, so
+    // the score table shows two equal maxima and the return value alone cannot
+    // tell you the choice was uniform between them.
+    const weights = entry.candidates.map((c) => c.weight);
+    const best = Math.max(...weights);
+    expect(weights.filter((w) => w === best)).toHaveLength(2);
+    expect(['2', '3']).toContain(entry.chosen);
+    expect(entry.chosen).toBe(String(chosen));
+    // For a contract the roll is the TIE-BREAK draw over the tied set, not a
+    // weighted draw over the board — `rng.next() * ties`.
+    expect(entry.roll!).toBeGreaterThanOrEqual(0);
+    expect(entry.roll!).toBeLessThan(2);
+    expect(Math.floor(entry.roll!)).toBe(['2', '3'].indexOf(entry.chosen));
+  });
+
+  it('binds day/npcId/archetype/ideal once per captain-day, in resolveNpcDay', () => {
+    // The identity half of a §3 entry. `pickContract` is handed an archetype and
+    // nothing else, so if this were bound anywhere but here the contract entries
+    // would carry no captain.
+    const entries: NpcDecisionTrace[] = [];
+    const profile = ALL_NPC_PROFILES.find((p) => p.id === 'npc-cargo-king')!;
+    for (let seed = 1; seed <= 40; seed++) {
+      resolveNpcDay(npcFor('npc-cargo-king', { credits: 0 }), new SeededRng(seed), {
+        ...NO_BOARD,
+        day: 17,
+        npcDecisionTrace: (entry) => entries.push(entry),
+      });
+    }
+    expect(entries.length).toBeGreaterThan(40);
+    for (const entry of entries) {
+      expect(entry.day).toBe(17);
+      expect(entry.npcId).toBe('npc-cargo-king');
+      expect(entry.archetype).toBe(profile.archetype);
+      expect(entry.ideal).toBe(profile.ideal);
+    }
+    // A broke trader trades most days, so both kinds are reachable from one run
+    // of this loop — the contract entries are the ones that prove the binding.
+    expect(entries.some((e) => e.kind === 'intent')).toBe(true);
+    expect(entries.some((e) => e.kind === 'contract')).toBe(true);
+  });
+
+  it('leaves resolveNpcDay byte-identical whether or not a sink is attached', () => {
+    for (let seed = 1; seed <= 25; seed++) {
+      const quiet = resolveNpcDay(npcFor('npc-iron-vex'), new SeededRng(seed), NO_BOARD);
+      const loud = resolveNpcDay(npcFor('npc-iron-vex'), new SeededRng(seed), {
+        ...NO_BOARD,
+        npcDecisionTrace: () => {},
+      });
+      expect(JSON.stringify(loud)).toBe(JSON.stringify(quiet));
+    }
+  });
+
+  it('cannot perturb the run: same answers AND the same rng state, sink or no sink', () => {
+    // The inertness claim at its narrowest point. If tracing drew, skipped or
+    // reordered a single rng call, every golden in this repo would move.
+    const profile = ALL_NPC_PROFILES.find((p) => p.id === 'npc-iron-vex')!;
+    const quiet = new SeededRng(4242);
+    const loud = new SeededRng(4242);
+    for (let i = 0; i < 100; i++) {
+      expect(pickIntent(profile, i % 2 === 0 ? 0 : 5000, loud, () => {})).toBe(
+        pickIntent(profile, i % 2 === 0 ? 0 : 5000, quiet),
+      );
+      expect(loud.getState()).toBe(quiet.getState());
+    }
+    for (const archetype of ['trader', 'fighter', 'smuggler', 'explorer'] as const) {
+      expect(pickContract(archetype, OFFERS, ORIGIN, loud, () => {})).toBe(
+        pickContract(archetype, OFFERS, ORIGIN, quiet),
+      );
+      expect(loud.getState()).toBe(quiet.getState());
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // N11 · CAPTAINS EARN DEEDS AND RENOWN.
 //
 // The step's accept criteria, each as its own case: zero at birth (no synthetic
@@ -1327,6 +1734,111 @@ describe('N11 · the Renown gate is reachable from the captain’s own day', () 
         (id) => npc.ship[id].strength !== twin.ship[id].strength,
       );
       expect(movedComponent || npc.ship.cargoPods !== twin.ship.cargoPods).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// N13 · THE VIRTUAL HAND, AS THE DAY LOOP SEES IT (T-156).
+//
+// `npc-virtual-hand.test.ts` pins the mechanism in isolation. These pin the three
+// properties that are only visible from `resolveNpcDay`: the deal is LAZY, the
+// day's allocations account for exactly the checks it rolled, and nothing about
+// the hand reaches the save.
+// ---------------------------------------------------------------------------
+describe('N13 · the virtual hand inside resolveNpcDay', () => {
+  it('a day that rolls nothing deals nothing — no rng is consumed by the hand', () => {
+    // The invariant `rollNpcCheck` records: "Every broke / underfunded fallback
+    // returns Idle/FlawOverride and rolls NOTHING". An EAGER deal would burn five
+    // rng values on those days and move every seeded career; this is the test that
+    // would catch it, stated against the rng STATE rather than against an outcome.
+    let checkedIdle = 0;
+    let checkedOverride = 0;
+    for (const profile of ALL_NPC_PROFILES) {
+      for (let seed = 1; seed <= 6; seed += 1) {
+        const broke = npcFor(profile.id, { credits: 30, fuel: 5 });
+        const live = new SeededRng(seed);
+        const { npc, events } = resolveNpcDay(broke, live, NO_BOARD);
+        const type = npc.lastAction?.type;
+        if (type !== 'Idle' && type !== 'FlawOverride') continue;
+        const verbChecks = events.filter(
+          (e) => e.type === 'StatCheck' && e.actor === npc.id,
+        ).length;
+        expect(verbChecks).toBe(0);
+
+        // The counterfactual: the same day with the hand's five d20s drawn up
+        // front would leave the rng in a DIFFERENT place. Re-running the identical
+        // day off a stream that has been advanced by a deal must therefore diverge
+        // from the real one — which is only a meaningful statement because the
+        // real day left the stream where it did.
+        const replay = new SeededRng(seed);
+        const { npc: again } = resolveNpcDay(npcFor(profile.id, { credits: 30, fuel: 5 }), replay, {
+          ...NO_BOARD,
+        });
+        expect(again.lastAction?.type).toBe(type);
+        expect(replay.getState()).toBe(live.getState());
+        if (type === 'Idle') checkedIdle += 1;
+        else checkedOverride += 1;
+      }
+    }
+    expect(checkedIdle).toBeGreaterThan(0);
+    expect(checkedOverride).toBeGreaterThan(0);
+  });
+
+  it("a captain's day spends one die per check it rolled, and the surplus is the documented raw-d20 fallback", () => {
+    // Allocations are not observable from outside `resolveNpcDay` — but every one
+    // of them emits a StatCheck tagged with the captain as actor (the day's verb
+    // plus each interdiction stance round), so the EVENTS are an exact census of
+    // them. Five dice cover the overwhelming majority of days; the rest fall
+    // through to the raw d20 named as boundary 2 at `npcHand.ts`'s definition
+    // site, and this test measures that rather than assuming it.
+    let days = 0;
+    let allocations = 0;
+    let overflow = 0;
+    let deepestDay = 0;
+    for (const profile of ALL_NPC_PROFILES) {
+      for (let seed = 1; seed <= 30; seed += 1) {
+        const { npc, events } = resolveNpcDay(
+          npcFor(profile.id, { credits: 50000, fuel: 1000 }),
+          new SeededRng(seed),
+          NO_BOARD,
+        );
+        const checks = events.filter((e) => e.type === 'StatCheck' && e.actor === npc.id).length;
+        days += 1;
+        allocations += checks;
+        overflow += Math.max(0, checks - DAWN_BASE_HAND_SIZE);
+        deepestDay = Math.max(deepestDay, checks);
+      }
+    }
+    expect(days).toBeGreaterThan(1000);
+    expect(allocations).toBeGreaterThan(0);
+    // The census is bounded by the day's shape: one verb check plus at most
+    // NPC_ENCOUNTER_MAX_ROUNDS interdiction rounds.
+    expect(deepestDay).toBeLessThanOrEqual(1 + NPC_ENCOUNTER_MAX_ROUNDS);
+    // And exhaustion is real but rare — reported, never hidden.
+    expect(overflow / allocations).toBeLessThan(0.05);
+  });
+
+  it('adds no field to the save: NpcState is unchanged and CURRENT_SAVE_VERSION is not bumped', () => {
+    // The hand is per-captain-day and never persisted, so N13 owes no migration
+    // and no round-trip test. Asserted rather than asserted-in-prose.
+    //
+    // The number is 15, not the 12 `TASKS.md`'s standing constraint names — that
+    // constraint records where the 0.5.2 track STARTED, and later tasks (through
+    // T-208's quest-captain home ports) bumped it legitimately. What N13 claims is
+    // that it added none of them.
+    expect(CURRENT_SAVE_VERSION).toBe(17);
+    const before = npcFor('npc-cargo-king', { credits: 50000, fuel: 1000 });
+    const { npc } = resolveNpcDay(before, new SeededRng(4), NO_BOARD);
+    // `lastAction` is the ONE key a resolved day is supposed to write that a
+    // fresh fixture does not carry; anything else would be N13 leaking.
+    const gained = Object.keys(npc).filter((key) => !(key in before));
+    expect(gained).toEqual(['lastAction']);
+    // …and no hand/die/reroll field anywhere on the persisted record.
+    const serialized = JSON.stringify(npc);
+    expect(JSON.parse(serialized)).toEqual(npc);
+    for (const key of Object.keys(JSON.parse(serialized) as Record<string, unknown>)) {
+      expect(/hand|dice|die|reroll/i.test(key), `NpcState gained "${key}"`).toBe(false);
     }
   });
 });

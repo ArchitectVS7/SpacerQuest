@@ -26,6 +26,42 @@ import { deedHunterPolicy, HUNTER_TARGET_DEED_IDS } from './support/deed-hunter.
 // re-runs the hunt. The hunt was run once, out of tree, in throwaway `.scratch/`
 // scripts; the seeds it found are pinned below with their provenance.
 //
+// ================= SWEEP PROVENANCE (2026-07-31, T-147) ====================
+// NOTHING MOVED. Recorded anyway, because the slate grew by a third and a reader
+// who finds an unchanged range under a 34% bigger `DEEDS` is owed the measurement
+// that says it is still the right range.
+// MECHANISM: T-147 adds FIFTEEN deeds — one per `hasHangout` port for clearing
+//        that house's three authored Liar's Dice seats, plus `liars_dice_grand_slam`
+//        for all 42 — earned off the new `LiarsDiceSetCleared` event. They are the
+//        first deeds in the slate that need a FINITE AUTHORED GAUNTLET rather than
+//        a repeatable verb, so `deed-hunter.ts` gains a ROSTER TOUR errand: sit at
+//        the local house's unbeaten, non-broke seats (up to two hands a day, at the
+//        port band's minimum stake), and on an idle day with no signed contract fly
+//        to the nearest port that still owes seats.
+// RE-SWEPT over seeds 1..65 of this exact driver at this exact horizon, in
+//        .scratch/ against a freshly built dist/, and compared against the SAME
+//        sweep run at HEAD~ (44 deeds, no tour):
+//          · UNION 59/59 — every one of the fifteen new deeds is reachable through
+//            play, and nothing that used to be reachable stopped being so;
+//          · FOUR careers are individually total (34, 45, 51, 57), against TWO
+//            (16, 39) on the 44-deed baseline. The `>= 2` count therefore has more
+//            margin after the change than before it, which is why neither
+//            COVERAGE_SEEDS nor HORIZON moved;
+//          · the long pole is UNCHANGED IN CHARACTER: `slipped_the_scan` is missed
+//            by 59 of 65 careers, exactly as on the baseline (also 59 of 65). The
+//            new deeds are nowhere near it — 61 of 65 careers close the WHOLE
+//            42-seat roster, so the gauntlet is comfortably inside the horizon.
+// ONE MEASURED DESIGN CALL, recorded because the first version failed: the tour
+//        originally returned a STANDALONE tables-day (the shape the Hangout errand
+//        uses for its four one-off gambling deeds). That errand fires twice a
+//        career; this one fires on the order of thirty days, and thirty
+//        non-travelling days starved every deed that lives downstream of FLYING —
+//        `slipped_the_scan` fell to ONE career in sixty-five. Riding the veteran's
+//        spare dice instead (dares unshifted ahead of the day's jump, travel only
+//        on a day the veteran planned none) costs the tour a little speed and costs
+//        the rest of the slate nothing. NO ASSERTION WAS TOUCHED in either version.
+// MEASURED COST: 65 careers in ~39s, against ~31s before the tour.
+//
 // ================= SWEEP PROVENANCE (re-pinned 2026-07-26, T-1603c) ========
 // RE-PIN (seeds [1,6] -> [2,5]; the CONQUEROR `it` moves 1 -> 2).
 // MECHANISM: T-1603c's combat-tuning levers (`docs/balance/TUNING-T-1603.md`
@@ -215,8 +251,27 @@ import { deedHunterPolicy, HUNTER_TARGET_DEED_IDS } from './support/deed-hunter.
  * and re-pricing Explore or the pod supply to flatter this file would be exactly
  * the metric-gaming the standing constraints forbid. It is recorded as finding
  * F-115-B for T-116, which owns the milestone's measurement.
+ * T-160 · WIDENED 1..65 -> 1..76, and it is a WIDENING, not a re-pin and not a
+ * loosened threshold. Every number in this file is byte-identical; only the range
+ * moved. T-160 ships `docs/LIARS-DICE_REDESIGN.md` §16.2 shape (b) — an opening
+ * Liar's Dice claim must EXCEED what the bidder holds of the claimed face, which
+ * removes the risk-free opener finding F-137-1 measured. The deed hunter plays the
+ * tables, so every career after the first dice hand re-phases; the property this
+ * file guards did not move, but WHICH seeds are individually total did.
+ *
+ * RE-SWEPT over seeds 1..160 of this exact driver at this exact horizon:
+ *   · THE UNION IS STILL 44/44 with nothing missing — no coverage regression;
+ *   · TEN careers are individually total: seeds 8, 76, 89, 94, 99, 110, 125, 127,
+ *     139 and 147. That is MORE total careers per 160 seeds than T-115's sweep
+ *     found (two), so the slate got EASIER to complete in one life, not harder;
+ *   · the long pole is unchanged and is still `slipped_the_scan` (21 of the 31
+ *     one- and two-deed misses), exactly as F-115-B named it. No dice deed is a
+ *     near-miss pole, which is the direct check that this widening is about
+ *     trajectory re-phasing and not about the dice getting harder.
+ * 1..76 is the SHORTEST CONTIGUOUS RANGE holding two total careers (8 and 76),
+ * which is what the `>= 2` count needs. MEASURED COST: 76 careers in ~36s.
  * ========================================================================== */
-const COVERAGE_SEEDS = Array.from({ length: 65 }, (_, index) => index + 1);
+const COVERAGE_SEEDS = Array.from({ length: 76 }, (_, index) => index + 1);
 /** See SWEEP PROVENANCE above. */
 const HORIZON = 300;
 
@@ -268,7 +323,7 @@ describe('T-1504d deed coverage + Conqueror reachability (pinned seeds)', () => 
     // The union alone would pass if forty-four careers each earned one deed. This
     // is the health check that a whole slate is winnable in ONE life — asserted
     // as a COUNT of total careers, never as which seed, so a diverging trajectory
-    // cannot red it while the property holds. Measured at 3 of these 8.
+    // cannot red it while the property holds. T-160: measured at 2 of these 76.
     const totals = COVERAGE_SEEDS.filter((seed) =>
       ALL_DEED_IDS.every((id) => earnedIds(RUNS.get(seed)!).has(id)),
     );
@@ -276,6 +331,55 @@ describe('T-1504d deed coverage + Conqueror reachability (pinned seeds)', () => 
       totals.length,
       `no career in seeds ${COVERAGE_SEEDS.join(', ')} earned the whole slate`,
     ).toBeGreaterThanOrEqual(2);
+  }, 300000);
+
+  it('the fifteen set-completion deeds are reached by DELIBERATE play', () => {
+    // T-169 · THE ASSERTION THAT HOLDS `docs/LIARS-DICE-PROGRESSION_SPEC.md`
+    // §12.9 F-148-2's ruling HONEST. That ruling takes shape (b) — the fifteen
+    // `LiarsDiceSetCleared` deeds are DELIBERATE-PLAY rewards, and the M4e sweep's
+    // `planDare` (which seats the richest candidate, and reported 0 grand slams in
+    // 720 careers) is not the instrument expected to reach them.
+    //
+    // A ruling that says "a deliberate player gets there" is worth nothing unless
+    // something measures a deliberate player. That is THIS file: `deed-hunter.ts`'s
+    // roster tour errand seats at unbeaten, non-broke seats at the port band
+    // minimum and flies to the nearest port still owing seats. It lives here and
+    // not in the sweep because the two rigs ask different questions — the sweep is
+    // the maximal-EV instrument, this is the deliberate-play one, and F-148-2 is
+    // exactly the gap between them.
+    //
+    // The union assertion above already binds every one of the fifteen, but it
+    // binds them at ONE career. This says the gauntlet is comfortably inside the
+    // horizon rather than a single lucky trajectory, which is the claim §12.9
+    // actually makes.
+    //
+    // DERIVED, never hand-listed — a renamed or newly authored set deed cannot
+    // silently escape this, the same convention `ALL_DEED_IDS` uses.
+    const setDeedIds = DEEDS.filter((deed) => deed.trigger.eventType === 'LiarsDiceSetCleared').map(
+      (deed) => deed.id,
+    );
+    expect(setDeedIds.length, 'the §6.4 set-completion family is not fifteen deeds').toBe(15);
+
+    // Asserted as a COUNT of careers, never as WHICH seed — this file's standing
+    // convention, so a diverging trajectory cannot red it while the property holds.
+    // MEASURED AT T-169 over these 76 careers: thirteen of the fourteen port
+    // deeds are earned by 76 of 76, `liars_dice_cleared_altair_3` by 75, and
+    // `liars_dice_grand_slam` by 75 of 76 — against the sweep's 0 in 720. The
+    // `>= 2` floor is deliberately far below the measurement, matching the totals
+    // assertion above, so a trajectory re-phase cannot red it while the property
+    // holds.
+    const earnedByCount = new Map<string, number>();
+    for (const id of setDeedIds) {
+      earnedByCount.set(
+        id,
+        COVERAGE_SEEDS.filter((seed) => earnedIds(RUNS.get(seed)!).has(id)).length,
+      );
+    }
+    const thin = setDeedIds.filter((id) => earnedByCount.get(id)! < 2);
+    expect(
+      thin,
+      `set deeds earned by fewer than two of seeds ${COVERAGE_SEEDS[0]}..${COVERAGE_SEEDS[COVERAGE_SEEDS.length - 1]}: ${thin.join(', ')}`,
+    ).toEqual([]);
   }, 300000);
 
   it('rank is a function of deeds actually banked, in every career', () => {

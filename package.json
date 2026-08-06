@@ -1,6 +1,6 @@
 {
   "name": "spacerquest-rimward",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -8,9 +8,13 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "sim": "npm run sim -w @spacerquest/sim --",
+    "balance:sweep": "npm run balance:sweep -w @spacerquest/sim --",
     "balance:diff": "npm run balance:diff -w @spacerquest/sim --",
+    "balance:report": "npm run balance:report -w @spacerquest/sim --",
     "balance:extract": "npm run balance:extract -w @spacerquest/sim --",
     "balance:smoke": "npm run balance:smoke -w @spacerquest/sim",
+    "pilot": "npm run pilot -w @spacerquest/sim --",
+    "dev:panel": "npm run dev:panel -w @spacerquest/devpanel --",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "tsc -b",
     "lint": "eslint .",

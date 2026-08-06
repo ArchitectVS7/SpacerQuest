@@ -18,6 +18,7 @@ import {
   NpcArchetype,
   NpcIntentType,
   NpcProfile,
+  QUEST_PROFILES,
   STAR_SYSTEMS,
   SYSTEM_DANGER_LEVELS,
   SHIP_COMPONENTS,
@@ -53,6 +54,7 @@ import {
 } from './types.js';
 import { SeededRng } from './rng.js';
 import { check } from './dice.js';
+import { npcVirtualHand, type NpcVirtualHand } from './npcHand.js';
 import { weaponVolleyDamage } from './components.js';
 // N3 · The interdiction reaches the engine's own encounter machinery. `travel.ts`
 // does NOT import this file, so this direction closes no cycle (unlike
@@ -456,6 +458,24 @@ export function seedNpcShip(profileId: string, carriedFuel: unknown): ShipState 
   return ship;
 }
 
+/**
+ * T-208 · THE ONE PLACE that answers "where does this quest captain sit?", for the
+ * same reason {@link seedNpcShip} is one place: there are THREE readers and they
+ * must not drift — `createInitialState` (birth), `deserializeState` (the
+ * schema-tolerant load path) and `save.ts`'s v16→v17 migration (the versioned
+ * envelope path). All three ask this function; none of them restates a table.
+ *
+ * Returns `undefined` for anything that is not a quest captain — a simulated
+ * captain (whose position is earned state that {@link resolveNpcDay} writes) and an
+ * unrecognised `profileId` alike. NOTE THE POLARITY, and it is the same one
+ * `isSimulatedCaptain` chose: an unknown id gets `undefined` and is therefore LEFT
+ * EXACTLY WHERE IT IS, because a migration must never be the thing that throws and
+ * must never be the thing that teleports a record it does not recognise.
+ */
+export function questHomePortForProfile(profileId: string): number | undefined {
+  return QUEST_PROFILES.find((p) => p.id === profileId)?.homePortSystemId;
+}
+
 /** The fuel an NPC jump costs, through the SAME call the player's travel makes
  *  (`actions/travel.ts`): the ship's drives, its Trans-Warp flag and its
  *  navigation discount. Seeded ships carry no Trans-Warp and a junker nav
@@ -500,6 +520,83 @@ const NPC_ODD_JOB_CREDITS = 25;
 const NPC_COMBAT_FUEL = 50;
 const NPC_PATROL_FUEL = 10;
 
+// ---------------------------------------------------------------------------
+// T-140 · NPC DECISION TRACING (docs/BALANCE-TELEMETRY_SPEC.md).
+// ---------------------------------------------------------------------------
+//
+// The spec's §2 finding: `pickIntent` computes a full weighted distribution and
+// `pickContract` scores every offer on the board — and BOTH throw everything but
+// the winner away the instant they return. So "is the Justice idealist actually
+// idling instead of trading?" cannot be answered by reading return values; it
+// needs the discarded distribution. These types are that distribution, escaping.
+//
+// THE §4(1) RULING — design (a), CALLBACK INJECTION, not (b) always-return-the-
+// distribution. Recorded here because the spec asked for the reason, not just the
+// choice (the long form is docs/BALANCE-TELEMETRY_SPEC.md §7):
+//
+//   1. §4(5) decides it. "Provably free when the flag is off (no allocation on
+//      the hot path)" is a hard clause, and (b) cannot honour it: it would have
+//      to materialise a `{option, weight}` array per decision on every captain-
+//      day whether or not anyone asked — millions of throwaway arrays in one
+//      capstone sweep. Under (a) every allocation sits inside `if (trace)`, so
+//      the untraced path allocates exactly what it allocated before T-140.
+//   2. (b) does not avoid a sink, it moves it up. A §3 entry needs `day`,
+//      `npcId`, `archetype` and `ideal`; `pickContract` is handed only the
+//      archetype and is called from `executeTrade`, not from `resolveNpcDay`. So
+//      (b) costs TWO return-type widenings (`pickContract` and `executeTrade`)
+//      and STILL needs a sink on `NpcDayContext` for the forwarding. Strictly
+//      more engine surface, not less.
+//   3. Inertness is easier to prove. An optional trailing parameter leaves every
+//      existing call site and every existing assertion untouched; (b) rewrites
+//      ~25 assertions, and every rewritten assertion is a place inertness could
+//      hide.
+//   4. The task's own accept criterion is written in (a)'s language ("a grep for
+//      the trace-sink PARAMETER under packages/ui and packages/desktop returns
+//      nothing"). Under (b) there is no parameter and the criterion is vacuous.
+//
+// The counter-argument the spec raises against (a) — "it changes signatures and
+// therefore moves `rulesFingerprint`" — does not discriminate: (b) edits this
+// same file and moves it too, and §4(2) accepts that cost either way.
+
+/** One option a decision function considered, with the weight/score it carried. */
+export interface NpcDecisionCandidate {
+  /** The option's identity. For `kind: 'intent'` this is the {@link NpcIntentType}
+   *  (or `'Idle'`); for `kind: 'contract'` it is the BOARD INDEX as a string, because
+   *  the index is what `pickContract` returns. */
+  option: string;
+  weight: number;
+}
+
+/** §3 of docs/BALANCE-TELEMETRY_SPEC.md — one entry per NPC decision point. */
+export interface NpcDecisionTrace {
+  day: number;
+  npcId: string;
+  archetype: NpcArchetype;
+  ideal: string;
+  kind: 'intent' | 'contract';
+  /** The distribution that is discarded today. */
+  candidates: NpcDecisionCandidate[];
+  /** The draw, when one happened. `null` in the all-weights-zero Idle corner,
+   *  where `pickIntent` returns before drawing anything. */
+  roll: number | null;
+  /** The same value the function returns today (stringified). */
+  chosen: string;
+}
+
+/**
+ * What a traced run supplies. `undefined` everywhere else BY CONSTRUCTION: the
+ * ONLY supplier in the repository is `packages/sim`'s sweep runner behind its
+ * explicit `--trace-npc-decisions` flag. The shipped game never sets one —
+ * `packages/ui/src/__tests__/npc-trace-absent.test.ts` is the assertion.
+ */
+export type NpcDecisionTraceSink = (entry: NpcDecisionTrace) => void;
+
+/** The half of a §3 entry a decision function can fill in for itself. Identity
+ *  (`day`/`npcId`/`archetype`/`ideal`) is bound once by {@link resolveNpcDay},
+ *  which is the only frame that knows both the day and the captain. */
+export type NpcDecisionEvidence = Pick<NpcDecisionTrace, 'kind' | 'candidates' | 'roll' | 'chosen'>;
+export type NpcDecisionEvidenceSink = (evidence: NpcDecisionEvidence) => void;
+
 export interface NpcDayContext {
   day: number;
   /** The player's live manifest board when this NPC is allowed to claim from
@@ -537,6 +634,19 @@ export interface NpcDayContext {
    * the cast from this cap in a code comment; that exemption is not re-granted.
    */
   edition: Edition;
+  /**
+   * T-140 · Where this captain's decision traces go, when anybody asked for them.
+   *
+   * ABSENT ON EVERY ORDINARY CALL, and that is the whole design: the ONE supplier
+   * in the repository is `packages/sim/src/balance/sweep.ts` behind its explicit
+   * `--trace-npc-decisions` flag, which threads it through `runCampaign`'s extras
+   * and `endDay`'s options. The shipped game (`packages/ui`, `packages/desktop`)
+   * never sets it — spec §4(3), asserted by `npc-trace-absent.test.ts`.
+   *
+   * Undefined is not merely the default, it is the free path: nothing below
+   * allocates a closure, a candidate array or an entry unless this is set.
+   */
+  npcDecisionTrace?: NpcDecisionTraceSink;
 }
 
 export interface NpcDayResult {
@@ -601,6 +711,13 @@ export function pickIntent(
   profile: NpcProfile,
   credits: number,
   rng: SeededRng,
+  /** T-140 · Optional decision trace (docs/BALANCE-TELEMETRY_SPEC.md §3). Supplied
+   *  only by a `--trace-npc-decisions` sweep, via {@link NpcDayContext}. Nothing is
+   *  allocated and nothing is computed for it when it is absent, which is spec
+   *  §4(5); the draw itself is untouched either way, which is spec §5. WHY this is
+   *  a parameter rather than a widened return type is the §4(1) ruling, recorded in
+   *  full at {@link NpcDecisionTrace} above and in the spec's own §7. */
+  trace?: NpcDecisionEvidenceSink,
 ): NpcIntentType | 'Idle' {
   const base = IDEAL_WEIGHTS[profile.ideal] ?? DEFAULT_IDEAL_WEIGHTS;
   const archetype = ARCHETYPE_INTENT_MULTIPLIERS[profile.archetype] ?? NEUTRAL_INTENT_MULTIPLIERS;
@@ -624,15 +741,48 @@ export function pickIntent(
     // a verb the table forbade. Unreachable with the current tables (every Ideal
     // has a positive weight and no multiplier is 0), but future content must not
     // break it, which is why the branch exists and is tested.
+    //
+    // T-140 · `roll: null` is the honest record of this corner and is exactly why
+    // spec §3 types the field `number | null`: nothing was drawn, so reporting a
+    // number here would invent one.
+    trace?.({ kind: 'intent', candidates: traceCandidates(weighted), roll: null, chosen: 'Idle' });
     return 'Idle';
   }
 
-  let roll = rng.next() * total;
+  // T-140 · The DRAW is captured before the loop consumes it. `roll` below is
+  // decremented in place, so by the time the winner is known the variable no
+  // longer holds `rng.next() * total` — which is the number spec §3 names. The
+  // local is read-only and costs nothing when untraced.
+  const drawn = rng.next() * total;
+  let roll = drawn;
   for (const entry of weighted) {
     roll -= entry.weight;
-    if (roll < 0) return entry.intent;
+    if (roll < 0) {
+      trace?.({
+        kind: 'intent',
+        candidates: traceCandidates(weighted),
+        roll: drawn,
+        chosen: entry.intent,
+      });
+      return entry.intent;
+    }
   }
-  return weighted[weighted.length - 1].intent;
+  const fallback = weighted[weighted.length - 1].intent;
+  trace?.({
+    kind: 'intent',
+    candidates: traceCandidates(weighted),
+    roll: drawn,
+    chosen: fallback,
+  });
+  return fallback;
+}
+
+/** T-140 · The weighted intent table as §3 candidates. Called ONLY from inside a
+ *  `trace?.(...)` argument list, so an untraced day never builds the array. */
+function traceCandidates(
+  weighted: readonly { intent: NpcIntentType; weight: number }[],
+): NpcDecisionCandidate[] {
+  return weighted.map((entry) => ({ option: entry.intent, weight: entry.weight }));
 }
 
 /** Clamp-and-apply a disposition change, emitting a typed event when the
@@ -812,9 +962,14 @@ function refuelIfNeeded(npc: NpcState, needed: number, eraEvent: EraEventState |
  * {@link NPC_YARD_RESERVE}, for the reason argued at its own definition site (the E8
  * precedent — the game already had a number for "this captain has spare money").
  *
- * OUT OF SCOPE AND STILL OPEN: OI-9, the NPC refit spends no die. `spendDie: 0` on
- * the equipment action is the component rung's existing convention, not a claim that
- * the die question is settled.
+ * OI-9 (the NPC refit spends no die) IS CLOSED BY T-196a, and closed from the other
+ * side: M17 (`docs/DAWN-HAND-REDESIGN.md` §3) made the whole shipyard a FREE ACTION
+ * for the player too, so the asymmetry OI-9 watched no longer exists — nobody pays a
+ * die at the yard. The `spendDie: 0` placeholder that used to sit on the equipment
+ * action here is gone with the field; these action literals were never fed to
+ * `resolveShipyard` anyway (this function calls `applyShipyardMutation`/
+ * `quoteShipyard` directly), which is why NPC-side rows are predicted near-still
+ * across T-196a's capstone.
  *
  * CARGO PODS RIDE THE HULL RUNG, AND NOTHING ELSE, and that placement is the one
  * judgement in this function — recorded because the first version got it wrong and
@@ -902,7 +1057,6 @@ function considerRefit(npc: NpcState, profile: NpcProfile, day: number, events: 
       // reads the fit back through `hasSpecialEquipment`, so such a row reddens there
       // instead of reaching a captain's ship.
       equipment: entry.id as SpecialEquipmentId,
-      spendDie: 0,
     };
     // "for the Arch Angel", definite article on purpose: content names start with
     // both vowels and consonants, and "a Arch Angel" on a player-facing wire line is
@@ -918,7 +1072,6 @@ function considerRefit(npc: NpcState, profile: NpcProfile, day: number, events: 
       action: 'buy-component-tier',
       component,
       tier,
-      spendDie: 0,
     };
     if (!buy(action, `a tier-${tier} ${componentDisplayName(component)} refit`)) continue;
     // The hull rung carries the hold with it — see the header. Priced through the
@@ -952,20 +1105,28 @@ function considerRefit(npc: NpcState, profile: NpcProfile, day: number, events: 
  *   · the fuel prices — RUN_FUEL_COST / FIGHT_FUEL_COST
  *   · the post-kill escape — the opposed PILOT roll with RETREAT_KILL_EDGE
  *
- * ── THE ONE SANCTIONED ABSTRACTION, NAMED AT ITS DEFINITION SITE ─────────────
+ * ── THE DIE GAP, CLOSED AT N13 (T-156, 2026-08-02) ───────────────────────────
  * OWNER RULING (2026-07-29): this does NOT call `resolveCombat`. It cannot — that
- * function spends a die from `player.dawnHand`, and the cast holds no hand until
- * N13 builds them a decision surface. So the fight runs here, on the primitives
- * above, and gives up EXACTLY ONE THING: **die CHOICE**. A player picks which of
- * five visible dice to spend, which is the game's central decision; a captain in the
- * coarse one-verb day has no hand to pick from, so its die is `rng.d20()`.
+ * function spends a die from `player.dawnHand`, and until N13 the cast held no
+ * hand at all, so the fight ran here on the primitives above and gave up EXACTLY
+ * ONE THING: **die CHOICE**. Every stance check below drew a bare `rng.d20()`.
  *
- * That is a real gap and it is not to be described as parity. **N13 is the step
- * that closes it** — when the cast holds a hand, the stance picker below reads it
- * instead of drawing raw, and this note comes out. Until then the PARITY LEDGER
- * says "shared primitives, one-tick", never "full parity via resolveCombat"; the
- * 2026-07-29 audit found that exact false claim in this document and it is not to
- * be re-introduced.
+ * **THAT IS NO LONGER TRUE, AND THIS NOTE IS THE PROMISED REPLACEMENT.** N13
+ * dealt the cast a virtual hand, and {@link rollEncounterCheck} now spends from
+ * it — `hand.allocateVirtualDie(statValue)`, the same ledger the day's verb check
+ * spends from, threaded in from `resolveNpcDay`. A captain's stance roll is
+ * therefore drawn from five dice under the player's own `rollDawnHand` /
+ * `spendDie` discipline, with the reach for a sharper or duller die scaled by the
+ * stat the check is on.
+ *
+ * WHAT IS STILL GIVEN UP, because the honest sentence is shorter but not empty:
+ * the PICK is modelled rather than chosen — `packages/engine/src/npcHand.ts`
+ * carries that flag as THE ONE SANCTIONED ABSTRACTION in the parity design, and it
+ * is the file to read before describing any of this as parity. The PARITY LEDGER
+ * still says "shared primitives, one-tick", never "full parity via
+ * resolveCombat"; the 2026-07-29 audit found that exact false claim in this
+ * document and it is not to be re-introduced. `executeCombat` — the branch a
+ * captain CHOOSES — remains a flat GUNS check and is still owed.
  *
  * The second, smaller abstraction: the encounter resolves in ONE tick rather than
  * spanning days on a fresh hand. `NPC_ENCOUNTER_MAX_ROUNDS` bounds it, and a captain
@@ -980,6 +1141,9 @@ function resolveNpcEncounter(
    *  danger level, the same rule the player's loaded run obeys. */
   haulingTo: number | undefined,
   rng: SeededRng,
+  /** N13 · The captain's die ledger for the day — every stance check below spends
+   *  from it. See {@link npcVirtualHand}. */
+  hand: NpcVirtualHand,
   ctx: NpcDayContext,
   events: GameEvent[],
   /** N11 · The captain's LOCAL deed-source batch. See {@link resolveNpcDay} for why
@@ -1033,7 +1197,7 @@ function resolveNpcEncounter(
         profile,
         Stat.TRADE,
         'npc-encounter-talk',
-        rng,
+        hand,
         events,
         interceptor,
       );
@@ -1050,7 +1214,7 @@ function resolveNpcEncounter(
         profile,
         Stat.PILOT,
         'npc-encounter-run',
-        rng,
+        hand,
         events,
         interceptor,
       );
@@ -1065,7 +1229,7 @@ function resolveNpcEncounter(
         profile,
         Stat.GUNS,
         'npc-encounter-fight',
-        rng,
+        hand,
         events,
         interceptor,
       );
@@ -1242,12 +1406,13 @@ function rollEncounterCheck(
   profile: NpcProfile,
   stat: Stat,
   actionContext: 'npc-encounter-talk' | 'npc-encounter-run' | 'npc-encounter-fight',
-  rng: SeededRng,
+  hand: NpcVirtualHand,
   events: GameEvent[],
   interceptor: EncounterInterceptorState,
 ): CheckResult {
   const dc = 10 + interceptor.tier;
-  const result = check(rng.d20(), profile.stats[stat], dc);
+  const statValue = profile.stats[stat];
+  const result = check(hand.allocateVirtualDie(statValue), statValue, dc);
   events.push({ type: 'StatCheck', actor: npc.id, stat, dc, result, actionContext });
   return result;
 }
@@ -1264,7 +1429,6 @@ function fillHold(npc: NpcState, profile: NpcProfile, day: number, events: GameE
     type: 'Shipyard',
     action: 'buy-cargo-pods',
     quantity,
-    spendDie: 0,
   };
   const quote = quoteShipyard(npc, action);
   if (!quote.ok || quote.cost > spendable) return;
@@ -1347,17 +1511,21 @@ const NPC_CHECK_CONTEXT: Record<
  * one of the five verbs ⟺ exactly one StatCheck was emitted. Every broke /
  * underfunded fallback returns Idle/FlawOverride and rolls NOTHING, so the
  * wire's trade-failure rate and the acceptance test's denominator stay honest.
+ * N13 · THAT INVARIANT IS WHY THE VIRTUAL HAND IS DEALT LAZILY. `hand` holds no
+ * dice until the first allocation asks for them, so a day that rolls nothing
+ * still consumes nothing — see {@link npcVirtualHand}.
  */
 function rollNpcCheck(
   npc: NpcState,
   profile: NpcProfile,
   intent: NpcIntentType,
-  rng: SeededRng,
+  hand: NpcVirtualHand,
   events: GameEvent[],
 ): CheckResult {
   const stat = INTENT_STAT_AFFINITY[intent];
   const dc = NPC_CHECK_DCS[intent];
-  const result = check(rng.d20(), profile.stats[stat], dc);
+  const statValue = profile.stats[stat];
+  const result = check(hand.allocateVirtualDie(statValue), statValue, dc);
   events.push({
     type: 'StatCheck',
     actor: npc.id,
@@ -1411,6 +1579,20 @@ export function pickContract(
   offers: readonly CargoContract[],
   originSystemId: number,
   rng: SeededRng,
+  /**
+   * T-140 · Optional decision trace (docs/BALANCE-TELEMETRY_SPEC.md §3). Two things
+   * about the emitted entry are specific to a contract and are recorded here rather
+   * than left to be re-derived by a reader:
+   *
+   *   - `roll` is the TIE-BREAK draw over the tied-best set (`rng.next() * ties`),
+   *     not a weighted draw over the whole board. This function argmaxes and only
+   *     then rolls; the score IS the preference.
+   *   - `option`/`chosen` are BOARD INDICES, stringified, because §3 defines
+   *     `chosen` as "the same value the function returns today" and that value is
+   *     an index. F-140-2: the board itself is not recorded, so an entry says
+   *     "which of the offers presented that day", never "which cargo".
+   */
+  trace?: NpcDecisionEvidenceSink,
 ): number {
   // THE ORIGIN IS A PARAMETER, and the reverted attempt is why it is spelled out
   // here: it measured every archetype's distance reasoning as
@@ -1444,8 +1626,13 @@ export function pickContract(
 
   let best = -Infinity;
   const candidates: number[] = [];
+  // T-140 · The per-offer scores, kept ONLY when somebody asked. `null` when
+  // untraced, so the loop below allocates nothing and pushes nothing — the
+  // argmax runs exactly as it did before this parameter existed.
+  const scores: number[] | null = trace === undefined ? null : [];
   for (let i = 0; i < offers.length; i++) {
     const value = score(offers[i]);
+    scores?.push(value);
     if (value > best) {
       best = value;
       candidates.length = 0;
@@ -1455,17 +1642,29 @@ export function pickContract(
     }
   }
 
-  return candidates[Math.floor(rng.next() * candidates.length)];
+  const tieBreak = rng.next() * candidates.length;
+  const chosen = candidates[Math.floor(tieBreak)];
+  trace?.({
+    kind: 'contract',
+    candidates: (scores ?? []).map((weight, index) => ({ option: String(index), weight })),
+    roll: tieBreak,
+    chosen: String(chosen),
+  });
+  return chosen;
 }
 
 function executeTrade(
   npc: NpcState,
   profile: NpcProfile,
   rng: SeededRng,
+  /** N13 · The captain's die ledger for the day. See {@link npcVirtualHand}. */
+  hand: NpcVirtualHand,
   ctx: NpcDayContext,
   events: GameEvent[],
   /** N11 · The captain's LOCAL deed-source batch — see {@link resolveNpcDay}. */
   deedSource: GameEvent[],
+  /** T-140 · Forwarded, unread, to whichever `pickContract` call this day takes. */
+  trace?: NpcDecisionEvidenceSink,
 ): { action: NpcAction; claimedContractIndex?: number; claimedFromPool?: number } {
   // THE SHARED JOB POOL (T-106, generalised by N10). A captain trading anywhere
   // works the same per-system pool the player's board is drawn from, through the
@@ -1495,6 +1694,7 @@ function executeTrade(
       ctx.claimableBoard,
       npc.currentSystemId,
       rng,
+      trace,
     );
     contract = ctx.claimableBoard[claimedContractIndex]!;
   } else {
@@ -1511,7 +1711,8 @@ function executeTrade(
       jobPoolDepth(ctx.jobPoolClaims, npc.currentSystemId),
       ctx.eraEvent,
     );
-    contract = localBoard[pickContract(profile.archetype, localBoard, npc.currentSystemId, rng)]!;
+    contract =
+      localBoard[pickContract(profile.archetype, localBoard, npc.currentSystemId, rng, trace)]!;
     claimedFromPool = npc.currentSystemId;
   }
 
@@ -1575,6 +1776,7 @@ function executeTrade(
       contract.destination,
       contract.destination,
       rng,
+      hand,
       ctx,
       events,
       deedSource,
@@ -1622,7 +1824,7 @@ function executeTrade(
   });
   npc.credits += contract.payment;
 
-  const result = rollNpcCheck(npc, profile, 'Trade', rng, events);
+  const result = rollNpcCheck(npc, profile, 'Trade', hand, events);
   // N11 · THE DELIVERY, emitted AFTER the check so no unresolved outcome is stamped
   // — the reverted attempt's defect #5 fixed at its root rather than by flipping a
   // flag. `success: true` is the honest value on two pieces of evidence:
@@ -1672,6 +1874,8 @@ function executeTravel(
   npc: NpcState,
   profile: NpcProfile,
   rng: SeededRng,
+  /** N13 · The captain's die ledger for the day. See {@link npcVirtualHand}. */
+  hand: NpcVirtualHand,
   ctx: NpcDayContext,
   events: GameEvent[],
   /** N11 · The captain's LOCAL deed-source batch — see {@link resolveNpcDay}. */
@@ -1703,7 +1907,18 @@ function executeTravel(
   // N3 · The lane can be interdicted. A captain who loses the ship here is done —
   // no verb resolves, and their day ends with the wreck.
   if (
-    resolveNpcEncounter(npc, profile, origin, destination, undefined, rng, ctx, events, deedSource)
+    resolveNpcEncounter(
+      npc,
+      profile,
+      origin,
+      destination,
+      undefined,
+      rng,
+      hand,
+      ctx,
+      events,
+      deedSource,
+    )
   ) {
     // N11 · The wreck's leg, in the player's interrupted-jump shape. No arrival, so
     // `success: false` matches none of the TravelEvent deeds.
@@ -1719,7 +1934,7 @@ function executeTravel(
     return { type: 'Travel', details: `was lost on the run to ${systemName(destination)}` };
   }
   // A Travel (PILOT) check decides a clean jump vs a rough one (T-1201).
-  const result = rollNpcCheck(npc, profile, 'Travel', rng, events);
+  const result = rollNpcCheck(npc, profile, 'Travel', hand, events);
   if (result.success) {
     // N11 · The arrival. Same shape and same reasoning as the Trade leg's jump: an
     // ordinary player jump always arrives (T-1605), so a captain's arrival is
@@ -1761,6 +1976,8 @@ function executeCombat(
   npc: NpcState,
   profile: NpcProfile,
   rng: SeededRng,
+  /** N13 · The captain's die ledger for the day. See {@link npcVirtualHand}. */
+  hand: NpcVirtualHand,
   ctx: NpcDayContext,
   events: GameEvent[],
 ): NpcAction {
@@ -1778,7 +1995,7 @@ function executeCombat(
   // values sized for player encounters — fed into a 30-NPC daily sim they
   // would swamp trade income. 150×tier keeps fighting a living, not a
   // money printer, next to the shared contract-payment formula.
-  const result = rollNpcCheck(npc, profile, 'Combat', rng, events);
+  const result = rollNpcCheck(npc, profile, 'Combat', hand, events);
   if (result.success) {
     const bounty = 150 * profile.tier;
     npc.credits += bounty;
@@ -1797,6 +2014,8 @@ function executePatrol(
   npc: NpcState,
   profile: NpcProfile,
   rng: SeededRng,
+  /** N13 · The captain's die ledger for the day. See {@link npcVirtualHand}. */
+  hand: NpcVirtualHand,
   ctx: NpcDayContext,
   events: GameEvent[],
 ): NpcAction {
@@ -1806,7 +2025,7 @@ function executePatrol(
   npc.ship.fuel = Math.max(0, npc.ship.fuel - NPC_PATROL_FUEL);
   // A Patrol (GRIT) check decides a productive sweep vs a costly quiet day
   // (T-1201).
-  const result = rollNpcCheck(npc, profile, 'Patrol', rng, events);
+  const result = rollNpcCheck(npc, profile, 'Patrol', hand, events);
   if (result.success) {
     npc.credits += NPC_PATROL_SUCCESS_CREDITS;
     return {
@@ -1825,6 +2044,8 @@ function executeSocialize(
   npc: NpcState,
   profile: NpcProfile,
   rng: SeededRng,
+  /** N13 · The captain's die ledger for the day. See {@link npcVirtualHand}. */
+  hand: NpcVirtualHand,
   ctx: NpcDayContext,
   events: GameEvent[],
 ): NpcAction {
@@ -1834,21 +2055,41 @@ function executeSocialize(
     // verb⟺StatCheck invariant).
     return brokeIdle(npc, rng, ctx.day, events);
   }
-  // A night at the Hangout: a Socialize (GUILE) check through the shared
-  // check() to come out ahead at the tables (T-1201, replacing a raw inline
-  // d20+GUILE threshold of 14 — the DC now lives in content NPC_CHECK_DCS).
-  const result = rollNpcCheck(npc, profile, 'Socialize', rng, events);
+  // T-149 · Does this port actually HAVE a bar? Fourteen of the twenty-eight
+  // systems carry `hasHangout`, and the cast flies ids 1-20, so six reachable
+  // rim ports (Antares-5, Capella-4, Polaris-1, Mizar-9, Achernar-5, Algol-2)
+  // have none. The `details` clause below is interpolated VERBATIM into the
+  // player-facing rumor mill (`actions/hangout.ts` `hangoutRumors` →
+  // RUMOR_TEMPLATES.Socialize), so narrating "the Hangout tables" at a port the
+  // game's own UI tells the player has no bar is a fiction contradiction. One
+  // boolean read off content — the SAME source `day.ts` gates `VisitHangout` on
+  // and `ui/format.ts`'s `hangoutOpen` reads — never a per-system id ladder.
+  const hasBar = STAR_SYSTEMS[npc.currentSystemId]?.hasHangout === true;
+  // A night out: a Socialize (GUILE) check through the shared check() to come
+  // out ahead — at the tables where there are tables, over a bottle on the
+  // docks where there aren't (T-1201, replacing a raw inline d20+GUILE
+  // threshold of 14 — the DC now lives in content NPC_CHECK_DCS).
+  //
+  // The roll sits ABOVE and OUTSIDE `hasBar` ON PURPOSE: the T-1201
+  // verb⟺StatCheck invariant requires a returned `Socialize` action to always
+  // carry exactly one `npc-socialize` StatCheck. `hasBar` selects PROSE, never
+  // an outcome — same rng draw, same DC, same credit mint on both sides.
+  const result = rollNpcCheck(npc, profile, 'Socialize', hand, events);
   if (result.success) {
     npc.credits += NPC_SOCIALIZE_WIN_CREDITS;
     return {
       type: 'Socialize',
-      details: `cleaned up at the ${systemName(npc.currentSystemId)} Hangout tables`,
+      details: hasBar
+        ? `cleaned up at the ${systemName(npc.currentSystemId)} Cantina tables`
+        : `swapped stories at the ${systemName(npc.currentSystemId)} docks`,
     };
   }
   npc.credits -= NPC_SOCIALIZE_LOSS_CREDITS;
   return {
     type: 'Socialize',
-    details: `bought a round at the ${systemName(npc.currentSystemId)} Hangout`,
+    details: hasBar
+      ? `bought a round at the ${systemName(npc.currentSystemId)} Cantina`
+      : `drank alone at ${systemName(npc.currentSystemId)}, poorer for it`,
   };
 }
 
@@ -1882,9 +2123,32 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
     throw new Error(`Profile not found for NPC ${updatedNpc.id}`);
   }
 
+  // T-140 · IDENTITY IS BOUND ONCE PER CAPTAIN-DAY, here, because this is the only
+  // frame that knows both the day and whose day it is (`pickContract` is handed an
+  // archetype and nothing else). When no sink was supplied this is one comparison
+  // and no closure — spec §4(5)'s "free when the flag is off".
+  const trace: NpcDecisionEvidenceSink | undefined =
+    ctx.npcDecisionTrace === undefined
+      ? undefined
+      : (evidence) =>
+          ctx.npcDecisionTrace!({
+            day: ctx.day,
+            npcId: updatedNpc.id,
+            archetype: profile.archetype,
+            ideal: profile.ideal,
+            ...evidence,
+          });
+
+  // N13 · THE CAPTAIN'S DIE LEDGER FOR THE DAY. Constructed unconditionally and
+  // dealt LAZILY (see {@link npcVirtualHand}): a captain whose day ends in
+  // Idle / FlawOverride / a broke fallback rolls NOTHING from it, which is the
+  // invariant `rollNpcCheck` records above and which several tests and the wire's
+  // failure-rate denominator depend on.
+  const hand = npcVirtualHand(rng);
+
   // 1. Intent — content weight tables (Ideal x stats), replacing the old
   //    3-branch stat comparison.
-  const intent = pickIntent(profile, updatedNpc.credits, rng);
+  const intent = pickIntent(profile, updatedNpc.credits, rng, trace);
 
   // 2. The Flaw Check — only when the day's intent touches the flaw
   // (PRD §6: flaws override optimal play when a decision touches them,
@@ -1936,18 +2200,18 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
       updatedNpc.ship.fuel = Math.max(0, updatedNpc.ship.fuel + flawDef.fuel);
     }
   } else if (intent === 'Trade') {
-    const result = executeTrade(updatedNpc, profile, rng, ctx, events, deedSource);
+    const result = executeTrade(updatedNpc, profile, rng, hand, ctx, events, deedSource, trace);
     action = result.action;
     claimedContractIndex = result.claimedContractIndex;
     claimedFromPool = result.claimedFromPool;
   } else if (intent === 'Travel') {
-    action = executeTravel(updatedNpc, profile, rng, ctx, events, deedSource);
+    action = executeTravel(updatedNpc, profile, rng, hand, ctx, events, deedSource);
   } else if (intent === 'Combat') {
-    action = executeCombat(updatedNpc, profile, rng, ctx, events);
+    action = executeCombat(updatedNpc, profile, rng, hand, ctx, events);
   } else if (intent === 'Patrol') {
-    action = executePatrol(updatedNpc, profile, rng, ctx, events);
+    action = executePatrol(updatedNpc, profile, rng, hand, ctx, events);
   } else if (intent === 'Socialize') {
-    action = executeSocialize(updatedNpc, profile, rng, ctx, events);
+    action = executeSocialize(updatedNpc, profile, rng, hand, ctx, events);
   } else {
     // 'Idle' — the all-weights-zero corner of pickIntent: a true no-op day.
     action = {

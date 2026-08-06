@@ -6,7 +6,6 @@ import {
 } from '@spacerquest/content';
 import { GameEvent, GameState, PlayerAction, PortEventFailReason } from '../types.js';
 import { eraPortIncomeMultiplier } from '../era.js';
-import { spendDie } from '../dice.js';
 import { applyReputation } from '../reputation.js';
 import { cloneState } from '../clone.js';
 
@@ -14,21 +13,23 @@ import { cloneState } from '../clone.js';
  * T-1307 · Ports as purchasable property (PRD §9). The purchase resolver, the
  * dusk-income reader, and the pure buy-preview. All three are PURE (clone → mutate
  * the clone → typed events; no rng, no Date, no DOM) and the resolver NEVER throws:
- * every player-possible input — malformed die selection, wrong system, an
- * unaffordable buy — resolves to a typed `PortEvent{failed}` that spends nothing,
- * mirroring resolveCrew / resolveVisitHangout. The port gate + encounter handling
- * live in day.ts (the only runtime caller).
+ * every player-possible input — wrong system, an unaffordable buy — resolves to a
+ * typed `PortEvent{failed}` that spends nothing, mirroring resolveCrew /
+ * resolveVisitHangout. The port gate + encounter handling live in day.ts (the only
+ * runtime caller).
  */
 
 /**
- * Buy a controlling stake in the local port authority. PURE, no rng. Die
- * validation is the same three-way split as resolveCrew (no die / out-of-range /
- * already-spent → typed fail, NO die spent). Then the port rules, in order: the
- * `systemId` must be the player's current system (you buy the port you stand in),
- * it must be a purchasable core port, it must not already be owned, and the price
- * must be affordable. On COMMIT: spend the die, subtract the price, push the
- * `PortStake`, emit `PortEvent{purchased}` AND a `WireEntry` — the WireEntry is
- * the wire reader for the purchase.
+ * Buy a controlling stake in the local port authority. PURE, no rng.
+ *
+ * T-196a · A FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3) — no die at all, so there
+ * is no die validation left and the dawn hand is never touched; the buy works from
+ * an EMPTY hand. The port rules are the whole bound, in order: the `systemId` must
+ * be the player's current system (you buy the port you stand in), it must be a
+ * purchasable core port, it must not already be owned, and the price must be
+ * affordable. On COMMIT: subtract the price, push the `PortStake`, emit
+ * `PortEvent{purchased}` AND a `WireEntry` — the WireEntry is the wire reader for
+ * the purchase.
  */
 export function resolvePortPurchase(
   state: GameState,
@@ -43,13 +44,6 @@ export function resolvePortPurchase(
     return { state: nextState, events };
   };
 
-  // --- Die validation (malformed input → typed fail, NO die spent) ----------
-  const hand = nextState.player.dawnHand;
-  const index = action.spendDie;
-  if (index === undefined) return fail('no-die');
-  if (!hand || index < 0 || index >= hand.dice.length) return fail('invalid-die-index');
-  if (hand.spent[index]) return fail('die-already-spent');
-
   const systemId = action.systemId;
   // You buy the port you are standing in.
   if (systemId !== nextState.player.currentSystemId) return fail('not-at-port', systemId);
@@ -62,10 +56,7 @@ export function resolvePortPurchase(
   const def = PURCHASABLE_PORTS_BY_SYSTEM[systemId];
   if (nextState.player.credits < def.purchasePrice) return fail('insufficient-credits', systemId);
 
-  // Commit: spend the die, pay the price, claim the stake.
-  const { die } = spendDie(hand, index);
-  void die;
-  hand.spent[index] = true;
+  // Commit: pay the price, claim the stake. T-196a: no die is spent.
   nextState.player.credits -= def.purchasePrice;
   nextState.player.ports.push({ systemId, purchaseDay: day });
 

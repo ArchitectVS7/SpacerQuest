@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 import { STORYLETS, type StoryletDefinition } from '@spacerquest/content';
 import { storyletSurface } from '../src/format';
 
@@ -8,7 +9,7 @@ import { storyletSurface } from '../src/format';
 // offer is surfaced by a DIEGETIC opener (a hold/manifest line, a wire bulletin,
 // a port dispatch), and that no storylet becomes unreachable by the change.
 //
-// The store's default career is the deterministic seed 424242 → Day 1, Sun-3,
+// The store's default career is the deterministic seed 424242 → Day 1, Sol-3,
 // whose live offers are the Guild Auditor + the Doc-Salvage distress ping (both
 // PORT surface). Signing the board's Rare-Elements contract surfaces a HOLD
 // storylet the same day; ending the day in place to Day 10 surfaces the Guild
@@ -18,6 +19,10 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
   // Reduced motion settles the dawn roll immediately (no scramble flake).
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 // ---- Classifier totality: nothing is orphaned ------------------------------

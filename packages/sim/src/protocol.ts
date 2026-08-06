@@ -26,6 +26,7 @@ import {
   type HangoutVenueId,
 } from '@spacerquest/content';
 import {
+  DARE_MAX_FACE,
   DayPhase,
   FIGHT_FUEL_COST,
   RUN_FUEL_COST,
@@ -47,8 +48,21 @@ import {
   startDay,
   loanBandFor,
   venueOffered,
-  wagerBandFor,
+  // T-168 · THE PRE-HAND STAKE BAND (§4.6a item 3), replacing the raw
+  // `wagerBandFor` this enumerator used to advertise. Sizing the `wager` domain
+  // off the port's tier-0 band meant no UGT career could ever REQUEST into the
+  // raised bounded-betting ceiling (F-148-4) — the harness was advertising a
+  // narrower domain than the engine would accept, which is the same class of drift
+  // as advertising a venue the house does not run.
+  preHandWagerBand,
+  liarsDiceOpponentsAt,
+  // T-197 · the two daily Hangout caps, read through the ENGINE's own accessors so
+  // the enumerator cannot drift from the refusals it is mirroring.
+  isSocialPoolVenue,
+  socialPlaysRemaining,
+  liarsDiceRoundsRemaining,
   legalDareMoves,
+  minOpeningQuantity,
   type Edition,
   type GameEvent,
   type GameState,
@@ -179,8 +193,12 @@ export interface StateSummary {
   systemName: string;
   /** The dawn hand rolled at start-day; null before the first start-day. */
   dawnHand: { dice: number[]; spent: boolean[] } | null;
-  /** Indices into `dawnHand.dice` that are still UNSPENT — the legal values for
-   *  any action's `spendDie` field this turn. Empty in DAWN / when exhausted. */
+  /** Indices into `dawnHand.dice` that are still UNSPENT — the legal values for a
+   *  `spendDie` field this turn, and therefore the domain of the MAIN ACTIONS
+   *  (jump, explore, combat, haggle, peek, the Hangout verbs). Empty in DAWN /
+   *  when exhausted. T-196b: an empty list no longer means "nothing is legal" —
+   *  the nine M17 Free Actions (docs/DAWN-HAND-REDESIGN.md §3) are advertised
+   *  independently of it and carry no `spendDie` at all. */
   diceRemaining: number[];
   /** T-1306 · Re-roll charges left today (from a reroll crew member); 0 with none. */
   rerollsRemaining: number;
@@ -449,6 +467,14 @@ const ALL_SYSTEM_IDS: number[] = Object.keys(STAR_SYSTEMS)
  * blocks trade/travel/shipyard/explore and offers only combat; die-spending
  * actions require an unspent die. Unbounded parameters are exposed as
  * {@link ParamSpec} domains, not enumerated. Pure — no I/O, no rng.
+ *
+ * T-196b · DIE-ACTIONS VANISH WITH THE HAND; THE NINE FREE ACTIONS DO NOT.
+ * "Die-spending actions require an unspent die" is a statement about Main Actions
+ * only. `Trade/{buy-fuel,sign-contract,abandon-contract}`, all four `Shipyard`
+ * kinds, `Crew` hire/dismiss and the `Port` buy cost no die
+ * (docs/DAWN-HAND-REDESIGN.md §3), carry no `spendDie` param, and stay advertised
+ * on a fully-spent hand — gated by their own preconditions (credits, tank, board,
+ * berths, the engine's `shipyardFailure`/`quotePort`) and nothing else.
  */
 export function legalActions(state: GameState): LegalActions {
   const phase = state.dayPhase;
@@ -557,16 +583,39 @@ export function legalActions(state: GameState): LegalActions {
     const moveChoices = legalDareMoves(hand, 'player', player.credits).filter(
       (move) => move !== 'peek' || hasDie,
     );
+    // T-160 · THE OPENING FLOOR, advertised (§16.2 shape (b)). `quantity` and
+    // `face` are advertised INDEPENDENTLY, so the honest per-param floor for an
+    // opening is the floor that holds for EVERY face the driver might pick —
+    // `1 + min over faces of own(face)`, i.e. the engine's own
+    // `minOpeningQuantity` at its weakest input. A driver that picks a face it
+    // holds more of still needs a taller claim, which the `note` says and the
+    // resolver refuses; a per-param spec cannot express a cross-param rule, and
+    // over-advertising a floor would forbid legal claims.
+    const openingFloor = hand.bid
+      ? hand.bid.quantity
+      : minOpeningQuantity(
+          Math.min(
+            ...Array.from(
+              { length: DARE_MAX_FACE },
+              (_unused, index) => hand.playerDice.filter((die) => die === index + 1).length,
+            ),
+          ),
+        );
     const params: LegalActionSpec['params'] = {
       move: { kind: 'enum', choices: moveChoices },
-      quantity: { kind: 'int', min: hand.bid ? hand.bid.quantity : 1, max: 8 },
-      face: { kind: 'int', min: hand.bid ? hand.bid.face : 1, max: 6 },
+      // T-160 · the ceiling is the HAND'S FROZEN `maxQuantity` (§8 row 5), not the
+      // literal 8 that stood here — a literal 8 under-advertises the domain at
+      // every tier >= 1, where `maxQuantity` is 10 or 12. Found while threading
+      // the opening floor through this same object; fixed here because the fix is
+      // one token on a line already being edited.
+      quantity: { kind: 'int', min: openingFloor, max: hand.maxQuantity },
+      face: { kind: 'int', min: hand.bid ? hand.bid.face : 1, max: DARE_MAX_FACE },
     };
     if (hasDie) params.spendDie = dieParam;
     actions.push({
       type: 'Dare',
       params,
-      note: "One move in the open Liar's Dice hand. quantity/face are required for bid and the raises; a face raise moves the face up by exactly one and leaves quantity unchanged; a quantity raise leaves the face unchanged. spendDie applies to 'peek' only.",
+      note: "One move in the open Liar's Dice hand. quantity/face are required for bid and the raises; an OPENING bid must claim MORE of the face than you hold of it (quantity > your own count of that face); a face raise moves the face up by exactly one and leaves quantity unchanged; a quantity raise leaves the face unchanged. spendDie applies to 'peek' only.",
     });
     return {
       phase,
@@ -579,35 +628,44 @@ export function legalActions(state: GameState): LegalActions {
   }
 
   // --- Trade -------------------------------------------------------------
+  // T-196b · THE FREE ACTIONS ARE ENUMERATED WITHOUT A DIE, AND WITHOUT A HAND.
+  // `buy-fuel`, `sign-contract` and `abandon-contract` are Free Actions
+  // (docs/DAWN-HAND-REDESIGN.md §3, engine rule shipped at T-196a), so they carry
+  // no `spendDie` param and are gated ONLY on their own preconditions — no
+  // `hasDie`. That second half is the new behaviour and is deliberate: die-actions
+  // vanish with the hand, Free Actions do not, so a captain who has spent all five
+  // dice on jumps can still fill the tank and sign tomorrow's run. Same for the
+  // Crew, Port and Shipyard blocks below. `haggle` KEEPS `hasDie` and `spendDie` —
+  // its die IS the TRADE check.
   const fuelPrice = state.market.localFuelPrice || 5;
   const fuelCapacity = ship.maxFuel - ship.fuel;
   const affordableFuel = Math.floor(player.credits / fuelPrice);
-  if (hasDie && fuelCapacity > 0 && affordableFuel >= 1) {
+  if (fuelCapacity > 0 && affordableFuel >= 1) {
     actions.push({
       type: 'Trade',
       action: 'buy-fuel',
       params: {
         fuelAmount: { kind: 'int', min: 1, max: Math.min(fuelCapacity, affordableFuel) },
-        spendDie: dieParam,
       },
     });
   }
 
-  if (hasDie && state.market.manifestBoard.length > 0 && !player.activeContract) {
+  if (state.market.manifestBoard.length > 0 && !player.activeContract) {
     const boardIndices = state.market.manifestBoard.map((_, index) => index);
     actions.push({
       type: 'Trade',
       action: 'sign-contract',
       params: {
         contractIndex: { kind: 'contract-index', choices: boardIndices },
-        spendDie: dieParam,
       },
     });
+    // The `hasDie` gate the whole block used to share now belongs to haggle
+    // alone — it is the one verb here that still spends a die on a real roll.
     const haggleIndices = state.market.manifestBoard
       .map((contract, index) => ({ contract, index }))
       .filter(({ contract }) => !contract.haggled)
       .map(({ index }) => index);
-    if (haggleIndices.length > 0) {
+    if (hasDie && haggleIndices.length > 0) {
       actions.push({
         type: 'Trade',
         action: 'haggle',
@@ -624,13 +682,16 @@ export function legalActions(state: GameState): LegalActions {
   // HEADLESS reachability of the fix: without it a protocol driver carrying an
   // undeliverable contract has no advertised way to free the hold, which is half
   // of the measured poverty trap. Advertised exactly when the engine will honour
-  // it — a die in hand and something in the hold — so it is never a guaranteed
-  // refusal (the same T-1101 law the destination gate below follows).
-  if (hasDie && player.activeContract) {
+  // it — T-196b: something in the hold, and nothing else. The die condition is
+  // gone with the die (§3), which matters most precisely here: the captain whose
+  // hold is stuck is often the one who has already burned the hand on failed jumps.
+  // Its param set is now EMPTY, which the pilot's odometer fills as exactly one
+  // candidate.
+  if (player.activeContract) {
     actions.push({
       type: 'Trade',
       action: 'abandon-contract',
-      params: { spendDie: dieParam },
+      params: {},
       note: 'Dumps the cargo and frees the hold. Forfeits the payment; the contract does not return to the board.',
     });
   }
@@ -727,7 +788,9 @@ export function legalActions(state: GameState): LegalActions {
   // to fill it; dismissing while any crew is aboard. Affordability (hire price) is
   // validated on apply — this only keeps the harness from proposing a hire with no
   // berth. Crew are the dice-progression source (extra die / re-roll / floor).
-  if (hasDie) {
+  // T-196b: no `hasDie` wrapper — hire and dismiss are Free Actions (§3) and are
+  // advertised on an exhausted hand like every other one.
+  {
     const hiredRoleIds = new Set(player.crew.map((member) => member.roleId));
     const hireableRoleIds = CREW_ROLES.map((role) => role.id).filter((id) => !hiredRoleIds.has(id));
     // T-1703 · A demo licence does not sign hands (content demo.ts's
@@ -738,10 +801,13 @@ export function legalActions(state: GameState): LegalActions {
     // a promoted-then-demoted career can carry crew in, and letting someone go is
     // not progression.
     // T-1604a F5 · …and filter the roles by the HIRE PRICE, for the same reason.
-    // `resolveCrew` spends the die before it checks credits, so an unaffordable
-    // hire costs a die and returns `CrewEvent{failed}` — the campaign sent 247 of
-    // them and berthed nobody. `roleId` is the only discriminating parameter here,
-    // so filtering it is exact: every role still advertised can actually be signed.
+    // `resolveCrew` used to spend the die before it checked credits, so an
+    // unaffordable hire cost a die and returned `CrewEvent{failed}` — the campaign
+    // sent 247 of them and berthed nobody. T-196a made the hire FREE, so the wasted
+    // die is gone; the filter STAYS, because the T-1101 law is "never advertise a
+    // guaranteed refusal", not "never waste a die". `roleId` is the only
+    // discriminating parameter here, so filtering it is exact: every role still
+    // advertised can actually be signed.
     const affordableRoleIds = hireableRoleIds.filter((id) => {
       const role = CREW_ROLES.find((candidate) => candidate.id === id);
       return role !== undefined && player.credits >= role.hirePrice;
@@ -756,7 +822,6 @@ export function legalActions(state: GameState): LegalActions {
         action: 'hire',
         params: {
           roleId: { kind: 'enum', choices: affordableRoleIds },
-          spendDie: dieParam,
         },
         note: 'Only roles the purse can cover are listed. Berthed against cabin capacity.',
       });
@@ -767,7 +832,6 @@ export function legalActions(state: GameState): LegalActions {
         action: 'dismiss',
         params: {
           roleId: { kind: 'enum', choices: player.crew.map((member) => member.roleId) },
-          spendDie: dieParam,
         },
         note: 'Removes the crew member (no refund), freeing a berth.',
       });
@@ -787,11 +851,15 @@ export function legalActions(state: GameState): LegalActions {
   // advertising it would be advertising a guaranteed refusal.
   // T-1604a F5 · The stake is now gated on the engine's own `quotePort().ok` — the
   // exact predicate the ledger pane disables its button on. `resolvePortPurchase`
-  // spends the die before it checks credits, so advertising an unaffordable stake
-  // costs a die and returns `PortEvent{failed}`. `systemId` is fixed here, so there
-  // is no domain to narrow and the whole verb is withheld instead.
+  // used to spend the die before it checked credits, so advertising an unaffordable
+  // stake cost a die and returned `PortEvent{failed}`; T-196a made the buy FREE, so
+  // the wasted die is gone and the gate stays for the T-1101 reason alone (never
+  // advertise a guaranteed refusal). `systemId` is fixed here, so there is no domain
+  // to narrow and the whole verb is withheld instead.
+  // T-196b: the `hasDie` conjunct is gone — the buy is a Free Action (§3). What
+  // remains is the demo lock, the port ladder and `quotePort().ok`, i.e. the
+  // T-1101 "never advertise a guaranteed refusal" gates and nothing else.
   if (
-    hasDie &&
     !demoLocked(state, 'port-ownership') &&
     isPurchasablePort(player.currentSystemId) &&
     !player.ports.some((port) => port.systemId === player.currentSystemId) &&
@@ -802,7 +870,6 @@ export function legalActions(state: GameState): LegalActions {
       action: 'buy',
       params: {
         systemId: { kind: 'fixed', value: player.currentSystemId },
-        spendDie: dieParam,
       },
       note: 'Advertised only when affordable (engine quotePort().ok). Accrues per-dusk launch-fee income.',
     });
@@ -824,7 +891,23 @@ export function legalActions(state: GameState): LegalActions {
   const inSystemNpcIds = state.npcs
     .filter((npc) => !npc.dead && npc.currentSystemId === player.currentSystemId)
     .map((npc) => npc.id);
-  if (hasDie && STAR_SYSTEMS[player.currentSystemId]?.hasHangout) {
+  // T-145 · POOL A, the fixed Liar's Dice roster. Without this the UGT protocol
+  // cannot reach the 42 authored opponents AT ALL, and T-145's own "all 42 are
+  // reachable through the real UI" criterion fails — which is exactly why this
+  // lands here rather than with the ladder. Broke opponents are dropped for the
+  // same reason a dead captain is: the engine refuses them with a typed
+  // 'opponent-broke' (§7.4) and advertising one would burn a die on a refusal that
+  // was knowable before it was sent.
+  const rosterOpponentIds = liarsDiceOpponentsAt(player.currentSystemId)
+    .filter((opponent) => (state.liarsDicePurses[opponent.id] ?? 0) > 0)
+    .map((opponent) => opponent.id);
+  // T-197 · THE HANGOUT IS A FREE ACTION NOW, so the `hasDie` conjunct that used
+  // to wrap this block is gone (docs/DAWN-HAND-REDESIGN.md §3, engine rule shipped
+  // at T-197). All seven venues cost no die, so `VisitHangout` stays advertised on
+  // a fully-spent hand — the T-196b contract stated one block up: die-actions
+  // vanish with the hand, Free Actions do not. `Dare{move:'peek'}` above KEEPS its
+  // `hasDie` filter; it is the one Hangout-family verb that still spends a die.
+  if (STAR_SYSTEMS[player.currentSystemId]?.hasHangout) {
     // T-1304: the venue set depends on live state. 'rumor' is always available at
     // a Hangout; the social/dare beats need an in-system NPC to face; the Penny
     // Wise lending beat is `borrow` while there's no loan and `repay` while there
@@ -835,20 +918,39 @@ export function legalActions(state: GameState): LegalActions {
     const liveVenues: HangoutVenueId[] = ['rumor', state.player.loan ? 'repay' : 'borrow'];
     if (inSystemNpcIds.length > 0) {
       liveVenues.unshift('dare', 'meet', 'befriend', 'insult');
+    } else if (rosterOpponentIds.length > 0) {
+      // T-145 · The house's own three seats are ALWAYS at their port, so 'dare' is
+      // possible at an otherwise-empty Hangout. The three SOCIAL beats are not:
+      // they need an `NpcState` for `applyDisposition`, which pool A does not have
+      // (§1 rule 1), and the engine typed-fails a roster id at a social venue with
+      // 'no-opponent'. So only 'dare' is advertised on this arm.
+      liveVenues.unshift('dare');
     }
     // T-120 · THE PORT MIRROR. Live state decides which beats are POSSIBLE (above);
     // the port's venue definition decides which it OFFERS. Advertising a venue the
     // house does not run would burn a die on a guaranteed 'venue-not-offered'
     // refusal, so the harness drops it here — the same rule the engine enforces,
-    // read through the same accessor. At Sun-3 all seven are offered, so this
+    // read through the same accessor. At Sol-3 all seven are offered, so this
     // filter is the identity and the advertised array is byte-identical to before.
-    const venueChoices: string[] = liveVenues.filter((venue) =>
-      venueOffered(player.currentSystemId, venue),
+    // T-197 · …AND THE TWO DAILY CAPS ARE MIRRORED THE SAME WAY (§4a/§4b). The
+    // engine refuses a spent-out social play with `social-limit-reached` and an
+    // over-cap dare open with `daily-round-limit`; advertising either would hand a
+    // headless driver a guaranteed typed refusal, which is exactly the drift the
+    // `venueOffered` mirror below exists to prevent and what
+    // `hangoutPlay.failedVisits === 0` forbids. Read through the ENGINE's own
+    // accessors, never re-derived here.
+    const socialSpentOut = socialPlaysRemaining(state) <= 0;
+    const roundsSpentOut = liarsDiceRoundsRemaining(state) <= 0;
+    const venueChoices: string[] = liveVenues.filter(
+      (venue) =>
+        venueOffered(player.currentSystemId, venue) &&
+        !(venue === 'dare' && roundsSpentOut) &&
+        !(isSocialPoolVenue(venue) && socialSpentOut),
     );
     // A port that offers none of the currently-possible beats is not advertised at
     // all rather than advertised with an empty domain.
     if (venueChoices.length > 0) {
-      const wagerBand = wagerBandFor(player.currentSystemId);
+      const wagerBand = preHandWagerBand(state);
       // T-133 · the PRINCIPAL domain is the port's too (owner ruling D7), read
       // through the same `loanBandFor` accessor the resolver clamps with. A
       // harness that advertised the global 250–5,000 at the garrison mess would
@@ -859,12 +961,21 @@ export function legalActions(state: GameState): LegalActions {
         type: 'VisitHangout',
         params: {
           venue: { kind: 'enum', choices: venueChoices },
-          opponentId: { kind: 'enum', choices: [...inSystemNpcIds] },
-          wager: { kind: 'int', min: wagerBand.min, max: wagerBand.max },
+          opponentId: { kind: 'enum', choices: [...inSystemNpcIds, ...rosterOpponentIds] },
+          // T-168 · Tier 5 removes the band ceiling entirely (§4.8), so the only
+          // ceiling this harness can honestly advertise before an opponent is
+          // chosen is the player's OWN solvency — the same shape `pay-debt` and
+          // `buy-fuel` already use for a credit-bounded domain. The engine
+          // re-clamps against the DEALER's purse at open, which is knowledge the
+          // enumerator does not have at this point.
+          wager: {
+            kind: 'int',
+            min: wagerBand.min,
+            max: wagerBand.max ?? Math.max(wagerBand.min, player.credits),
+          },
           amount: { kind: 'int', min: loanBand.min, max: loanBand.max },
-          spendDie: dieParam,
         },
-        note: "opponentId required for dare/meet/befriend/insult (an in-system NPC); omitted for rumor/borrow/repay. wager applies to 'dare' only (clamped to the port's band and to what both sides can cover). amount applies to borrow (principal, clamped to the port's loan band) and repay (credits to pay, default = full outstanding, clamped to credits).",
+        note: "opponentId required for dare/meet/befriend/insult; omitted for rumor/borrow/repay. The choices span BOTH pools: an in-system roaming NPC, or one of the port's three fixed Liar's Dice roster opponents (the 'ld-' ids, listed only while their purse is above zero). A roster id is valid for 'dare' ONLY — meet/befriend/insult need a roaming NPC. wager applies to 'dare' only (clamped to your unlock tier's EFFECTIVE band for this port — tier 4 raises the ceiling, tier 5 removes it and leaves your own credits as the only bound — and to what both sides can cover). amount applies to borrow (principal, clamped to the port's loan band) and repay (credits to pay, default = full outstanding, clamped to credits). Every venue is a FREE ACTION — no die. Two DAILY caps bound them instead and this enumerator already applies both: meet/befriend/insult disappear from the venue domain once the day's social pool is spent, and 'dare' disappears once the day's Liar's Dice rounds (which scale with your unlock tier) are used up.",
       });
     }
   }
@@ -890,11 +1001,17 @@ export function legalActions(state: GameState): LegalActions {
   //
   // Every gate below calls the engine's own `shipyardFailure` rather than
   // recomputing a price here: content owns the numbers, and a second copy of them
-  // in the enumerator is exactly the drift this file exists to avoid. `spendDie` is
-  // passed as a placeholder because the type requires it — the predicate is pure and
-  // does not read it.
-  if (hasDie) {
-    const probeDie = diceRemaining[0];
+  // in the enumerator is exactly the drift this file exists to avoid.
+  //
+  // T-196a · the probe actions no longer carry a placeholder `spendDie` — the
+  // Shipyard shape dropped the field when M17 made the yard a Free Action
+  // (docs/DAWN-HAND-REDESIGN.md §3).
+  // T-196b · …and the ADVERTISEMENT follows: the `hasDie` wrapper and every
+  // `spendDie: dieParam` in the four specs below are gone. All four yard kinds are
+  // now offered on an exhausted hand, gated only by the engine's own
+  // `shipyardFailure` — which is the stronger contract anyway, since it is the one
+  // that decides whether the purchase will actually be honoured.
+  {
     const canAfford = (action: Extract<PlayerAction, { type: 'Shipyard' }>): boolean =>
       shipyardFailure(state.player, action) === null;
 
@@ -910,7 +1027,6 @@ export function legalActions(state: GameState): LegalActions {
             action: 'buy-component-tier',
             component,
             tier,
-            spendDie: probeDie,
           })
         ) {
           break;
@@ -924,7 +1040,6 @@ export function legalActions(state: GameState): LegalActions {
           params: {
             component: { kind: 'fixed', value: component },
             tier: { kind: 'int', min: 1, max: maxTier },
-            spendDie: dieParam,
           },
           note: `Every listed tier is affordable right now (tiers above ${maxTier} are not).`,
         });
@@ -936,13 +1051,12 @@ export function legalActions(state: GameState): LegalActions {
     // NO `component` key at all: the resolver branches on the mere presence of one
     // (shipyard.ts:206-207,428), so filling it would silently downgrade a repair-all
     // to a single-part repair — the F-R2-2 defect, made unrepresentable here.
-    if (canAfford({ type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: probeDie })) {
+    if (canAfford({ type: 'Shipyard', action: 'repair', repairMode: 'all' })) {
       actions.push({
         type: 'Shipyard',
         action: 'repair',
         params: {
           repairMode: { kind: 'fixed', value: 'all' },
-          spendDie: dieParam,
         },
         note: 'Repairs every component. Send no `component` key — its presence selects a single-part repair.',
       });
@@ -954,7 +1068,6 @@ export function legalActions(state: GameState): LegalActions {
           action: 'repair',
           repairMode: 'single',
           component,
-          spendDie: probeDie,
         })
       ) {
         actions.push({
@@ -963,7 +1076,6 @@ export function legalActions(state: GameState): LegalActions {
           params: {
             repairMode: { kind: 'fixed', value: 'single' },
             component: { kind: 'fixed', value: component },
-            spendDie: dieParam,
           },
           note: 'Repairs this component only; it is below max condition and the repair is affordable.',
         });
@@ -974,9 +1086,7 @@ export function legalActions(state: GameState): LegalActions {
     // failure predicate is monotone in it (capacity and cost both rise), so the
     // largest legal quantity is found by bisection over the engine's own check
     // rather than by re-deriving the pod price and the hull capacity rule here.
-    if (
-      canAfford({ type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1, spendDie: probeDie })
-    ) {
+    if (canAfford({ type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1 })) {
       let low = 1;
       let high = MAX_ADVERTISED_CARGO_PODS;
       while (low < high) {
@@ -986,7 +1096,6 @@ export function legalActions(state: GameState): LegalActions {
             type: 'Shipyard',
             action: 'buy-cargo-pods',
             quantity: mid,
-            spendDie: probeDie,
           })
         ) {
           low = mid;
@@ -999,7 +1108,6 @@ export function legalActions(state: GameState): LegalActions {
         action: 'buy-cargo-pods',
         params: {
           quantity: { kind: 'int', min: 1, max: low },
-          spendDie: dieParam,
         },
         note: 'Every quantity in range fits the hull and the purse.',
       });
@@ -1013,7 +1121,6 @@ export function legalActions(state: GameState): LegalActions {
         type: 'Shipyard',
         action: 'buy-special-equipment',
         equipment,
-        spendDie: probeDie,
       }),
     );
     if (purchasableEquipment.length > 0) {
@@ -1022,7 +1129,6 @@ export function legalActions(state: GameState): LegalActions {
         action: 'buy-special-equipment',
         params: {
           equipment: { kind: 'enum', choices: [...purchasableEquipment] },
-          spendDie: dieParam,
         },
         note: 'Only equipment that passes affordability, renown and mutual exclusion is listed.',
       });

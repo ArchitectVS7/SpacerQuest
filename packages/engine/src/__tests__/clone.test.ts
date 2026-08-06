@@ -476,7 +476,7 @@ const RESOLVER_ROWS: readonly ResolverRow[] = [
       state.player.credits = 50_000;
       state.market.localFuelPrice = 5;
     },
-    action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+    action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
   },
   {
     name: 'Travel (jump to an adjacent system)',
@@ -490,11 +490,11 @@ const RESOLVER_ROWS: readonly ResolverRow[] = [
     setup: (state) => {
       state.player.credits = 50_000;
     },
-    action: { type: 'Crew', action: 'hire', roleId: 'crew-navigator', spendDie: 0 },
+    action: { type: 'Crew', action: 'hire', roleId: 'crew-navigator' },
   },
   {
     name: 'Crew (REFUSAL — unknown role, nothing spent)',
-    action: { type: 'Crew', action: 'hire', roleId: 'crew-does-not-exist', spendDie: 0 },
+    action: { type: 'Crew', action: 'hire', roleId: 'crew-does-not-exist' },
   },
   {
     name: 'Reroll (REFUSAL — no charges left)',
@@ -508,11 +508,11 @@ const RESOLVER_ROWS: readonly ResolverRow[] = [
     action: { type: 'Explore', spendDie: 0 },
   },
   {
-    name: 'VisitHangout (rumor at Sun-3)',
+    name: 'VisitHangout (rumor at Sol-3)',
     setup: (state) => {
       state.player.currentSystemId = 1;
     },
-    action: { type: 'VisitHangout', venue: 'rumor', spendDie: 0 },
+    action: { type: 'VisitHangout', venue: 'rumor' },
   },
   {
     name: 'Port (buy the local stake)',
@@ -520,7 +520,7 @@ const RESOLVER_ROWS: readonly ResolverRow[] = [
       state.player.currentSystemId = 1;
       state.player.credits = 500_000;
     },
-    action: { type: 'Port', action: 'buy', systemId: 1, spendDie: 0 },
+    action: { type: 'Port', action: 'buy', systemId: 1 },
   },
   {
     name: 'Combat (talk down an active interceptor)',
@@ -535,7 +535,7 @@ const RESOLVER_ROWS: readonly ResolverRow[] = [
       state.player.credits = 50_000;
       state.player.ship.hull.condition = 4;
     },
-    action: { type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: 0 },
+    action: { type: 'Shipyard', action: 'repair', repairMode: 'all' },
   },
   {
     name: 'Storylet (REFUSAL — not on offer)',

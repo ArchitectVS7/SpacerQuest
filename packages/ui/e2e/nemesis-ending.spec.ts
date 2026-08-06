@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 import {
   ALL_FRAGMENT_IDS,
   CROSSING_ENDING,
@@ -82,6 +83,10 @@ function stakedAtTheBench(seed: number): GameState {
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 async function inject(page: Page, save: string): Promise<void> {
@@ -138,6 +143,10 @@ test('the ending: flown to, read, and returned from cleanly', async ({ page }) =
   // ---- 4) RETURN: A FRESH DAY-1 COCKPIT -----------------------------------
   await page.getByTestId('ending-return').click();
   await expect(page.getByTestId('ending-screen')).toHaveCount(0);
+  // T-200 · The ending screen's return control is a `newGame` like any other, so
+  // the career it starts opens under its own Guild marker. Sign it the way the
+  // player does before reading the fresh cockpit behind it. RNG-free.
+  await signOpeningMarker(page);
   await expect(page.getByTestId('records-toggle')).toBeVisible();
   await expect(page.getByTestId('day')).toHaveText('1');
   await expect(page.getByTestId('die')).toHaveCount(5);

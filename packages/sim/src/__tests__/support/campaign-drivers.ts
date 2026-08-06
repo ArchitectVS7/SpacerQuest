@@ -19,23 +19,20 @@ import {
 } from '@spacerquest/engine';
 import { DARE_MAX_MOVES_PER_HAND, planDareMove, type SimPolicy } from '../../index.js';
 
-/** The longest run of consecutive days on which the policy took NO
- *  income-producing action (sign / travel-to-deliver / explore / fight-or-talk).
- *  The poverty-trap invariant is that this never reaches 5 — the policy is never
- *  stranded with no legal way to make progress. */
-export function longestZeroIncomeStreak(daily: { incomeActionCount: number }[]): number {
-  let longest = 0;
-  let current = 0;
-  for (const day of daily) {
-    if (day.incomeActionCount === 0) {
-      current += 1;
-      if (current > longest) longest = current;
-    } else {
-      current = 0;
-    }
-  }
-  return longest;
-}
+/**
+ * The longest run of consecutive days on which the policy took NO
+ * income-producing action (sign / travel-to-deliver / explore / fight-or-talk).
+ * The poverty-trap invariant is that this never reaches 5 — the policy is never
+ * stranded with no legal way to make progress.
+ *
+ * T-152 · THE DEFINITION MOVED to `../../balance/gate.ts` and is re-exported here
+ * so every existing importer is untouched. The sweep gate asserts the same rule
+ * (`assertNoIncomeStall`) and cannot import a `__tests__` support module from
+ * `src/`, so the choice was one definition in `src/` or two copies of a threshold
+ * rule — and two copies of a threshold rule is how a test and a gate come to
+ * disagree about whether the same run passed.
+ */
+export { longestZeroIncomeStreak } from '../../balance/gate.js';
 
 /** Drive a competent policy headlessly through the engine exactly as
  *  runCampaign does (policy plans on the fresh post-startDay day state), and

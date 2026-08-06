@@ -8,6 +8,10 @@
 > and — the plain one — **nobody has played this build end to end yet**. The next
 > milestone is not a tag; it is the owner's own UAT.
 >
+> **That UAT now has a brief: `docs/playtests/T-158-pre-uat-brief.md`** (T-158, 2026-08-02) — the
+> runbook, what is known-uncovered going in, and the two rulings the pass has to record before
+> `TASKS.md` T-158 can close.
+>
 > **Do not run `npm run release:rc`.** See `docs/VERSIONING.md` for the stage ladder and
 > the criteria for leaving pre-alpha.
 >
@@ -99,7 +103,7 @@ receives — which is the copy the OFL and the MIT licence require.
 
 | ID | Item | Status | Evidence / open question |
 | --- | --- | --- | --- |
-| B1 | Every shipped dependency, font and sound is credited | ✅ DONE | `packages/ui/src/credits.ts` (7 rows); dev-only tooling deliberately excluded, with the reason stated in `docs/CREDITS.md` |
+| B1 | Every shipped dependency, font and sound is credited | ✅ DONE | `packages/ui/src/credits.ts` (8 rows — the count was stale at 7 from T-136's GSAP row; corrected at T-185, which amended the audio row to cover the score too); dev-only tooling deliberately excluded, with the reason stated in `docs/CREDITS.md` |
 | B2 | `docs/CREDITS.md` cannot drift from the constant | ✅ DONE | `credits.test.ts` → "docs/CREDITS.md is the constant, row for row" (the `STEAM-ACHIEVEMENTS.md` precedent) |
 | B3 | The credits reach the player, not just the repo | ✅ DONE | `App.tsx`'s `CreditsPanel`; asserted in the web cockpit (`settings-saves.spec.ts`) and in a real packaged binary (`packaged.spec.ts`) |
 | B4 | "Zero audio assets" is true of the tree, not just claimed | ✅ DONE | `credits.test.ts` walks `packages/ui` and asserts no `.mp3/.ogg/.wav/.m4a/.flac/.aac` exists |
@@ -116,7 +120,7 @@ that no code can produce. Achievement names and descriptions are **not** repeate
 here: they are `docs/STEAM-ACHIEVEMENTS.md`, generated from
 `packages/ui/src/steam.ts`.
 
-Achievement icons: **90 files (45 achievements × 2 states)**, 64×64 PNG each —
+Achievement icons: **120 files (60 achievements × 2 states)**, 64×64 PNG each —
 one achieved and one unachieved per row of the manifest. That count is derived
 from `ACHIEVEMENT_MANIFEST.length` and asserted by
 `release-checklist.test.ts`, so adding a Deed later reddens the art order instead
@@ -314,7 +318,7 @@ this document is only its input.
 | C7 | Who cuts the trailer, under what music licence? | |
 | C8 | Who produces the `.ico`/`.icns` app icon? | |
 | C9 | Does the demo get its own capsule set? | |
-| D1 | Confirm the 45 achievements are entered, not hidden. | |
+| D1 | Confirm the 60 achievements are entered, not hidden. | |
 | D2 | Confirm the rich-presence token is registered. | |
 | D3 | Confirm Cloud quota 128 MiB / 32 files, Auto-Cloud off. | |
 | D4 | Full-game Steam app id? | |

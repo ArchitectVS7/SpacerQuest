@@ -300,6 +300,24 @@ export type ExplorationFailReason =
  *   - 'illegal-dare-move' — a `Dare` move that is not in `legalDareMoves`, or
  *     whose quantity/face arithmetic breaks §5.1's lattice. Refused rather than
  *     clamped into legality, and nothing is spent or moved.
+ *   - 'opponent-broke'    — T-145 · a `VisitHangout{venue:'dare'}` naming a ROSTER
+ *     opponent whose live purse is <= 0 (`docs/LIARS-DICE-PROGRESSION_SPEC.md`
+ *     §7.4). Refused BEFORE the die is spent, like every other pre-spend refusal.
+ *   - 'social-limit-reached' — T-197 · the SOCIAL POOL is spent out
+ *     (`docs/DAWN-HAND-REDESIGN.md` §4a). `meet`/`befriend`/`insult` are Free
+ *     Actions now; the day's `SOCIAL_PLAYS_PER_DAY` plays are what bounds them,
+ *     and a spent-out pool refuses TYPED rather than silently no-opping. Nothing
+ *     is spent, exactly as the three die reasons above spent nothing.
+ *   - 'daily-round-limit' — T-197 · a `VisitHangout{venue:'dare'}` past the day's
+ *     rounds cap (§4b), which scales with `liarsDiceTier`. Refused before any
+ *     mutation AND before any rng draw, so a refused open cannot move the day's
+ *     dice stream.
+ *
+ * T-197 · THE THREE DIE REASONS ARE STILL LIVE, AND THAT IS NOT AN OVERSIGHT.
+ * `no-die` / `invalid-die-index` / `die-already-spent` are no longer reachable
+ * from `resolveVisitHangout` — every venue is free — but `actions/dare.ts`'s PEEK
+ * still raises all three. Peek is the one check inside an open hand and it stayed
+ * a Main Action by ruling (§3), so the reasons stay.
  */
 export type HangoutFailReason =
   | 'no-die'
@@ -309,7 +327,10 @@ export type HangoutFailReason =
   | 'venue-not-offered'
   | 'dare-hand-open'
   | 'no-dare-hand'
-  | 'illegal-dare-move';
+  | 'illegal-dare-move'
+  | 'opponent-broke'
+  | 'social-limit-reached'
+  | 'daily-round-limit';
 
 /**
  * T-135 · One standing claim in a Liar's Dice hand: "there are at least
@@ -375,6 +396,36 @@ export interface DareHandState {
   /** The one dealer die a successful Peek revealed, or null. */
   peekedDealerDie: { index: number; value: number } | null;
   history: DareBidEntry[];
+  /**
+   * T-145 · Which POOL the counterparty came from
+   * (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §5.3). Decides money routing (§7.1 —
+   * an `NpcState.credits` vs a `liarsDicePurses` entry), whether
+   * `applyDisposition` runs at all (§7.6), which policy answers the bid (§3.8)
+   * and whether the win writes to `liarsDiceBeaten` (§6.2).
+   */
+  opponentKind: 'roaming' | 'roster';
+  /**
+   * T-145 · The CONCRETE archetype for this hand, resolved ONCE at open (§3.6)
+   * and never re-rolled mid-hand. **Never the string `'mixed'`** — a mixed row is
+   * resolved through `resolveMixedArchetype` at open and the concrete result is
+   * what is stored. NULL iff `opponentKind === 'roaming'`.
+   */
+  opponentArchetype: 'optimal' | 'bad' | 'random' | null;
+  /**
+   * T-145 · FROZEN AT OPEN (§4.6): the number of dice on EACH side, and the
+   * length of both dice arrays. 4 | 5 | 6. A hand opened at four dice stays a
+   * four-dice hand until it settles, even if a settlement crosses a ladder
+   * threshold in between.
+   */
+  dicePerSide: number;
+  /** T-145 · FROZEN AT OPEN: `2 * dicePerSide`, the claim ceiling every legality
+   *  site reads instead of the `DARE_MAX_QUANTITY` constant (§4.6). */
+  maxQuantity: number;
+  /** T-145 · FROZEN AT OPEN: the effective wager ceiling for this hand. `null`
+   *  encodes tier 5 (unlimited — `headroomFor` returns MAX_SAFE_INTEGER and the
+   *  solvency clamp is the only cap). T-145 writes the port's `wager.max` at every
+   *  open; T-146 is what makes the value move. */
+  bandMax: number | null;
 }
 
 /** T-135 · The seven moves one `Dare` action can carry (§9.1). */
@@ -836,8 +887,32 @@ export type GameEvent =
       systemId: number;
       seedWager: number;
       ante: number;
-      /** The PLAYER's four dice. The dealer's are NEVER here. */
+      /** The PLAYER's dice. The dealer's are NEVER here. */
       playerDice: number[];
+      /**
+       * T-145 · The hand's FROZEN dice-per-side (§5.3). OPTIONAL, deliberately:
+       * `GameEventSchema` runs in Zod STRIP mode, which drops unknown keys but
+       * does NOT tolerate a missing REQUIRED one, so a required field here would
+       * make every v14 save's existing `DareHandStarted` entries fail to parse at
+       * v15. The live UI reads `hand.dicePerSide` off `DareHandState`, where it is
+       * required; this is the event-log copy.
+       */
+      dicePerSide?: number;
+      /** T-145 · The ROSTER opponent's authored `lines.tableTalk`, present iff the
+       *  counterparty is pool A (§8 row 17a). A roaming hand carries nothing. */
+      opponentLine?: string;
+      /**
+       * T-146 · "READ THE TABLE" — one line naming how this opponent plays,
+       * present iff the hand OPENED at unlock tier ≥ 3 (§4.5, §8 row 17b). Pool A
+       * reads the resolved archetype; pool B is derived from the profile's GUILE.
+       *
+       * OPTIONAL for the same strip-mode reason as `dicePerSide` above, and that
+       * is what lets it land WITHOUT a save-version move: adding an optional field
+       * to an existing event variant is not a schema change (`docs/VERSIONING.md`
+       * §2). It is also MATHEMATICALLY INERT — one string on one event, touching
+       * no dice, cost, legality or probability, and it must stay that way.
+       */
+      opponentRead?: string;
     }
   | {
       /** T-135 · A Peek was attempted (§8). One per hand, pass or fail; the die is
@@ -887,8 +962,90 @@ export type GameEvent =
        *  loss/fold (§6.3's ledger). */
       creditsDelta: number;
       /** The delta PASSED to applyDisposition (pre-clamp). The APPLIED delta is on
-       *  the neighbouring DispositionChanged, which is the existing convention. */
+       *  the neighbouring DispositionChanged, which is the existing convention.
+       *  T-145: legitimately 0 on EVERY roster hand — pool A is outside the NPC
+       *  economy, so there is no record to move (§7.6). Not a regression. */
       dispositionDelta: number;
+      /** T-145 · The ROSTER opponent's authored `lines.win` when THEY won, or
+       *  `lines.lose` when they lost; present iff pool A (§8 row 20c). Optional for
+       *  the same strip-mode reason as `DareHandStarted.dicePerSide`. */
+      opponentLine?: string;
+      /**
+       * T-175 · WHICH POOL ANSWERED THIS HAND — the hand's FROZEN `opponentKind`.
+       *
+       * OPTIONAL, for exactly the reason `DareHandStarted.dicePerSide` and
+       * `DareHandStarted.opponentRead` are optional on the sibling event above:
+       * `GameEventSchema` runs in Zod **STRIP** mode, which drops unknown keys but
+       * does NOT tolerate a missing REQUIRED one, so a required field here would
+       * make every already-written `DareHandResolved` in an older save's `eventLog`
+       * fail to parse at load. An optional field added to an existing event variant
+       * is NOT a schema change (`docs/VERSIONING.md` §2), so
+       * `CURRENT_SAVE_VERSION` does not move and no migration is owed.
+       *
+       * WHY IT IS HERE AT ALL: F-160-1's archetype-ordering measurement needs the
+       * pool and the archetype per SETTLED hand, and they live only on
+       * `state.dareHand`, which is gone by the time any reader sees the event
+       * stream (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12's probe paragraph names
+       * this exact gap as the reason four measurements had to descend from a
+       * gitignored `.scratch/` probe). Copying three ALREADY-FROZEN fields onto the
+       * settlement event is what retires that lineage (`docs/HANGOUT_REDESIGN.md`
+       * §10.7, retired at T-173).
+       *
+       * MATHEMATICALLY INERT, and it must stay that way: three copies of frozen
+       * values on one event, touching no dice, cost, legality or probability.
+       */
+      opponentKind?: 'roaming' | 'roster';
+      /**
+       * T-175 · The CONCRETE archetype that answered, for a pool-A hand; `null` on
+       * a roaming hand, which has no archetype at all. A `'mixed'` content row was
+       * resolved to a concrete arm ONCE at open by `resolveMixedArchetype`, so this
+       * is never `'mixed'` — it is the arm actually played. Optional for the same
+       * strip-mode reason as {@link opponentKind}.
+       */
+      opponentArchetype?: 'optimal' | 'bad' | 'random' | null;
+      /**
+       * T-175 · The hand's FROZEN dice-per-side (§5.3) — the event-log copy of
+       * `DareHandState.dicePerSide`, mirroring `DareHandStarted.dicePerSide`. A
+       * settled hand's tier is not otherwise recoverable from the settlement event,
+       * and this is the field the sim cross-checks its arithmetic tier against
+       * (4 → tier 0, 5 → tier 1, 6 → tier ≥ 2) rather than opening a fifth live
+       * `liarsDiceTier` read, which §4.6a's CLOSED list forbids. Optional for the
+       * same strip-mode reason as {@link opponentKind}.
+       */
+      dicePerSide?: number;
+    }
+  | {
+      /**
+       * T-147 · A LIAR'S DICE SET CLOSED — the one-time completion signal
+       * (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §6.2 steps 2-3).
+       *
+       * EMITTER: `settleDareHand` (`actions/dare.ts`), and nowhere else. It fires
+       * only on the hand that writes the LAST missing id into
+       * `player.liarsDiceBeaten` — T-145's `includes` guard makes a rematch win
+       * silent and a ROAMING win never reaches the branch at all, so "exactly
+       * once, ever" is a property of the emission site rather than of any de-dup
+       * bookkeeping downstream.
+       *
+       * READERS: the fifteen completion deeds in `packages/content/src/deeds.ts`
+       * (fourteen `liars_dice_cleared_<port>` + `liars_dice_grand_slam`), which
+       * reach it through `evaluateDeeds` and the `EVENT_PATHS` allowlist entry in
+       * `deeds.ts`. `scope` is the discriminator between the two families;
+       * `systemId` is what tells the fourteen apart.
+       *
+       * When a port clear and the whole-roster clear land on the SAME hand, two
+       * events are emitted — `port` first, then `roster`, the order a player
+       * experiences them.
+       */
+      type: 'LiarsDiceSetCleared';
+      day: number;
+      /** `'port'` — every seat at ONE house. `'roster'` — every seat everywhere. */
+      scope: 'port' | 'roster';
+      /** The port whose set closed; for `scope:'roster'`, the port of the final win. */
+      systemId: number;
+      /** Whose defeat closed the set. */
+      opponentId: string;
+      /** `liarsDiceBeaten.length` AFTER the write that closed it. */
+      beatenCount: number;
     }
   | {
       /**
@@ -959,8 +1116,8 @@ export type GameEvent =
        * T-1306 · A crew hire/dismiss/wage beat (PRD §7 dice progression). One event
        * covers the whole crew lifecycle via the `kind` sub-discriminator:
        *   - 'hired'     — a role was hired. `roleId`, `cost` (hire price), `berths`
-       *     (crewCapacity at hire), `crewCount` (after). Credits went DOWN by cost,
-       *     a die was spent.
+       *     (crewCapacity at hire), `crewCount` (after). Credits went DOWN by cost.
+       *     T-196a: NO die is spent — a hire is a Free Action (M17 §3).
        *   - 'dismissed' — a role left (player dismiss, or the dusk crew-walk on an
        *     unpaid wage). `roleId`.
        *   - 'wage'      — a dusk's wage was paid. `amount` (total wage), `crewCount`.
@@ -980,6 +1137,14 @@ export type GameEvent =
       amount?: number;
       berths?: number;
       crewCount?: number;
+      /**
+       * T-196a · `no-die` / `invalid-die-index` / `die-already-spent` are
+       * LEGACY-ONLY since M17 freed the crew verbs: no code can emit them any more.
+       * They are deliberately NOT deleted — the eventLog is persisted inside
+       * GameState and validated by a `.strict()` schema on load, so removing an
+       * enum member would be a save-shape break owing a migration this task does
+       * not own. They survive so pre-M17 saves still load.
+       */
       failReason?:
         | 'no-die'
         | 'invalid-die-index'
@@ -995,7 +1160,8 @@ export type GameEvent =
        * T-1307 · A port-stake beat (PRD §9 "ports as purchasable property"). One
        * event covers the whole lifecycle via the `kind` sub-discriminator:
        *   - 'purchased' — a stake was bought. `systemId`, `cost` (purchase price),
-       *     `portCount` (owned after). Credits went DOWN by cost, a die was spent.
+       *     `portCount` (owned after). Credits went DOWN by cost. T-196a: NO die is
+       *     spent — a port buy is a Free Action (M17 §3).
        *     Paired with a WireEntry (the purchase's wire reader).
        *   - 'income'    — a dusk's launch-fee income accrued across all owned
        *     stakes. `income` (total, era-modulated), `portCount`. Credits went UP by
@@ -1355,22 +1521,47 @@ export interface ShipyardFail {
 // Player actions
 export type PlayerAction =
   | {
+      /**
+       * T-196a · M17 FREE ACTIONS (docs/DAWN-HAND-REDESIGN.md §3). These four cost
+       * NO die: the face was never read at any of them, and each is already bounded
+       * by something else — credits + tank capacity (buy-fuel), the one-active-
+       * contract slot (sign-contract), the hold's contents (abandon-contract).
+       * `pay-debt` was never die-costed at all ("remote payments need no roll").
+       *
+       * T-1604b's 'abandon-contract' is the player-initiated hold release that
+       * frees a captain carrying an undeliverable run (UGT finding F2). It now
+       * costs only the forfeited payment; no die, no credit fee (actions/trade.ts).
+       *
+       * The Trade member is SPLIT in two so `haggle` — the one Main Action on the
+       * trade desk — can keep `spendDie` while these four reject it outright.
+       */
       type: 'Trade';
-      /** T-1604b adds 'abandon-contract' — the player-initiated hold release that
-       *  frees a captain carrying an undeliverable run (UGT finding F2). Costs one
-       *  die and the forfeited payment; no credit fee (see actions/trade.ts). */
-      action: 'buy-fuel' | 'sign-contract' | 'haggle' | 'pay-debt' | 'abandon-contract';
+      action: 'buy-fuel' | 'sign-contract' | 'pay-debt' | 'abandon-contract';
       contractIndex?: number;
       fuelAmount?: number;
       amount?: number;
+    }
+  | {
+      /**
+       * The one MAIN ACTION on the trade desk (docs/DAWN-HAND-REDESIGN.md §3): the
+       * spent die IS the Trade check (`check(die, TRADE, 12)`), so this arm keeps
+       * `spendDie`. Deliberately left untouched by T-196a.
+       */
+      type: 'Trade';
+      action: 'haggle';
+      contractIndex?: number;
       spendDie?: number;
     }
   | { type: 'Travel'; destinationId: number; spendDie?: number }
   | { type: 'Combat'; stance: 'run' | 'talk' | 'fight'; targetId: string; spendDie?: number }
   | {
+      /**
+       * T-196a · M17 FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3), all four kinds —
+       * repair, buy-cargo-pods, buy-component-tier, buy-special-equipment share one
+       * resolver and one ruling. Bounded by credits + physical slots/tiers.
+       */
       type: 'Shipyard';
       action: ShipyardActionKind;
-      spendDie: number;
       component?: ShipComponentId;
       tier?: number;
       repairMode?: 'all' | 'single';
@@ -1398,6 +1589,15 @@ export type PlayerAction =
        * NPC whose SIMULATED position is in the player's current system, else a
        * typed HangoutEvent fail. `borrow`/`repay`/`rumor` need no opponent.
        * RESOLVER: actions/hangout.ts resolveVisitHangout.
+       *
+       * T-197 · M17 FREE ACTION, ALL SEVEN VENUES (docs/DAWN-HAND-REDESIGN.md §3
+       * as amended 2026-08-04) — no die. Two DAILY CAPS took the die's place and
+       * both live on the save rather than on the action: the social pool bounds
+       * meet/befriend/insult (§4a) and the rounds-per-day cap bounds the dare open
+       * (§4b). Nothing here needs to name them — a caller asks for the venue, and
+       * the resolver answers with a typed refusal when the day's allowance is out.
+       * `Dare{move:'peek'}` KEEPS its `spendDie`: it is the one check inside an
+       * open hand and stayed a Main Action.
        */
       type: 'VisitHangout';
       venue: 'dare' | 'meet' | 'befriend' | 'insult' | 'rumor' | 'borrow' | 'repay';
@@ -1405,7 +1605,6 @@ export type PlayerAction =
       wager?: number;
       /** T-1304: borrow principal / repay amount (venue 'borrow' / 'repay'). */
       amount?: number;
-      spendDie?: number;
     }
   | {
       /**
@@ -1443,29 +1642,34 @@ export type PlayerAction =
   | {
       /**
        * T-1306 · Hire or dismiss a crew role at the Hangout/port (PRD §7 dice
-       * progression). `roleId` names a content CREW_ROLES entry; `spendDie` is the
-       * die the action costs (like every other die-costed player scene). Hiring
-       * needs a free cabin berth (`crewCapacity`) and the hire price; dismissing
-       * frees a berth (no refund). RESOLVER: actions/crew.ts resolveCrew.
+       * progression). `roleId` names a content CREW_ROLES entry. Hiring needs a
+       * free cabin berth (`crewCapacity`) and the hire price; dismissing frees a
+       * berth (no refund). RESOLVER: actions/crew.ts resolveCrew.
+       *
+       * T-196a · M17 FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3) — no die: the face
+       * was never read, and the hire is already bounded by credits + berth capacity
+       * (dismiss has no cost besides the die it no longer takes).
        */
       type: 'Crew';
       action: 'hire' | 'dismiss';
       roleId: string;
-      spendDie: number;
     }
   | {
       /**
        * T-1307 · Buy a controlling stake in the local port authority (PRD §9
        * "ports as purchasable property"). `systemId` names the port and MUST equal
        * `currentSystemId` (you buy the port you are standing in); it must be a
-       * purchasable core port (content `isPurchasablePort`). `spendDie` is the die
-       * the action costs (die-costed like Shipyard). Needs the purchase price and
-       * a stake not already owned. RESOLVER: actions/port.ts `resolvePortPurchase`.
+       * purchasable core port (content `isPurchasablePort`). Needs the purchase
+       * price and a stake not already owned. RESOLVER: actions/port.ts
+       * `resolvePortPurchase`.
+       *
+       * T-196a · M17 FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3) — no die: the face
+       * was never read, and the buy is already bounded by credits + one purchase
+       * per port.
        */
       type: 'Port';
       action: 'buy';
       systemId: number;
-      spendDie: number;
     }
   | { type: 'Wait' };
 
@@ -1824,7 +2028,14 @@ export interface PortStake {
 
 /** T-1307 · The typed refusal reasons a `Port` buy can resolve to (the
  *  `PortEvent{failed}.failReason` set; also the `quotePort` failure set). Kept as
- *  a named alias so the resolver/preview reference one source of truth. */
+ *  a named alias so the resolver/preview reference one source of truth.
+ *
+ *  T-196a · `no-die` / `invalid-die-index` / `die-already-spent` are LEGACY-ONLY
+ *  since M17 freed the port buy: no code can emit them any more. They are
+ *  deliberately NOT deleted — the eventLog is persisted inside GameState and
+ *  validated by a `.strict()` schema on load, so removing an enum member would be
+ *  a save-shape break owing a migration this task does not own. They survive so
+ *  pre-M17 saves still load. */
 export type PortEventFailReason =
   | 'no-die'
   | 'invalid-die-index'
@@ -1916,6 +2127,58 @@ export interface PlayerState {
   nemesisFile: NemesisFileState;
   /** Legacy/succession bookkeeping — survives death (T-108). */
   legacy: LegacyState;
+  /**
+   * T-145 · Roster opponent ids the captain has beaten, in FIRST-DEFEAT ORDER
+   * (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §5.1). A SET semantically, an array
+   * physically — no duplicates, ever, enforced at the single write site in
+   * `actions/dare.ts`'s `settleDareHand`.
+   *
+   * POOL A ONLY (§1 rule 3). A win over a roaming captain is NEVER written here,
+   * no matter how many times it happens: pool B respawns its willingness to play
+   * every day, so counting it would turn a finite authored gauntlet into a grind
+   * timer. Order is first-defeat order, not sorted — it is a career record, and a
+   * sort would destroy information for no gain.
+   *
+   * READERS: T-147's set-closure arithmetic (`LiarsDiceSetCleared`), and the UI's
+   * roster picker, which marks a beaten opponent.
+   */
+  liarsDiceBeaten: string[];
+  /** T-145 · Every SETTLED Liar's Dice hand against EITHER pool. Integer >= 0.
+   *  Drives the unlock ladder (§4); T-146 wires the increment into the single
+   *  settlement site. Initialised here so T-146 needs no save-version move. */
+  liarsDiceGamesPlayed: number;
+  /**
+   * T-197 · FREE SOCIAL PLAYS LEFT TODAY (`docs/DAWN-HAND-REDESIGN.md` §4a, owner
+   * ruling 2026-08-04). Integer 0..`SOCIAL_PLAYS_PER_DAY`. Decremented by exactly
+   * `meet` / `befriend` / `insult` — the three venues that move disposition with
+   * no other bound — and by nothing else: `rumor`, `borrow`, `repay` and the Dare
+   * open never touch it.
+   *
+   * SPENT ON RESOLUTION, WHATEVER THE OUTCOME: a FAILED Befriend check spends the
+   * play. A typed refusal spends nothing, which is the same "a refusal is never
+   * charged" convention every pre-spend fail in `actions/hangout.ts` already kept
+   * for the die this counter replaces.
+   *
+   * Reset to the full allowance at dawn through `resetDailyHangoutCaps`
+   * (`hangoutRules.ts`) at `day.ts`'s NEXT DAY PREP chokepoint. It lives on the
+   * SAVE so a mid-day reload cannot refill the pool.
+   */
+  socialPlaysRemaining: number;
+  /**
+   * T-197 · Liar's Dice hands OPENED today (§4b). Integer >= 0, capped against
+   * `liarsDiceRoundsPerDay(liarsDiceTier(liarsDiceGamesPlayed))`.
+   *
+   * COUNTED AT OPEN, NOT AT SETTLEMENT, and that is a ruling rather than a
+   * convenience (§4b): a hand persists across save/reload and can straddle dusk,
+   * so counting at settlement would let a hand opened before dusk dodge the dawn
+   * reset. "One settled hand" defines the round's UNIT; the OPEN is when the day's
+   * allowance is spent. An open-and-fold therefore burns the round — the cap
+   * cannot be laundered through folds.
+   *
+   * Reset to 0 at dawn through the same `resetDailyHangoutCaps` rule, and on the
+   * SAVE for the same reason.
+   */
+  dareRoundsToday: number;
   activeContract?: CargoContract | null;
 }
 
@@ -1997,6 +2260,21 @@ export interface GameState {
   /** T-135 · The open Liar's Dice hand, or null. A SCENE, not player-owned data —
    *  see the sibling `encounter` above and docs/LIARS-DICE_REDESIGN.md §2.1. */
   dareHand: DareHandState | null;
+  /**
+   * T-145 · The LIVE purse of every fixed Liar's Dice roster opponent, keyed by
+   * `LiarsDiceOpponent.id` (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §5.2, §7).
+   *
+   * AT THE ROOT, BESIDE `npcs` AND `dareHand`, AND NOT ON `player` — deliberately.
+   * These balances are not the captain's property; they belong to the
+   * counterparties, exactly as `npcs[].credits` does. Seeded from the authored
+   * bankrolls by `seedLiarsDicePurses` at new game, at load, and by the v14->v15
+   * migration.
+   *
+   * ZERO-SUM AND NEVER REGENERATING (§7.5). Every credit the player takes off a
+   * roster opponent came out of that opponent's authored bankroll, and 280,800 cr
+   * is the lifetime cap the whole gauntlet can transfer.
+   */
+  liarsDicePurses: Record<string, number>;
   /** The single active world economic event, or null (T-107). At most one is
    *  ever active; the seeded dusk scheduler owns its lifecycle. */
   eraEvent: EraEventState | null;

@@ -48,7 +48,7 @@ describe('era events — modifier plumbing', () => {
   });
 
   it('fuel crisis raises localFuelPrice in scope and leaves out-of-scope depots alone', () => {
-    const base = localFuelPrice(1); // Sun-3 canon buy price
+    const base = localFuelPrice(1); // Sol-3 canon buy price
     const crisis: EraEventState = {
       defId: 'fuel_crisis',
       startedDay: 1,

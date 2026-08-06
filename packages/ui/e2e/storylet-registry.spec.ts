@@ -1,15 +1,20 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 
 // T-309: the storylet & registry UX. Storylets present as a prose panel in the
 // cockpit, each choice showing its authored requirement/cost; a choice whose
 // requirement is unmet is locked AND shows why. Earned deeds land in the
 // Registry of Deeds with their period-voice citation, and the rank readout
 // tracks renown. Every assertion drives the real cockpit UI — nothing calls the
-// engine directly (default seed 424242 → Day 1, Sun-3).
+// engine directly (default seed 424242 → Day 1, Sol-3).
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
   // Reduced motion settles the dawn roll immediately (no scramble flake).
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 /** T-1406 · Open a storylet from its diegetic opener (a hold/manifest line, a
@@ -33,7 +38,7 @@ test('a locked choice shows its requirement and unlocks when a die is assigned',
   page,
 }) => {
   await page.goto('/');
-  // The Guild Auditor is one of Day 1's Sun-3 offers; its die-gated choices are
+  // The Guild Auditor is one of Day 1's Sol-3 offers; its die-gated choices are
   // the locked-requirement demonstrator.
   await showStorylet(page, 'port.sun3.guild-auditor');
 

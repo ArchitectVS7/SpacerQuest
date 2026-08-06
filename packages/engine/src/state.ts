@@ -9,9 +9,11 @@ import {
 } from './types.js';
 import { NPC_PROFILES, QUEST_PROFILES, Stat } from '@spacerquest/content';
 import { computeMatchCounts, emptyDeedRegistry, rankForDeedCount } from './deeds.js';
-import { npcShipForProfile, seedNpcShip } from './npc.js';
+import { npcShipForProfile, questHomePortForProfile, seedNpcShip } from './npc.js';
 import { JOB_POOL_MAX_CLAIMS, calculateFuelCapacity, syncMaxFuel } from './economy.js';
 import { computePlayerTier, syncPlayerTier } from './tier.js';
+import { seedLiarsDicePurses } from './liarsDiceRules.js';
+import { freshDailyHangoutCaps } from './hangoutRules.js';
 
 /** The exact junker every spacer starts (and re-starts) with. SINGLE SOURCE OF
  *  TRUTH: createInitialState builds the opening ship from this, and T-108
@@ -80,7 +82,22 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
     id: p.id,
     name: p.name,
     profileId: p.id,
-    currentSystemId: (index % 20) + 1, // Spread them out
+    // T-208 · A QUEST captain is born at the CORE PORT their content declares
+    // (`NpcProfile.homePortSystemId`, required on all 11 `QUEST_PROFILES` and
+    // forbidden on the 30 `NPC_PROFILES`) and NEVER LEAVES IT. That is a fact about
+    // the engine, not a hope: the only two writers of `NpcState.currentSystemId` in
+    // the repo are `npc.ts`'s `executeTrade` and `executeTravel`, both reachable
+    // only through `resolveNpcDay`, whose one production caller (`day.ts` endDay) is
+    // gated by `if (!isSimulatedCaptain(npc.profileId)) continue`. A quest captain
+    // never enters the dusk loop, so this seed is their position for the whole
+    // career — which is why it can be authored, and why it being ARBITRARY mattered:
+    // before T-208 the `% 20` below parked six of the eleven at rim systems with no
+    // Cantina at all.
+    // The 30 SIMULATED captains keep the arbitrary spread unchanged — they occupy
+    // indices 0-29 (quest records are appended after them), so every one of them
+    // lands on exactly the system they landed on before, and their position is
+    // earned state the dusk loop rewrites from here on.
+    currentSystemId: p.homePortSystemId ?? (index % 20) + 1, // Spread the roamers out
     credits: 5000,
     // N1 · Every captain is born owning a real ship, seeded by the engine's
     // single mapping (npc.ts `npcShipForProfile`, which the v9→v10 save migration
@@ -139,6 +156,15 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
       // T-1503: a fresh spacer holds neutral standing with all four galactic
       // powers — reputation is earned/spent through organic play + questlines.
       reputation: { league: 0, dragons: 0, confederation: 0, rebels: 0 },
+      // T-145 · a fresh captain has beaten nobody in the fixed Liar's Dice roster
+      // and has played no hands. Pool A only (types.ts `liarsDiceBeaten`).
+      liarsDiceBeaten: [],
+      liarsDiceGamesPlayed: 0,
+      // T-197 · day 1's Hangout caps, seeded through the engine's own rule rather
+      // than as two inline literals — the `seedLiarsDicePurses` line above is the
+      // precedent, and it is what keeps this site, `day.ts`'s dawn reset and
+      // `MIGRATIONS[15]` from drifting apart (docs/DAWN-HAND-REDESIGN.md §4a/§4b).
+      ...freshDailyHangoutCaps(),
       stats: {
         [Stat.PILOT]: 1,
         [Stat.GUNS]: 0,
@@ -151,7 +177,7 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
       // starting band is unchanged, but the field is honest to the formula that
       // every later write site (day.ts, legacy.ts, deserialize) recomputes.
       tier: computePlayerTier('LIEUTENANT', starterShip()),
-      currentSystemId: 1, // Sun-3
+      currentSystemId: 1, // Sol-3
       ship: starterShip(),
       // N11 · Through the same one seeding function every captain's registry comes
       // from (`deeds.ts` `emptyDeedRegistry`). It was an inline literal here; one rule,
@@ -178,6 +204,10 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
     encounter: null,
     // T-135 · a career opens with no hand on the table, beside the sibling scene.
     dareHand: null,
+    // T-145 · the 42 fixed roster opponents open at their AUTHORED bankrolls —
+    // seeded through the engine's own rule, never an inline literal, so this site
+    // and the two save paths (`MIGRATIONS[14]`, `deserializeState`) cannot drift.
+    liarsDicePurses: seedLiarsDicePurses(),
     eraEvent: null,
     lastEraEventEndedDay: 0,
     eventLog: [],
@@ -300,6 +330,32 @@ export function deserializeState(json: string): GameState {
   parsed.player.reputation.dragons ??= 0;
   parsed.player.reputation.confederation ??= 0;
   parsed.player.reputation.rebels ??= 0;
+  // T-145 save-compat: pre-T-145 states carry none of the roster's three fields.
+  // The SAME backfill the v14→v15 migration applies for the envelope path (the
+  // loader path runs `migrate` → `validateGameState` and never comes through here,
+  // so both halves are owed). The two player fields are STATEMENTS OF FACT rather
+  // than defaults: a pre-T-145 save was written by an engine in which no roster
+  // existed, so "this captain has beaten nobody in the roster" and "has played
+  // zero hands under the new counter" are TRUE of that save. The purse map calls
+  // the rule (`seedLiarsDicePurses`), which preserves every balance already
+  // present — so this is also the path a later content pass's new opponent enters
+  // an existing save through, with no further version bump.
+  parsed.player.liarsDiceBeaten ??= [];
+  parsed.player.liarsDiceGamesPlayed ??= 0;
+  // T-197 save-compat: pre-T-197 states carry neither daily Hangout cap. The SAME
+  // backfill `MIGRATIONS[15]` applies for the envelope path, and owed here for the
+  // identical reason the T-145 pair above is — the loader path runs `migrate` and
+  // never comes through this function, so both halves exist or one path is broken.
+  // The values come from the RULE (`freshDailyHangoutCaps`), never from two
+  // literals, so this site cannot drift from the dawn reset it is standing in for.
+  // STATEMENTS OF FACT, not defaults: a pre-T-197 save was written by an engine in
+  // which neither cap existed, so "no social plays have been spent today" and "no
+  // hands have been opened today" are TRUE of that save rather than values this
+  // backfill is choosing.
+  const freshCaps = freshDailyHangoutCaps();
+  parsed.player.socialPlaysRemaining ??= freshCaps.socialPlaysRemaining;
+  parsed.player.dareRoundsToday ??= freshCaps.dareRoundsToday;
+  parsed.liarsDicePurses = seedLiarsDicePurses(parsed.liarsDicePurses);
   parsed.npcs ??= [];
   // COW-EXEMPT: these writes reach roster records raw, without `mutableNpc`, and
   // are legal ONLY because of the caller. `parsed` is a value this function just
@@ -328,6 +384,22 @@ export function deserializeState(json: string): GameState {
     // no rank is synthesised from `npc.profileId`'s tier — a migrated tier-5 captain
     // loads as LIEUTENANT with zero deeds, because they earned nothing yet.
     npc.registry ??= emptyDeedRegistry();
+    // T-208 save-compat: a carried save was written by an engine that seeded quest
+    // captains at an arbitrary `(index % 20) + 1`, which parked six of the eleven at
+    // rim systems with no Cantina. The SAME re-seed `MIGRATIONS[16]` applies for the
+    // envelope path, through the SAME rule (`questHomePortForProfile`), because the
+    // loader path runs `migrate` and never comes through this function — both halves
+    // exist or one path is broken.
+    // UNCONDITIONAL AND IDEMPOTENT, not a `??=`, and that is the point: a quest
+    // captain's `currentSystemId` is never written by anything after birth (the only
+    // two writers, `executeTrade`/`executeTravel`, sit behind `day.ts`'s
+    // `isSimulatedCaptain` gate), so it is a constant of CONTENT rather than state
+    // the captain earned. Re-asserting it is therefore always true, and cannot
+    // confiscate progress the way N2 warned re-seeding a SIMULATED captain would.
+    // `undefined` for the 30 and for an unrecognised id, both of which are left
+    // exactly where they are.
+    const homePort = questHomePortForProfile(npc.profileId);
+    if (homePort !== undefined) npc.currentSystemId = homePort;
   });
   // N10 save-compat: pre-N10 states carry a single `market.npcClaims` scalar —
   // claims against the player's system only. Move it onto that system's pool and

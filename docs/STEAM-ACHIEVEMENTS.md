@@ -133,7 +133,7 @@ implemented honestly against this API.
 | `DEED_DARE_FIRST` | First Dare | This captain sat down to a Spacer’s Dare and stayed. |
 | `DEED_DARE_WON` | Took the Pot | The table paid out and the dealer counted it twice. |
 | `DEED_HIGH_ROLLER` | High Roller | A stake worth a hold of cargo rode one hand — and came back doubled. |
-| `DEED_TABLE_REGULAR` | Table Regular | The Hangout dealers had stopped explaining the rules to this captain. |
+| `DEED_TABLE_REGULAR` | Table Regular | The Cantina dealers had stopped explaining the rules to this captain. |
 | `DEED_CONTRABAND_RUN` | Contraband Run | A load no manifest describes reached its buyer and no one asked a question. |
 | `DEED_SLIPPED_THE_SCAN` | Slipped the Scan | A patrol swept the hold, found paperwork, and waved this ship through. |
 | `DEED_KNOWN_TO_THE_LEAGUE` | Known to the League | A League scan found what the manifest denied, and the name went on a list. |
@@ -157,4 +157,19 @@ implemented honestly against this API.
 | `DEED_TOLL_PAID` | Toll Paid | A demand was met in credits rather than fire, and both ships flew on. |
 | `DEED_SIGNAL_HUNTER` | Signal Hunter | A fragment of something older than the Confederation entered this captain’s file. |
 | `DEED_COLD_CASE` | Cold Case | Three separate signals said the same impossible thing, and the file stopped being a curiosity. |
+| `DEED_LIARS_DICE_CLEARED_SUN_3` | The Long Table Swept | The last cup at the Long Table came up short, and Sol-3 had nobody left to sit down. |
+| `DEED_LIARS_DICE_CLEARED_ALDEBARAN_1` | The Weighbridge Swept | The Weighbridge weighed three losing claims in a row and booked every one of them against the house. |
+| `DEED_LIARS_DICE_CLEARED_ALTAIR_3` | The Waypost Swept | The Waypost’s regulars ran out of dice to hide behind, one bench at a time. |
+| `DEED_LIARS_DICE_CLEARED_ARCTURUS_6` | The Garrison Mess Swept | The Garrison Mess lost its last hand to a civilian, and not one hand went near a sidearm. |
+| `DEED_LIARS_DICE_CLEARED_DENEB_4` | The Standing Hall Swept | The Standing Hall went quiet: every cup on the long stone had been called, and every one of them had lied. |
+| `DEED_LIARS_DICE_CLEARED_DENEBOLA_5` | The Incident Book Swept | The Incident Book took three fresh entries, all of them about the same captain winning. |
+| `DEED_LIARS_DICE_CLEARED_FOMALHAUT_2` | The Fittings Swept | The Fittings ran out of people willing to lose at their own table, and everyone there discovered urgent work. |
+| `DEED_LIARS_DICE_CLEARED_MIRA_9` | The Dry Tank Swept | The Dry Tank lived up to its name — every seat at that table had been drained. |
+| `DEED_LIARS_DICE_CLEARED_POLLUX_7` | The Turnaround Swept | The whole shift at the Turnaround had been called and caught, between one departure and the next. |
+| `DEED_LIARS_DICE_CLEARED_PROCYON_5` | The Bonded Room Swept | The Bonded Room stamped its last losing claim and closed the book on its own house. |
+| `DEED_LIARS_DICE_CLEARED_REGULUS_6` | The High Table Swept | The High Table was beaten end to end, and its silver cups were rinsed out by a rim hauler. |
+| `DEED_LIARS_DICE_CLEARED_RIGEL_8` | The Underhold Swept | The Underhold’s last player pushed the pot across and let this captain walk back up the stairs. |
+| `DEED_LIARS_DICE_CLEARED_SPICA_3` | The Second Watch Swept | The Second Watch called its last bluff into the dark and lost it, along with the two before it. |
+| `DEED_LIARS_DICE_CLEARED_VEGA_6` | The Long Room Swept | The Long Room ran the whole length of its table and found nobody who could beat this captain. |
+| `DEED_LIARS_DICE_GRAND_SLAM` | The Whole Circuit | There was no house left on the circuit holding a player this captain had not called and caught. |
 | `RANK_CONQUEROR` | Conqueror | Registry seals the Conqueror rank: the frontier keeps one name now, and it is Player. |

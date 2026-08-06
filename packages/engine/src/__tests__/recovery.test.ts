@@ -79,9 +79,22 @@ import { EXPLORE_VALUE_BANDS } from '@spacerquest/content';
 // six-day clock and now drives the four-dice payment. The coverage T-115 owed
 // (the top of the ladder, through the real loop, not by analogy) is kept.
 
-/** Opens a recovery on day 1 at Sun-3 with an authored band-2 SALVAGE row, and
- *  its day-1 Travel is INTERRUPTED. */
-const SEED_OPENS = 52;
+// N13/T-156 RE-SEEDED SEED_OPENS (52 -> 719), by the same scan and for the same
+// class of reason as T-113/T-114/T-117 above — a rule change re-phased a board.
+// The mechanism this time is the NPC virtual hand: the cast's checks are drawn
+// from a five-die hand instead of a bare `rng.d20()`, so every captain's dusk
+// draw sequence moves, and over twenty-nine real Waits the world the DAY-30
+// board is generated against moves with it. Seed 52's day-1 properties all
+// survived; only its day-30 leg re-phased. It was re-seeded rather than split
+// because the constant's contract is "the LOWEST seed satisfying ALL the
+// properties the tests using it require", and one seed is what keeps that
+// contract checkable. The scan CONDITIONS are unchanged; only its RANGE grew
+// (to 4,000), because the conjunction is genuinely rare — 9 seeds in 4,000, and
+// none at all below 719.
+
+/** Opens a recovery on day 1 with an authored band-2 SALVAGE row, its day-1
+ *  Travel is INTERRUPTED, and its day-30 board also opens a one-day op. */
+const SEED_OPENS = 719;
 /** Opens a recovery on day 1 AND its day-1 Travel to system 2 actually ARRIVES. */
 const SEED_TRAVELS_AWAY = 10;
 /** Opens a recovery on day 1 AND the planted dusk encounter lands a fatal blow. */
@@ -143,7 +156,7 @@ function reloadWith(state: GameState, edit: (parsed: Record<string, never>) => v
 }
 
 /** The dusk-fatal encounter `legacy.test.ts` uses — a high-GUNS interceptor whose
- *  day-end free attack finishes a one-condition hull. Origin 1 (Sun-3). */
+ *  day-end free attack finishes a one-condition hull. Origin 1 (Sol-3). */
 function fatalEncounter(): EncounterState {
   return {
     id: 'enc-fatal',
@@ -207,8 +220,10 @@ describe('T-111 · a recovery spans real calendar days (the whole loop, no pokin
       outcomeId: recovery.outcomeId,
       poiId: recovery.poiId,
       // Read off the CONTENT row at payout, never off the save.
-      // 11 = `explore-salvage-beacon-fusion-stack`, the band-2 row seed 52 opens.
-      valuePoints: 11,
+      // 23 = `explore-salvage-derelict-drive-core`, the band-2 row seed 719 opens
+      // (N13/T-156 re-seed; it read 11 / `explore-salvage-beacon-fusion-stack`
+      // while SEED_OPENS was 52).
+      valuePoints: 23,
     });
 
     const salvage = eventsOfType(duskTwo.events, 'SalvageRecovered');
@@ -387,7 +402,7 @@ describe('T-111 · §3.3(d) the Tour One marker does nothing to an open recovery
     });
     expect(opened.events.some((e) => e.type === 'RecoveryStarted')).toBe(true);
     const recovery = opened.state.player.recovery!;
-    // dueDay 31: seed 52's day-30 board draws a band-2 row (N = 1). Under owner
+    // dueDay 31: SEED_OPENS' day-30 board draws a band-2 row (N = 1). Under owner
     // ruling D1 (T-131) band 2 is the ONLY band that opens a recovery at all —
     // bands 3-4 charge `apCost` dice at claim instead — so N = 1 is now a
     // property of the TABLE as well as of the seed, and one day is the longest

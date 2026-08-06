@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type DragEvent as ReactDragEvent,
   type ReactNode,
 } from 'react';
 // T-136 · THE ANIMATION DEPENDENCY, NEW TO THIS REPO (GSAP 3.15.0, GreenSock
@@ -34,9 +33,11 @@ import {
   DARE_MAX_FACE,
   DARE_MAX_QUANTITY,
   isLatticeMove,
+  minOpeningQuantity,
   type DareMoveKind,
   type GameState,
   type CheckResult,
+  type ShipComponentId,
   type StoryletOffer,
 } from '@spacerquest/engine';
 import {
@@ -70,6 +71,12 @@ import {
   dismissAftermath,
   dismissSuccession,
   dismissOnboarding,
+  // T-187 · the first-turn walkthrough's three player controls.
+  ackWalkthroughStep,
+  skipWalkthrough,
+  restartWalkthrough,
+  // T-200 · the opening marker's one control.
+  dismissOpeningMarker,
   dismissRecovery,
   standDown,
   toggleFx,
@@ -81,6 +88,10 @@ import {
   importCareer,
   setReducedMotion,
   setTextSize,
+  // T-141 · The opt-in playtest log's player-facing controls (spec §3/§5).
+  setPlaytestLogging,
+  flagPlaytestMoment,
+  exportPlaytestLog,
   type CockpitState,
   type SlotSummary,
   type TextSize,
@@ -95,10 +106,14 @@ import {
   recoveryReadout,
   hangoutOpen,
   hangoutNpcs,
+  hangoutRosterOpponents,
   hangoutHouse,
   hangoutVenueOffered,
   hangoutRumorLines,
   dareWagerBounds,
+  // T-197 · the two daily Hangout caps, rendered beside the controls they bound.
+  hangoutSocialPlays,
+  hangoutDareRounds,
   dareScene,
   lendingTerms,
   fuelPurchaseQuote,
@@ -114,6 +129,7 @@ import {
   wireLog,
   npcNameIndex,
   npcDossier,
+  dispositionHint,
   statName,
   checkVerdict,
   signedMargin,
@@ -123,6 +139,15 @@ import {
   combatFuelStatus,
   tributeThisRound,
   shipComponents,
+  shipDiagram,
+  ASTRAXIAL_PATH,
+  JUNKER_PATH,
+  SHIP_DIAGRAM_BAY,
+  SHIP_DIAGRAM_BAY_SEGMENTS,
+  SHIP_DIAGRAM_FITTING_ORIGIN,
+  SHIP_DIAGRAM_FUEL_BAR,
+  SHIP_DIAGRAM_GEOMETRY,
+  SHIP_DIAGRAM_VIEWBOX,
   specialEquipmentRows,
   shipyardQuote,
   honorList,
@@ -131,6 +156,8 @@ import {
   storyletChoiceNeedsDie,
   storyletChoiceLock,
   deedRegistry,
+  manifestSheet,
+  ledgerFascia,
   factionStanding,
   nemesisFile,
   crossingStatus,
@@ -162,10 +189,31 @@ import {
   type OnboardingMount,
   type ResolutionCeremonyView,
   type ShipComponentRow,
+  type ShipDiagramMark,
+  type ShipDiagramRegion,
+  type ShipDiagramRegionId,
   type SuccessionSummary,
   type WireLogEntry,
   type StoryletChoice,
 } from './format';
+// T-187 · The first-turn walkthrough's pure rules — the script, the rails
+// predicate and the card copy. All presentation; see the module header for why it
+// coexists with (and never replaces) T-311's contextual coach above.
+import {
+  currentWalkthroughStep,
+  railsAllows,
+  railsHighlights,
+  railsSuspended,
+  walkthroughActive,
+  walkthroughCardCopy,
+  walkthroughJumpTarget,
+  WALKTHROUGH_STEP_COUNT,
+  type RailsRegion,
+} from './walkthrough';
+// T-200 · The opening marker. `openingMarkerView` is the ONLY source of the
+// figures and copy `OpeningMarker` renders — every number in it is read live off
+// `GameState`, so this file carries no debt literal of its own.
+import { openingMarkerPending, openingMarkerView } from './opening';
 // T-1701a · Which store the cockpit is actually running against, and where its
 // saves live. `storageBackend` selects the right noun in the two storage-failure
 // sentences ("this browser" vs "the game"); `saveLocation` is the path the
@@ -205,21 +253,19 @@ import { BUILD_VERSION } from './version';
 // which is the only place a player can read them — and a licence notice that
 // never reaches the player is not an attribution that shipped.
 import { CREDITS, creditDetail, creditLine } from './credits';
+// T-141 · The two settled strings the Playtest row must show. Imported rather
+// than re-typed: `docs/PLAYTEST-TELEMETRY_SPEC.md` §3 settles the disclosure
+// wording, and a golden test pins it — a literal copy here could drift from the
+// promise the spec makes without failing anything.
+import { PLAYTEST_DISCLOSURE, PLAYTEST_TOGGLE_LABEL } from './playtestLog';
 
+// T-196c · `dropDie` is GONE. It bridged a native HTML5 drop back into the
+// store's selection model by calling `selectDie` and then running the action —
+// correct while its only caller (drag-to-sign) cost a die, and wrong the moment
+// signing became a FREE ACTION: a free verb would have armed or replaced the die
+// the player had queued for their next Main Action. Its sole call site now signs
+// directly. `DIE_MIME` stays — the hand dock's `dragstart` still writes it.
 const DIE_MIME = 'application/x-sq-die';
-
-// Bridge a native HTML5 drop back into the store's selection model, then run the
-// action. Click-to-select is the primary path (what Playwright drives); drag is
-// an accessible-parallel affordance. Selecting the dropped die first keeps the
-// store the sole engine caller — the drop never reaches into the engine itself.
-function dropDie(e: ReactDragEvent, run: () => void): void {
-  e.preventDefault();
-  const raw = e.dataTransfer.getData(DIE_MIME);
-  const idx = Number.parseInt(raw, 10);
-  if (!Number.isFinite(idx)) return;
-  if (getSnapshot().selectedDie !== idx) selectDie(idx);
-  run();
-}
 
 function useCockpit(): CockpitState {
   return useSyncExternalStore(subscribe, getSnapshot);
@@ -236,8 +282,9 @@ const EffectsLayer = memo(function EffectsLayer() {
   return <div className="fx" aria-hidden="true" />;
 });
 
-// The audio mixer (T-310, folded into Settings by T-1406). Three master/SFX/
-// ambient sliders + a mute toggle, reflecting the persisted mixer state through
+// The audio mixer (T-310, folded into Settings by T-1406). Four master/SFX/
+// music/ambient sliders (T-185 added `music`) + a mute toggle, reflecting the
+// persisted mixer state through
 // the sound module's own external store. It is a pure client of `sound.ts`: it
 // never touches the AudioContext — the context unlocks on the first gesture
 // inside the manager (a global capture-phase listener, not this component's
@@ -267,6 +314,10 @@ function AudioMixer() {
     <div className="audio-mixer" data-testid="audio-mixer">
       {slider('master', 'Master', 'vol-master')}
       {slider('sfx', 'SFX', 'vol-sfx')}
+      {/* T-185 · The procedural score's own fader, between the one-shots and the
+          bed it sits between in the mix. `music.ts` synthesizes it; this row is
+          a pure client of `sound.ts`'s mixer exactly as the other three are. */}
+      {slider('music', 'Music', 'vol-music')}
       {slider('ambient', 'Ambient', 'vol-ambient')}
       <button
         className={mixer.muted ? 'audio-mute on' : 'audio-mute'}
@@ -355,11 +406,129 @@ function SettingsPanel({ state, onClose }: { state: CockpitState; onClose: () =>
         <AudioMixer />
       </div>
 
+      {/* T-187 · The walkthrough's escape hatch in the other direction. Resetting
+          the record to `off` is the ONE state `newGame` re-arms from, so this
+          promises a fresh career on rails rather than dropping rails over a
+          career already in flight — which is what the label says. */}
+      <div className="set-section">
+        <span className="set-head">Tutorial</span>
+        <div className="set-row">
+          <span className="set-label">Replay first-turn walkthrough</span>
+          <button
+            className="btn small"
+            data-testid="set-replay-walkthrough"
+            onClick={restartWalkthrough}
+          >
+            Arm
+          </button>
+        </div>
+        <span className="set-note">
+          Arms the seven-step walkthrough on your next New Game. Your current career is not
+          interrupted.
+        </span>
+      </div>
+
       <StorageRow />
       <BuildRow />
       <SteamRow state={state} />
+      <PlaytestPanel state={state} />
       <CreditsPanel />
       <SavesPanel state={state} />
+    </div>
+  );
+}
+
+// T-141 · OPT-IN PLAYTEST LOGGING — the consent surface.
+//
+// The player-facing whole of `docs/PLAYTEST-TELEMETRY_SPEC.md`: the toggle (§3),
+// the disclosure that must sit beside it (§3), the "flag this moment"
+// annotation (§1) and the player-triggered export (§5). Placed after Steam and
+// before Credits, in the run of Settings sections that describe THE BUILD, and
+// before the save slots, which stay the panel's last block on the rule
+// `CreditsPanel` already states.
+//
+// OFF BY DEFAULT AND VISIBLY SO. The toggle reads `state.playtestLogging`, which
+// `store.ts`'s `init()` seeds from `storage.ts`'s `KeyValueStore` — never from
+// the save file, so a save round-trip cannot turn capture on (spec §3, asserted
+// by `__tests__/playtest-log.test.ts`).
+//
+// THE DISCLOSURE IS ALWAYS RENDERED, not only when enabled: a player deciding
+// whether to opt in is exactly the player who needs to read what is captured.
+// Its text comes from `playtestLog.ts`'s `PLAYTEST_DISCLOSURE` constant, so this
+// component owns no prose of its own — the same rule `SteamRow` follows with
+// `presenceLine`.
+//
+// The flag and export controls appear ONLY when logging is on: a button that
+// would refuse is worse than a button that is not there, and the store's actions
+// still say why if either is reached another way.
+function PlaytestPanel({ state }: { state: CockpitState }) {
+  const [note, setNote] = useState('');
+  const submitNote = () => {
+    flagPlaytestMoment(note);
+    setNote('');
+  };
+  return (
+    <div className="set-section" data-testid="playtest-panel">
+      <span className="set-head">Playtest</span>
+      <div className="set-row">
+        <span className="set-label">{PLAYTEST_TOGGLE_LABEL}</span>
+        <button
+          className={state.playtestLogging ? 'set-toggle on' : 'set-toggle'}
+          data-testid="set-playtest-logging"
+          aria-pressed={state.playtestLogging}
+          onClick={() => setPlaytestLogging(!state.playtestLogging)}
+        >
+          {state.playtestLogging ? 'On' : 'Off'}
+        </button>
+      </div>
+      <span className="set-note" data-testid="playtest-disclosure">
+        {PLAYTEST_DISCLOSURE}
+      </span>
+      {state.playtestLogging ? (
+        <>
+          <div className="set-row">
+            <span className="set-label">Flag this moment</span>
+            <span className="set-value" data-testid="playtest-entry-count">
+              {state.playtestLogEntries} captured
+            </span>
+          </div>
+          <div className="set-row">
+            <input
+              className="set-input"
+              data-testid="playtest-flag-input"
+              aria-label="Note for this moment"
+              placeholder="What happened?"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitNote();
+              }}
+            />
+            <button className="btn small" data-testid="playtest-flag" onClick={submitNote}>
+              Flag
+            </button>
+          </div>
+          <div className="set-row">
+            <span className="set-label">Export Playtest Log</span>
+            <span className="set-acts">
+              <button
+                className="btn small"
+                data-testid="playtest-export-json"
+                onClick={() => exportPlaytestLog('json')}
+              >
+                JSONL
+              </button>
+              <button
+                className="btn small"
+                data-testid="playtest-export-csv"
+                onClick={() => exportPlaytestLog('csv')}
+              >
+                CSV
+              </button>
+            </span>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -876,10 +1045,11 @@ export function App() {
               <button
                 className="hangout-launch"
                 data-testid="hangout-toggle"
+                {...railsProps(s, 'hangout')}
                 aria-expanded={hangoutPanelOpen}
                 onClick={() => setHangoutPanelOpen((v) => !v)}
               >
-                Hangout
+                Cantina
               </button>
             )}
             <button data-testid="records-toggle" onClick={() => setRecordsOpen((v) => !v)}>
@@ -906,7 +1076,7 @@ export function App() {
             <TradePane state={s} onOpenStorylet={setOpenStoryletId} />
           </div>
         </div>
-        <Wire game={s.game} onOpenStorylet={setOpenStoryletId} />
+        <Wire game={s.game} onOpenStorylet={setOpenStoryletId} railsOff={railsOff(s, 'wire')} />
         {/* T-1406 · Reachability audit node — a visually-hidden reflection of the
             engine's own live non-resolution offer set. NOT a metric stub: it is
             the same list the old launcher counted, rendered off-screen so the
@@ -941,6 +1111,19 @@ export function App() {
             handles hand / manifest / starmap anchors. Only one prompt shows at a
             time (the selector guarantees it), so the two mounts never collide. */}
         <OnboardingCallout state={s} where="screen" />
+        {/* T-187 · The scripted first-turn walkthrough's step card. A SIBLING of
+            the contextual coach, never a replacement: it only ever renders on a
+            genuinely first-time career, and while it is up the coach above
+            stands down (see `OnboardingCallout`'s first line). */}
+        <WalkthroughCard state={s} />
+        {/* T-200 · The opening marker. Mounted AFTER the walkthrough card on
+            purpose: both want the birth of a career, and this one goes first —
+            you learn WHY you are out here before anyone teaches you the controls.
+            The collision is resolved in one direction only (the card stands down
+            while this is up, see `WalkthroughCard`'s first line) and it is a
+            RENDER-TIME suppression, not a state change: dismiss the dispatch and
+            the walkthrough is still sitting on step 1. */}
+        <OpeningMarker state={s} />
         <CombatOverlay state={s} />
         {ceremony && <ResolutionCeremony state={s} view={ceremony} />}
         {/* T-1602b · The death beat. Mounted OUTSIDE the combat overlay on
@@ -994,6 +1177,181 @@ function SaveWriteFailedNotice() {
   );
 }
 
+// ===========================================================================
+// T-187 · THE FIRST-TURN WALKTHROUGH — the rails and the step card.
+// ===========================================================================
+//
+// THE RAILS. `railsOff(state, region)` is the single predicate every guarded node
+// asks. A `true` answer puts React 19's first-class `inert` prop on that node,
+// which kills pointer events, keyboard focus AND accessibility-tree exposure for
+// the whole subtree — that is what "the player's next legal action is constrained
+// to the scripted one" actually means, and it is far more honest than a CSS
+// overlay that merely LOOKS unclickable. `data-rails-off="1"` rides along as the
+// CSS hook and the e2e's assertion target.
+//
+// NESTING IS LOAD-BEARING: an `inert` ancestor cannot be un-inerted by a
+// descendant, so the attribute goes on the narrowest node that matches a region —
+// never on `.pane.starmap` (which contains both the plot controls and the
+// off-lane sweep, two different regions) and never on the Trade pane's root
+// (whose fuel depot is a region of its own that steps 4 and 6 must be able to
+// open).
+function railsOff(state: CockpitState, region: RailsRegion): boolean {
+  return !railsAllows(state.walkthrough, state, region);
+}
+
+/** The attributes every rails-guarded node spreads: `inert` + the dim hook when
+ *  the region is closed, the highlight hook when it is the one the current step
+ *  is asking for, and NOTHING at all otherwise — so a cockpit with no walkthrough
+ *  running renders exactly the markup it always did. */
+function railsProps(
+  state: CockpitState,
+  region: RailsRegion,
+): { inert?: boolean; 'data-rails-off'?: '1'; 'data-rails-active'?: '1' } {
+  if (railsOff(state, region)) return { inert: true, 'data-rails-off': '1' };
+  if (railsHighlights(state.walkthrough, state, region)) return { 'data-rails-active': '1' };
+  return {};
+}
+
+/**
+ * The step popup — the "pop ups" half of the owner's ask.
+ *
+ * Visually heavier than `.onboarding` — opaque, 2px frame, a "STEP n OF 7"
+ * counter, `role="dialog"` — but there is NO backdrop, NO focus trap, and (as of
+ * the first e2e run) NO pointer capture on the frame itself: only its two buttons
+ * take clicks. That last one is a MEASURED fix, not a style preference — a card
+ * that swallows the click it is telling the player to make is a tutorial blocking
+ * its own lesson. The constraining is the RAILS' job, and the always-open
+ * `hand` / `chrome` regions are what keep this from ever soft-locking a career.
+ *
+ * Renders nothing when the walkthrough is not running, when the ENGINE has taken
+ * over the screen (`railsSuspended` — a live encounter, a hand at the tables, an
+ * aftermath, a death, a patrol scan), or when all seven steps are done.
+ */
+function WalkthroughCard({ state }: { state: CockpitState }) {
+  // T-200 · The ONE line of interaction with the opening marker, and the exact
+  // idiom `OnboardingCallout` already uses for `walkthroughActive` below: while
+  // the Guild dispatch covers the cockpit, this card stands down, because two
+  // full-screen first-time overlays at once is the failure mode. Nothing else
+  // changes — the record is untouched, so the card returns on step 1 the moment
+  // the dispatch is signed.
+  if (openingMarkerPending(state.openingMarker)) return null;
+  if (!walkthroughActive(state.walkthrough) || railsSuspended(state)) return null;
+  const step = currentWalkthroughStep(state.walkthrough);
+  if (!step) return null;
+  const copy = walkthroughCardCopy(state.walkthrough, step, state.game);
+  return (
+    <aside
+      className="walkthrough"
+      data-testid="walkthrough"
+      data-walkthrough-step={step.id}
+      data-walkthrough-index={step.index}
+      data-walkthrough-anchor={step.anchor}
+      role="dialog"
+      aria-live="polite"
+      aria-label="First-turn walkthrough"
+    >
+      <span className="wt-counter">
+        STEP {step.index} OF {WALKTHROUGH_STEP_COUNT}
+      </span>
+      <b className="wt-title">{step.title}</b>
+      <p className="wt-what">{copy.what}</p>
+      <p className="wt-why">{copy.why}</p>
+      <div className="wt-acts">
+        <button className="wt-skip" data-testid="walkthrough-skip" onClick={skipWalkthrough}>
+          Skip tutorial
+        </button>
+        {step.ack && (
+          <button className="wt-next" data-testid="walkthrough-next" onClick={ackWalkthroughStep}>
+            Next
+          </button>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+/**
+ * T-200 · THE OPENING MARKER — the debt as a cold open.
+ *
+ * A one-shot Guild dispatch that lands over the day-1 cockpit at the birth of a
+ * career, discharging `docs/PRD-REIMAGINED.md`'s standing promise that the object
+ * is "stated on the first screen". The figure is the largest thing on the tube;
+ * the prose names the PRIOR OBLIGATIONS that put the player out here.
+ *
+ * AN OVERLAY, NOT AN EARLY RETURN. `EndingScreen` and the demo end card REPLACE
+ * the cockpit because the engine refuses every verb from there. Here the cockpit
+ * is fully alive underneath — this is a beat over it, not a substitute for it,
+ * which is also why every other spec's DOM is unchanged behind it.
+ *
+ * Every number comes from `openingMarkerView(state.game)` — `player.debt` and
+ * `player.debtDueDay`, read live. The raw figures ride out as attributes as well
+ * as prose (the `RecoveryNotice` / `data-recovery-code` precedent): a sentence is
+ * prose that may be re-voiced, an attribute is what a spec asserts on.
+ */
+function OpeningMarker({ state }: { state: CockpitState }) {
+  if (!openingMarkerPending(state.openingMarker)) return null;
+  const view = openingMarkerView(state.game);
+  return (
+    <div
+      className="opening-marker"
+      data-testid="opening-marker"
+      data-opening-debt={view.debt}
+      data-opening-due={view.dueDay}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Guild marker"
+    >
+      <div className="om-frame">
+        <span className="om-kicker" data-testid="opening-marker-kicker">
+          {view.kicker}
+        </span>
+        <h2 className="om-title">{view.title}</h2>
+
+        {/* The figure. Not a chip, not a ledger row — the one thing on the tube
+            with any size to it, which is the whole difference between a hook and
+            the bezel readout that has carried this number until now. */}
+        <div className="om-figure">
+          <b className="om-owed" data-testid="opening-marker-debt">
+            {view.debtLabel}
+          </b>
+          <span className="om-due" data-testid="opening-marker-due">
+            CALLED ON DAY {view.dueDay} · {view.dueLabel.toUpperCase()}
+          </span>
+        </div>
+
+        <div className="om-prose">
+          {view.prose.map((paragraph, index) => (
+            <p key={index} data-testid="opening-marker-prose">
+              {paragraph}
+            </p>
+          ))}
+        </div>
+
+        <p className="om-signoff" data-testid="opening-marker-signoff">
+          {view.signOff}
+        </p>
+
+        {/* The foot of the document. The dashed rule + clearing-house stamp is
+            what keeps the bottom of this frame reading as a dispatch rather than
+            a dialog's action bar — the tabletop-ui "diegetic, never web-app
+            chrome" rule, applied to the one element most likely to break it. */}
+        <div className="om-foot">
+          <span className="om-stamp" data-testid="opening-marker-stamp">
+            {view.stamp}
+          </span>
+          <button
+            className="btn om-sign"
+            data-testid="opening-marker-dismiss"
+            onClick={dismissOpeningMarker}
+          >
+            {view.actionLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // The contextual onboarding coach (T-311). A NON-MODAL callout anchored to the
 // real affordance it teaches — no backdrop, no focus trap, nothing disabled, so
 // the player can act on the affordance while it is up (which auto-dismisses it).
@@ -1005,6 +1363,14 @@ function SaveWriteFailedNotice() {
 // (F-121-2) — so a prompt routed to a closed-panel mount can never claim a
 // different mount's slot and render nowhere.
 function OnboardingCallout({ state, where }: { state: CockpitState; where: OnboardingMount }) {
+  // T-187 · The ONE line of interaction between the two teaching systems: while
+  // the scripted first-turn walkthrough is on rails, the contextual coach stands
+  // down at every mount, because two coach cards on screen at once is the failure
+  // mode. Nothing else changes — `reconcileOnboarding` keeps running underneath,
+  // so the delivery-flow prompts auto-dismiss as the scripted actions land, and
+  // the moment the walkthrough finishes or is skipped this coach resumes for
+  // every prompt still unseen.
+  if (walkthroughActive(state.walkthrough)) return null;
   // The screen mount is suppressed while the combat overlay covers the cockpit,
   // so a lower-priority screen prompt can never render behind the overlay.
   if (where === 'screen' && state.game.encounter != null) return null;
@@ -1442,6 +1808,22 @@ function CombatInstrument({ state }: { state: CockpitState }) {
           <span className="co-enemy-hist" data-testid="combat-enemy-history">
             {readout?.history}
           </span>
+          {/* T-207 · The named captain's own voice. Both are `null` for an
+              ANONYMOUS raider at every round — `AnonymousInterceptorProfile` has no
+              catchphrases (T-205's deliberate shape) — so React emits nothing at
+              all on that path and the anonymous header's DOM is byte-identical to
+              what it was before this task. Printed verbatim: no added quote marks,
+              no case change (the `roomLine` convention this file keeps). */}
+          {readout?.enterLine && (
+            <span className="co-enemy-hist co-enemy-bark" data-testid="combat-enemy-bark">
+              {readout.enterLine}
+            </span>
+          )}
+          {readout?.battleLine && (
+            <span className="co-enemy-hist co-enemy-bark" data-testid="combat-enemy-battle-bark">
+              {readout.battleLine}
+            </span>
+          )}
         </div>
         <div className="co-enemy-meta">
           <span className="co-tier" data-testid="combat-enemy-tier">
@@ -1651,6 +2033,15 @@ function CombatAftermathPanel({
           <li key={i}>{line}</li>
         ))}
       </ul>
+      {/* T-207 · The captain's parting word. Its own element, deliberately OUTSIDE
+          the `<ul>` above: that list is things that happened, this is somebody
+          talking. `null` for an anonymous raider, so this panel is byte-identical
+          to today's on that path — nothing was appended to `lines` either. */}
+      {aftermath.opponentLine && (
+        <p className="co-aftermath-bark" data-testid="combat-aftermath-bark">
+          {aftermath.opponentLine}
+        </p>
+      )}
       <p className="co-hint">Logged to the Galactic Wire.</p>
       <button className="btn" data-testid="combat-dismiss" onClick={dismissAftermath}>
         Back to the cockpit
@@ -1839,9 +2230,17 @@ const SOCIAL_TITLES: Record<'meet' | 'befriend' | 'insult', string> = {
 // armed exactly as in the storylet flow.
 //
 // T-132 · SIX OF SEVEN VENUES ARE SURFACED HERE, and the seventh is absent on
-// purpose: `rumor` spends a die to emit precisely the `hangoutRumors` output the
-// rumor table below already renders for free, so a paid control would be strictly
-// dominated (see `visitSocial`'s docstring in store.ts).
+// purpose: `rumor` emits precisely the `hangoutRumors` output the rumor table
+// below already renders for free, so a control for it would be strictly dominated
+// (see `visitSocial`'s docstring in store.ts). T-197 · that argument SURVIVED the
+// freeing and got stronger: rumor used to be dominated because it cost a die for
+// nothing new, and now it is dominated because it costs nothing for nothing new.
+//
+// T-197 · NO CONTROL IN THIS PANE REQUIRES AN ARMED DIE ANY MORE except PEEK
+// (docs/DAWN-HAND-REDESIGN.md §3). Two daily caps replaced the die, and BOTH are
+// rendered as counts beside the controls they bound — `social-plays-left` and
+// `dare-rounds-left` — so neither can refuse a click the player could not see
+// coming.
 //
 // EVERY per-port difference in this pane is a CONTENT field read through an engine
 // accessor — `hangoutHouse` (the authored prose) and `hangoutVenueOffered` (the
@@ -1863,10 +2262,22 @@ function HangoutPanel({
 }) {
   const game = state.game;
   const npcs = hangoutNpcs(game);
+  // T-145 · The house's OWN three seats (pool A). A parallel list beside the
+  // roaming captains, never a replacement — the picker renders them as two
+  // separate sections, which is how all 42 become reachable through the real UI.
+  const roster = hangoutRosterOpponents(game);
   const rumors = hangoutRumorLines(game);
   const bounds = dareWagerBounds(game);
   const terms = lendingTerms(game);
   const loan = game.player.loan;
+  // T-197 · the two daily caps, read through `format.ts` accessors that delegate
+  // to the ENGINE's own rules — no restated arithmetic in the pane (§4a/§4b).
+  const socialPlays = hangoutSocialPlays(game);
+  const dareRounds = hangoutDareRounds(game);
+  // T-197 · `armed` SURVIVES, narrowed to ONE reader: the Peek control inside
+  // `LiarsDiceScene`. Peek is the one check inside an open hand, stayed a Main
+  // Action by ruling (§3), and still spends a die. No other control in this pane
+  // reads it — the T-196c treatment at the yard and trade panes, applied here.
   const armed = state.selectedDie !== null;
   // T-136 · THE FOG PROJECTION, and the ONLY thing the live scene is given. It has
   // no `dealerDice` field; see `format.ts`'s `DareSceneView`.
@@ -1906,19 +2317,45 @@ function HangoutPanel({
 
   // A previously-chosen opponent may have wandered off between renders — only a
   // still-present NPC is a valid dealer (mirrors the engine's in-system guard).
-  const chosen = opponentId && npcs.some((n) => n.id === opponentId) ? opponentId : null;
-  const dareDisabledReason = !armed
-    ? 'Pick a die to wager'
-    : !chosen
-      ? 'Choose an opponent from the tables'
+  //
+  // T-145 · …OR a non-broke roster opponent at this port. Two separate validities,
+  // deliberately: `chosenRoaming` is the one the SOCIAL venues need (they call
+  // `applyDisposition`, which needs an `NpcState`), and `chosen` is the wider one
+  // the Dare accepts. Without the wider one the commit button could never enable
+  // for a roster seat; without the narrower one the pane would offer
+  // meet/befriend/insult against a roster opponent and the engine would typed-fail
+  // it with 'no-opponent'.
+  const chosenRoaming = opponentId && npcs.some((n) => n.id === opponentId) ? opponentId : null;
+  const chosenRoster =
+    opponentId && roster.some((r) => r.id === opponentId && !r.broke) ? opponentId : null;
+  const chosen = chosenRoaming ?? chosenRoster;
+  // T-197 · THE DIE IS GONE FROM ALL SEVEN VENUES, AND TWO DAILY CAPS TOOK ITS
+  // PLACE (docs/DAWN-HAND-REDESIGN.md §3/§4a/§4b). Every `!armed` arm below is
+  // retired — a freed Hangout action neither requires nor clears the armed die.
+  // What replaces them is NOT silence: each cap gets its own disabled reason,
+  // drawn from the same engine accessors the resolver refuses on, so a spent-out
+  // pool or a closed table explains itself BEFORE the click. That is the
+  // "never a silent dead button" criterion, and it is why these arms exist at all
+  // rather than the buttons simply being left enabled to earn a typed refusal.
+  // `armed` SURVIVES in this pane, narrowed to ONE reader: PEEK, inside
+  // `LiarsDiceScene`, which is still a Main Action and still spends a die.
+  const dareDisabledReason = !chosen
+    ? 'Choose an opponent from the tables'
+    : dareRounds.remaining <= 0
+      ? 'The house has closed the table for tonight'
       : null;
-  const loanDisabledReason = armed ? null : 'Pick a die first';
-  // T-132 · the same shape as `dareDisabledReason` — a social venue needs an armed
-  // die and a captain who is still at the tables.
-  const socialDisabledReason = !armed
-    ? 'Pick a die first'
-    : !chosen
-      ? 'Choose someone at the tables'
+  // The lending pair is free AND outside both caps (§3: the single-loan slot and
+  // credits were always its real bounds), so it has no disabled reason left at
+  // all — the engine's own `already-has-loan` / `insufficient-credits` refusals
+  // render as notices, exactly as they did before.
+  const loanDisabledReason: string | null = null;
+  // T-132 · the same shape as `dareDisabledReason` — a social venue needs a
+  // captain who is still at the tables. T-145: a ROAMING one. T-197: …and a play
+  // left in the day's social pool.
+  const socialDisabledReason = !chosenRoaming
+    ? 'Choose someone at the tables'
+    : socialPlays.remaining <= 0
+      ? 'No social plays left today'
       : null;
 
   return (
@@ -1926,7 +2363,11 @@ function HangoutPanel({
       className="hangout-panel"
       data-testid="hangout-panel"
       role="dialog"
-      aria-label="Spacers Hangout"
+      aria-label="Spacers Cantina"
+      // T-187 · Open only on step 7. `railsSuspended` covers a LIVE hand
+      // (`game.dareHand`), so once the cards are dealt the table is fully
+      // playable with no rails over it — which is what step 7 is asking for.
+      {...railsProps(state, 'hangout')}
     >
       <header className="hp-head">
         {/* T-132 (F-101-6) · The house's AUTHORED name, in place of the generic
@@ -1996,11 +2437,77 @@ function HangoutPanel({
                     onClick={() => setOpponentId(n.id)}
                   >
                     <span className="hp-npc-name">{n.name}</span>
+                    {/* T-203 · The standing you already have with this captain,
+                        BEFORE you commit to a hand — the same five bands the
+                        combat header prints for a named interceptor, off the
+                        `disposition` `hangoutNpcs` already carries. Rendered
+                        unconditionally on a pool-B row: "No standing with you" is
+                        the honest neutral baseline a grudge has to read
+                        differently from. The house's own seats below get nothing
+                        — pool A has no disposition to state. */}
+                    <span className="hp-npc-tag" data-testid="hangout-npc-standing">
+                      {' '}
+                      · {dispositionHint(n.disposition)}
+                    </span>
                   </button>
                 </li>
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {/* ---- T-145 · the house's own three seats (pool A) ----
+          A SECOND, VISUALLY SEPARATE SECTION. These are the fixed Liar's Dice
+          roster: they are always at their port (they take no part in the roam and
+          cannot die), they are beat-ONCE for the completion sets, and their purses
+          are finite and never regenerate. A beaten seat is marked and still
+          playable — a rematch pays normally, it simply records nothing. A BROKE
+          seat is disabled with its reason, because the engine refuses it with
+          `HangoutEvent{failReason:'opponent-broke'}` before the die is spent, and
+          a button that can only fail is the class of bug the venue gates exist to
+          prevent. */}
+      {!locked && roster.length > 0 && (
+        <div className="hp-section">
+          <div className="hp-shead">THE HOUSE&apos;S OWN</div>
+          <ul className="hp-npcs">
+            {roster.map((r) => (
+              <li key={r.id}>
+                <button
+                  className={chosen === r.id ? 'hp-npc on' : 'hp-npc'}
+                  data-testid="hangout-roster-opponent"
+                  data-npc-id={r.id}
+                  data-beaten={String(r.beaten)}
+                  data-broke={String(r.broke)}
+                  disabled={r.broke}
+                  aria-pressed={chosen === r.id}
+                  title={
+                    r.broke
+                      ? 'They are cleaned out — that seat will not take a wager.'
+                      : r.beaten
+                        ? 'Already beaten — a rematch pays, but records nothing.'
+                        : 'Sit down against the house'
+                  }
+                  onClick={() => setOpponentId(r.id)}
+                >
+                  <span className="hp-npc-name">{r.name}</span>
+                  {r.beaten && <span className="hp-npc-tag"> · beaten</span>}
+                  {r.broke && <span className="hp-npc-tag"> · cleaned out</span>}
+                  {/* T-146 · "Read the Table", at unlock tier ≥ 3 only. Absent on a
+                      'mixed' seat by ruling — that read does not exist until the
+                      hand resolves the mix at open, and it arrives then on
+                      `DareHandStarted.opponentRead`. Nothing renders, never a
+                      placeholder. */}
+                  {r.read && (
+                    <span className="hp-npc-tag" data-testid="hangout-roster-read">
+                      {' '}
+                      · {r.read}
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -2016,8 +2523,14 @@ function HangoutPanel({
         {scene === null && state.dareReveal === null && (
           <div className="hp-dare-controls">
             <label className="hp-wager">
+              {/* T-146 · At unlock tier 5 the band clamp is gone at BOTH ends, so
+                  `bounds.max` is null and there is no ceiling to print — rendering
+                  the range would read "WAGER 0– cr". The solvency clamp still
+                  applies; it is simply not a band. */}
               <span className="hp-k" data-testid="dare-wager-bounds">
-                WAGER {bounds.min}–{bounds.max} cr
+                {bounds.max === null
+                  ? `WAGER ${bounds.min}+ cr · no ceiling`
+                  : `WAGER ${bounds.min}–${bounds.max} cr`}
               </span>
               <input
                 aria-label="wager amount"
@@ -2027,6 +2540,14 @@ function HangoutPanel({
                 onChange={(e) => setWager(Math.max(0, Number.parseInt(e.target.value, 10) || 0))}
               />
             </label>
+            {/* T-197 · THE ROUNDS LEFT, VISIBLE BEFORE THE CLICK (§4b). Without
+                this the cap's typed refusal would be the first the player hears
+                of it, which is the "silent dead button" the Accept criterion
+                forbids. `perDay` scales with the Liar's Dice unlock tier, so the
+                line also teaches that playing well buys more table time. */}
+            <span className="hp-k" data-testid="dare-rounds-left">
+              ROUNDS {dareRounds.remaining}/{dareRounds.perDay} TODAY
+            </span>
             <button
               className="btn"
               data-testid="dare-commit"
@@ -2034,7 +2555,9 @@ function HangoutPanel({
               title={dareDisabledReason ?? 'Seat yourself and deal a hand of Liar’s Dice'}
               onClick={() => chosen && visitDare(chosen, wager)}
             >
-              {dareDisabledReason ?? 'Wager a die'}
+              {/* T-197 · "Wager a die" was literally true and is no longer — the
+                  open is free, and the wager is credits. */}
+              {dareDisabledReason ?? 'Deal a hand'}
             </button>
           </div>
         )}
@@ -2062,6 +2585,16 @@ function HangoutPanel({
       {!locked && socialVenues.length > 0 && (
         <div className="hp-section hp-social">
           <div className="hp-shead">THE ROOM</div>
+          {/* T-197 · THE DAY'S SOCIAL PLAYS, VISIBLE BEFORE THE CLICK (§4a). The
+              pool is what replaced the die for meet/befriend/insult, and a
+              `social-limit-reached` refusal must never be the first the player
+              hears of it. Read through `hangoutSocialPlays` → the engine's own
+              `socialPlaysRemaining` + the content constant; the pane computes
+              nothing. A FAILED befriend still spends one, which is why the count
+              can fall without a warmth line appearing beside it. */}
+          <div className="hp-terms" data-testid="social-plays-left">
+            SOCIAL PLAYS {socialPlays.remaining}/{socialPlays.perDay} TODAY
+          </div>
           {socialVenues.map((v) => (
             <div key={v} className="hp-social-venue">
               <button
@@ -2345,7 +2878,12 @@ function LiarsDiceScene({
     ? view.dealerDieCount
     : // A settled FOLD reveals nothing (§6.1), so there is no revealed row to size
       // from — the house always seats `DARE_DICE_PER_SIDE`, and the engine says so.
-      (revealedDealerDice?.length ?? DARE_DICE_PER_SIDE);
+      // T-146 · the house seats as many as the captain does, at every tier, so the
+      // player's own revealed row is the right size for the shroud row. Both
+      // arrays are always the same length and `DareHandResolved.playerDice` is
+      // always present, so no new event field is owed. The constant is the
+      // last-resort fallback only.
+      (revealedDealerDice?.length ?? reveal?.playerDice.length ?? DARE_DICE_PER_SIDE);
   const history = view?.history ?? [];
   const legal = view?.legalMoves ?? [];
 
@@ -2357,11 +2895,19 @@ function LiarsDiceScene({
     // Re-seed the composer whenever the standing claim moves: the cheapest legal
     // raise is the sensible default, and the ceiling is the ENGINE's constant.
     if (bid) {
-      setQuantity(Math.min(bid.quantity + 1, DARE_MAX_QUANTITY));
+      // T-146 · the ceiling is the LIVE HAND's frozen `maxQuantity` (§8 row 45);
+      // the constant is the fallback for the settled frame, where there is no view.
+      setQuantity(Math.min(bid.quantity + 1, view?.maxQuantity ?? DARE_MAX_QUANTITY));
       setFace(bid.face);
     } else {
-      setQuantity(1);
+      // T-160 · The OPENING composer seeds at the engine's own opening floor
+      // (§16.2 shape (b)): `minOpeningQuantity(own(face))`, not the literal 1. A
+      // seed of 1 would open the pane on a claim the engine now refuses whenever
+      // the captain holds a one — which is most hands — and the pane would read as
+      // broken rather than as a rule. The FLOOR is the engine's function; the pane
+      // only counts its own dice and asks.
       setFace(1);
+      setQuantity(minOpeningQuantity((view?.playerDice ?? []).filter((die) => die === 1).length));
     }
   }, [bidKey]);
 
@@ -2417,7 +2963,20 @@ function LiarsDiceScene({
   }, [reveal, reduced]);
 
   const canMove = (m: DareMoveKind) => legal.includes(m);
-  const claimOk = (m: DareMoveKind, q: number, f: number) => isLatticeMove(bid, m, q, f);
+  // T-146 · the engine's lattice, asked with the HAND's frozen ceiling. Still no
+  // arithmetic here deciding what may be claimed.
+  // T-160 · plus the opening floor's input (§16.2 shape (b)). `own` is a COUNT the
+  // engine's own rule consumes, not a rule of the pane's — the pane still decides
+  // nothing about what may be claimed.
+  const claimOk = (m: DareMoveKind, q: number, f: number) =>
+    isLatticeMove(
+      bid,
+      m,
+      q,
+      f,
+      view?.maxQuantity ?? DARE_MAX_QUANTITY,
+      (view?.playerDice ?? []).filter((die) => die === f).length,
+    );
 
   return (
     <div
@@ -2435,6 +2994,46 @@ function LiarsDiceScene({
         <div className="ld-seat" data-testid="dare-dealer-name">
           {dealerName.toUpperCase()}
         </div>
+        {/* T-203 · The ROAMING dealer's standing with you, kept up for the life of
+            the hand — the same disposition bands the combat header prints for a
+            named interceptor, so a captain you insulted last week is recognisable
+            across the table. `null` on a roster hand (pool A has no disposition),
+            so nothing renders there at all — the `roomLine` convention, never a
+            placeholder. Mutually exclusive with `tableTalk` below (that one is
+            non-null only on a roster hand), so no roster DOM ordering moves. */}
+        {view?.dealerHistory && (
+          <p className="ld-tabletalk ld-dealer-standing" data-testid="dare-dealer-history">
+            {view.dealerHistory}
+          </p>
+        )}
+        {/* T-207 · The ROAMING captain's own voice, under their standing. Reuses
+            `.ld-tabletalk` verbatim — this is the same KIND of thing as the roster
+            seat's line below (an authored italic bark), so it must not grow a
+            second set of spacing rules that could drift from it. `null` on a
+            roster hand (the readout hard-nulls on a `ld-` id), so nothing renders
+            and the pool-A DOM below is unmoved. Printed verbatim: no quote marks
+            added, no case change. */}
+        {view?.dealerTableTalk && (
+          <p className="ld-tabletalk" data-testid="dare-dealer-table-talk">
+            {view.dealerTableTalk}
+          </p>
+        )}
+        {/* T-145 · The roster opponent's authored TABLE TALK, printed verbatim
+            for the life of the hand. Absent on a roaming hand ⇒ nothing renders
+            here at all, never a placeholder — the `roomLine` convention. */}
+        {view?.tableTalk && (
+          <p className="ld-tabletalk" data-testid="dare-table-talk">
+            {view.tableTalk}
+          </p>
+        )}
+        {/* T-146 · "READ THE TABLE" — the engine's own line, unlocked at tier ≥ 3.
+            Absent below that ⇒ nothing renders at all, never a placeholder. The
+            pane maps nothing here; it prints the string the engine emitted. */}
+        {view?.opponentRead && (
+          <p className="ld-tabletalk ld-read" data-testid="dare-table-read">
+            {view.opponentRead}
+          </p>
+        )}
         <div className="ld-dice">
           {Array.from({ length: dealerSlots }, (_, i) => {
             // THE ONLY TWO SOURCES OF A DEALER FACE, both from the engine:
@@ -2587,7 +3186,7 @@ function LiarsDiceScene({
                 aria-label="claim quantity"
                 data-testid="dare-quantity"
                 inputMode="numeric"
-                data-max={String(DARE_MAX_QUANTITY)}
+                data-max={String(view?.maxQuantity ?? DARE_MAX_QUANTITY)}
                 value={quantity}
                 onChange={(e) => setQuantity(Number.parseInt(e.target.value, 10) || 0)}
               />
@@ -2685,11 +3284,31 @@ function LiarsDiceScene({
               className="btn ghost"
               data-testid="dare-move"
               data-move="fold"
-              title="Pay the table and leave — the cup is never lifted"
+              // T-221 · the SAME string the priced line below prints, so the hover
+              // and the table can never drift apart.
+              title={view.foldTrade.line}
               onClick={() => dareMove('fold')}
             >
               {DARE_MOVE_LABEL.fold}
             </button>
+          )}
+          {/* T-221 · WHAT THE FOLD COSTS AND WHAT IT BUYS (LD-26 / §17.7). The
+              ruling prices FOLD in two currencies; until this line existed the
+              player could see neither, which makes a priced purchase a trap.
+              Every number is composed in `dareFoldTrade` off the live escrow and
+              the port's own `dare` row — the pane holds no threshold, no formula
+              and no branch that decides an outcome. `canMove('fold')` is the
+              engine's own `legalMoves`, the same legality read every control
+              above uses. */}
+          {canMove('fold') && (
+            <p
+              className="ld-tabletalk ld-fold-trade"
+              data-testid="dare-fold-trade"
+              data-credits={String(view.foldTrade.creditsForfeited)}
+              data-disposition={String(view.foldTrade.disposition ?? '')}
+            >
+              {view.foldTrade.line}
+            </p>
           )}
         </div>
       )}
@@ -2707,6 +3326,14 @@ function LiarsDiceScene({
               </span>
             )}
           </div>
+          {/* T-145 · The roster opponent's parting line — their `lines.win` when
+              they took the pot, `lines.lose` when the captain did. The ENGINE
+              picked the arm and put it on `DareHandResolved`; the pane prints it. */}
+          {reveal.opponentLine && (
+            <p className="ld-tabletalk" data-testid="dare-opponent-line">
+              {reveal.opponentLine}
+            </p>
+          )}
           <div className="ld-deltas">
             <span data-testid="dare-credits-delta" data-delta={String(reveal.creditsDelta)}>
               <b>{signedMargin(reveal.creditsDelta)}cr</b>
@@ -3111,6 +3738,12 @@ function Starmap({ state }: { state: CockpitState }) {
     setTarget(null);
   };
 
+  // T-187 · On the walkthrough's step 4 the rails PIN the destination to the
+  // hold's own contract, so the scripted jump ends in a real payout for step 5 to
+  // point at rather than a jump to nowhere. Null on every other step and whenever
+  // the walkthrough is not running, which is the starmap's ordinary "no lock".
+  const railsTarget = walkthroughJumpTarget(state.walkthrough, game);
+
   return (
     <section className="pane starmap">
       <header>
@@ -3118,145 +3751,162 @@ function Starmap({ state }: { state: CockpitState }) {
         <span className="tag">{visited.size} CHARTED</span>
       </header>
       <div className="body">
-        <svg
-          className="smsvg"
-          viewBox={proj.viewBox}
-          role="img"
-          aria-label="Starmap"
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {hereNode && proj.ringUnits > 0 && (
-            <circle
-              className="fuel-ring"
-              data-testid="fuel-ring"
-              data-radius-units={proj.ringUnits}
-              cx={hereNode.sx}
-              cy={hereNode.sy}
-              r={proj.ringRadius}
-            />
-          )}
-          {/* Ring collapses to nothing at zero fuel — still expose the radius. */}
-          {hereNode && proj.ringUnits === 0 && (
-            <circle
-              className="fuel-ring empty"
-              data-testid="fuel-ring"
-              data-radius-units={0}
-              cx={hereNode.sx}
-              cy={hereNode.sy}
-              r={0}
-            />
-          )}
-          {hereNode && targetNode && showPreview && (
-            <line
-              className={preview.reachable ? 'route-line' : 'route-line blocked'}
-              x1={hereNode.sx}
-              y1={hereNode.sy}
-              x2={targetNode.sx}
-              y2={targetNode.sy}
-            />
-          )}
-          {proj.nodes.map((n) => {
-            const isHere = n.id === here;
-            const reachable = isHere ? true : routePreview(game, n.id).reachable;
-            const clickable = !isHere && reachable;
-            // T-1505b · The event horizon reads differently from a port. The node
-            // is only ever in `proj.nodes` at all once the crossing stake is paid
-            // (format.ts `starmapProjection`), so the tag doubles as the visible
-            // proof the gate lifted; everything else about it (reachability, the
-            // route preview, Confirm jump) is the ordinary travel path, reused.
-            const isCrossing = n.id === NEMESIS_SYSTEM_ID;
-            const cls = [
-              'smsys',
-              isHere ? 'here' : visited.has(n.id) ? 'visited' : 'unvisited',
-              n.isRim ? 'rim' : '',
-              isCrossing ? 'crossing' : '',
-              !isHere && !reachable ? 'unreachable' : '',
-              target === n.id ? 'sel' : '',
-            ]
-              .filter(Boolean)
-              .join(' ');
-            const pipCount = npcCounts.get(n.id) ?? 0;
-            return (
-              <g
-                key={n.id}
-                className={cls}
-                data-testid="starmap-system"
-                data-system-id={n.id}
-                data-crossing={isCrossing ? '1' : undefined}
-                data-reachable={reachable ? '1' : '0'}
-                data-visited={visited.has(n.id) ? '1' : '0'}
-                data-here={isHere ? '1' : '0'}
-                aria-label={n.name}
-                aria-disabled={clickable ? undefined : 'true'}
-                onClick={clickable ? () => setTarget(n.id) : undefined}
-                transform={`translate(${n.sx} ${n.sy})`}
-              >
-                <circle className="smdot" r={5} />
-                {eraSystems.has(n.id) && (
-                  <g className="era-badge" data-testid="era-badge" transform="translate(6 -6)">
-                    <title>{game.eraEvent?.defId ?? 'Era event'}</title>
-                    <rect x={-3} y={-3} width={6} height={6} rx={1} />
-                  </g>
-                )}
-                {Array.from({ length: pipCount }).map((_, i) => (
-                  <circle
-                    key={i}
-                    className="npc-pip"
-                    data-testid="npc-pip"
-                    cx={-6 + i * 4}
-                    cy={-9}
-                    r={1.6}
-                  />
-                ))}
-                <text className="smlabel" x={0} y={16}>
-                  {n.name}
-                </text>
-                <rect className="smhit" x={-hitW / 2} y={-12} width={hitW} height={32} />
-              </g>
-            );
-          })}
-        </svg>
+        {/* T-187 · The PLOT group — the chart and the route/commit readout — is
+            the `starmap` rails region. It is a wrapper INSIDE `.pane.starmap`
+            rather than the pane itself, deliberately: the off-lane sweep below is
+            a region of its own (step 6), and an `inert` ancestor could never be
+            un-inerted by it. */}
+        <div className="sm-plot" {...railsProps(state, 'starmap')}>
+          <svg
+            className="smsvg"
+            viewBox={proj.viewBox}
+            role="img"
+            aria-label="Starmap"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {hereNode && proj.ringUnits > 0 && (
+              <circle
+                className="fuel-ring"
+                data-testid="fuel-ring"
+                data-radius-units={proj.ringUnits}
+                cx={hereNode.sx}
+                cy={hereNode.sy}
+                r={proj.ringRadius}
+              />
+            )}
+            {/* Ring collapses to nothing at zero fuel — still expose the radius. */}
+            {hereNode && proj.ringUnits === 0 && (
+              <circle
+                className="fuel-ring empty"
+                data-testid="fuel-ring"
+                data-radius-units={0}
+                cx={hereNode.sx}
+                cy={hereNode.sy}
+                r={0}
+              />
+            )}
+            {hereNode && targetNode && showPreview && (
+              <line
+                className={preview.reachable ? 'route-line' : 'route-line blocked'}
+                x1={hereNode.sx}
+                y1={hereNode.sy}
+                x2={targetNode.sx}
+                y2={targetNode.sy}
+              />
+            )}
+            {proj.nodes.map((n) => {
+              const isHere = n.id === here;
+              const reachable = isHere ? true : routePreview(game, n.id).reachable;
+              const clickable = !isHere && reachable;
+              // T-1505b · The event horizon reads differently from a port. The node
+              // is only ever in `proj.nodes` at all once the crossing stake is paid
+              // (format.ts `starmapProjection`), so the tag doubles as the visible
+              // proof the gate lifted; everything else about it (reachability, the
+              // route preview, Confirm jump) is the ordinary travel path, reused.
+              const isCrossing = n.id === NEMESIS_SYSTEM_ID;
+              // T-187 · With a rails target pinned (step 4), every OTHER node is a
+              // dead click and says so in the DOM — the scripted jump is the
+              // contract's own destination or nothing.
+              const railsLocked = railsTarget !== null && n.id !== railsTarget;
+              const cls = [
+                'smsys',
+                isHere ? 'here' : visited.has(n.id) ? 'visited' : 'unvisited',
+                n.isRim ? 'rim' : '',
+                isCrossing ? 'crossing' : '',
+                !isHere && !reachable ? 'unreachable' : '',
+                target === n.id ? 'sel' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
+              const pipCount = npcCounts.get(n.id) ?? 0;
+              return (
+                <g
+                  key={n.id}
+                  className={cls}
+                  data-testid="starmap-system"
+                  data-system-id={n.id}
+                  data-crossing={isCrossing ? '1' : undefined}
+                  data-reachable={reachable ? '1' : '0'}
+                  data-visited={visited.has(n.id) ? '1' : '0'}
+                  data-here={isHere ? '1' : '0'}
+                  data-rails-locked={railsLocked ? '1' : undefined}
+                  data-rails-target={railsTarget === n.id ? '1' : undefined}
+                  aria-label={n.name}
+                  aria-disabled={clickable && !railsLocked ? undefined : 'true'}
+                  onClick={clickable && !railsLocked ? () => setTarget(n.id) : undefined}
+                  transform={`translate(${n.sx} ${n.sy})`}
+                >
+                  <circle className="smdot" r={5} />
+                  {eraSystems.has(n.id) && (
+                    <g className="era-badge" data-testid="era-badge" transform="translate(6 -6)">
+                      <title>{game.eraEvent?.defId ?? 'Era event'}</title>
+                      <rect x={-3} y={-3} width={6} height={6} rx={1} />
+                    </g>
+                  )}
+                  {Array.from({ length: pipCount }).map((_, i) => (
+                    <circle
+                      key={i}
+                      className="npc-pip"
+                      data-testid="npc-pip"
+                      cx={-6 + i * 4}
+                      cy={-9}
+                      r={1.6}
+                    />
+                  ))}
+                  <text className="smlabel" x={0} y={16}>
+                    {n.name}
+                  </text>
+                  <rect className="smhit" x={-hitW / 2} y={-12} width={hitW} height={32} />
+                </g>
+              );
+            })}
+          </svg>
 
-        {showPreview && (
-          <div className="route-preview" data-testid="route-preview">
-            <div className="rp-head">
-              PLOT &#9656; <b>{systemName(target!)}</b>
+          {showPreview && (
+            <div className="route-preview" data-testid="route-preview">
+              <div className="rp-head">
+                PLOT &#9656; <b>{systemName(target!)}</b>
+              </div>
+              <div className="rp-grid">
+                <span className="rp-k">DISTANCE</span>
+                <span className="rp-v" data-testid="route-distance">
+                  {preview.distance}
+                </span>
+                <span className="rp-k">FUEL</span>
+                <span className="rp-v" data-testid="route-fuel">
+                  {preview.fuelCost}
+                </span>
+                <span className="rp-k">PILOT DC</span>
+                <span className="rp-v" data-testid="route-dc">
+                  {preview.dc}
+                </span>
+                <span className="rp-k">DANGER</span>
+                <span className="rp-v" data-testid="route-danger">
+                  {preview.dangerLevel}
+                </span>
+              </div>
+              <button
+                className="btn"
+                data-testid="confirm-jump"
+                disabled={!dieArmed || !preview.reachable}
+                onClick={commit}
+              >
+                {dieArmed ? 'Confirm jump' : 'Pick a die to jump'}
+              </button>
             </div>
-            <div className="rp-grid">
-              <span className="rp-k">DISTANCE</span>
-              <span className="rp-v" data-testid="route-distance">
-                {preview.distance}
-              </span>
-              <span className="rp-k">FUEL</span>
-              <span className="rp-v" data-testid="route-fuel">
-                {preview.fuelCost}
-              </span>
-              <span className="rp-k">PILOT DC</span>
-              <span className="rp-v" data-testid="route-dc">
-                {preview.dc}
-              </span>
-              <span className="rp-k">DANGER</span>
-              <span className="rp-v" data-testid="route-danger">
-                {preview.dangerLevel}
-              </span>
-            </div>
-            <button
-              className="btn"
-              data-testid="confirm-jump"
-              disabled={!dieArmed || !preview.reachable}
-              onClick={commit}
-            >
-              {dieArmed ? 'Confirm jump' : 'Pick a die to jump'}
-            </button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* T-1403 · Off-lane sweep. The starmap is a pure client of the engine's
             Explore action: the DC / fuel cost / effective modifier are read from
             the engine+content (explorationPreview), the sweep routes through the
             store's single `explore()` verb, and the loot / nav-check outcome reads
             below via `explorationOutcome` + the shared PILOT CheckBreakdown. */}
-        <div className="explore-sweep" data-testid="explore-panel">
+        <div
+          className="explore-sweep"
+          data-testid="explore-panel"
+          {...railsProps(state, 'explore')}
+        >
           <div className="es-head">OFF-LANE SWEEP</div>
           <div className="es-cost" data-testid="explore-cost">
             PILOT DC {sweep.dc} · FUEL {sweep.fuelCost} · NAV{' '}
@@ -3292,6 +3942,226 @@ function Starmap({ state }: { state: CockpitState }) {
   );
 }
 
+// T-189 · One hull mark. The shapes come from `format.ts`'s geometry table; this
+// only chooses the SVG element. Every mark is decorative (`pointer-events: none`
+// in CSS) — the callout div over it is what a player clicks.
+function ShipMark({ mark }: { mark: ShipDiagramMark }) {
+  switch (mark.kind) {
+    case 'rect':
+      return <rect x={mark.x} y={mark.y} width={mark.w} height={mark.h} rx={mark.rx} />;
+    case 'ellipse':
+      return <ellipse cx={mark.cx} cy={mark.cy} rx={mark.rx} ry={mark.ry} />;
+    case 'path':
+      return <path d={mark.d} />;
+  }
+}
+
+/** viewBox unit -> percentage of the diagram box. The SVG is drawn with
+ *  `preserveAspectRatio="xMidYMid meet"` at `width:100%; height:auto`, so its
+ *  box is EXACTLY the viewBox aspect and these percentages land on the same
+ *  point the SVG drew. */
+function pct(v: number, span: number): string {
+  return `${((v / span) * 100).toFixed(3)}%`;
+}
+
+/** The leader line for a region: from the point ON the hull toward its callout,
+ *  stopping `TICK` units short so the line ends at the edge of the text instead
+ *  of running under it. Direction-agnostic, so a callout may sit above, below or
+ *  beside its mark without a second table of endpoints. */
+const LEADER_TICK = 14;
+function leaderEnd(g: { x: number; y: number; labelX: number; labelY: number }): {
+  x: number;
+  y: number;
+} {
+  const dx = g.x - g.labelX;
+  const dy = g.y - g.labelY;
+  const len = Math.hypot(dx, dy);
+  if (len <= LEADER_TICK) return { x: g.x, y: g.y };
+  return { x: g.labelX + (dx / len) * LEADER_TICK, y: g.labelY + (dy / len) * LEADER_TICK };
+}
+
+/**
+ * T-189 · THE SHIP, DRAWN.
+ *
+ * The pane's numbers used to be a ledger: eight table rows plus a flat six-cell
+ * strip, all legible and none of them locatable. Here the same numbers hang off
+ * the part of the hull they describe — the hold's count sits IN the cargo bay,
+ * the fuel curve sits AT the engine bells, the berths sit at the cabin.
+ *
+ * TWO STRUCTURAL CHOICES worth stating, because they are not obvious:
+ *
+ *  · THE CALLOUTS ARE HTML, ABSOLUTELY POSITIONED OVER THE SVG, not `<text>`
+ *    inside it. Two reasons, both hard: (1) SVG text scales with the viewBox, so
+ *    a narrow column would shrink the instrument data below legibility, while
+ *    HTML text stays at its CSS size; (2) `SVGElement` has no `innerText`, and
+ *    `shipyard.spec.ts` reads `fuel-per-jump` with `Number(await ...innerText())`
+ *    — that spec must pass UNMODIFIED, which is the mechanical proof that this
+ *    task re-presented the data rather than losing it.
+ *
+ *  · THE DIAGRAM IS THE READOUT; THE BENCH BELOW IS THE CONTROLS. Clicking a
+ *    region does not buy anything — it scrolls that system's existing bench row
+ *    into view and flashes it. Nothing about the ship model or the purchase path
+ *    changed; this is render-layer only.
+ */
+function ShipDiagram({
+  game,
+  onFocusRegion,
+}: {
+  game: GameState;
+  onFocusRegion: (id: ShipDiagramRegionId) => void;
+}) {
+  const model = shipDiagram(game);
+  const W = SHIP_DIAGRAM_VIEWBOX.width;
+  const H = SHIP_DIAGRAM_VIEWBOX.height;
+  const hullPath = model.hullVariant === 'astraxial' ? ASTRAXIAL_PATH : JUNKER_PATH;
+
+  // The hold meter: TEN segments lit in proportion to the hull's capacity, never
+  // one cell per pod (`maxCargoPods` reaches 100). The exact numerals are in the
+  // callout; the segments are texture, so you can see the hold is nearly empty
+  // without reading a single digit.
+  const bay = SHIP_DIAGRAM_BAY;
+  const segInset = 8;
+  const segPitch = (bay.w - segInset * 2) / SHIP_DIAGRAM_BAY_SEGMENTS;
+  const segLit = Math.round(model.podFill * SHIP_DIAGRAM_BAY_SEGMENTS);
+  const segUsed = Math.min(segLit, Math.round(model.podUseFill * SHIP_DIAGRAM_BAY_SEGMENTS));
+  const segY = bay.y + bay.h - 20;
+  const segH = 10;
+
+  const regionClass = (r: ShipDiagramRegion, base: string): string =>
+    [base, r.critical ? 'critical' : r.damaged ? 'damaged' : ''].filter(Boolean).join(' ');
+
+  return (
+    <div className="shipdiagram">
+      <svg
+        className="shipsvg"
+        data-testid="ship-diagram"
+        data-hull={model.hullVariant}
+        viewBox={model.viewBox}
+        role="img"
+        aria-label={`Ship — ${model.hullVariant} hull, ${model.podsOwned} of ${model.podsMax} cargo pods, ${model.fuel} of ${model.maxFuel} fuel`}
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {model.regions.map((r) => {
+          const g = SHIP_DIAGRAM_GEOMETRY[r.id];
+          return (
+            <g
+              key={r.id}
+              className={regionClass(r, `ship-mark mark-${r.id}`)}
+              data-mark-region={r.id}
+            >
+              <title>{r.title}</title>
+              {r.id === 'hull' && <path className="hull-outline" d={hullPath} />}
+              {g.marks.map((mark, i) => (
+                <ShipMark key={i} mark={mark} />
+              ))}
+              {g.leader && (
+                <line
+                  className="rg-leader"
+                  x1={g.x}
+                  y1={g.y}
+                  x2={leaderEnd(g).x}
+                  y2={leaderEnd(g).y}
+                />
+              )}
+            </g>
+          );
+        })}
+
+        {/* The hold's fill meter, drawn inside the bay it measures. */}
+        <g className="bay-meter" data-testid="bay-meter" data-lit={segLit} data-used={segUsed}>
+          {Array.from({ length: SHIP_DIAGRAM_BAY_SEGMENTS }).map((_, i) => (
+            <rect
+              key={i}
+              className={i < segUsed ? 'bay-seg used' : i < segLit ? 'bay-seg lit' : 'bay-seg'}
+              x={bay.x + segInset + i * segPitch}
+              y={segY}
+              width={segPitch - 2}
+              height={segH}
+            />
+          ))}
+        </g>
+
+        {/* The fuel bar, under the drives it feeds. */}
+        <g className="fuel-bar">
+          <rect
+            className="fb-track"
+            x={SHIP_DIAGRAM_FUEL_BAR.x}
+            y={SHIP_DIAGRAM_FUEL_BAR.y}
+            width={SHIP_DIAGRAM_FUEL_BAR.w}
+            height={SHIP_DIAGRAM_FUEL_BAR.h}
+            rx={2}
+          />
+          <rect
+            className="fb-fill"
+            data-testid="fuel-bar-fill"
+            x={SHIP_DIAGRAM_FUEL_BAR.x}
+            y={SHIP_DIAGRAM_FUEL_BAR.y}
+            width={SHIP_DIAGRAM_FUEL_BAR.w * model.fuelFill}
+            height={SHIP_DIAGRAM_FUEL_BAR.h}
+            rx={2}
+          />
+        </g>
+
+        {/* T-112 salvaged fittings as pips clamped to the hull spine. The named
+            list stays below the diagram, unchanged — these only say "something
+            is fitted, and it is part of this ship". */}
+        {model.fittings.map((f, i) => (
+          <g
+            className="hull-fitting"
+            key={f.id}
+            transform={`translate(${SHIP_DIAGRAM_FITTING_ORIGIN.x + i * SHIP_DIAGRAM_FITTING_ORIGIN.step} ${SHIP_DIAGRAM_FITTING_ORIGIN.y})`}
+          >
+            <title>{f.name}</title>
+            <rect x={-3} y={-3} width={6} height={6} rx={1} />
+          </g>
+        ))}
+      </svg>
+
+      {/* The readouts. `fuel-curve` kept its id here: the flat strip it named is
+          gone, but the four numbers it carried are all in this group. */}
+      <div className="ship-callouts" data-testid="fuel-curve">
+        {model.regions.map((r) => {
+          const g = SHIP_DIAGRAM_GEOMETRY[r.id];
+          const podAttrs =
+            r.id === 'pods'
+              ? {
+                  'data-pods-owned': model.podsOwned,
+                  'data-pods-max': model.podsMax,
+                  'data-pods-in-use': model.podsInUse,
+                }
+              : {};
+          return (
+            <div
+              key={r.id}
+              className={regionClass(r, `ship-region anchor-${g.anchor}`)}
+              data-testid="ship-region"
+              data-region={r.id}
+              data-damaged={r.damaged ? '1' : '0'}
+              data-critical={r.critical ? '1' : '0'}
+              data-strength={r.strength ?? undefined}
+              data-condition={r.condition ?? undefined}
+              {...podAttrs}
+              style={{ left: pct(g.labelX, W), top: pct(g.labelY, H) }}
+              title={r.title}
+              onClick={() => onFocusRegion(r.id)}
+            >
+              <span className="rg-label">{r.label}</span>
+              {r.readouts.map((ro) => (
+                <span className="rg-ro" key={`${r.id}-${ro.key}-${ro.testId ?? ''}`}>
+                  {ro.key !== '' && <i className="rg-k">{ro.key}</i>}
+                  <b className="rg-v" data-testid={ro.testId}>
+                    {ro.value}
+                  </b>
+                </span>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // The ship & shipyard instrument (T-308). A pure CLIENT of the shipyard rules:
 // every price, every before→after projection, and every "disabled, here's why"
 // reason is read from the engine's `quoteShipyard` (via format.ts), and the only
@@ -3300,10 +4170,37 @@ function Starmap({ state }: { state: CockpitState }) {
 function ShipPane({ state }: { state: CockpitState }) {
   const game = state.game;
   const ship = game.player.ship;
-  const armed = state.selectedDie !== null;
+  // T-196c · NO `armed` CONST HERE, deliberately. Every verb this pane reaches —
+  // all four Shipyard kinds, plus Crew hire/dismiss below — is a FREE ACTION
+  // (docs/DAWN-HAND-REDESIGN.md §3). A Free Action must neither require, consume
+  // nor DISARM the die a player armed for their next Main Action, so the yard
+  // must not gate on one either. Main-Action gates (starmap jump, off-lane
+  // sweep, haggle, combat) keep theirs.
   const components = shipComponents(game);
   const equipment = specialEquipmentRows(game);
   const [podQty, setPodQty] = useState(10);
+  // T-189 · The diagram is the readout and the bench below is the controls, so a
+  // click on a hull region has to LAND somewhere: it scrolls that system's bench
+  // row into view and flashes it. Pure presentation — no engine call, no state
+  // shape, and the flash is gated behind `prefers-reduced-motion` in CSS.
+  const [focusedComponent, setFocusedComponent] = useState<ShipComponentId | null>(null);
+  const benchRef = useRef<HTMLDivElement | null>(null);
+  const podsBlockRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (focusedComponent === null) return;
+    const t = window.setTimeout(() => setFocusedComponent(null), 700);
+    return () => window.clearTimeout(t);
+  }, [focusedComponent]);
+  const focusRegion = (id: ShipDiagramRegionId) => {
+    if (id === 'pods' || id === 'fuel') {
+      podsBlockRef.current?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    setFocusedComponent(id);
+    benchRef.current
+      ?.querySelector(`[data-testid="ship-component"][data-component="${id}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  };
 
   // Fuel curve + hold instruments read from any quote's `before` (a pure read of
   // the current ship). Use a cheap no-op-ish repair-all quote just for `before`.
@@ -3311,19 +4208,16 @@ function ShipPane({ state }: { state: CockpitState }) {
     type: 'Shipyard',
     action: 'repair',
     repairMode: 'all',
-    spendDie: 0,
   }).before;
   const podQuote = shipyardQuote(game, {
     type: 'Shipyard',
     action: 'buy-cargo-pods',
     quantity: Math.max(1, podQty),
-    spendDie: 0,
   });
   const repairAllQuote = shipyardQuote(game, {
     type: 'Shipyard',
     action: 'repair',
     repairMode: 'all',
-    spendDie: 0,
   });
   const anyDamaged = components.some((c) => c.damaged);
   // T-112 · The Class-B readout. Class A needs no widget of its own: a component
@@ -3332,7 +4226,7 @@ function ShipPane({ state }: { state: CockpitState }) {
   const salvagedFittings = fittedModuleRows(game);
 
   return (
-    <section className="pane ship" data-testid="ship-pane">
+    <section className="pane ship" data-testid="ship-pane" {...railsProps(state, 'ship')}>
       <header>
         <h2>Ship &amp; Yard · {ship.isAstraxialHull ? 'Astraxial' : 'Junker'}</h2>
         <span className="tag">
@@ -3340,27 +4234,13 @@ function ShipPane({ state }: { state: CockpitState }) {
         </span>
       </header>
       <div className="body">
-        {/* ---- fuel-curve readout (persistent, auto-updates on drive change) ---- */}
-        <div className="ship-fuelcurve" data-testid="fuel-curve">
-          <span className="fc-k">FUEL/JUMP</span>
-          <span className="fc-v" data-testid="fuel-per-jump">
-            {curve.fuelPerJump}
-          </span>
-          <span className="fc-k">RANGE</span>
-          <span className="fc-v" data-testid="jump-range">
-            {curve.maxJumpDistance}
-          </span>
-          <span className="fc-k">FUEL</span>
-          <span className="fc-v">
-            {ship.fuel.toLocaleString()}/{ship.maxFuel.toLocaleString()}
-          </span>
-          {/* T-1205 cabin → crew capacity: a reader of the cabin component, grows
-              when the cabin is upgraded (T-1306 socket for real crew rules). */}
-          <span className="fc-k">CREW</span>
-          <span className="fc-v" data-testid="crew-capacity">
-            {curve.crewCapacity}
-          </span>
-        </div>
+        {/* ---- T-189 · the ship itself ----
+            This replaced the flat `.ship-fuelcurve` strip, which is why the four
+            ids it carried (`fuel-curve`, `fuel-per-jump`, `jump-range`,
+            `crew-capacity`) now live INSIDE the diagram's regions — the fuel
+            curve at the engine bells, the berths at the cabin. Nothing was
+            dropped: `shipyard.spec.ts` reads `fuel-per-jump` unchanged. */}
+        <ShipDiagram game={game} onFocusRegion={focusRegion} />
 
         {/* ---- T-112 salvaged fittings (explore-granted modules) ----
             Rendered only when something is fitted, so a fresh junker's pane is
@@ -3383,12 +4263,130 @@ function ShipPane({ state }: { state: CockpitState }) {
           </div>
         )}
 
-        {/* ---- component grid ---- */}
-        <div className="ship-grid" data-testid="component-grid">
-          {components.map((c) => (
-            <ComponentRow key={c.id} row={c} game={game} armed={armed} />
-          ))}
+        {/* ---- cargo pods ----
+            T-189 promoted this next to the diagram: the bay is now where a player
+            looks for the hold, so the control that grows it belongs directly under
+            the picture of it rather than four blocks down the ledger. The block
+            itself is untouched (`pods-block` still reads `10/100`). */}
+        <div className="ship-pods-block" data-testid="pods-block" ref={podsBlockRef}>
+          <div className="pods-head">
+            CARGO PODS · <b>{ship.cargoPods}</b>/{curve.maxCargoPods}
+          </div>
+          <div className="pods-controls">
+            <input
+              aria-label="pods amount"
+              data-testid="pods-amount"
+              inputMode="numeric"
+              value={podQty}
+              onChange={(e) => setPodQty(Math.max(1, Number.parseInt(e.target.value, 10) || 1))}
+            />
+            <button
+              className="btn"
+              data-testid="buy-pods"
+              disabled={!podQuote.ok}
+              title={`Buy ${podQty} pods · ${podQuote.cost.toLocaleString()}cr`}
+              onClick={() => shipyard({ action: 'buy-cargo-pods', quantity: Math.max(1, podQty) })}
+            >
+              Buy pods · {podQuote.cost.toLocaleString()}cr
+            </button>
+          </div>
+          <div className="pods-preview" data-testid="pods-preview">
+            {podQuote.before.cargoPods} &rarr; <b>{podQuote.after.cargoPods}</b> pods
+          </div>
+          {!podQuote.ok && podQuote.failure && (
+            <span className="ship-reason" data-testid="pods-reason">
+              {shipyardFailureExplanation(podQuote.failure)}
+            </span>
+          )}
         </div>
+
+        {/* ---- T-189 · THE YARD BENCH ----
+            The component grid, the repair-all button and the special-equipment
+            list are all CONTROLS, and framing them under one heading is what stops
+            them reading as "the ship's state" — that job now belongs to the diagram
+            above. Nothing inside is hidden or restyled away: every row, id and
+            button is exactly as it was, because Playwright text assertions fail on
+            hidden elements and because none of it was the problem. */}
+        <div className="ship-bench" data-testid="yard-bench" ref={benchRef}>
+          <div className="bench-head">YARD BENCH · UPGRADE &amp; REPAIR</div>
+          <div className="ship-grid" data-testid="component-grid">
+            {components.map((c) => (
+              <ComponentRow key={c.id} row={c} game={game} focused={focusedComponent === c.id} />
+            ))}
+          </div>
+          <div className="ship-repair-all">
+            <button
+              className="btn"
+              data-testid="repair-all"
+              disabled={!anyDamaged || !repairAllQuote.ok}
+              title={
+                !anyDamaged
+                  ? 'All systems at full condition'
+                  : `Repair every system · ${repairAllQuote.cost.toLocaleString()}cr`
+              }
+              onClick={() => shipyard({ action: 'repair', repairMode: 'all' })}
+            >
+              {anyDamaged
+                ? `Repair all · ${repairAllQuote.cost.toLocaleString()}cr`
+                : 'All systems nominal'}
+            </button>
+            {anyDamaged && !repairAllQuote.ok && repairAllQuote.failure && (
+              <span className="ship-reason" data-testid="repair-all-reason">
+                {shipyardFailureExplanation(repairAllQuote.failure)}
+              </span>
+            )}
+          </div>
+
+          {/* ---- special equipment (ALL rows, disabled-not-hidden) ---- */}
+          <div className="ship-equip" data-testid="equipment-list">
+            <div className="equip-head">SPECIAL EQUIPMENT</div>
+            {equipment.map((row) => (
+              <div
+                className={row.owned ? 'equip-row owned' : 'equip-row'}
+                key={row.id}
+                data-testid="equipment-row"
+                data-equipment={row.id}
+                data-owned={row.owned ? '1' : '0'}
+              >
+                <div className="equip-main">
+                  <span className="equip-name">{row.name}</span>
+                  {row.owned ? (
+                    <span className="equip-tag" data-testid="equipment-installed">
+                      INSTALLED
+                    </span>
+                  ) : (
+                    <span className="equip-price">{row.quote.cost.toLocaleString()}cr</span>
+                  )}
+                  <button
+                    className="btn small"
+                    data-testid="buy-equipment"
+                    disabled={row.owned || !row.quote.ok}
+                    title={
+                      row.owned
+                        ? 'Already installed'
+                        : row.quote.ok
+                          ? `Install · ${row.quote.cost.toLocaleString()}cr`
+                          : row.quote.failure
+                            ? shipyardFailureExplanation(row.quote.failure)
+                            : 'Unavailable'
+                    }
+                    onClick={() => shipyard({ action: 'buy-special-equipment', equipment: row.id })}
+                  >
+                    {row.owned ? 'Owned' : 'Install'}
+                  </button>
+                </div>
+                {/* The "exclusion conflict shows why" surface — the typed reason,
+                  rendered rather than hidden, whenever the item can't be bought. */}
+                {!row.owned && row.quote.failure && (
+                  <span className="ship-reason" data-testid="equipment-reason">
+                    {shipyardFailureExplanation(row.quote.failure)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* ---- T-1406 / N6 · Top Gun Honor List ----
             The 1991 board (`sp.top.s`), recovered from this repo's own history, and
             since N1 the FULL 31-WAY BOARD it was in the original: the player plus
@@ -3439,121 +4437,8 @@ function ShipPane({ state }: { state: CockpitState }) {
           ))}
         </div>
 
-        <div className="ship-repair-all">
-          <button
-            className="btn"
-            data-testid="repair-all"
-            disabled={!armed || !anyDamaged || !repairAllQuote.ok}
-            title={
-              !anyDamaged
-                ? 'All systems at full condition'
-                : armed
-                  ? `Repair every system · ${repairAllQuote.cost.toLocaleString()}cr`
-                  : 'Pick a die first'
-            }
-            onClick={() => shipyard({ action: 'repair', repairMode: 'all' })}
-          >
-            {anyDamaged
-              ? `Repair all · ${repairAllQuote.cost.toLocaleString()}cr`
-              : 'All systems nominal'}
-          </button>
-          {anyDamaged && !repairAllQuote.ok && repairAllQuote.failure && (
-            <span className="ship-reason" data-testid="repair-all-reason">
-              {shipyardFailureExplanation(repairAllQuote.failure)}
-            </span>
-          )}
-        </div>
-
-        {/* ---- cargo pods ---- */}
-        <div className="ship-pods-block" data-testid="pods-block">
-          <div className="pods-head">
-            CARGO PODS · <b>{ship.cargoPods}</b>/{curve.maxCargoPods}
-          </div>
-          <div className="pods-controls">
-            <input
-              aria-label="pods amount"
-              data-testid="pods-amount"
-              inputMode="numeric"
-              value={podQty}
-              onChange={(e) => setPodQty(Math.max(1, Number.parseInt(e.target.value, 10) || 1))}
-            />
-            <button
-              className="btn"
-              data-testid="buy-pods"
-              disabled={!armed || !podQuote.ok}
-              title={
-                armed
-                  ? `Buy ${podQty} pods · ${podQuote.cost.toLocaleString()}cr`
-                  : 'Pick a die first'
-              }
-              onClick={() => shipyard({ action: 'buy-cargo-pods', quantity: Math.max(1, podQty) })}
-            >
-              {armed ? `Buy pods · ${podQuote.cost.toLocaleString()}cr` : 'Pick a die to buy'}
-            </button>
-          </div>
-          <div className="pods-preview" data-testid="pods-preview">
-            {podQuote.before.cargoPods} &rarr; <b>{podQuote.after.cargoPods}</b> pods
-          </div>
-          {!podQuote.ok && podQuote.failure && (
-            <span className="ship-reason" data-testid="pods-reason">
-              {shipyardFailureExplanation(podQuote.failure)}
-            </span>
-          )}
-        </div>
-
-        {/* ---- special equipment (ALL rows, disabled-not-hidden) ---- */}
-        <div className="ship-equip" data-testid="equipment-list">
-          <div className="equip-head">SPECIAL EQUIPMENT</div>
-          {equipment.map((row) => (
-            <div
-              className={row.owned ? 'equip-row owned' : 'equip-row'}
-              key={row.id}
-              data-testid="equipment-row"
-              data-equipment={row.id}
-              data-owned={row.owned ? '1' : '0'}
-            >
-              <div className="equip-main">
-                <span className="equip-name">{row.name}</span>
-                {row.owned ? (
-                  <span className="equip-tag" data-testid="equipment-installed">
-                    INSTALLED
-                  </span>
-                ) : (
-                  <span className="equip-price">{row.quote.cost.toLocaleString()}cr</span>
-                )}
-                <button
-                  className="btn small"
-                  data-testid="buy-equipment"
-                  disabled={row.owned || !armed || !row.quote.ok}
-                  title={
-                    row.owned
-                      ? 'Already installed'
-                      : !armed
-                        ? 'Pick a die first'
-                        : row.quote.ok
-                          ? `Install · ${row.quote.cost.toLocaleString()}cr`
-                          : row.quote.failure
-                            ? shipyardFailureExplanation(row.quote.failure)
-                            : 'Unavailable'
-                  }
-                  onClick={() => shipyard({ action: 'buy-special-equipment', equipment: row.id })}
-                >
-                  {row.owned ? 'Owned' : 'Install'}
-                </button>
-              </div>
-              {/* The "exclusion conflict shows why" surface — the typed reason,
-                  rendered rather than hidden, whenever the item can't be bought. */}
-              {!row.owned && row.quote.failure && (
-                <span className="ship-reason" data-testid="equipment-reason">
-                  {shipyardFailureExplanation(row.quote.failure)}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-
         {/* ---- crew roster (T-1405 · the dice-progression source) ---- */}
-        <CrewSection game={game} armed={armed} />
+        <CrewSection game={game} />
       </div>
     </section>
   );
@@ -3565,7 +4450,7 @@ function ShipPane({ state }: { state: CockpitState }) {
 // the equipment list it disables-not-hides an unaffordable hire and shows the
 // engine-derived reason. A hire's dice benefit lands at the NEXT dawn (the store
 // verb documents why), so this pane surfaces the roster, not a live-hand change.
-function CrewSection({ game, armed }: { game: GameState; armed: boolean }) {
+function CrewSection({ game }: { game: GameState }) {
   const roster = crewRoster(game);
   // T-1703 · The demo's 'crew-progression' lock — "Hangout progression" on the
   // task's gate list, read as the crew/dice progression bought at the Hangout
@@ -3592,10 +4477,10 @@ function CrewSection({ game, armed }: { game: GameState; armed: boolean }) {
               className="btn small ghost"
               data-testid="dismiss-crew"
               data-role-id={row.role.id}
-              disabled={!armed}
-              title={
-                armed ? 'Dismiss this crew member (spends a die, no refund)' : 'Pick a die first'
-              }
+              // T-196c · No `disabled` and no die in the copy: a dismiss is a
+              // FREE ACTION. The old title said "spends a die", which had been
+              // false since T-196a freed the verb in the engine.
+              title="Dismiss this crew member (free, no refund)"
               onClick={() => dismissCrew(row.role.id)}
             >
               Dismiss
@@ -3624,14 +4509,12 @@ function CrewSection({ game, armed }: { game: GameState; armed: boolean }) {
               // makes Playwright's `click({ trial: true })` REJECT, which is a
               // stronger proof than absence: a hidden control proves nothing about
               // a control that is merely off-screen.
-              disabled={!armed || !row.canHire || demoLock !== null}
+              disabled={!row.canHire || demoLock !== null}
               title={
                 demoLock ??
-                (!armed
-                  ? 'Pick a die first'
-                  : row.canHire
-                    ? `Hire · ${row.role.hirePrice.toLocaleString()}cr`
-                    : (row.reason ?? 'Cannot hire'))
+                (row.canHire
+                  ? `Hire · ${row.role.hirePrice.toLocaleString()}cr`
+                  : (row.reason ?? 'Cannot hire'))
               }
               {...(demoLock !== null ? { 'data-demo-locked': 'crew-progression' } : {})}
               onClick={() => hireCrew(row.role.id)}
@@ -3660,11 +4543,14 @@ function CrewSection({ game, armed }: { game: GameState; armed: boolean }) {
 function ComponentRow({
   row,
   game,
-  armed,
+  focused = false,
 }: {
   row: ShipComponentRow;
   game: GameState;
-  armed: boolean;
+  /** T-189 · Set for ~700ms after its region is clicked on the ship diagram, so
+   *  a click on the hull lands visibly on the bench row that controls it. Pure
+   *  presentation; the flash itself is gated behind `prefers-reduced-motion`. */
+  focused?: boolean;
 }) {
   const upgradeQuote =
     row.nextTier !== null
@@ -3673,7 +4559,6 @@ function ComponentRow({
           action: 'buy-component-tier',
           component: row.id,
           tier: row.nextTier,
-          spendDie: 0,
         })
       : null;
   const repairQuote = row.damaged
@@ -3682,7 +4567,6 @@ function ComponentRow({
         action: 'repair',
         component: row.id,
         repairMode: 'single',
-        spendDie: 0,
       })
     : null;
 
@@ -3697,7 +4581,9 @@ function ComponentRow({
   // junker (hull str 1 / cond 9, drives str 10, …).
   return (
     <div
-      className={row.damaged ? 'comp-row damaged' : 'comp-row'}
+      className={[row.damaged ? 'comp-row damaged' : 'comp-row', focused ? 'focused' : '']
+        .filter(Boolean)
+        .join(' ')}
       data-testid="ship-component"
       data-component={row.id}
       data-damaged={row.damaged ? '1' : '0'}
@@ -3735,12 +4621,8 @@ function ComponentRow({
             <button
               className="btn small"
               data-testid="upgrade-component"
-              disabled={!armed || !upgradeQuote.ok}
-              title={
-                armed
-                  ? `Upgrade to tier ${row.nextTier} · ${upgradeQuote.cost.toLocaleString()}cr`
-                  : 'Pick a die first'
-              }
+              disabled={!upgradeQuote.ok}
+              title={`Upgrade to tier ${row.nextTier} · ${upgradeQuote.cost.toLocaleString()}cr`}
               onClick={() =>
                 shipyard({ action: 'buy-component-tier', component: row.id, tier: row.nextTier! })
               }
@@ -3774,12 +4656,8 @@ function ComponentRow({
           <button
             className="btn small ghost"
             data-testid="repair-component"
-            disabled={!armed || !repairQuote.ok}
-            title={
-              armed
-                ? `Repair one step · ${repairQuote.cost.toLocaleString()}cr`
-                : 'Pick a die first'
-            }
+            disabled={!repairQuote.ok}
+            title={`Repair one step · ${repairQuote.cost.toLocaleString()}cr`}
             onClick={() => shipyard({ action: 'repair', component: row.id, repairMode: 'single' })}
           >
             Repair · {repairQuote.cost.toLocaleString()}cr
@@ -3790,133 +4668,292 @@ function ComponentRow({
   );
 }
 
+/**
+ * T-190 · THE MANIFEST IS AN OBJECT, NOT A PANE.
+ *
+ * The owner's read: "the contract manifest probably needs to be a clickable item,
+ * available only in a port… Make it stand out as distinct from everything else."
+ * That is two asks, and only ONE of them can honestly ship today:
+ *
+ *  (1) VISUAL DISTINCTNESS — shipped here. The board is dressed as a physical
+ *      clipboard bolted to the console: a bulldog clip above the header, a
+ *      reverse-video port stamp, a 2px frame with stacked-paper shadows, a slight
+ *      physical tilt, punched holes and a torn bottom edge on the paper itself,
+ *      and it STOWS when you click its header (the "clickable item"). The paper
+ *      also re-posts itself — `key={sheet.boardKey}` remounts the sheet whenever
+ *      (port, day) changes, i.e. exactly when the engine regenerates the board.
+ *
+ *  (2) "UNAVAILABLE WHILE NOT DOCKED" — deliberately NOT shipped. There is no
+ *      in-transit state to gate on: jumps are instant, and the design decision
+ *      that would give travel an occupiable duration is T-188, which is still
+ *      BLOCKED on an owner ruling. Faking a docking flag against an instant-jump
+ *      model is exactly what T-190's own accept clause forbids. Re-filed as T-192,
+ *      which reuses the stow render path below and adds no new visual work.
+ *
+ * The stow is a PLAYER AFFORDANCE, never game state — it lives in component
+ * state, is not persisted, and is force-open for the whole of the scripted
+ * first-turn walkthrough (step 3's rails allow ONLY the manifest region, so a
+ * stowed board there would be a soft-lock, and `walkthrough.spec.ts` asserts a
+ * contract is visible from step 2 onward while the manifest is still rails-shut).
+ *
+ * Everything inside the sheet — the contract rows, the flags, the SIGN row, the
+ * HAGGLE button and every handler and `data-*` attribute — is UNCHANGED. The
+ * mechanical proof is that every existing e2e spec which reads the board — nine of
+ * them directly, plus `e2e/support/career.ts`'s shared contract picker — passes
+ * with zero edits.
+ */
 function Manifest({ state }: { state: CockpitState }) {
   const board = state.game.market.manifestBoard;
   const here = state.game.player.currentSystemId;
+  // T-196c · `armed` SURVIVES HERE, narrowed to ONE reader: HAGGLE, which is a
+  // Main Action and still spends the die it rolls. SIGN below is a Free Action
+  // (docs/DAWN-HAND-REDESIGN.md §3) and no longer reads this at all — hence no
+  // `dieVal` either, since the sign row stopped rendering a die slot.
   const armed = state.selectedDie !== null;
-  const dieVal =
-    state.selectedDie !== null ? state.game.player.dawnHand?.dice[state.selectedDie] : undefined;
+  const sheet = manifestSheet(state.game);
+  const [stowed, setStowed] = useState(false);
+  const open = !stowed || walkthroughActive(state.walkthrough);
   return (
-    <section className="pane" style={{ flex: 1 }}>
+    <section
+      className="pane manifest-board"
+      data-testid="manifest-board"
+      data-manifest-open={open ? '1' : '0'}
+      data-board-key={sheet.boardKey}
+      {...railsProps(state, 'manifest')}
+    >
+      {/* The bulldog clip: what makes the frame read as a board you could lift
+          off the console rather than a rectangle in a CSS grid. Pure chrome. */}
+      <div className="mb-clip" aria-hidden="true">
+        <span className="mb-clip-jaw" />
+      </div>
       <header>
-        <h2>Manifest Board</h2>
-        <span className="tag">
-          {systemName(here)} DEPOT · {board.length} OFFERS
-        </span>
+        <h2>
+          <button
+            type="button"
+            className="mb-toggle"
+            data-testid="manifest-toggle"
+            aria-expanded={open}
+            title={open ? 'Stow the manifest board' : 'Take the manifest board down again'}
+            onClick={() => setStowed((v) => !v)}
+          >
+            <span className="mb-title">Manifest Board</span>
+            {/* Same words the `.tag` carried before — a port stamp, not a label. */}
+            <span className="mb-stamp">
+              {systemName(here)} DEPOT · {board.length} OFFERS
+            </span>
+          </button>
+        </h2>
       </header>
-      <div className="body">
-        {board.length === 0 && (
-          <p style={{ color: 'var(--amber)' }}>The board is dark. Rest, or move on.</p>
-        )}
-        {board.map((c, i) => {
-          const contraband = CARGO_TYPES[c.cargoType]?.isContraband ?? false;
-          // Display-only flags derived from existing engine/content state (see
-          // format.ts): URGENT = destination repriced by the active era event;
-          // STORYLET = this cargo has a content storylet keyed to it. The UI
-          // reads these; it never owns the rule, and CargoContract gains no field.
-          const urgent = contractIsUrgent(state.game, c.destination);
-          const storylet = cargoHasStorylet(c.cargoType);
-          // T-1402 · A REAL engine number for the destination line — the previewed
-          // jump fuel cost — replaces the fabricated `jumpsBetween` "jumps" count no
-          // engine rule ever read.
-          const preview = routePreview(state.game, c.destination);
-          return (
-            <div
-              className={armed ? 'contract pickable' : 'contract'}
-              key={i}
-              data-testid="contract"
-              // T-1602a · STRUCTURED reads of the numbers this row already renders
-              // as prose, so a caller can decide from the DOM instead of parsing
-              // "▸ Pollux-7 · 72 fuel · 10 pods". Every value is the SAME engine
-              // number rendered below (`preview` / the contract itself) — nothing
-              // new is derived here, so the UI still owns no route or pricing rule.
-              // READER: e2e/tour-one-career.spec.ts via e2e/support/career.ts —
-              // its contract picker filters on `data-contraband` / `data-dc` /
-              // `data-fuel-cost` and ranks on `data-payment`; `data-destination-id`
-              // is the starmap node it then clicks, and `data-pods` rides the run
-              // report's day log. (Same precedent as `data-system-id` /
-              // `data-reachable` on the starmap nodes.)
-              data-destination-id={c.destination}
-              data-payment={c.payment}
-              data-fuel-cost={preview.fuelCost}
-              data-dc={preview.dc}
-              data-pods={c.pods}
-              data-contraband={contraband ? '1' : '0'}
-              onClick={() => signContract(i)}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.currentTarget.classList.add('dropready');
-              }}
-              onDragLeave={(e) => e.currentTarget.classList.remove('dropready')}
-              onDrop={(e) => {
-                e.currentTarget.classList.remove('dropready');
-                dropDie(e, () => signContract(i));
-              }}
-            >
-              <div className="row1">
-                <span className="goods">
-                  {cargoName(c.cargoType)}
-                  {contraband && <span className="flag shady">CONTRABAND</span>}
-                  {urgent && (
-                    <span className="flag urgent" data-testid="flag-urgent">
-                      URGENT
+      {!open && (
+        <div className="body">
+          <p className="mb-stowed-line" data-testid="manifest-stowed">
+            BOARD STOWED · {sheet.offerCount} OFFERS PINNED AT {sheet.portName.toUpperCase()}
+          </p>
+        </div>
+      )}
+      {open && (
+        <div className="body">
+          {/* `key` is the whole point: a new (port, day) is a genuinely new sheet,
+              so React remounts this node and the re-post animation fires. */}
+          <div className="mb-sheet" key={sheet.boardKey}>
+            <div className="mb-punches" aria-hidden="true" />
+            {board.length === 0 && (
+              <p style={{ color: 'var(--amber)' }}>The board is dark. Rest, or move on.</p>
+            )}
+            {board.map((c, i) => {
+              const contraband = CARGO_TYPES[c.cargoType]?.isContraband ?? false;
+              // Display-only flags derived from existing engine/content state (see
+              // format.ts): URGENT = destination repriced by the active era event;
+              // STORYLET = this cargo has a content storylet keyed to it. The UI
+              // reads these; it never owns the rule, and CargoContract gains no field.
+              const urgent = contractIsUrgent(state.game, c.destination);
+              const storylet = cargoHasStorylet(c.cargoType);
+              // T-1402 · A REAL engine number for the destination line — the previewed
+              // jump fuel cost — replaces the fabricated `jumpsBetween` "jumps" count no
+              // engine rule ever read.
+              const preview = routePreview(state.game, c.destination);
+              return (
+                <div
+                  // T-196c · ALWAYS pickable: signing is free, so a row is
+                  // clickable whether or not a die is armed.
+                  className="contract pickable"
+                  key={i}
+                  data-testid="contract"
+                  // T-1602a · STRUCTURED reads of the numbers this row already renders
+                  // as prose, so a caller can decide from the DOM instead of parsing
+                  // "▸ Pollux-7 · 72 fuel · 10 pods". Every value is the SAME engine
+                  // number rendered below (`preview` / the contract itself) — nothing
+                  // new is derived here, so the UI still owns no route or pricing rule.
+                  // READER: e2e/tour-one-career.spec.ts via e2e/support/career.ts —
+                  // its contract picker filters on `data-contraband` / `data-dc` /
+                  // `data-fuel-cost` and ranks on `data-payment`; `data-destination-id`
+                  // is the starmap node it then clicks, and `data-pods` rides the run
+                  // report's day log. (Same precedent as `data-system-id` /
+                  // `data-reachable` on the starmap nodes.)
+                  data-destination-id={c.destination}
+                  data-payment={c.payment}
+                  data-fuel-cost={preview.fuelCost}
+                  data-dc={preview.dc}
+                  data-pods={c.pods}
+                  data-contraband={contraband ? '1' : '0'}
+                  onClick={() => signContract(i)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.add('dropready');
+                  }}
+                  onDragLeave={(e) => e.currentTarget.classList.remove('dropready')}
+                  // T-196c · The drop no longer routes through `dropDie`. That
+                  // helper called `selectDie` before running the action, so a
+                  // drag-to-sign would ARM (or replace) the player's queued die
+                  // as a side effect of a FREE action — exactly the disarm this
+                  // task exists to prevent. Drag is still the accessible
+                  // parallel to click-to-sign; it just signs, nothing more.
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.remove('dropready');
+                    signContract(i);
+                  }}
+                >
+                  <div className="row1">
+                    <span className="goods">
+                      {cargoName(c.cargoType)}
+                      {contraband && <span className="flag shady">CONTRABAND</span>}
+                      {urgent && (
+                        <span className="flag urgent" data-testid="flag-urgent">
+                          URGENT
+                        </span>
+                      )}
+                      {storylet && (
+                        <span className="flag storylet" data-testid="flag-storylet">
+                          STORYLET
+                        </span>
+                      )}
+                      {c.haggled && <span className="flag shady">HAGGLED</span>}
                     </span>
-                  )}
-                  {storylet && (
-                    <span className="flag storylet" data-testid="flag-storylet">
-                      STORYLET
-                    </span>
-                  )}
-                  {c.haggled && <span className="flag shady">HAGGLED</span>}
-                </span>
-                <span className="pay">{c.payment.toLocaleString()}cr</span>
-              </div>
-              <div className="dest">
-                &#9656; {systemName(c.destination)} · {preview.fuelCost} fuel · {c.pods} pods
-              </div>
-              {/* T-1402 · Signing SPENDS a die — it is not a TRADE check. The engine
-                  (resolveTrade) burns the die and never rolls or reads its value, so
-                  the manifest must render signing as a die COST, not a "+ TRADE" check.
-                  (HAGGLE below is the real TRADE DC-12 roll.) */}
-              <div className="check" data-testid="sign-row">
-                <span className="lbl">SIGN</span>
-                <span className={dieVal !== undefined ? 'slot ready' : 'slot'}>
-                  {dieVal ?? '—'}
-                </span>
-                <span className="mono">costs 1 die</span>
-                <span className="arrow">&rarr;</span>
-                <span className="mono">{armed ? 'commit to sign' : 'assign a die'}</span>
-                {/* Kept ENABLED even once haggled: a second haggle is an engine
+                    <span className="pay">{c.payment.toLocaleString()}cr</span>
+                  </div>
+                  <div className="dest">
+                    &#9656; {systemName(c.destination)} · {preview.fuelCost} fuel · {c.pods} pods
+                  </div>
+                  {/* T-196c · Signing is a FREE ACTION (docs/DAWN-HAND-REDESIGN.md
+                  §3) — it costs no die and it is still not a TRADE check, so the
+                  row renders neither a die slot nor a "+ TRADE" check. (T-1402
+                  wrote this row as a die COST; M17 removed the cost, so the slot
+                  and the "assign a die" prompt went with it.) HAGGLE below is the
+                  manifest's one real TRADE DC-12 roll, and the one control here
+                  that still demands an armed die. */}
+                  <div className="check" data-testid="sign-row">
+                    <span className="lbl">SIGN</span>
+                    <span className="mono">FREE</span>
+                    <span className="arrow">&rarr;</span>
+                    <span className="mono">click to sign</span>
+                    {/* Kept ENABLED even once haggled: a second haggle is an engine
                     refusal that spends no die, and the store surfaces it as a
                     visible notice. Disabling it here would make that failure a
                     silent dead click — the exact silence the accept criterion
                     (UGT Finding 4's lesson) forbids. */}
-                <button
-                  className={c.haggled ? 'haggle done' : 'haggle'}
-                  data-testid="haggle"
-                  title={
-                    c.haggled
-                      ? 'The broker will not renegotiate this contract again.'
-                      : armed
-                        ? 'Roll TRADE vs DC 12 to bump the payment'
-                        : 'Pick a die first, then haggle'
-                  }
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    haggleContract(i);
-                  }}
-                >
-                  HAGGLE
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+                    <button
+                      className={c.haggled ? 'haggle done' : 'haggle'}
+                      data-testid="haggle"
+                      title={
+                        c.haggled
+                          ? 'The broker will not renegotiate this contract again.'
+                          : armed
+                            ? 'Roll TRADE vs DC 12 to bump the payment'
+                            : 'Pick a die first, then haggle'
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        haggleContract(i);
+                      }}
+                    >
+                      HAGGLE
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="mb-tear" aria-hidden="true" />
+          </div>
+        </div>
+      )}
       {/* The manifest owns the haggle check only — filter by context so a
-          storylet check (any stat) surfaces in its own panel, not here. */}
+          storylet check (any stat) surfaces in its own panel, not here. It sits
+          OUTSIDE the sheet on purpose: it is the haggle readout, and stowing the
+          paper must never hide the result of a roll the player just paid for. */}
       <CheckBreakdown state={state} exclude={Stat.PILOT} context="haggle" />
     </section>
+  );
+}
+
+// T-191 · THE PORT LEDGER'S ICON LANGUAGE. One stencilled glyph per service
+// module, punched into the module's own head line. Presentation-only and
+// `aria-hidden` throughout: every module still announces itself by its head TEXT
+// (`FUEL DEPOT`, `GUILD DEBT`, …), which is unchanged and which several e2e
+// specs read verbatim. Drawn in `currentColor` so the stencil inherits whatever
+// the head colour is and costs T-186's still-open palette ruling nothing.
+type LedgerGlyphKind = 'dispatch' | 'hold' | 'fuel' | 'debt' | 'port';
+
+const LEDGER_GLYPHS: Record<LedgerGlyphKind, ReactNode> = {
+  // A dispatch slip with a folded corner — paper handed over a counter.
+  dispatch: (
+    <>
+      <path d="M3 2h5l3 3v7H3z" />
+      <path d="M8 2v3h3" />
+      <path d="M5 8h4M5 10h3" />
+    </>
+  ),
+  // A cargo crate, banded — what rides in the hold.
+  hold: (
+    <>
+      <path d="M2 4h10v7H2z" />
+      <path d="M2 6.5h10M7 4v7" />
+    </>
+  ),
+  // A pump nozzle and hose — the depot.
+  fuel: (
+    <>
+      <path d="M3 12V3h5v9" />
+      <path d="M3 6h5" />
+      <path d="M8 5h2v5a1.2 1.2 0 0 0 2 0V7" />
+    </>
+  ),
+  // A struck ledger tally — the marker against you.
+  debt: (
+    <>
+      <path d="M2 2.5h10v9H2z" />
+      <path d="M4.5 5h5M4.5 7.2h5M4.5 9.4h3" />
+      <path d="M2.6 11.4 11.4 2.6" />
+    </>
+  ),
+  // A mooring bollard on a dock line — the authority you stand on.
+  port: (
+    <>
+      <path d="M4.5 12V6a2.5 2.5 0 0 1 5 0v6" />
+      <path d="M3 12h8" />
+      <path d="M4.5 8h5" />
+    </>
+  ),
+};
+
+/** A 14x14 stencil punched into a service module's head. Chrome only. */
+function LedgerGlyph({ kind }: { kind: LedgerGlyphKind }) {
+  return (
+    <svg
+      className="lb-glyph"
+      data-glyph={kind}
+      viewBox="0 0 14 14"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.1"
+      strokeLinecap="square"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {LEDGER_GLYPHS[kind]}
+    </svg>
   );
 }
 
@@ -3934,7 +4971,10 @@ function TradePane({
   const game = state.game;
   const p = game.player;
   const active = p.activeContract;
-  const armed = state.selectedDie !== null;
+  // T-196c · NO `armed` CONST HERE, deliberately. All three verbs this pane
+  // reaches — abandon-contract, buy-fuel and the port buy — are FREE ACTIONS
+  // (docs/DAWN-HAND-REDESIGN.md §3), so none may require, consume or DISARM the
+  // die a player armed for their next Main Action.
 
   const [fuelAmount, setFuelAmount] = useState(100);
   const [debtAmount, setDebtAmount] = useState(500);
@@ -3964,6 +5004,14 @@ function TradePane({
   // Surface the clamp BEFORE the buy so the overspend is never a silent charge.
   const fuelQuote = fuelPurchaseQuote(game, fuelAmount);
 
+  // T-191 · The rack's fascia — the port name and the three re-mount keys the
+  // service modules animate off. A pure projection (format.ts `ledgerFascia`);
+  // it derives no rule and adds no state. The keys are placed ONLY on leaf
+  // readouts and decorative sweeps, never on a wrapper that contains an input —
+  // remounting `fuel-amount` / `debt-amount` would blow away a typed value and
+  // the caret, which would be a behaviour change wearing a styling hat.
+  const fascia = ledgerFascia(game);
+
   return (
     <section className="pane trade" data-testid="trade-pane">
       <header>
@@ -3971,11 +5019,28 @@ function TradePane({
         <span className="tag">{systemName(p.currentSystemId)} SERVICES</span>
       </header>
       <div className="body">
+        {/* T-191 · The mounting rail every service module is bolted to — the
+            silhouette cue that makes this quadrant read as dockside HARDWARE
+            rather than a fourth copy of the pane chrome. A real element, not a
+            `::before`: pseudo-elements cannot be located by Playwright, and the
+            e2e has to assert the rack's parts exist here and nowhere else. */}
+        <i className="lb-rail" aria-hidden="true" />
         {/* The single mechanically-checkable surface for "failure is never
             silent": whenever the store captured an engine refusal, it shows
             here in reverse-video. It clears on the next successful action. */}
+        {/* T-162 · F-162-2 · KEYED ON THE RAISE, NOT THE WORDS. A second
+            identical refusal used to change nothing in the DOM, so the cockpit
+            read as broken rather than as refusing again. The `key` remounts the
+            banner (its reveal replays); `data-notice-key` makes the raise
+            assertable. Same device, same argument, as `lastCheckKey`. */}
         {state.notice && (
-          <div className="notice rev" data-testid="notice" role="status">
+          <div
+            className="notice rev"
+            key={state.noticeKey}
+            data-testid="notice"
+            data-notice-key={state.noticeKey}
+            role="status"
+          >
             {state.notice}
           </div>
         )}
@@ -3986,11 +5051,24 @@ function TradePane({
             focused panel. The TOTAL classifier's default lands here, so a newly
             authored storylet always has a door — the reachability guarantee. */}
         {portOffers.length > 0 && (
-          <div className="ledger-block port-dispatches" data-testid="port-dispatches">
-            <div className="lb-head">PORT DISPATCHES</div>
-            {portOffers.map((o) => (
-              <StoryletOpener key={o.storyletId} offer={o} onOpen={onOpenStorylet} />
-            ))}
+          <div
+            className="ledger-block port-dispatches"
+            data-testid="port-dispatches"
+            // T-191 · The live PORT-surface offer set, as one order-independent
+            // string. READER: the `.lb-posts` key below (a re-post animation
+            // when the set genuinely changes) and e2e/port-ledger.spec.ts.
+            data-dispatch-key={fascia.dispatchKey}
+            {...railsProps(state, 'trade')}
+          >
+            <div className="lb-head">
+              <LedgerGlyph kind="dispatch" />
+              PORT DISPATCHES
+            </div>
+            <div className="lb-posts" key={fascia.dispatchKey}>
+              {portOffers.map((o) => (
+                <StoryletOpener key={o.storyletId} offer={o} onOpen={onOpenStorylet} />
+              ))}
+            </div>
           </div>
         )}
 
@@ -4009,8 +5087,13 @@ function TradePane({
           // without having to re-derive either from the board it already left.
           data-destination-id={active?.destination}
           data-fuel-cost={active ? routePreview(game, active.destination).fuelCost : undefined}
+          // T-187 · `inert` blocks interaction and focus but NEVER hides content:
+          // the hold, its destination and its bill stay fully legible while the
+          // rails are on, which is the whole point of step 5 pointing at them.
+          {...railsProps(state, 'trade')}
         >
           <div className="lb-head">
+            <LedgerGlyph kind="hold" />
             ACTIVE CONTRACT
             {/* T-1405 · Contraband-HOLD indicator (distinct from the manifest's
                 contraband OFFER flag). Shows whenever the ship is carrying illicit
@@ -4035,27 +5118,21 @@ function TradePane({
               {/* T-1604b · The hold release (UGT finding F2). A run you cannot
                   reach — no fuel, no credits, no way to the destination — used to
                   lock the hold forever, because signing is refused while a
-                  contract rides. Dumping costs a die and the whole payment, so
-                  the control mirrors the manifest rows' "arm a die" affordance
-                  and is never a dead click. The engine owns the refusal and the
-                  die; this button only sends the action. */}
+                  contract rides. T-196c · dumping is a FREE ACTION now: the
+                  forfeited payment is the whole cost, so the control is never
+                  gated and never dead. The engine owns the refusal; this button
+                  only sends the action. */}
               <div className="lb-controls">
                 <button
                   className="btn"
                   data-testid="abandon-contract"
-                  disabled={!armed}
-                  title={
-                    armed
-                      ? 'Spend the selected die to vent the cargo and clear the hold'
-                      : 'Pick a die first, then dump the run'
-                  }
+                  title="Vent the cargo and clear the hold"
                   onClick={() => abandonContract()}
                 >
-                  {/* The label is deliberately CONSTANT (the armed state rides
-                      `disabled` + `title` instead): this block's text is read
-                      whole by e2e/manifest-trade.spec.ts to prove a refused
+                  {/* The label is deliberately CONSTANT: this block's text is
+                      read whole by e2e/manifest-trade.spec.ts to prove a refused
                       second signing left the tracker untouched, and a label that
-                      flickered with the die selection would break that read. */}
+                      flickered with state would break that read. */}
                   DUMP THE RUN
                 </button>
               </div>
@@ -4079,17 +5156,34 @@ function TradePane({
           )}
         </div>
 
-        {/* Fuel depot — buy-fuel consumes a die (PRD §7), so the control mirrors
-            the manifest's "assign a die" affordance and is never a dead click. */}
-        <div className="ledger-block fuel-depot" data-testid="fuel-depot">
-          <div className="lb-head">FUEL DEPOT</div>
+        {/* Fuel depot — T-196c · buying fuel is a FREE ACTION
+            (docs/DAWN-HAND-REDESIGN.md §3): credits are the whole cost, so the
+            control is gated on the amount alone and is never a dead click. */}
+        <div
+          className="ledger-block fuel-depot"
+          data-testid="fuel-depot"
+          // T-191 · `${fuel}/${maxFuel}` — the exact pair the readout below
+          // prints. READER: the readout's own remount key and
+          // e2e/port-ledger.spec.ts, which uses it as the mechanically-checkable
+          // proof that the tick animation is wired to the real state change
+          // (the paint itself is deliberately off under reduced motion).
+          data-fuel-key={fascia.fuelKey}
+          {...railsProps(state, 'fuel')}
+        >
+          {/* Decorative charge sweep — remounts, and so replays, whenever the
+              tank moves. Keyed on a LEAF: never on anything containing an input. */}
+          <i className="lb-sweep" key={fascia.fuelKey} aria-hidden="true" />
+          <div className="lb-head">
+            <LedgerGlyph kind="fuel" />
+            FUEL DEPOT
+          </div>
           <div className="lb-row">
             <span className="mono">
               PRICE <b data-testid="fuel-price">{fuelPrice}</b>cr/unit
             </span>
             <span className="mono">
               HOLD{' '}
-              <b data-testid="fuel-hold">
+              <b className="lb-tick" key={fascia.fuelKey} data-testid="fuel-hold">
                 {p.ship.fuel.toLocaleString()}/{p.ship.maxFuel.toLocaleString()}
               </b>
             </span>
@@ -4105,13 +5199,11 @@ function TradePane({
             <button
               className="btn"
               data-testid="buy-fuel"
-              disabled={!armed || fuelAmount <= 0}
-              title={armed ? 'Spend the selected die to refuel' : 'Pick a die first, then buy fuel'}
+              disabled={fuelAmount <= 0}
+              title="Refuel at the depot"
               onClick={() => buyFuel(fuelAmount)}
             >
-              {armed
-                ? `Buy · ${(fuelAmount * fuelPrice).toLocaleString()}cr`
-                : 'Pick a die to fuel'}
+              Buy · {(fuelAmount * fuelPrice).toLocaleString()}cr
             </button>
           </div>
           {/* T-1402 · The overspend warning fires pre-commit whenever the request
@@ -4130,13 +5222,29 @@ function TradePane({
 
         {/* Debt ledger — pay-down needs NO die (a ledger transfer, PRD §7.3),
             with the Guild marker's due-day countdown. */}
-        <div className="ledger-block debt-ledger" data-testid="debt-ledger">
-          <div className="lb-head">GUILD DEBT</div>
+        <div
+          className="ledger-block debt-ledger"
+          data-testid="debt-ledger"
+          // T-191 · `${debt}:${debtDueDay}` — moves on a pay-down and on a
+          // re-markered due day, and at no other time. READER: the OWED
+          // readout's remount key and e2e/port-ledger.spec.ts.
+          data-debt-key={fascia.debtKey}
+          {...railsProps(state, 'trade')}
+        >
+          <i className="lb-sweep" key={fascia.debtKey} aria-hidden="true" />
+          <div className="lb-head">
+            <LedgerGlyph kind="debt" />
+            GUILD DEBT
+          </div>
           {p.debt > 0 ? (
             <>
               <div className="lb-row">
                 <span className="mono">
-                  OWED <b>{p.debt.toLocaleString()}</b>cr
+                  OWED{' '}
+                  <b className="lb-tick" key={fascia.debtKey}>
+                    {p.debt.toLocaleString()}
+                  </b>
+                  cr
                 </span>
                 <span className={debtDue <= 5 ? 'mono due-soon' : 'mono'}>
                   DUE D{p.debtDueDay} · <b data-testid="debt-countdown">{debtDue}d</b>
@@ -4173,8 +5281,15 @@ function TradePane({
         {/* Port authority (T-1405) — buy the stake you stand in, then watch its
             launch-fee income tick at dusk. Buy costs a die (die-costed like the
             shipyard); the income ledger below is the "watch income tick" surface. */}
-        <div className="ledger-block port-authority" data-testid="port-authority">
-          <div className="lb-head">PORT AUTHORITY</div>
+        <div
+          className="ledger-block port-authority"
+          data-testid="port-authority"
+          {...railsProps(state, 'trade')}
+        >
+          <div className="lb-head">
+            <LedgerGlyph kind="port" />
+            PORT AUTHORITY
+          </div>
           {ledger.current ? (
             <div className="port-current" data-testid="port-current">
               <div className="lb-row">
@@ -4200,23 +5315,19 @@ function TradePane({
                     // task's gate list). Disabled-not-hidden, so the price and the
                     // income figure stay legible — the tease is the dock you can
                     // see and cannot buy.
-                    disabled={!armed || !ledger.current.quote.ok || portDemoLock !== null}
+                    disabled={!ledger.current.quote.ok || portDemoLock !== null}
                     title={
                       portDemoLock ??
-                      (!armed
-                        ? 'Pick a die first'
-                        : ledger.current.quote.ok
-                          ? `Buy the stake · ${ledger.current.quote.cost.toLocaleString()}cr`
-                          : ledger.current.quote.failure
-                            ? portFailureExplanation(ledger.current.quote.failure)
-                            : 'Unavailable')
+                      (ledger.current.quote.ok
+                        ? `Buy the stake · ${ledger.current.quote.cost.toLocaleString()}cr`
+                        : ledger.current.quote.failure
+                          ? portFailureExplanation(ledger.current.quote.failure)
+                          : 'Unavailable')
                     }
                     {...(portDemoLock !== null ? { 'data-demo-locked': 'port-ownership' } : {})}
                     onClick={() => buyPort()}
                   >
-                    {armed
-                      ? `Buy · ${ledger.current.quote.cost.toLocaleString()}cr`
-                      : 'Pick a die to buy'}
+                    Buy · {ledger.current.quote.cost.toLocaleString()}cr
                   </button>
                 )}
               </div>
@@ -4367,7 +5478,17 @@ function CheckReadout({
 // The Galactic Wire (T-306): a scrolling ticker (unchanged) PLUS a browsable
 // day-by-day log opened from the cap. Both are pure reads of the event log via
 // format.ts — the ticker shows the freshest headlines, the log the full history.
-function Wire({ game, onOpenStorylet }: { game: GameState; onOpenStorylet: (id: string) => void }) {
+function Wire({
+  game,
+  onOpenStorylet,
+  railsOff: off,
+}: {
+  game: GameState;
+  onOpenStorylet: (id: string) => void;
+  /** T-187 · The wire's bulletins open storylets, which is not a scripted step —
+   *  the whole strip goes inert while the first-turn walkthrough is on rails. */
+  railsOff: boolean;
+}) {
   const [logOpen, setLogOpen] = useState(false);
   const lines = wireLines(game);
   const items = lines.length > 0 ? lines : ['The wire is quiet. Roll the day and make some news.'];
@@ -4387,7 +5508,7 @@ function Wire({ game, onOpenStorylet }: { game: GameState; onOpenStorylet: (id: 
     </>
   );
   return (
-    <div className="wire">
+    <div className="wire" inert={off || undefined} data-rails-off={off ? '1' : undefined}>
       <div className="cap">
         <span className="dot" />
         GALACTIC WIRE
@@ -4648,7 +5769,7 @@ function HandDock({ state }: { state: CockpitState }) {
           : 'Pick a die, then assign it to an action.';
 
   return (
-    <div className="dock" data-hand-spent={handSpent ? '1' : '0'}>
+    <div className="dock" data-hand-spent={handSpent ? '1' : '0'} {...railsProps(state, 'hand')}>
       <div className="dlabel">
         Dawn Hand
         {mods.floor > 0 && (

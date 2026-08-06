@@ -250,8 +250,15 @@ describe('T-1310 · late Wise One visit still opens the arc', () => {
 // `defineSignalFragments` throws at import, so `@spacerquest/content` importing
 // green anywhere in this file is already half the proof. These tests pin the
 // other half: that each rule actually rejects the malformation it claims to, so
-// the guard cannot rot into a no-op. Content has no test runner of its own, so
-// content-validator tests live in the engine suite (the T-1504c precedent).
+// the guard cannot rot into a no-op.
+//
+// T-164 · HOSTED HERE, AND IT NO LONGER HAS TO BE. The old reason ("content has
+// no test runner of its own") stopped being true when T-164 stood one up. This
+// block reads only `@spacerquest/content`, so under `docs/TESTING-STRATEGY.md`
+// Part I it QUALIFIES to move beside its rows — it is on that ruling's migration
+// ledger (F-164-1) rather than in T-164's scope, which was chartered to stand up
+// the runner and split the Explore validator, not to relocate every eligible
+// block at once.
 // ---------------------------------------------------------------------------
 describe('T-1505a · Signal Fragment content validation', () => {
   /** A minimal well-formed table, cloned per test and then broken one way. */

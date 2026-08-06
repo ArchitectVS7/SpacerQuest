@@ -1,15 +1,20 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 
 // T-1502 · NPC personal chains — UI reachability. The standing "reachable through
 // the UI" constraint, proven for the cheapest authored arc: Doc Salvage's now
 // three-episode chain. The store's default career is the deterministic seed
-// 424242 → Day 1, Sun-3, where the Doc-Salvage distress ping is a live PORT offer.
+// 424242 → Day 1, Sol-3, where the Doc-Salvage distress ping is a live PORT offer.
 // This drives distress-ping → follow-up → the NEW impound episode entirely through
 // the real cockpit (diegetic openers + the storylet panel + end-day), proving each
 // episode renders through the actual storylet surface with no new UI wiring.
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 /** Open a storylet from its diegetic opener and confirm the focused panel shows it. */

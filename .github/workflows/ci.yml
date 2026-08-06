@@ -1,8 +1,44 @@
+# T-163 · THIS WORKFLOW RUNS ON EVERY BRANCH, AND THAT IS THE POINT.
+#
+# It used to trigger `push` only on `[main, rimward-redesign]` — a hand-maintained
+# allowlist — while every job below skipped same-repo PRs. Those two rules are
+# individually reasonable and together they left a `redesign/*` branch with
+# **zero** coverage: no push run because the branch was not on the list, and no PR
+# run because the PR was same-repo. The suite never ran on the commit about to
+# merge. It cost this repository twice:
+#
+#   F-112-D  T-1605 deleted the travel PILOT check; `starmap.spec.ts` still
+#            asserted it. 7 of 95 specs sat RED on `main@74403ab4` from
+#            2026-07-28 until T-112 tripped over them a fortnight later.
+#   F-162-3  T-195 (`8ba4e83a`) shipped `navDieFuelDiscount` and
+#            `navDieEvasionFactor` without an e2e run; six specs sat RED on
+#            `redesign/explore-hangout` until T-162 tripped over them.
+#
+# Neither change "touched the cockpit", so `docs/ENGINEERING-POLICY.md` §2's local
+# e2e requirement did not fire either. A rules change that a spec asserts against
+# is exactly the change no branch-name allowlist can anticipate.
+#
+# WIDENING THE TRIGGER DOES NOT ADD DUPLICATE RUNS — it is what makes the
+# no-duplicate rule TRUE for the first time. The job-level
+# `github.event_name == 'push' || <fork>` skip below is unchanged, byte for byte.
+# Its premise is "the push run of this same commit already tested it"; on an
+# unlisted branch that premise was simply false. Now it holds everywhere, and a
+# same-repo PR still runs exactly once — on the push.
+#
+# THE RULE THIS ENCODES: narrow a workflow by `paths` (a cost argument, which
+# re-opens itself when the measured thing changes), never by branch name (a
+# coverage argument that rots one branch at a time — see `sweep-gate.yml`, which
+# had `redesign/explore-hangout` hand-added to its list). Enforced by
+# `packages/ui/src/__tests__/ci-workflow.test.ts`; recorded in
+# `docs/TESTING-STRATEGY.md` Part H and `docs/LESSONS.md` L-036.
 name: CI
 
 on:
   push:
-    branches: [main, rimward-redesign]
+    # EVERY branch. `['**']` matches names containing `/`
+    # (`redesign/explore-hangout`), where a bare `*` would not; under
+    # `push.branches` it still excludes tags. Do not re-enumerate.
+    branches: ['**']
   pull_request:
 
 # One CI run per branch tip: a new push cancels the superseded run for the
@@ -29,6 +65,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # T-166: FULL HISTORY IS REQUIRED IN THIS JOB. It is the only one that
+          # runs `npm test`, and `packages/sim/src/__tests__/smoke-reextraction.test.ts`
+          # reads the precedent commit `3468ef5f` and its parent out of git — the
+          # whole point of that check is that a rule is verified against the commit
+          # it cites rather than against a summary of it. The default depth-1
+          # clone cannot produce those blobs, and the test fails loudly (never
+          # skips) when it cannot reach them. No other job needs this:
+          # `sweep-gate.yml` and the e2e/desktop/package jobs never run `npm test`.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -121,6 +167,22 @@ jobs:
         with:
           name: tour-one-run-report
           path: packages/ui/test-results/tour-one/
+          if-no-files-found: error
+
+      # T-162 acceptance artifact: the long-haul DOM invariant sweep's run report
+      # (days reached, steps, the whole invariant battery and every violation).
+      # Same `always()` + `if-no-files-found: error` discipline as the sibling
+      # above, and for the same two reasons: a RED long-haul report is the one
+      # worth reading, and an artifact criterion must not rot into an empty
+      # upload. No new job and no new trigger — `long-haul.spec.ts` lives in
+      # `e2e/`, so `npm run test:e2e` above already collects it (one seed x 30
+      # days by default; see the spec header for the cadence argument).
+      - name: Upload long-haul invariant run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: long-haul-run-report
+          path: packages/ui/test-results/longhaul/
           if-no-files-found: error
 
   # T-1701a · The Electron shell. A THIRD job, deliberately separate from `e2e`:

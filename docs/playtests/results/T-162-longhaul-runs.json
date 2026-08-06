@@ -1,0 +1,4293 @@
+{
+  "task": "T-162",
+  "title": "Long-haul DOM invariant sweep \u2014 the committed wide run (5 seeds x 35 in-game days)",
+  "date": "2026-08-04",
+  "gameCommit": "a55edd53b125f02b5be0fb945b4dfc949f3ebff3",
+  "gameCommitSubject": "T-199: F-150-2: `smugglerPolicy`'s unguarded Explore loop, and the shared `planPacifistCombat` stall behind it",
+  "node": "v24.13.1",
+  "browser": "Chromium (Playwright, packages/ui/playwright.config.ts `devices['Desktop Chrome']`)",
+  "invocation": "LONGHAUL_SEEDS=1,2,3,4,5 LONGHAUL_DAYS=35 npm run test:e2e:longhaul -w @spacerquest/ui",
+  "note": "Every run below was driven entirely through the real DOM \u2014 real clicks on the real cockpit in real Chromium, no `applyPlayerAction` from the test, no state injection. The battery in packages/ui/e2e/support/longhaul-invariants.ts ran after EVERY dispatched step; `checksRun` is `steps x 8` by construction and is asserted, not narrated. This file is a hand-copied snapshot of packages/ui/test-results/longhaul/ (gitignored, per the T-155 / T-1604a precedent); the per-file sha256 lets a re-run be compared.",
+  "invariants": [
+    {
+      "name": "inv_no_uncaught_exception",
+      "claim": "no uncaught exception reached the page during the step"
+    },
+    {
+      "name": "inv_no_console_error",
+      "claim": "the step logged no console error (no allowlist \u2014 real noise is a finding, not a filter)"
+    },
+    {
+      "name": "inv_no_crash_screen",
+      "claim": "the ErrorBoundary's crash screen never mounts"
+    },
+    {
+      "name": "inv_cockpit_reachable",
+      "claim": "the cockpit stays takeable (end-day + hand mounted) unless a declared screen replaces it"
+    },
+    {
+      "name": "inv_no_dead_affordance",
+      "claim": "a control that passed the actionability trial and was clicked moved the cockpit"
+    },
+    {
+      "name": "inv_blocked_shows_reason",
+      "claim": "every disabled control exposes a non-empty reason a player can read"
+    },
+    {
+      "name": "inv_no_placeholder_text",
+      "claim": "no NaN / undefined / [object Object] / Infinity is rendered to the player"
+    },
+    {
+      "name": "inv_day_monotonic",
+      "claim": "the day never goes backwards and never advances by more than one per step"
+    }
+  ],
+  "totals": {
+    "seeds": 5,
+    "inGameDays": 176,
+    "stepsDispatched": 2826,
+    "invariantChecks": 22608,
+    "violations": 0,
+    "hittabilityFailures": 0,
+    "idleDigestUnstable": 0,
+    "distinctVerbsUnion": [
+      "abandon-contract",
+      "arm-die",
+      "buy-equipment",
+      "buy-fuel",
+      "buy-pods",
+      "combat-dismiss",
+      "combat-stance",
+      "dare-leave",
+      "dare-move",
+      "end-day",
+      "explore-sweep",
+      "haggle",
+      "hangout-close",
+      "hangout-social",
+      "hangout-toggle",
+      "jump",
+      "loan-borrow",
+      "loan-repay",
+      "manifest-toggle",
+      "onboarding-dismiss",
+      "pay-debt",
+      "preview-route",
+      "records-close",
+      "records-tab",
+      "records-toggle",
+      "repair-component",
+      "resolution-choice",
+      "seat-dare",
+      "settings-toggle",
+      "sign-contract",
+      "storylet-choice",
+      "storylet-close",
+      "storylet-open",
+      "upgrade-component",
+      "wire-log-close",
+      "wire-log-toggle"
+    ],
+    "wallClockSeconds": 244.8
+  },
+  "runs": [
+    {
+      "spec": "T-162 long-haul DOM invariant sweep",
+      "gameSeed": 1,
+      "choiceSeed": 7932,
+      "targetDays": 35,
+      "daysReached": 35,
+      "steps": 528,
+      "checksRun": 4224,
+      "stepsWithCandidates": 528,
+      "skippedSteps": 92,
+      "verbCounts": {
+        "upgrade-component": 10,
+        "settings-toggle": 35,
+        "arm-die": 33,
+        "sign-contract": 9,
+        "onboarding-dismiss": 3,
+        "pay-debt": 24,
+        "hangout-toggle": 23,
+        "hangout-close": 22,
+        "haggle": 7,
+        "hangout-social": 11,
+        "loan-borrow": 1,
+        "storylet-open": 17,
+        "storylet-close": 7,
+        "wire-log-toggle": 22,
+        "wire-log-close": 22,
+        "end-day": 28,
+        "records-toggle": 12,
+        "records-close": 12,
+        "storylet-choice": 9,
+        "preview-route": 6,
+        "seat-dare": 9,
+        "dare-move": 9,
+        "dare-leave": 9,
+        "buy-fuel": 7,
+        "explore-sweep": 2,
+        "loan-repay": 15,
+        "manifest-toggle": 15,
+        "jump": 4,
+        "abandon-contract": 5,
+        "combat-stance": 35,
+        "combat-dismiss": 2,
+        "repair-component": 1,
+        "buy-pods": 5,
+        "records-tab": 4,
+        "resolution-choice": 1
+      },
+      "distinctVerbs": 35,
+      "dailyTrialSweeps": 28,
+      "trialSweepsSkipped": 7,
+      "trialSweepControls": 263,
+      "hittabilityFailures": [],
+      "idleDigestChecks": 35,
+      "idleDigestUnstable": 0,
+      "reasonSources": {
+        "own-text": 569,
+        "title": 11488
+      },
+      "invariants": [
+        {
+          "name": "inv_no_uncaught_exception",
+          "claim": "no uncaught exception reached the page during the step"
+        },
+        {
+          "name": "inv_no_console_error",
+          "claim": "the step logged no console error (no allowlist \u2014 real noise is a finding, not a filter)"
+        },
+        {
+          "name": "inv_no_crash_screen",
+          "claim": "the ErrorBoundary's crash screen never mounts"
+        },
+        {
+          "name": "inv_cockpit_reachable",
+          "claim": "the cockpit stays takeable (end-day + hand mounted) unless a declared screen replaces it"
+        },
+        {
+          "name": "inv_no_dead_affordance",
+          "claim": "a control that passed the actionability trial and was clicked moved the cockpit"
+        },
+        {
+          "name": "inv_blocked_shows_reason",
+          "claim": "every disabled control exposes a non-empty reason a player can read"
+        },
+        {
+          "name": "inv_no_placeholder_text",
+          "claim": "no NaN / undefined / [object Object] / Infinity is rendered to the player"
+        },
+        {
+          "name": "inv_day_monotonic",
+          "claim": "the day never goes backwards and never advances by more than one per step"
+        }
+      ],
+      "violations": [],
+      "days": [
+        {
+          "day": 1,
+          "actions": [
+            "upgrade-component",
+            "settings-toggle",
+            "settings-toggle",
+            "buy-port (not takeable)",
+            "arm-die",
+            "sign-contract",
+            "onboarding-dismiss",
+            "pay-debt",
+            "repair-all (not takeable)",
+            "hangout-toggle",
+            "onboarding-dismiss",
+            "hangout-close",
+            "pay-debt",
+            "haggle",
+            "hangout-toggle",
+            "hangout-social",
+            "loan-borrow",
+            "hangout-close",
+            "storylet-open",
+            "storylet-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 2,
+          "actions": [
+            "records-toggle",
+            "records-close",
+            "upgrade-component",
+            "storylet-open",
+            "storylet-choice",
+            "wire-log-toggle",
+            "wire-log-close",
+            "sign-contract",
+            "buy-equipment (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "preview-route",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-equipment (not takeable)",
+            "hangout-toggle",
+            "hangout-social",
+            "arm-die",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 3,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "records-toggle",
+            "records-close",
+            "buy-fuel",
+            "explore-sweep",
+            "upgrade-component (not takeable)",
+            "hire-crew (not takeable)",
+            "repair-all (not takeable)",
+            "arm-die",
+            "buy-equipment (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-close",
+            "manifest-toggle",
+            "manifest-toggle",
+            "hangout-toggle",
+            "arm-die",
+            "hangout-close",
+            "explore-sweep",
+            "sign-contract",
+            "repair-all (not takeable)",
+            "arm-die",
+            "end-day"
+          ]
+        },
+        {
+          "day": 4,
+          "actions": [
+            "arm-die",
+            "buy-equipment (not takeable)",
+            "manifest-toggle",
+            "upgrade-component",
+            "jump",
+            "jump",
+            "upgrade-component",
+            "buy-port (not takeable)",
+            "abandon-contract",
+            "wire-log-toggle",
+            "wire-log-close",
+            "preview-route",
+            "end-day"
+          ]
+        },
+        {
+          "day": 5,
+          "actions": [
+            "preview-route",
+            "wire-log-toggle",
+            "wire-log-close",
+            "storylet-open",
+            "arm-die",
+            "storylet-choice",
+            "repair-all (not takeable)",
+            "buy-equipment (not takeable)",
+            "explore-sweep (not takeable)",
+            "manifest-toggle",
+            "haggle",
+            "manifest-toggle",
+            "hangout-toggle",
+            "loan-repay",
+            "arm-die",
+            "arm-die",
+            "hangout-close",
+            "settings-toggle",
+            "settings-toggle",
+            "repair-all (not takeable)",
+            "pay-debt",
+            "pay-debt",
+            "buy-pods (not takeable)",
+            "upgrade-component (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 6,
+          "actions": [
+            "end-day"
+          ]
+        },
+        {
+          "day": 7,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "pay-debt",
+            "manifest-toggle",
+            "storylet-open",
+            "storylet-choice",
+            "pay-debt",
+            "buy-fuel",
+            "hangout-toggle",
+            "hangout-close",
+            "preview-route",
+            "wire-log-toggle",
+            "wire-log-close",
+            "sign-contract",
+            "preview-route",
+            "buy-port (not takeable)",
+            "manifest-toggle",
+            "repair-all (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 8,
+          "actions": [
+            "buy-equipment (not takeable)",
+            "buy-pods (not takeable)",
+            "buy-port (not takeable)",
+            "abandon-contract",
+            "hire-crew (not takeable)",
+            "explore-sweep (not takeable)",
+            "pay-debt",
+            "pay-debt",
+            "jump",
+            "onboarding-dismiss",
+            "combat-stance",
+            "combat-stance",
+            "combat-dismiss",
+            "hangout-toggle",
+            "hangout-social",
+            "hangout-close",
+            "records-toggle",
+            "records-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "hangout-toggle",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 9,
+          "actions": [
+            "buy-pods (not takeable)",
+            "explore-sweep (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "pay-debt",
+            "buy-fuel",
+            "settings-toggle",
+            "settings-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-port (not takeable)",
+            "upgrade-component (not takeable)",
+            "hire-crew (not takeable)",
+            "hangout-toggle",
+            "hangout-social",
+            "arm-die",
+            "arm-die",
+            "loan-repay",
+            "loan-repay",
+            "arm-die",
+            "loan-repay",
+            "hangout-social",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 10,
+          "actions": [
+            "repair-component",
+            "storylet-open",
+            "arm-die",
+            "arm-die",
+            "arm-die",
+            "arm-die",
+            "storylet-close",
+            "repair-all (not takeable)",
+            "explore-sweep (not takeable)",
+            "buy-pods (not takeable)",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-social",
+            "loan-repay",
+            "loan-repay",
+            "loan-repay",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "hangout-toggle",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 11,
+          "actions": [
+            "hire-crew (not takeable)",
+            "repair-all (not takeable)",
+            "upgrade-component",
+            "arm-die",
+            "buy-pods (not takeable)",
+            "buy-fuel",
+            "hangout-toggle",
+            "hangout-social",
+            "hangout-close",
+            "hangout-toggle",
+            "arm-die",
+            "arm-die",
+            "loan-repay",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "pay-debt",
+            "pay-debt",
+            "manifest-toggle",
+            "preview-route",
+            "wire-log-toggle",
+            "wire-log-close",
+            "records-toggle",
+            "records-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 12,
+          "actions": [
+            "end-day"
+          ]
+        },
+        {
+          "day": 13,
+          "actions": [
+            "upgrade-component",
+            "explore-sweep (not takeable)",
+            "haggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "manifest-toggle",
+            "upgrade-component",
+            "buy-equipment (not takeable)",
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "upgrade-component (not takeable)",
+            "buy-pods (not takeable)",
+            "manifest-toggle",
+            "explore-sweep (not takeable)",
+            "jump",
+            "combat-stance"
+          ]
+        },
+        {
+          "day": 14,
+          "actions": [
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance"
+          ]
+        },
+        {
+          "day": 15,
+          "actions": [
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance"
+          ]
+        },
+        {
+          "day": 16,
+          "actions": [
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance"
+          ]
+        },
+        {
+          "day": 17,
+          "actions": [
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance"
+          ]
+        },
+        {
+          "day": 18,
+          "actions": [
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance",
+            "combat-stance"
+          ]
+        },
+        {
+          "day": 19,
+          "actions": [
+            "combat-stance",
+            "combat-stance",
+            "combat-dismiss",
+            "sign-contract",
+            "upgrade-component",
+            "sign-contract",
+            "buy-equipment (not takeable)",
+            "haggle",
+            "hangout-toggle",
+            "hangout-close",
+            "storylet-open",
+            "storylet-close",
+            "manifest-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "storylet-open",
+            "storylet-close",
+            "storylet-open",
+            "storylet-close",
+            "records-toggle",
+            "records-close",
+            "pay-debt",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 20,
+          "actions": [
+            "repair-all (not takeable)",
+            "abandon-contract",
+            "pay-debt",
+            "explore-sweep (not takeable)",
+            "storylet-open",
+            "storylet-choice",
+            "repair-all (not takeable)",
+            "storylet-open",
+            "arm-die",
+            "storylet-choice",
+            "end-day"
+          ]
+        },
+        {
+          "day": 21,
+          "actions": [
+            "hire-crew (not takeable)",
+            "buy-port (not takeable)",
+            "repair-all (not takeable)",
+            "arm-die",
+            "buy-port (not takeable)",
+            "storylet-open",
+            "storylet-close",
+            "upgrade-component",
+            "upgrade-component",
+            "manifest-toggle",
+            "buy-port (not takeable)",
+            "pay-debt",
+            "sign-contract",
+            "repair-all (not takeable)",
+            "sign-contract",
+            "records-toggle",
+            "records-close",
+            "storylet-open",
+            "storylet-choice",
+            "repair-all (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 22,
+          "actions": [
+            "buy-equipment (not takeable)",
+            "buy-fuel",
+            "buy-pods",
+            "wire-log-toggle",
+            "wire-log-close",
+            "explore-sweep (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "arm-die",
+            "buy-port (not takeable)",
+            "upgrade-component (not takeable)",
+            "hangout-toggle",
+            "hangout-social",
+            "arm-die",
+            "hangout-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-port (not takeable)",
+            "explore-sweep (not takeable)",
+            "haggle",
+            "hire-crew (not takeable)",
+            "explore-sweep (not takeable)",
+            "manifest-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 23,
+          "actions": [
+            "records-toggle",
+            "records-close",
+            "buy-pods",
+            "buy-port (not takeable)",
+            "explore-sweep (not takeable)",
+            "buy-port (not takeable)",
+            "upgrade-component (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 24,
+          "actions": [
+            "hangout-toggle",
+            "arm-die",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "loan-repay",
+            "hangout-close",
+            "settings-toggle",
+            "settings-toggle",
+            "buy-pods (not takeable)",
+            "abandon-contract",
+            "buy-pods (not takeable)",
+            "pay-debt",
+            "records-toggle",
+            "records-close",
+            "repair-all (not takeable)",
+            "pay-debt",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 25,
+          "actions": [
+            "settings-toggle",
+            "settings-toggle",
+            "pay-debt",
+            "repair-all (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 26,
+          "actions": [
+            "buy-equipment (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-equipment (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "settings-toggle",
+            "settings-toggle",
+            "repair-all (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "pay-debt",
+            "explore-sweep (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 27,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "arm-die",
+            "hire-crew (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 28,
+          "actions": [
+            "hangout-toggle",
+            "hangout-social",
+            "hangout-close",
+            "hire-crew (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 29,
+          "actions": [
+            "buy-equipment (not takeable)",
+            "buy-fuel",
+            "arm-die",
+            "pay-debt",
+            "pay-debt",
+            "hire-crew (not takeable)",
+            "upgrade-component (not takeable)",
+            "repair-all (not takeable)",
+            "buy-pods (not takeable)",
+            "explore-sweep (not takeable)",
+            "pay-debt",
+            "manifest-toggle",
+            "buy-equipment (not takeable)",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-social (not takeable)",
+            "arm-die",
+            "arm-die",
+            "loan-repay",
+            "hangout-social (not takeable)",
+            "loan-repay",
+            "hangout-close",
+            "hangout-toggle",
+            "hangout-close",
+            "storylet-open",
+            "end-day"
+          ]
+        },
+        {
+          "day": 30,
+          "actions": [
+            "haggle",
+            "buy-pods",
+            "upgrade-component (not takeable)",
+            "arm-die",
+            "sign-contract",
+            "end-day"
+          ]
+        },
+        {
+          "day": 31,
+          "actions": [
+            "resolution-choice",
+            "arm-die",
+            "buy-pods",
+            "storylet-open",
+            "storylet-choice",
+            "hire-crew (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "repair-all (not takeable)",
+            "haggle",
+            "repair-all (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "storylet-open",
+            "storylet-choice",
+            "buy-equipment (not takeable)",
+            "manifest-toggle",
+            "hangout-toggle",
+            "loan-repay",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "end-day"
+          ]
+        },
+        {
+          "day": 32,
+          "actions": [
+            "pay-debt",
+            "arm-die",
+            "buy-port (not takeable)",
+            "arm-die",
+            "abandon-contract",
+            "storylet-open",
+            "storylet-close",
+            "hire-crew (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 33,
+          "actions": [
+            "pay-debt",
+            "buy-fuel",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "buy-equipment (not takeable)",
+            "hire-crew (not takeable)",
+            "hangout-toggle",
+            "hangout-social",
+            "arm-die",
+            "hangout-social",
+            "hangout-close",
+            "pay-debt",
+            "upgrade-component (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 34,
+          "actions": [
+            "storylet-open",
+            "storylet-choice",
+            "records-toggle",
+            "records-close",
+            "buy-pods",
+            "end-day"
+          ]
+        },
+        {
+          "day": 35,
+          "actions": [
+            "settings-toggle"
+          ]
+        }
+      ],
+      "aborted": null,
+      "wallClockMs": 46967,
+      "rawFileSha256": "cff6b6acb3d3e58fddfd35666ab1d298feeb811eabc0144072b9c36563037de1",
+      "sourceFile": "packages/ui/test-results/longhaul/seed-1.json"
+    },
+    {
+      "spec": "T-162 long-haul DOM invariant sweep",
+      "gameSeed": 2,
+      "choiceSeed": 15851,
+      "targetDays": 35,
+      "daysReached": 35,
+      "steps": 567,
+      "checksRun": 4536,
+      "stepsWithCandidates": 567,
+      "skippedSteps": 112,
+      "verbCounts": {
+        "pay-debt": 22,
+        "settings-toggle": 26,
+        "hangout-toggle": 26,
+        "onboarding-dismiss": 3,
+        "loan-borrow": 2,
+        "seat-dare": 7,
+        "dare-move": 7,
+        "dare-leave": 7,
+        "loan-repay": 17,
+        "hangout-close": 26,
+        "jump": 4,
+        "combat-stance": 1,
+        "combat-dismiss": 1,
+        "storylet-open": 10,
+        "storylet-close": 4,
+        "manifest-toggle": 18,
+        "preview-route": 2,
+        "records-toggle": 26,
+        "records-close": 25,
+        "end-day": 34,
+        "upgrade-component": 12,
+        "explore-sweep": 1,
+        "arm-die": 18,
+        "hangout-social": 8,
+        "wire-log-toggle": 30,
+        "wire-log-close": 29,
+        "buy-fuel": 18,
+        "records-tab": 22,
+        "sign-contract": 14,
+        "abandon-contract": 7,
+        "haggle": 12,
+        "storylet-choice": 6,
+        "buy-pods": 9,
+        "resolution-choice": 1
+      },
+      "distinctVerbs": 34,
+      "dailyTrialSweeps": 34,
+      "trialSweepsSkipped": 1,
+      "trialSweepControls": 342,
+      "hittabilityFailures": [],
+      "idleDigestChecks": 35,
+      "idleDigestUnstable": 0,
+      "reasonSources": {
+        "title": 11943,
+        "own-text": 583
+      },
+      "invariants": [
+        {
+          "name": "inv_no_uncaught_exception",
+          "claim": "no uncaught exception reached the page during the step"
+        },
+        {
+          "name": "inv_no_console_error",
+          "claim": "the step logged no console error (no allowlist \u2014 real noise is a finding, not a filter)"
+        },
+        {
+          "name": "inv_no_crash_screen",
+          "claim": "the ErrorBoundary's crash screen never mounts"
+        },
+        {
+          "name": "inv_cockpit_reachable",
+          "claim": "the cockpit stays takeable (end-day + hand mounted) unless a declared screen replaces it"
+        },
+        {
+          "name": "inv_no_dead_affordance",
+          "claim": "a control that passed the actionability trial and was clicked moved the cockpit"
+        },
+        {
+          "name": "inv_blocked_shows_reason",
+          "claim": "every disabled control exposes a non-empty reason a player can read"
+        },
+        {
+          "name": "inv_no_placeholder_text",
+          "claim": "no NaN / undefined / [object Object] / Infinity is rendered to the player"
+        },
+        {
+          "name": "inv_day_monotonic",
+          "claim": "the day never goes backwards and never advances by more than one per step"
+        }
+      ],
+      "violations": [],
+      "days": [
+        {
+          "day": 1,
+          "actions": [
+            "repair-all (not takeable)",
+            "pay-debt",
+            "settings-toggle",
+            "settings-toggle",
+            "hangout-toggle",
+            "onboarding-dismiss",
+            "loan-borrow",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "loan-repay",
+            "hangout-close",
+            "jump",
+            "onboarding-dismiss",
+            "combat-stance",
+            "combat-dismiss",
+            "storylet-open",
+            "storylet-close",
+            "manifest-toggle",
+            "preview-route",
+            "hangout-toggle",
+            "hangout-close",
+            "records-toggle",
+            "records-close",
+            "preview-route",
+            "end-day"
+          ]
+        },
+        {
+          "day": 2,
+          "actions": [
+            "hire-crew (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "upgrade-component",
+            "explore-sweep",
+            "end-day"
+          ]
+        },
+        {
+          "day": 3,
+          "actions": [
+            "manifest-toggle",
+            "hangout-toggle",
+            "loan-repay",
+            "arm-die",
+            "arm-die",
+            "loan-repay",
+            "arm-die",
+            "loan-repay",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-social",
+            "loan-repay",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 4,
+          "actions": [
+            "jump",
+            "end-day"
+          ]
+        },
+        {
+          "day": 5,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-fuel",
+            "manifest-toggle",
+            "repair-all (not takeable)",
+            "buy-port (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "manifest-toggle",
+            "sign-contract",
+            "onboarding-dismiss",
+            "buy-pods (not takeable)",
+            "abandon-contract",
+            "buy-port (not takeable)",
+            "hire-crew (not takeable)",
+            "sign-contract",
+            "buy-pods (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 6,
+          "actions": [
+            "buy-pods (not takeable)",
+            "sign-contract",
+            "buy-equipment (not takeable)",
+            "hire-crew (not takeable)",
+            "sign-contract",
+            "wire-log-toggle",
+            "wire-log-close",
+            "repair-all (not takeable)",
+            "hire-crew (not takeable)",
+            "records-toggle",
+            "records-close",
+            "arm-die",
+            "buy-port (not takeable)",
+            "hire-crew (not takeable)",
+            "haggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 7,
+          "actions": [
+            "explore-sweep (not takeable)",
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "loan-borrow",
+            "hangout-social",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-social",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 8,
+          "actions": [
+            "hire-crew (not takeable)",
+            "records-toggle",
+            "records-close",
+            "storylet-open",
+            "storylet-choice",
+            "end-day"
+          ]
+        },
+        {
+          "day": 9,
+          "actions": [
+            "hire-crew (not takeable)",
+            "upgrade-component",
+            "repair-all (not takeable)",
+            "abandon-contract",
+            "explore-sweep (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "buy-port (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-pods (not takeable)",
+            "haggle",
+            "storylet-open",
+            "storylet-choice",
+            "buy-port (not takeable)",
+            "pay-debt",
+            "pay-debt",
+            "buy-equipment (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "explore-sweep (not takeable)",
+            "hire-crew (not takeable)",
+            "manifest-toggle",
+            "upgrade-component (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 10,
+          "actions": [
+            "buy-equipment (not takeable)",
+            "arm-die",
+            "buy-port (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "buy-equipment (not takeable)",
+            "buy-pods (not takeable)",
+            "buy-fuel",
+            "hangout-toggle",
+            "hangout-social",
+            "loan-repay",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-social",
+            "hangout-close",
+            "hangout-toggle",
+            "hangout-close",
+            "pay-debt",
+            "end-day"
+          ]
+        },
+        {
+          "day": 11,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-fuel",
+            "pay-debt",
+            "manifest-toggle",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "haggle",
+            "buy-port (not takeable)",
+            "haggle",
+            "explore-sweep (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "explore-sweep (not takeable)",
+            "upgrade-component (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 12,
+          "actions": [
+            "haggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "settings-toggle",
+            "settings-toggle",
+            "pay-debt",
+            "hire-crew (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 13,
+          "actions": [
+            "storylet-open",
+            "arm-die",
+            "storylet-close",
+            "upgrade-component",
+            "buy-fuel",
+            "repair-all (not takeable)",
+            "manifest-toggle",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "buy-port (not takeable)",
+            "storylet-open",
+            "storylet-choice",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-social",
+            "hangout-social",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 14,
+          "actions": [
+            "upgrade-component",
+            "manifest-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-equipment (not takeable)",
+            "explore-sweep (not takeable)",
+            "upgrade-component",
+            "buy-fuel",
+            "explore-sweep (not takeable)",
+            "haggle",
+            "buy-pods",
+            "settings-toggle",
+            "settings-toggle",
+            "pay-debt",
+            "hangout-toggle",
+            "hangout-close",
+            "hangout-toggle",
+            "hangout-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "hangout-toggle",
+            "hangout-close",
+            "settings-toggle",
+            "settings-toggle",
+            "wire-log-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 15,
+          "actions": [
+            "upgrade-component",
+            "jump",
+            "upgrade-component",
+            "pay-debt",
+            "pay-debt",
+            "manifest-toggle",
+            "buy-pods (not takeable)",
+            "hire-crew (not takeable)",
+            "buy-port (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "buy-fuel",
+            "jump",
+            "storylet-open",
+            "storylet-close",
+            "settings-toggle",
+            "settings-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "settings-toggle",
+            "settings-toggle",
+            "manifest-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 16,
+          "actions": [
+            "buy-pods",
+            "sign-contract",
+            "arm-die",
+            "wire-log-toggle",
+            "wire-log-close",
+            "settings-toggle",
+            "settings-toggle",
+            "upgrade-component (not takeable)",
+            "haggle",
+            "buy-port (not takeable)",
+            "repair-all (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-port (not takeable)",
+            "buy-pods (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 17,
+          "actions": [
+            "abandon-contract",
+            "buy-equipment (not takeable)",
+            "buy-pods",
+            "settings-toggle",
+            "settings-toggle",
+            "sign-contract",
+            "buy-pods (not takeable)",
+            "storylet-open",
+            "storylet-choice",
+            "buy-equipment (not takeable)",
+            "storylet-open",
+            "storylet-choice",
+            "repair-all (not takeable)",
+            "sign-contract",
+            "buy-fuel",
+            "abandon-contract",
+            "records-toggle",
+            "records-close",
+            "hangout-toggle",
+            "hangout-close",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "hangout-toggle",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 18,
+          "actions": [
+            "buy-fuel",
+            "arm-die",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "haggle",
+            "buy-pods",
+            "hangout-toggle",
+            "hangout-close",
+            "buy-fuel",
+            "hangout-toggle",
+            "hangout-close",
+            "hire-crew (not takeable)",
+            "repair-all (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-port (not takeable)",
+            "manifest-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 19,
+          "actions": [
+            "buy-port (not takeable)",
+            "buy-equipment (not takeable)",
+            "buy-port (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-close",
+            "explore-sweep (not takeable)",
+            "upgrade-component (not takeable)",
+            "hire-crew (not takeable)",
+            "buy-pods (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 20,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "records-toggle",
+            "records-close",
+            "buy-equipment (not takeable)",
+            "buy-pods",
+            "upgrade-component (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-port (not takeable)",
+            "buy-equipment (not takeable)",
+            "pay-debt",
+            "explore-sweep (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 21,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "explore-sweep (not takeable)",
+            "pay-debt",
+            "records-toggle",
+            "records-close",
+            "pay-debt",
+            "arm-die",
+            "records-toggle",
+            "records-close",
+            "manifest-toggle",
+            "hire-crew (not takeable)",
+            "repair-all (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "hangout-toggle",
+            "hangout-social (not takeable)",
+            "loan-repay",
+            "arm-die",
+            "loan-repay",
+            "loan-repay",
+            "arm-die",
+            "loan-repay",
+            "loan-repay",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 22,
+          "actions": [
+            "upgrade-component",
+            "hire-crew (not takeable)",
+            "haggle",
+            "records-toggle",
+            "records-close",
+            "upgrade-component",
+            "buy-fuel",
+            "pay-debt",
+            "sign-contract",
+            "hangout-toggle",
+            "hangout-close",
+            "hangout-toggle",
+            "hangout-close",
+            "pay-debt",
+            "records-toggle",
+            "records-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "manifest-toggle",
+            "hangout-toggle",
+            "hangout-close",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 23,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-pods",
+            "hangout-toggle",
+            "hangout-close",
+            "manifest-toggle",
+            "pay-debt",
+            "buy-fuel",
+            "hangout-toggle",
+            "hangout-social (not takeable)",
+            "hangout-close",
+            "hire-crew (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 24,
+          "actions": [
+            "hangout-toggle",
+            "hangout-social",
+            "loan-repay",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "arm-die",
+            "loan-repay",
+            "loan-repay",
+            "hangout-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "explore-sweep (not takeable)",
+            "abandon-contract",
+            "buy-equipment (not takeable)",
+            "sign-contract",
+            "pay-debt",
+            "end-day"
+          ]
+        },
+        {
+          "day": 25,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-equipment (not takeable)",
+            "manifest-toggle",
+            "buy-pods",
+            "explore-sweep (not takeable)",
+            "pay-debt",
+            "buy-equipment (not takeable)",
+            "arm-die",
+            "buy-port (not takeable)",
+            "pay-debt",
+            "buy-equipment (not takeable)",
+            "upgrade-component (not takeable)",
+            "buy-fuel",
+            "manifest-toggle",
+            "abandon-contract",
+            "arm-die",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "repair-all (not takeable)",
+            "buy-equipment (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "repair-all (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 26,
+          "actions": [
+            "sign-contract",
+            "buy-fuel",
+            "arm-die",
+            "arm-die",
+            "buy-equipment (not takeable)",
+            "upgrade-component",
+            "abandon-contract",
+            "hire-crew (not takeable)",
+            "haggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 27,
+          "actions": [
+            "buy-equipment (not takeable)",
+            "upgrade-component",
+            "manifest-toggle",
+            "buy-equipment (not takeable)",
+            "upgrade-component (not takeable)",
+            "explore-sweep (not takeable)",
+            "buy-fuel",
+            "hire-crew (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 28,
+          "actions": [
+            "buy-pods",
+            "pay-debt",
+            "buy-port (not takeable)",
+            "manifest-toggle",
+            "records-toggle",
+            "records-close",
+            "storylet-open",
+            "arm-die",
+            "storylet-choice",
+            "arm-die",
+            "hire-crew (not takeable)",
+            "upgrade-component (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "buy-fuel",
+            "records-toggle",
+            "records-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 29,
+          "actions": [
+            "upgrade-component",
+            "end-day"
+          ]
+        },
+        {
+          "day": 30,
+          "actions": [
+            "hangout-toggle",
+            "hangout-close",
+            "hangout-toggle",
+            "hangout-close",
+            "settings-toggle",
+            "settings-toggle",
+            "repair-all (not takeable)",
+            "hire-crew (not takeable)",
+            "buy-port (not takeable)",
+            "hire-crew (not takeable)",
+            "upgrade-component (not takeable)",
+            "explore-sweep (not takeable)",
+            "haggle",
+            "buy-pods",
+            "hire-crew (not takeable)",
+            "repair-all (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 31,
+          "actions": [
+            "resolution-choice",
+            "sign-contract",
+            "upgrade-component (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "sign-contract",
+            "buy-fuel",
+            "explore-sweep (not takeable)",
+            "buy-fuel",
+            "pay-debt",
+            "buy-pods (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "upgrade-component (not takeable)",
+            "repair-all (not takeable)",
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "pay-debt",
+            "buy-equipment (not takeable)",
+            "records-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 32,
+          "actions": [
+            "buy-port (not takeable)",
+            "sign-contract",
+            "haggle",
+            "pay-debt",
+            "buy-pods (not takeable)",
+            "buy-fuel",
+            "end-day"
+          ]
+        },
+        {
+          "day": 33,
+          "actions": [
+            "storylet-open",
+            "storylet-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 34,
+          "actions": [
+            "end-day"
+          ]
+        },
+        {
+          "day": 35,
+          "actions": [
+            "sign-contract"
+          ]
+        }
+      ],
+      "aborted": null,
+      "wallClockMs": 48987,
+      "rawFileSha256": "3a74a5b6013ec4a4ce7384d34d2624b92601bc16b32ff4d03fe33ceccebd25de",
+      "sourceFile": "packages/ui/test-results/longhaul/seed-2.json"
+    },
+    {
+      "spec": "T-162 long-haul DOM invariant sweep",
+      "gameSeed": 3,
+      "choiceSeed": 23770,
+      "targetDays": 35,
+      "daysReached": 35,
+      "steps": 562,
+      "checksRun": 4496,
+      "stepsWithCandidates": 562,
+      "skippedSteps": 94,
+      "verbCounts": {
+        "records-toggle": 26,
+        "records-tab": 33,
+        "records-close": 24,
+        "end-day": 34,
+        "haggle": 14,
+        "hangout-toggle": 20,
+        "onboarding-dismiss": 2,
+        "arm-die": 35,
+        "hangout-close": 18,
+        "jump": 3,
+        "storylet-open": 11,
+        "storylet-choice": 7,
+        "loan-borrow": 1,
+        "hangout-social": 12,
+        "upgrade-component": 5,
+        "storylet-close": 3,
+        "wire-log-toggle": 24,
+        "wire-log-close": 24,
+        "manifest-toggle": 25,
+        "buy-equipment": 1,
+        "settings-toggle": 55,
+        "pay-debt": 21,
+        "preview-route": 1,
+        "seat-dare": 5,
+        "dare-move": 5,
+        "dare-leave": 5,
+        "loan-repay": 17,
+        "sign-contract": 10,
+        "abandon-contract": 4,
+        "buy-fuel": 17,
+        "buy-pods": 5,
+        "resolution-choice": 1
+      },
+      "distinctVerbs": 32,
+      "dailyTrialSweeps": 34,
+      "trialSweepsSkipped": 1,
+      "trialSweepControls": 337,
+      "hittabilityFailures": [],
+      "idleDigestChecks": 35,
+      "idleDigestUnstable": 0,
+      "reasonSources": {
+        "own-text": 560,
+        "title": 11642
+      },
+      "invariants": [
+        {
+          "name": "inv_no_uncaught_exception",
+          "claim": "no uncaught exception reached the page during the step"
+        },
+        {
+          "name": "inv_no_console_error",
+          "claim": "the step logged no console error (no allowlist \u2014 real noise is a finding, not a filter)"
+        },
+        {
+          "name": "inv_no_crash_screen",
+          "claim": "the ErrorBoundary's crash screen never mounts"
+        },
+        {
+          "name": "inv_cockpit_reachable",
+          "claim": "the cockpit stays takeable (end-day + hand mounted) unless a declared screen replaces it"
+        },
+        {
+          "name": "inv_no_dead_affordance",
+          "claim": "a control that passed the actionability trial and was clicked moved the cockpit"
+        },
+        {
+          "name": "inv_blocked_shows_reason",
+          "claim": "every disabled control exposes a non-empty reason a player can read"
+        },
+        {
+          "name": "inv_no_placeholder_text",
+          "claim": "no NaN / undefined / [object Object] / Infinity is rendered to the player"
+        },
+        {
+          "name": "inv_day_monotonic",
+          "claim": "the day never goes backwards and never advances by more than one per step"
+        }
+      ],
+      "violations": [],
+      "days": [
+        {
+          "day": 1,
+          "actions": [
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 2,
+          "actions": [
+            "haggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 3,
+          "actions": [
+            "hangout-toggle",
+            "onboarding-dismiss",
+            "arm-die",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 4,
+          "actions": [
+            "jump",
+            "storylet-open",
+            "storylet-choice",
+            "hangout-toggle",
+            "loan-borrow",
+            "hangout-social",
+            "hangout-close",
+            "jump",
+            "upgrade-component",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "storylet-open",
+            "storylet-close",
+            "hangout-toggle",
+            "hangout-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "manifest-toggle",
+            "records-toggle",
+            "records-tab",
+            "end-day"
+          ]
+        },
+        {
+          "day": 5,
+          "actions": [
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "arm-die",
+            "hire-crew (not takeable)",
+            "buy-equipment",
+            "end-day"
+          ]
+        },
+        {
+          "day": 6,
+          "actions": [
+            "buy-pods (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "arm-die",
+            "wire-log-toggle",
+            "wire-log-close",
+            "pay-debt",
+            "preview-route",
+            "manifest-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "jump",
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-social",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "loan-repay",
+            "hangout-social",
+            "hangout-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 7,
+          "actions": [
+            "settings-toggle",
+            "settings-toggle",
+            "hire-crew (not takeable)",
+            "sign-contract",
+            "onboarding-dismiss",
+            "pay-debt",
+            "settings-toggle",
+            "settings-toggle",
+            "abandon-contract",
+            "repair-all (not takeable)",
+            "arm-die",
+            "arm-die",
+            "records-toggle",
+            "records-close",
+            "pay-debt",
+            "arm-die",
+            "haggle",
+            "records-toggle",
+            "records-close",
+            "sign-contract",
+            "wire-log-toggle",
+            "wire-log-close",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 8,
+          "actions": [
+            "repair-all (not takeable)",
+            "storylet-open",
+            "storylet-choice",
+            "sign-contract",
+            "buy-pods (not takeable)",
+            "haggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "explore-sweep (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 9,
+          "actions": [
+            "hire-crew (not takeable)",
+            "abandon-contract",
+            "hangout-toggle",
+            "hangout-social",
+            "hangout-social",
+            "hangout-close",
+            "arm-die",
+            "haggle",
+            "storylet-open",
+            "storylet-choice",
+            "buy-port (not takeable)",
+            "hangout-toggle",
+            "hangout-social",
+            "hangout-close",
+            "settings-toggle",
+            "settings-toggle",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 10,
+          "actions": [
+            "buy-equipment (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-port (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 11,
+          "actions": [
+            "explore-sweep (not takeable)",
+            "records-toggle",
+            "records-close",
+            "buy-port (not takeable)",
+            "buy-pods (not takeable)",
+            "buy-fuel",
+            "repair-all (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "manifest-toggle",
+            "explore-sweep (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "hire-crew (not takeable)",
+            "pay-debt",
+            "upgrade-component (not takeable)",
+            "hire-crew (not takeable)",
+            "buy-pods (not takeable)",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 12,
+          "actions": [
+            "explore-sweep (not takeable)",
+            "buy-equipment (not takeable)",
+            "buy-pods (not takeable)",
+            "manifest-toggle",
+            "hangout-toggle",
+            "arm-die",
+            "loan-repay",
+            "hangout-social",
+            "hangout-social",
+            "loan-repay",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "manifest-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "settings-toggle",
+            "settings-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "records-toggle",
+            "records-close",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 13,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-fuel",
+            "buy-pods (not takeable)",
+            "buy-port (not takeable)",
+            "explore-sweep (not takeable)",
+            "buy-fuel",
+            "records-toggle",
+            "records-close",
+            "manifest-toggle",
+            "pay-debt",
+            "records-toggle",
+            "records-close",
+            "buy-port (not takeable)",
+            "sign-contract",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "hire-crew (not takeable)",
+            "upgrade-component (not takeable)",
+            "records-toggle",
+            "records-close",
+            "buy-fuel",
+            "end-day"
+          ]
+        },
+        {
+          "day": 14,
+          "actions": [
+            "haggle",
+            "settings-toggle",
+            "settings-toggle",
+            "buy-pods (not takeable)",
+            "upgrade-component",
+            "wire-log-toggle",
+            "wire-log-close",
+            "haggle",
+            "explore-sweep (not takeable)",
+            "abandon-contract",
+            "buy-fuel",
+            "pay-debt",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "manifest-toggle",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "manifest-toggle",
+            "manifest-toggle",
+            "manifest-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 15,
+          "actions": [
+            "manifest-toggle",
+            "pay-debt",
+            "buy-port (not takeable)",
+            "pay-debt",
+            "wire-log-toggle",
+            "wire-log-close",
+            "hangout-toggle",
+            "arm-die",
+            "hangout-social",
+            "arm-die",
+            "arm-die",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "loan-repay",
+            "hangout-close",
+            "buy-pods (not takeable)",
+            "repair-all (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "buy-port (not takeable)",
+            "pay-debt",
+            "buy-pods (not takeable)",
+            "pay-debt",
+            "repair-all (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 16,
+          "actions": [
+            "buy-pods",
+            "manifest-toggle",
+            "hire-crew (not takeable)",
+            "haggle",
+            "manifest-toggle",
+            "hire-crew (not takeable)",
+            "repair-all (not takeable)",
+            "pay-debt",
+            "settings-toggle",
+            "settings-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-equipment (not takeable)",
+            "arm-die",
+            "hangout-toggle",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 17,
+          "actions": [
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-social (not takeable)",
+            "hangout-close",
+            "buy-fuel",
+            "settings-toggle",
+            "settings-toggle",
+            "hire-crew (not takeable)",
+            "buy-equipment (not takeable)",
+            "arm-die",
+            "hire-crew (not takeable)",
+            "buy-equipment (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 18,
+          "actions": [
+            "buy-fuel",
+            "buy-fuel",
+            "hangout-toggle",
+            "arm-die",
+            "hangout-close",
+            "upgrade-component",
+            "manifest-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "buy-fuel",
+            "pay-debt",
+            "haggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 19,
+          "actions": [
+            "buy-port (not takeable)",
+            "buy-pods",
+            "buy-port (not takeable)",
+            "buy-pods (not takeable)",
+            "pay-debt",
+            "hangout-toggle",
+            "hangout-close",
+            "repair-all (not takeable)",
+            "haggle",
+            "buy-pods (not takeable)",
+            "haggle",
+            "haggle",
+            "arm-die",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "buy-equipment (not takeable)",
+            "upgrade-component (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "records-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 20,
+          "actions": [
+            "explore-sweep (not takeable)",
+            "buy-port (not takeable)",
+            "arm-die",
+            "arm-die",
+            "buy-fuel",
+            "repair-all (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 21,
+          "actions": [
+            "repair-all (not takeable)",
+            "buy-fuel",
+            "end-day"
+          ]
+        },
+        {
+          "day": 22,
+          "actions": [
+            "manifest-toggle",
+            "hangout-toggle",
+            "arm-die",
+            "hangout-social (not takeable)",
+            "arm-die",
+            "loan-repay",
+            "hangout-close",
+            "storylet-open",
+            "storylet-choice",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-social (not takeable)",
+            "hangout-close",
+            "hire-crew (not takeable)",
+            "manifest-toggle",
+            "manifest-toggle",
+            "arm-die",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-close",
+            "arm-die",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-close",
+            "buy-fuel",
+            "end-day"
+          ]
+        },
+        {
+          "day": 23,
+          "actions": [
+            "pay-debt",
+            "upgrade-component (not takeable)",
+            "manifest-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "sign-contract",
+            "sign-contract",
+            "arm-die",
+            "buy-pods (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 24,
+          "actions": [
+            "sign-contract",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-equipment (not takeable)",
+            "storylet-open",
+            "arm-die",
+            "arm-die",
+            "storylet-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-pods",
+            "hire-crew (not takeable)",
+            "explore-sweep (not takeable)",
+            "sign-contract",
+            "pay-debt",
+            "explore-sweep (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 25,
+          "actions": [
+            "upgrade-component",
+            "repair-all (not takeable)",
+            "storylet-open",
+            "storylet-choice",
+            "settings-toggle",
+            "settings-toggle",
+            "sign-contract",
+            "wire-log-toggle",
+            "wire-log-close",
+            "settings-toggle",
+            "settings-toggle",
+            "records-toggle",
+            "records-close",
+            "explore-sweep (not takeable)",
+            "buy-fuel",
+            "pay-debt",
+            "repair-all (not takeable)",
+            "hangout-toggle",
+            "arm-die",
+            "loan-repay",
+            "arm-die",
+            "arm-die",
+            "loan-repay",
+            "loan-repay",
+            "arm-die",
+            "end-day"
+          ]
+        },
+        {
+          "day": 26,
+          "actions": [
+            "upgrade-component",
+            "haggle",
+            "hire-crew (not takeable)",
+            "haggle",
+            "manifest-toggle",
+            "repair-all (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 27,
+          "actions": [
+            "explore-sweep (not takeable)",
+            "records-toggle",
+            "records-close",
+            "abandon-contract",
+            "settings-toggle",
+            "settings-toggle",
+            "storylet-open",
+            "storylet-choice",
+            "pay-debt",
+            "manifest-toggle",
+            "haggle",
+            "settings-toggle",
+            "settings-toggle",
+            "records-toggle",
+            "records-close",
+            "settings-toggle",
+            "settings-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-pods (not takeable)",
+            "manifest-toggle",
+            "upgrade-component (not takeable)",
+            "manifest-toggle",
+            "arm-die",
+            "sign-contract",
+            "end-day"
+          ]
+        },
+        {
+          "day": 28,
+          "actions": [
+            "manifest-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "settings-toggle",
+            "settings-toggle",
+            "explore-sweep (not takeable)",
+            "buy-equipment (not takeable)",
+            "hire-crew (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 29,
+          "actions": [
+            "buy-fuel",
+            "buy-equipment (not takeable)",
+            "pay-debt",
+            "repair-all (not takeable)",
+            "buy-port (not takeable)",
+            "storylet-open",
+            "storylet-close",
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "repair-all (not takeable)",
+            "buy-equipment (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "hire-crew (not takeable)",
+            "manifest-toggle",
+            "hire-crew (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "storylet-open",
+            "end-day"
+          ]
+        },
+        {
+          "day": 30,
+          "actions": [
+            "buy-fuel",
+            "wire-log-toggle",
+            "wire-log-close",
+            "manifest-toggle",
+            "storylet-open",
+            "storylet-choice",
+            "arm-die",
+            "records-toggle",
+            "records-close",
+            "arm-die",
+            "pay-debt",
+            "repair-all (not takeable)",
+            "buy-port (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "arm-die",
+            "pay-debt",
+            "records-toggle",
+            "records-close",
+            "hire-crew (not takeable)",
+            "hangout-toggle",
+            "loan-repay",
+            "arm-die",
+            "arm-die",
+            "hangout-social",
+            "end-day"
+          ]
+        },
+        {
+          "day": 31,
+          "actions": [
+            "resolution-choice",
+            "hangout-toggle",
+            "hangout-social",
+            "loan-repay",
+            "loan-repay",
+            "hangout-social",
+            "loan-repay",
+            "loan-repay",
+            "hangout-close",
+            "upgrade-component (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-equipment (not takeable)",
+            "pay-debt",
+            "end-day"
+          ]
+        },
+        {
+          "day": 32,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 33,
+          "actions": [
+            "buy-port (not takeable)",
+            "hire-crew (not takeable)",
+            "buy-pods",
+            "buy-fuel",
+            "upgrade-component (not takeable)",
+            "buy-equipment (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "buy-fuel",
+            "end-day"
+          ]
+        },
+        {
+          "day": 34,
+          "actions": [
+            "explore-sweep (not takeable)",
+            "arm-die",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 35,
+          "actions": [
+            "buy-pods"
+          ]
+        }
+      ],
+      "aborted": null,
+      "wallClockMs": 48935,
+      "rawFileSha256": "c3374a25ea880f7ae7a4bde5829df47c46682b69a1d76c72c5180da8a87e300b",
+      "sourceFile": "packages/ui/test-results/longhaul/seed-3.json"
+    },
+    {
+      "spec": "T-162 long-haul DOM invariant sweep",
+      "gameSeed": 4,
+      "choiceSeed": 31689,
+      "targetDays": 35,
+      "daysReached": 35,
+      "steps": 530,
+      "checksRun": 4240,
+      "stepsWithCandidates": 530,
+      "skippedSteps": 91,
+      "verbCounts": {
+        "arm-die": 43,
+        "buy-fuel": 15,
+        "pay-debt": 23,
+        "hangout-toggle": 21,
+        "onboarding-dismiss": 2,
+        "seat-dare": 14,
+        "dare-move": 14,
+        "dare-leave": 14,
+        "hangout-social": 16,
+        "hangout-close": 18,
+        "records-toggle": 17,
+        "records-close": 17,
+        "settings-toggle": 28,
+        "end-day": 34,
+        "upgrade-component": 6,
+        "loan-borrow": 1,
+        "manifest-toggle": 20,
+        "wire-log-toggle": 22,
+        "wire-log-close": 20,
+        "loan-repay": 8,
+        "preview-route": 4,
+        "storylet-open": 18,
+        "storylet-choice": 6,
+        "explore-sweep": 1,
+        "jump": 3,
+        "sign-contract": 11,
+        "abandon-contract": 5,
+        "storylet-close": 11,
+        "haggle": 11,
+        "records-tab": 14,
+        "resolution-choice": 1,
+        "buy-pods": 1
+      },
+      "distinctVerbs": 32,
+      "dailyTrialSweeps": 34,
+      "trialSweepsSkipped": 1,
+      "trialSweepControls": 347,
+      "hittabilityFailures": [],
+      "idleDigestChecks": 35,
+      "idleDigestUnstable": 0,
+      "reasonSources": {
+        "title": 10977,
+        "own-text": 514
+      },
+      "invariants": [
+        {
+          "name": "inv_no_uncaught_exception",
+          "claim": "no uncaught exception reached the page during the step"
+        },
+        {
+          "name": "inv_no_console_error",
+          "claim": "the step logged no console error (no allowlist \u2014 real noise is a finding, not a filter)"
+        },
+        {
+          "name": "inv_no_crash_screen",
+          "claim": "the ErrorBoundary's crash screen never mounts"
+        },
+        {
+          "name": "inv_cockpit_reachable",
+          "claim": "the cockpit stays takeable (end-day + hand mounted) unless a declared screen replaces it"
+        },
+        {
+          "name": "inv_no_dead_affordance",
+          "claim": "a control that passed the actionability trial and was clicked moved the cockpit"
+        },
+        {
+          "name": "inv_blocked_shows_reason",
+          "claim": "every disabled control exposes a non-empty reason a player can read"
+        },
+        {
+          "name": "inv_no_placeholder_text",
+          "claim": "no NaN / undefined / [object Object] / Infinity is rendered to the player"
+        },
+        {
+          "name": "inv_day_monotonic",
+          "claim": "the day never goes backwards and never advances by more than one per step"
+        }
+      ],
+      "violations": [],
+      "days": [
+        {
+          "day": 1,
+          "actions": [
+            "arm-die",
+            "buy-fuel",
+            "hire-crew (not takeable)",
+            "pay-debt",
+            "hangout-toggle",
+            "onboarding-dismiss",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-social",
+            "arm-die",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "records-toggle",
+            "records-close",
+            "hangout-toggle",
+            "hangout-close",
+            "settings-toggle",
+            "settings-toggle",
+            "hangout-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 2,
+          "actions": [
+            "upgrade-component",
+            "hangout-toggle",
+            "hangout-social",
+            "hangout-social",
+            "hangout-social",
+            "loan-borrow",
+            "hangout-close",
+            "manifest-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "hangout-toggle",
+            "hangout-close",
+            "manifest-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 3,
+          "actions": [
+            "pay-debt",
+            "buy-fuel",
+            "hangout-toggle",
+            "hangout-social",
+            "arm-die",
+            "loan-repay",
+            "hangout-social",
+            "arm-die",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "arm-die",
+            "hangout-social",
+            "hangout-close",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "pay-debt",
+            "preview-route",
+            "wire-log-toggle",
+            "wire-log-close",
+            "manifest-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 4,
+          "actions": [
+            "repair-all (not takeable)",
+            "buy-pods (not takeable)",
+            "storylet-open",
+            "storylet-choice",
+            "arm-die",
+            "hire-crew (not takeable)",
+            "records-toggle",
+            "records-close",
+            "buy-fuel",
+            "repair-all (not takeable)",
+            "preview-route",
+            "preview-route",
+            "end-day"
+          ]
+        },
+        {
+          "day": 5,
+          "actions": [
+            "arm-die",
+            "explore-sweep",
+            "jump",
+            "wire-log-toggle",
+            "wire-log-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-pods (not takeable)",
+            "preview-route",
+            "buy-equipment (not takeable)",
+            "hangout-toggle",
+            "loan-repay",
+            "arm-die",
+            "hangout-close",
+            "upgrade-component (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 6,
+          "actions": [
+            "manifest-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "buy-fuel",
+            "arm-die",
+            "buy-fuel",
+            "buy-equipment (not takeable)",
+            "manifest-toggle",
+            "arm-die",
+            "manifest-toggle",
+            "pay-debt",
+            "end-day"
+          ]
+        },
+        {
+          "day": 7,
+          "actions": [
+            "manifest-toggle",
+            "jump",
+            "wire-log-toggle",
+            "wire-log-close",
+            "pay-debt",
+            "repair-all (not takeable)",
+            "arm-die",
+            "arm-die",
+            "manifest-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 8,
+          "actions": [
+            "hire-crew (not takeable)",
+            "buy-fuel",
+            "buy-pods (not takeable)",
+            "explore-sweep (not takeable)",
+            "upgrade-component",
+            "end-day"
+          ]
+        },
+        {
+          "day": 9,
+          "actions": [
+            "hangout-toggle",
+            "hangout-social (not takeable)",
+            "arm-die",
+            "arm-die",
+            "hangout-social (not takeable)",
+            "arm-die",
+            "hangout-close",
+            "hire-crew (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "arm-die",
+            "sign-contract",
+            "onboarding-dismiss",
+            "wire-log-toggle",
+            "wire-log-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "pay-debt",
+            "abandon-contract",
+            "hire-crew (not takeable)",
+            "buy-pods (not takeable)",
+            "buy-port (not takeable)",
+            "storylet-open",
+            "storylet-close",
+            "wire-log-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 10,
+          "actions": [
+            "manifest-toggle",
+            "hire-crew (not takeable)",
+            "explore-sweep (not takeable)",
+            "hangout-toggle",
+            "arm-die",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 11,
+          "actions": [
+            "explore-sweep (not takeable)",
+            "buy-equipment (not takeable)",
+            "arm-die",
+            "manifest-toggle",
+            "jump",
+            "haggle",
+            "repair-all (not takeable)",
+            "pay-debt",
+            "repair-all (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 12,
+          "actions": [
+            "manifest-toggle",
+            "repair-all (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 13,
+          "actions": [
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "loan-repay",
+            "arm-die",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "loan-repay",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-social",
+            "hangout-close",
+            "pay-debt",
+            "pay-debt",
+            "storylet-open",
+            "storylet-close",
+            "hangout-toggle",
+            "hangout-close",
+            "wire-log-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 14,
+          "actions": [
+            "buy-port (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 15,
+          "actions": [
+            "hire-crew (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 16,
+          "actions": [
+            "pay-debt",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "arm-die",
+            "buy-port (not takeable)",
+            "storylet-open",
+            "arm-die",
+            "arm-die",
+            "storylet-close",
+            "upgrade-component (not takeable)",
+            "buy-port (not takeable)",
+            "buy-equipment (not takeable)",
+            "pay-debt",
+            "buy-port (not takeable)",
+            "storylet-open",
+            "arm-die",
+            "arm-die",
+            "arm-die",
+            "storylet-close",
+            "manifest-toggle",
+            "sign-contract",
+            "abandon-contract",
+            "end-day"
+          ]
+        },
+        {
+          "day": 17,
+          "actions": [
+            "arm-die",
+            "buy-port (not takeable)",
+            "hire-crew (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-port (not takeable)",
+            "sign-contract",
+            "buy-pods (not takeable)",
+            "storylet-open",
+            "storylet-close",
+            "haggle",
+            "manifest-toggle",
+            "manifest-toggle",
+            "manifest-toggle",
+            "buy-port (not takeable)",
+            "records-toggle",
+            "records-close",
+            "buy-pods (not takeable)",
+            "buy-equipment (not takeable)",
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "end-day"
+          ]
+        },
+        {
+          "day": 18,
+          "actions": [
+            "abandon-contract",
+            "settings-toggle",
+            "settings-toggle",
+            "pay-debt",
+            "end-day"
+          ]
+        },
+        {
+          "day": 19,
+          "actions": [
+            "hire-crew (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 20,
+          "actions": [
+            "manifest-toggle",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "sign-contract",
+            "hire-crew (not takeable)",
+            "upgrade-component",
+            "wire-log-toggle",
+            "wire-log-close",
+            "sign-contract",
+            "buy-port (not takeable)",
+            "buy-pods (not takeable)",
+            "hire-crew (not takeable)",
+            "buy-pods (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "arm-die",
+            "buy-port (not takeable)",
+            "buy-equipment (not takeable)",
+            "buy-pods (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-pods (not takeable)",
+            "buy-fuel",
+            "haggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 21,
+          "actions": [
+            "end-day"
+          ]
+        },
+        {
+          "day": 22,
+          "actions": [
+            "sign-contract",
+            "records-toggle",
+            "records-close",
+            "storylet-open",
+            "storylet-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "explore-sweep (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "buy-equipment (not takeable)",
+            "arm-die",
+            "haggle",
+            "upgrade-component",
+            "arm-die",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "arm-die",
+            "repair-all (not takeable)",
+            "pay-debt",
+            "hangout-toggle",
+            "arm-die",
+            "end-day"
+          ]
+        },
+        {
+          "day": 23,
+          "actions": [
+            "explore-sweep (not takeable)",
+            "arm-die",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-equipment (not takeable)",
+            "hire-crew (not takeable)",
+            "buy-pods (not takeable)",
+            "explore-sweep (not takeable)",
+            "buy-fuel",
+            "buy-port (not takeable)",
+            "buy-pods (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "storylet-open",
+            "storylet-choice",
+            "buy-fuel",
+            "storylet-open",
+            "storylet-choice",
+            "sign-contract",
+            "pay-debt",
+            "repair-all (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "buy-fuel",
+            "end-day"
+          ]
+        },
+        {
+          "day": 24,
+          "actions": [
+            "records-toggle",
+            "records-close",
+            "sign-contract",
+            "explore-sweep (not takeable)",
+            "repair-all (not takeable)",
+            "haggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "haggle",
+            "pay-debt",
+            "buy-equipment (not takeable)",
+            "sign-contract",
+            "buy-fuel",
+            "pay-debt",
+            "buy-fuel",
+            "haggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 25,
+          "actions": [
+            "end-day"
+          ]
+        },
+        {
+          "day": 26,
+          "actions": [
+            "manifest-toggle",
+            "buy-fuel",
+            "pay-debt",
+            "manifest-toggle",
+            "buy-port (not takeable)",
+            "haggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 27,
+          "actions": [
+            "repair-all (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "pay-debt",
+            "buy-equipment (not takeable)",
+            "arm-die",
+            "hangout-toggle",
+            "hangout-social",
+            "hangout-close",
+            "haggle",
+            "explore-sweep (not takeable)",
+            "hangout-toggle",
+            "loan-repay",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "arm-die",
+            "hangout-social",
+            "arm-die",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "records-toggle",
+            "records-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 28,
+          "actions": [
+            "records-toggle",
+            "records-close",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-social",
+            "hangout-social",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "explore-sweep (not takeable)",
+            "storylet-open",
+            "storylet-close",
+            "haggle",
+            "hangout-toggle",
+            "hangout-close",
+            "pay-debt",
+            "storylet-open",
+            "storylet-close",
+            "pay-debt",
+            "records-toggle",
+            "records-close",
+            "settings-toggle",
+            "settings-toggle",
+            "storylet-open",
+            "end-day"
+          ]
+        },
+        {
+          "day": 29,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "upgrade-component",
+            "pay-debt",
+            "sign-contract",
+            "manifest-toggle",
+            "buy-pods (not takeable)",
+            "repair-all (not takeable)",
+            "abandon-contract",
+            "storylet-open",
+            "arm-die",
+            "storylet-choice",
+            "buy-equipment (not takeable)",
+            "buy-port (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 30,
+          "actions": [
+            "end-day"
+          ]
+        },
+        {
+          "day": 31,
+          "actions": [
+            "resolution-choice",
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-social",
+            "hangout-social",
+            "loan-repay",
+            "hangout-close",
+            "records-toggle",
+            "records-close",
+            "upgrade-component (not takeable)",
+            "buy-port (not takeable)",
+            "upgrade-component (not takeable)",
+            "explore-sweep (not takeable)",
+            "buy-fuel",
+            "explore-sweep (not takeable)",
+            "manifest-toggle",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 32,
+          "actions": [
+            "buy-port (not takeable)",
+            "buy-fuel",
+            "buy-port (not takeable)",
+            "buy-pods",
+            "upgrade-component (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "repair-all (not takeable)",
+            "haggle",
+            "buy-equipment (not takeable)",
+            "storylet-open",
+            "arm-die",
+            "storylet-close",
+            "explore-sweep (not takeable)",
+            "storylet-open",
+            "storylet-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 33,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "hire-crew (not takeable)",
+            "hangout-toggle",
+            "hangout-social",
+            "hangout-close",
+            "storylet-open",
+            "arm-die",
+            "storylet-choice",
+            "storylet-open",
+            "arm-die",
+            "arm-die",
+            "arm-die",
+            "storylet-close",
+            "buy-equipment (not takeable)",
+            "arm-die",
+            "storylet-open",
+            "arm-die",
+            "storylet-choice",
+            "pay-debt",
+            "settings-toggle",
+            "settings-toggle",
+            "hire-crew (not takeable)",
+            "records-toggle",
+            "records-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 34,
+          "actions": [
+            "sign-contract",
+            "buy-port (not takeable)",
+            "upgrade-component",
+            "buy-pods (not takeable)",
+            "hire-crew (not takeable)",
+            "hangout-toggle",
+            "hangout-social",
+            "loan-repay",
+            "hangout-close",
+            "abandon-contract",
+            "wire-log-toggle",
+            "wire-log-close",
+            "settings-toggle",
+            "settings-toggle",
+            "pay-debt",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "settings-toggle",
+            "settings-toggle",
+            "hangout-toggle",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 35,
+          "actions": [
+            "hire-crew (not takeable)"
+          ]
+        }
+      ],
+      "aborted": null,
+      "wallClockMs": 47731,
+      "rawFileSha256": "e04e037d3dcee1066e2b5df502ddcebe8b08f2b587fba63166b30c9ed89fde36",
+      "sourceFile": "packages/ui/test-results/longhaul/seed-4.json"
+    },
+    {
+      "spec": "T-162 long-haul DOM invariant sweep",
+      "gameSeed": 5,
+      "choiceSeed": 39608,
+      "targetDays": 35,
+      "daysReached": 36,
+      "steps": 639,
+      "checksRun": 5112,
+      "stepsWithCandidates": 639,
+      "skippedSteps": 131,
+      "verbCounts": {
+        "pay-debt": 25,
+        "buy-fuel": 18,
+        "arm-die": 37,
+        "settings-toggle": 43,
+        "explore-sweep": 2,
+        "wire-log-toggle": 23,
+        "wire-log-close": 23,
+        "records-toggle": 22,
+        "records-tab": 17,
+        "records-close": 20,
+        "manifest-toggle": 25,
+        "end-day": 35,
+        "upgrade-component": 11,
+        "preview-route": 10,
+        "sign-contract": 4,
+        "onboarding-dismiss": 3,
+        "jump": 4,
+        "hangout-toggle": 31,
+        "loan-borrow": 1,
+        "hangout-close": 31,
+        "abandon-contract": 3,
+        "storylet-open": 20,
+        "storylet-close": 11,
+        "hangout-social": 13,
+        "seat-dare": 12,
+        "dare-move": 12,
+        "dare-leave": 12,
+        "loan-repay": 12,
+        "combat-stance": 1,
+        "combat-dismiss": 1,
+        "storylet-choice": 9,
+        "haggle": 12,
+        "buy-pods": 4,
+        "resolution-choice": 1
+      },
+      "distinctVerbs": 34,
+      "dailyTrialSweeps": 35,
+      "trialSweepsSkipped": 1,
+      "trialSweepControls": 340,
+      "hittabilityFailures": [],
+      "idleDigestChecks": 36,
+      "idleDigestUnstable": 0,
+      "reasonSources": {
+        "own-text": 680,
+        "title": 13631
+      },
+      "invariants": [
+        {
+          "name": "inv_no_uncaught_exception",
+          "claim": "no uncaught exception reached the page during the step"
+        },
+        {
+          "name": "inv_no_console_error",
+          "claim": "the step logged no console error (no allowlist \u2014 real noise is a finding, not a filter)"
+        },
+        {
+          "name": "inv_no_crash_screen",
+          "claim": "the ErrorBoundary's crash screen never mounts"
+        },
+        {
+          "name": "inv_cockpit_reachable",
+          "claim": "the cockpit stays takeable (end-day + hand mounted) unless a declared screen replaces it"
+        },
+        {
+          "name": "inv_no_dead_affordance",
+          "claim": "a control that passed the actionability trial and was clicked moved the cockpit"
+        },
+        {
+          "name": "inv_blocked_shows_reason",
+          "claim": "every disabled control exposes a non-empty reason a player can read"
+        },
+        {
+          "name": "inv_no_placeholder_text",
+          "claim": "no NaN / undefined / [object Object] / Infinity is rendered to the player"
+        },
+        {
+          "name": "inv_day_monotonic",
+          "claim": "the day never goes backwards and never advances by more than one per step"
+        }
+      ],
+      "violations": [],
+      "days": [
+        {
+          "day": 1,
+          "actions": [
+            "pay-debt",
+            "buy-fuel",
+            "arm-die",
+            "buy-fuel",
+            "settings-toggle",
+            "settings-toggle",
+            "explore-sweep",
+            "settings-toggle",
+            "settings-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "manifest-toggle",
+            "manifest-toggle",
+            "manifest-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "manifest-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 2,
+          "actions": [
+            "upgrade-component",
+            "wire-log-toggle",
+            "wire-log-close",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "preview-route",
+            "buy-pods (not takeable)",
+            "pay-debt",
+            "preview-route",
+            "wire-log-toggle",
+            "wire-log-close",
+            "sign-contract",
+            "onboarding-dismiss",
+            "pay-debt",
+            "preview-route",
+            "arm-die",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "hire-crew (not takeable)",
+            "explore-sweep",
+            "manifest-toggle",
+            "jump",
+            "end-day"
+          ]
+        },
+        {
+          "day": 3,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-equipment (not takeable)",
+            "hangout-toggle",
+            "onboarding-dismiss",
+            "arm-die",
+            "loan-borrow",
+            "hangout-close",
+            "abandon-contract",
+            "pay-debt",
+            "settings-toggle",
+            "settings-toggle",
+            "pay-debt",
+            "settings-toggle",
+            "settings-toggle",
+            "explore-sweep (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "arm-die",
+            "records-toggle",
+            "records-close",
+            "buy-pods (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "hire-crew (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 4,
+          "actions": [
+            "repair-all (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "records-toggle",
+            "records-close",
+            "explore-sweep (not takeable)",
+            "upgrade-component",
+            "pay-debt",
+            "preview-route",
+            "upgrade-component (not takeable)",
+            "storylet-open",
+            "storylet-close",
+            "buy-port (not takeable)",
+            "arm-die",
+            "preview-route",
+            "manifest-toggle",
+            "repair-all (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 5,
+          "actions": [
+            "hangout-toggle",
+            "hangout-social",
+            "hangout-social",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "pay-debt",
+            "arm-die",
+            "buy-fuel",
+            "repair-all (not takeable)",
+            "hire-crew (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 6,
+          "actions": [
+            "buy-port (not takeable)",
+            "buy-equipment (not takeable)",
+            "buy-port (not takeable)",
+            "manifest-toggle",
+            "buy-pods (not takeable)",
+            "buy-equipment (not takeable)",
+            "records-toggle",
+            "records-close",
+            "buy-pods (not takeable)",
+            "buy-port (not takeable)",
+            "repair-all (not takeable)",
+            "preview-route",
+            "upgrade-component",
+            "settings-toggle",
+            "settings-toggle",
+            "storylet-open",
+            "storylet-close",
+            "repair-all (not takeable)",
+            "records-toggle",
+            "records-close",
+            "repair-all (not takeable)",
+            "pay-debt",
+            "buy-fuel",
+            "manifest-toggle",
+            "repair-all (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 7,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "loan-repay",
+            "hangout-social",
+            "hangout-social",
+            "arm-die",
+            "hangout-social",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "hangout-toggle",
+            "hangout-close",
+            "preview-route",
+            "records-toggle",
+            "records-close",
+            "hangout-toggle",
+            "hangout-close",
+            "preview-route",
+            "preview-route",
+            "manifest-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 8,
+          "actions": [
+            "buy-pods (not takeable)",
+            "hire-crew (not takeable)",
+            "preview-route",
+            "settings-toggle",
+            "settings-toggle",
+            "buy-pods (not takeable)",
+            "storylet-open",
+            "storylet-close",
+            "jump",
+            "onboarding-dismiss",
+            "combat-stance",
+            "combat-dismiss",
+            "pay-debt",
+            "storylet-open",
+            "storylet-choice",
+            "arm-die",
+            "jump",
+            "buy-fuel",
+            "records-toggle",
+            "records-close",
+            "storylet-open",
+            "storylet-close",
+            "hire-crew (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 9,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-fuel",
+            "storylet-open",
+            "arm-die",
+            "arm-die",
+            "storylet-choice",
+            "buy-equipment (not takeable)",
+            "hangout-toggle",
+            "arm-die",
+            "loan-repay",
+            "arm-die",
+            "arm-die",
+            "hangout-social (not takeable)",
+            "hangout-close",
+            "pay-debt",
+            "manifest-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 10,
+          "actions": [
+            "pay-debt",
+            "hire-crew (not takeable)",
+            "explore-sweep (not takeable)",
+            "buy-port (not takeable)",
+            "upgrade-component (not takeable)",
+            "buy-port (not takeable)",
+            "buy-equipment (not takeable)",
+            "pay-debt",
+            "wire-log-toggle",
+            "wire-log-close",
+            "storylet-open",
+            "storylet-close",
+            "buy-port (not takeable)",
+            "pay-debt",
+            "pay-debt",
+            "explore-sweep (not takeable)",
+            "storylet-open",
+            "arm-die",
+            "arm-die",
+            "storylet-choice",
+            "manifest-toggle",
+            "buy-port (not takeable)",
+            "explore-sweep (not takeable)",
+            "buy-port (not takeable)",
+            "hire-crew (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 11,
+          "actions": [
+            "buy-pods (not takeable)",
+            "buy-equipment (not takeable)",
+            "jump",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-social",
+            "hangout-close",
+            "explore-sweep (not takeable)",
+            "buy-equipment (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 12,
+          "actions": [
+            "hire-crew (not takeable)",
+            "repair-all (not takeable)",
+            "records-toggle",
+            "records-close",
+            "arm-die",
+            "buy-port (not takeable)",
+            "buy-equipment (not takeable)",
+            "upgrade-component",
+            "buy-fuel",
+            "upgrade-component",
+            "buy-pods (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "manifest-toggle",
+            "upgrade-component",
+            "repair-all (not takeable)",
+            "upgrade-component",
+            "hangout-toggle",
+            "hangout-close",
+            "pay-debt",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "records-tab",
+            "end-day"
+          ]
+        },
+        {
+          "day": 13,
+          "actions": [
+            "end-day"
+          ]
+        },
+        {
+          "day": 14,
+          "actions": [
+            "arm-die",
+            "buy-port (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "haggle",
+            "buy-port (not takeable)",
+            "upgrade-component",
+            "arm-die",
+            "explore-sweep (not takeable)",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-social",
+            "hangout-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-port (not takeable)",
+            "haggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 15,
+          "actions": [
+            "haggle",
+            "haggle",
+            "explore-sweep (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "records-close",
+            "hangout-toggle",
+            "arm-die",
+            "arm-die",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "arm-die",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "settings-toggle",
+            "settings-toggle",
+            "pay-debt",
+            "manifest-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 16,
+          "actions": [
+            "buy-equipment (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 17,
+          "actions": [
+            "end-day"
+          ]
+        },
+        {
+          "day": 18,
+          "actions": [
+            "manifest-toggle",
+            "hangout-toggle",
+            "arm-die",
+            "hangout-close",
+            "haggle",
+            "buy-port (not takeable)",
+            "haggle",
+            "hangout-toggle",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 19,
+          "actions": [
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "loan-repay",
+            "loan-repay",
+            "hangout-social",
+            "hangout-close",
+            "settings-toggle",
+            "settings-toggle",
+            "buy-fuel",
+            "hangout-toggle",
+            "hangout-close",
+            "hangout-toggle",
+            "hangout-close",
+            "buy-equipment (not takeable)",
+            "buy-port (not takeable)",
+            "buy-pods (not takeable)",
+            "hangout-toggle",
+            "arm-die",
+            "hangout-social",
+            "hangout-social",
+            "hangout-close",
+            "hangout-toggle",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 20,
+          "actions": [
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "records-toggle",
+            "records-close",
+            "buy-equipment (not takeable)",
+            "arm-die",
+            "haggle",
+            "buy-port (not takeable)",
+            "pay-debt",
+            "buy-pods (not takeable)",
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "repair-all (not takeable)",
+            "hire-crew (not takeable)",
+            "haggle",
+            "repair-all (not takeable)",
+            "storylet-open",
+            "storylet-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 21,
+          "actions": [
+            "haggle",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-social (not takeable)",
+            "hangout-close",
+            "buy-equipment (not takeable)",
+            "hangout-toggle",
+            "hangout-close",
+            "manifest-toggle",
+            "buy-pods (not takeable)",
+            "buy-fuel",
+            "arm-die",
+            "hangout-toggle",
+            "arm-die",
+            "hangout-close",
+            "repair-all (not takeable)",
+            "upgrade-component (not takeable)",
+            "buy-fuel",
+            "buy-pods (not takeable)",
+            "upgrade-component (not takeable)",
+            "buy-fuel",
+            "storylet-open",
+            "storylet-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 22,
+          "actions": [
+            "end-day"
+          ]
+        },
+        {
+          "day": 23,
+          "actions": [
+            "storylet-open",
+            "arm-die",
+            "arm-die",
+            "storylet-close",
+            "manifest-toggle",
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-social",
+            "arm-die",
+            "loan-repay",
+            "loan-repay",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "hangout-close",
+            "settings-toggle",
+            "settings-toggle",
+            "sign-contract",
+            "hangout-toggle",
+            "loan-repay",
+            "hangout-close",
+            "hangout-toggle",
+            "hangout-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 24,
+          "actions": [
+            "records-toggle",
+            "records-close",
+            "hangout-toggle",
+            "hangout-close",
+            "buy-pods",
+            "settings-toggle",
+            "settings-toggle",
+            "explore-sweep (not takeable)",
+            "haggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-pods (not takeable)",
+            "haggle",
+            "manifest-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "abandon-contract",
+            "buy-fuel",
+            "hangout-toggle",
+            "hangout-close",
+            "storylet-open",
+            "storylet-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 25,
+          "actions": [
+            "pay-debt",
+            "arm-die",
+            "buy-equipment (not takeable)",
+            "pay-debt",
+            "explore-sweep (not takeable)",
+            "buy-equipment (not takeable)",
+            "buy-pods (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 26,
+          "actions": [
+            "storylet-open",
+            "storylet-choice",
+            "explore-sweep (not takeable)",
+            "buy-pods",
+            "upgrade-component (not takeable)",
+            "buy-port (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "explore-sweep (not takeable)",
+            "buy-equipment (not takeable)",
+            "pay-debt",
+            "buy-equipment (not takeable)",
+            "buy-port (not takeable)",
+            "explore-sweep (not takeable)",
+            "buy-equipment (not takeable)",
+            "upgrade-component (not takeable)",
+            "buy-fuel",
+            "wire-log-toggle",
+            "wire-log-close",
+            "storylet-open",
+            "arm-die",
+            "arm-die",
+            "storylet-close",
+            "explore-sweep (not takeable)",
+            "pay-debt",
+            "end-day"
+          ]
+        },
+        {
+          "day": 27,
+          "actions": [
+            "explore-sweep (not takeable)",
+            "arm-die",
+            "storylet-open",
+            "storylet-choice",
+            "settings-toggle",
+            "settings-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 28,
+          "actions": [
+            "settings-toggle",
+            "settings-toggle",
+            "arm-die",
+            "settings-toggle",
+            "settings-toggle",
+            "buy-equipment (not takeable)",
+            "pay-debt",
+            "hire-crew (not takeable)",
+            "repair-all (not takeable)",
+            "buy-port (not takeable)",
+            "arm-die",
+            "upgrade-component (not takeable)",
+            "manifest-toggle",
+            "buy-port (not takeable)",
+            "upgrade-component (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "hire-crew (not takeable)",
+            "sign-contract",
+            "haggle",
+            "records-toggle",
+            "records-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "end-day"
+          ]
+        },
+        {
+          "day": 29,
+          "actions": [
+            "buy-pods",
+            "repair-all (not takeable)",
+            "buy-port (not takeable)",
+            "explore-sweep (not takeable)",
+            "hire-crew (not takeable)",
+            "explore-sweep (not takeable)",
+            "upgrade-component (not takeable)",
+            "buy-equipment (not takeable)",
+            "abandon-contract",
+            "storylet-open",
+            "storylet-choice",
+            "arm-die",
+            "manifest-toggle",
+            "hangout-toggle",
+            "hangout-social (not takeable)",
+            "arm-die",
+            "hangout-close",
+            "buy-fuel",
+            "explore-sweep (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 30,
+          "actions": [
+            "buy-equipment (not takeable)",
+            "buy-fuel",
+            "pay-debt",
+            "hangout-toggle",
+            "hangout-close",
+            "hangout-toggle",
+            "seat-dare",
+            "dare-move",
+            "dare-leave",
+            "loan-repay",
+            "hangout-social",
+            "hangout-social",
+            "loan-repay",
+            "hangout-close",
+            "buy-fuel",
+            "pay-debt",
+            "settings-toggle",
+            "settings-toggle",
+            "wire-log-toggle",
+            "wire-log-close",
+            "wire-log-toggle",
+            "wire-log-close",
+            "hangout-toggle",
+            "hangout-close",
+            "manifest-toggle",
+            "end-day"
+          ]
+        },
+        {
+          "day": 31,
+          "actions": [
+            "resolution-choice",
+            "manifest-toggle",
+            "upgrade-component",
+            "buy-port (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 32,
+          "actions": [
+            "wire-log-toggle",
+            "wire-log-close",
+            "buy-fuel",
+            "explore-sweep (not takeable)",
+            "storylet-open",
+            "storylet-choice",
+            "upgrade-component",
+            "hangout-toggle",
+            "hangout-close",
+            "repair-all (not takeable)",
+            "explore-sweep (not takeable)",
+            "end-day"
+          ]
+        },
+        {
+          "day": 33,
+          "actions": [
+            "buy-port (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-close",
+            "repair-all (not takeable)",
+            "records-toggle",
+            "records-close",
+            "buy-equipment (not takeable)",
+            "manifest-toggle",
+            "buy-equipment (not takeable)",
+            "storylet-open",
+            "storylet-choice",
+            "settings-toggle",
+            "settings-toggle",
+            "sign-contract",
+            "manifest-toggle",
+            "settings-toggle",
+            "settings-toggle",
+            "pay-debt",
+            "buy-equipment (not takeable)",
+            "buy-port (not takeable)",
+            "repair-all (not takeable)",
+            "records-toggle",
+            "records-tab",
+            "records-tab",
+            "end-day"
+          ]
+        },
+        {
+          "day": 34,
+          "actions": [
+            "buy-equipment (not takeable)",
+            "buy-pods",
+            "storylet-open",
+            "storylet-close",
+            "repair-all (not takeable)",
+            "manifest-toggle",
+            "manifest-toggle",
+            "buy-port (not takeable)",
+            "explore-sweep (not takeable)",
+            "wire-log-toggle",
+            "wire-log-close",
+            "records-toggle",
+            "records-close",
+            "buy-port (not takeable)",
+            "explore-sweep (not takeable)",
+            "buy-port (not takeable)",
+            "settings-toggle",
+            "settings-toggle",
+            "storylet-open",
+            "storylet-choice",
+            "upgrade-component (not takeable)",
+            "buy-port (not takeable)",
+            "buy-fuel",
+            "end-day"
+          ]
+        },
+        {
+          "day": 35,
+          "actions": [
+            "end-day"
+          ]
+        },
+        {
+          "day": 36,
+          "actions": [
+            "upgrade-component"
+          ]
+        }
+      ],
+      "aborted": null,
+      "wallClockMs": 52154,
+      "rawFileSha256": "fed74c2fd283e3593efb87504f747c897fe14998886269a7f3fca1ebe2cf544f",
+      "sourceFile": "packages/ui/test-results/longhaul/seed-5.json"
+    }
+  ]
+}

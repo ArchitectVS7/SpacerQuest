@@ -81,12 +81,18 @@ export const CREDITS: readonly Credit[] = Object.freeze([
     note: 'Loaded from Google Fonts by the web build; a packaged offline launch falls back to ui-monospace. No font binary is bundled.',
   },
   {
+    // T-185 · The row now covers TWO modules, not one: the score joined the cues
+    // when the `music` bus was added. Deliberately amended rather than split into
+    // a second row — same holder, same licence, same claim ("synthesized live,
+    // zero asset files"), and the `credits.test.ts` extension walk that ENFORCES
+    // that claim does not care which file the synthesis lives in. A second row
+    // would be a second place to keep the identical sentence true.
     id: 'audio',
-    name: 'All sound cues',
+    name: 'All sound cues and the score',
     holder: 'The Spacer Quest project',
     license: 'CC0 1.0 Universal',
     licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/',
-    note: 'Original procedural WebAudio synthesis. There are zero audio asset files and zero third-party samples — see packages/ui/src/sound.ts.',
+    note: 'Original procedural WebAudio synthesis and composition. There are zero audio asset files and zero third-party samples — see packages/ui/src/sound.ts (cues) and packages/ui/src/music.ts (the score).',
   },
   {
     id: 'react',

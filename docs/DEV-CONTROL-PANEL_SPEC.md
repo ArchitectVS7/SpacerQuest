@@ -18,6 +18,10 @@ difference from the deferred Tier 2 idea: this panel invokes `sweep.ts`/`aggrega
 `smoke-extract.ts`/`diff-cli.ts` exactly as a human would from a terminal, so every
 provenance guarantee those scripts already produce (`rulesFingerprint`, `gitCommit`,
 `productVersion` — `docs/balance/smoke/README.md`'s table) comes along for free, unchanged.
+(**T-183, 2026-08-04:** this became literally true for AGGREGATES too. `sweep.ts --merge` now
+stamps `rulesFingerprint`/`instrumentFingerprint`/`gitCommit` onto the merged aggregate at write
+time, so a panel-PROMOTED baseline — which copies a merged file verbatim — inherits them with
+**no devpanel change at all**. The constraint paying off, not a coincidence. See BR-58.)
 **The panel must never reimplement sweep/aggregate/extract/diff logic** — only invoke the
 existing scripts as child processes and surface their stdout/exit code. Two implementations
 of the same balance math drifting apart is a bug class this constraint exists to prevent
@@ -114,3 +118,67 @@ scoped) that spawns the child processes in §1 and serves a local-only UI
   configs and any production build output returns nothing.
 - No source file outside the panel's own new code is modified by running any panel action.
 - Gate green.
+
+---
+
+## 7. §5's open question, SETTLED (T-143, 2026-08-01)
+
+§5 left one question open for the implementation task: whether `lint:fix`/`format` — the one
+pair of commands in this ecosystem that write to source — belong in the panel.
+
+**Ruling: `lint:fix` and `format` are EXCLUDED. `lint` and `format:check` are INCLUDED**, as
+part of §1 row 5's read-only gate row. Four reasons, in order of force:
+
+1. **§6's acceptance criterion forbids them outright.** It requires that "no source file
+   outside the panel's own new code is modified by running any panel action". `format` and
+   `lint:fix` modify source by definition. There is no reading of that criterion under which
+   they can ship.
+2. **§5's own misclick argument applies unchanged.** The stated reason `package:*` and
+   `release:*` are out is that a misclick "costs nothing on one row and something real on the
+   next". A button that rewrites every file in the repo sitting beside a button that runs a
+   read-only sweep is the same hazard with a smaller blast radius, not a different one.
+3. **A repo-specific trap this document does not name.** `TASKS.md`'s standing constraints
+   require `npm run format` to run **BEFORE** a batch capstone, never after, and
+   `docsFingerprint` is a raw-byte hash over the hashed sources — so a formatter run reorders
+   the capstone sequence and moves a recorded stamp. A one-click formatter next to a one-click
+   sweep *manufactures* exactly the ordering mistake that constraint exists to prevent. The
+   panel would create the hazard rather than mediate it.
+4. §5's own counter-argument (`lint:fix`/`format` are "a routine, git-diff-visible mechanical
+   change, never a silent balance edit") is accepted as true and is still insufficient:
+   git-diff-visibility is a **recovery** property, not a **prevention** one, and (3) is
+   invisible in a git diff.
+
+The ruling is enforced in code, not only in prose: `assertNoWritingCommands` in
+`packages/devpanel/src/commands.ts` runs at module load and throws if any row's npm script
+matches `package:*`, `release:*`, `format` or `lint:fix`, and
+`packages/devpanel/src/__tests__/commands.test.ts` asserts both the registry and the guard.
+
+### 7.1 Corrections to §1's table (F-143-1)
+
+§1's inventory was audited before two later changes landed, and the panel follows the **real
+parsers** where the two disagree — §6's criterion is a property of the code, not of this prose:
+
+- **`balance:sweep` also accepts `--trace-npc-decisions`** (T-140). It is offered by the panel
+  and is refused for a sharded run, because `parseSweepArgs` throws when it is combined with
+  the `--merge` the panel runs afterwards.
+- **`balance:diff` takes two required POSITIONAL paths**, not flags alone: `parseDiffArgs`
+  errors with "Expected exactly two aggregate paths". §1's row lists only `--json`,
+  `--fail-on-change`, `--epsilon`.
+- **`balance:report` (T-142) is a sixth row**, not in §1's five-row table because that table
+  predates the Tier 1 generator. §3's "View Report" action is unimplementable without it.
+- **`balance:sweep` had no root-level npm script** despite §1 quoting the root form
+  (F-143-2). T-143 adds `"balance:sweep": "npm run balance:sweep -w @spacerquest/sim --"` to
+  the root `package.json`, matching the precedent T-142 set for `balance:report`.
+
+### 7.2 Two behaviours §3 implies and the implementation makes explicit
+
+- **The panel points a blank `--out`/`--aggregate-out` at the run directory.** `sweep.ts`'s own
+  default for `--aggregate-out` is `docs/balance`, so a panel sweep left on defaults would drop
+  a committed-looking baseline into the repo on every ad hoc click — the opposite of §3. The
+  injection is the only place the panel adds a flag, and it is rendered in the UI *before* the
+  run starts and stored in `run.json`, so it is never invisible.
+- **Promotion requires the exact `baseline-<label>.json` filename typed back**, is guarded by a
+  pure allowlist (source inside the panel-runs root, destination inside `docs/balance`, basename
+  matching `baseline-<slug>.json`), and **never runs git** — it returns the `git add`/`git commit`
+  lines as text, per `docs/VERSIONING.md`'s rule that a baseline pointer move is its own
+  deliberate commit.

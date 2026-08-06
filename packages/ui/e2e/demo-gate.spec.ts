@@ -1,6 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 import { DEMO_FINAL_DAY } from '@spacerquest/content';
 import { createInitialState, createSave, startDay, type GameState } from '@spacerquest/engine';
+// T-147 · The two denominators below are DERIVED from the manifest, not typed.
+// They used to be the literals 44 and 45; the slate grew by fifteen deeds and a
+// pair of hand-typed counts would have reddened this spec for no defect — the
+// same lesson `progression.spec.ts` records against its port price (T-1603b).
+// The claim under test is the DIFFERENCE between the two editions, and that is
+// what the derivation preserves.
+import { achievementManifest } from '../src/steam';
 
 // ---------------------------------------------------------------------------
 // T-1703 · THE DEMO GATE, PROVED THROUGH THE REAL COCKPIT.
@@ -20,7 +28,7 @@ import { createInitialState, createSave, startDay, type GameState } from '@space
 // still be on screen. Same technique `action-blocked-parity.spec.ts` established.
 //
 // WHERE STATE IS INJECTED, AND WHY. Two of the four tests seed a career through
-// the store's own save key, because the gated purchases have PRICES (the Sun-3
+// the store's own save key, because the gated purchases have PRICES (the Sol-3
 // port stake and every crew role cost more than a day-1 captain's 1,000cr), so a
 // fresh career's buy button is disabled for AFFORDABILITY on both builds and the
 // mirror assertion would be vacuous. Injection is the established idiom here
@@ -34,7 +42,7 @@ const FULL = 'http://localhost:5173';
 const DEMO = 'http://localhost:5174';
 const SEED = 17030;
 
-/** A DAY-phase career at Sun-3 with money in hand — so the two gated purchases
+/** A DAY-phase career at Sol-3 with money in hand — so the two gated purchases
  *  are refused by the GATE and never by the price. */
 function affluentSave(edition: 'full' | 'demo', seed = SEED): string {
   const state: GameState = startDay(createInitialState(seed, edition)).state;
@@ -79,6 +87,10 @@ async function capstoneLock(page: Page): Promise<string | null> {
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 // ---------------------------------------------------------------------------
@@ -95,10 +107,11 @@ test('the demo gates ports, crew hiring and the Conqueror capstone; the full bui
   // The build says what it is, without dev tools.
   await openSettings(page);
   await expect(page.getByTestId('build-edition')).toHaveAttribute('data-edition', 'demo');
-  // The achievement denominator is edition-scoped: 44 in the demo, 45 in the full
-  // build — the player-visible half of the Conqueror lock.
+  // The achievement denominator is edition-scoped: the demo is the full set MINUS
+  // the Conqueror capstone — the player-visible half of the Conqueror lock.
   const demoAchievements = (await page.getByTestId('steam-achievements').textContent()) ?? '';
-  expect(demoAchievements).toContain('of 44');
+  expect(achievementManifest('demo')).toHaveLength(achievementManifest('full').length - 1);
+  expect(demoAchievements).toContain(`of ${achievementManifest('demo').length}`);
   await closeSettings(page);
 
   // The licence itself is on screen, counting down.
@@ -138,7 +151,9 @@ test('the demo gates ports, crew hiring and the Conqueror capstone; the full bui
 
   await openSettings(page);
   await expect(page.getByTestId('build-edition')).toHaveAttribute('data-edition', 'full');
-  expect((await page.getByTestId('steam-achievements').textContent()) ?? '').toContain('of 45');
+  expect((await page.getByTestId('steam-achievements').textContent()) ?? '').toContain(
+    `of ${achievementManifest('full').length}`,
+  );
   await closeSettings(page);
 
   // No licence banner at all — the full cockpit is unchanged.
@@ -171,6 +186,10 @@ test('a demo career plays Tour One plus three days and then ends the cockpit', a
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(SEED));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
   await expect(page.getByTestId('day')).toHaveText('1');
   await expect(page.getByTestId('demo-banner')).toBeVisible();
 
@@ -315,6 +334,10 @@ test('the demo build refuses to open a full-game career', async ({ page }) => {
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(SEED + 3));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
   await expect(page.getByTestId('day')).toHaveText('1');
 
   await openSettings(page);

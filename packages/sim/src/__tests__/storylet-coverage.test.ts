@@ -155,7 +155,6 @@ function ensureFuel(state: GameState, minFuel = 90): GameState {
     type: 'Trade',
     action: 'buy-fuel',
     fuelAmount: units,
-    spendDie: die,
   }).state;
 }
 
@@ -238,7 +237,6 @@ function signContract(state: GameState, idx: number, covered: Set<string>): Game
     type: 'Trade',
     action: 'sign-contract',
     contractIndex: idx,
-    spendDie: die,
   }).state;
   return resolveEligibleTargets(s, covered);
 }

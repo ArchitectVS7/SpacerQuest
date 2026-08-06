@@ -1,9 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { INSULT_DISPOSITION, Stat } from '@spacerquest/content';
+import {
+  INSULT_DISPOSITION,
+  LIARS_DICE_UNLOCK_GAMES,
+  SOCIAL_PLAYS_PER_DAY,
+  Stat,
+} from '@spacerquest/content';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { applyPlayerAction } from '../day.js';
 import { resolveVisitHangout, hangoutRumors } from '../actions/hangout.js';
-import { loanBandFor, venueOffered, wagerBandFor } from '../hangoutRules.js';
+import {
+  loanBandFor,
+  socialPlaysRemaining,
+  venueOffered,
+  venueParamsFor,
+  wagerBandFor,
+} from '../hangoutRules.js';
+import { liarsDiceRoundsPerDay, liarsDiceTier } from '../liarsDiceRules.js';
 import { SeededRng } from '../rng.js';
 import { DawnHand, DayPhase, GameState } from '../types.js';
 
@@ -11,13 +23,13 @@ import { DawnHand, DayPhase, GameState } from '../types.js';
 // T-1303 · Spacers Hangout: the place + Spacer's Dare.
 // ---------------------------------------------------------------------------
 
-const DEALER = 'npc-iron-vex'; // cast index 0 — starts co-located at Sun-3 (id 1).
+const DEALER = 'npc-iron-vex'; // cast index 0 — starts co-located at Sol-3 (id 1).
 
 /** A DAY-phase state at a hasHangout port with a hand-picked dawn hand and a
  *  co-located, solvent dealer. `dice` become the player's Dare die by index, so a
  *  nat-20 / nat-1 is dialled in directly.
  *
- *  T-121 · `systemId` defaults to Sun-3 so no existing test moves, and is a
+ *  T-121 · `systemId` defaults to Sol-3 so no existing test moves, and is a
  *  parameter so the reach change can be driven at a port that is not the home
  *  hub. The dealer is moved to WHEREVER the player is put, which is what keeps a
  *  Dare off-hub from decaying into a 'no-opponent' fail. */
@@ -54,7 +66,7 @@ describe("Spacer's Dare — opening a hand posts BOTH seeds into escrow", () => 
     state.player.credits = 1000;
     const { state: after, events } = resolveVisitHangout(
       state,
-      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100, spendDie: 0 },
+      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100 },
       new SeededRng(1),
     );
 
@@ -94,7 +106,8 @@ describe("Spacer's Dare — opening a hand posts BOTH seeds into escrow", () => 
     expect(events.some((e) => e.type === 'StatCheck')).toBe(false);
     expect(events.some((e) => e.type === 'DispositionChanged')).toBe(false);
     expect(events.some((e) => e.type === 'HangoutEvent')).toBe(false);
-    expect(after.player.dawnHand?.spent[0]).toBe(true);
+    // T-197 · the venue is FREE — the hand is untouched (§3).
+    expect(after.player.dawnHand?.spent).toEqual([false, false, false, false, false]);
   });
 
   it('caps the SEED to what the dealer can cover instead of crashing', () => {
@@ -103,7 +116,7 @@ describe("Spacer's Dare — opening a hand posts BOTH seeds into escrow", () => 
     dealerOf(state).credits = 40; // dealer can only cover 40
     const { state: after, events } = resolveVisitHangout(
       state,
-      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 500, spendDie: 0 },
+      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 500 },
       new SeededRng(1),
     );
     // The clamp algebra is unchanged, character for character (§3) — only what it
@@ -119,13 +132,13 @@ describe("Spacer's Dare — opening a hand posts BOTH seeds into escrow", () => 
     state.player.credits = 10_000;
     const opened = resolveVisitHangout(
       state,
-      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100, spendDie: 0 },
+      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100 },
       new SeededRng(1),
     ).state;
 
     const { state: after, events } = resolveVisitHangout(
       opened,
-      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100, spendDie: 1 },
+      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100 },
       new SeededRng(2),
     );
     expect(events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
@@ -146,7 +159,7 @@ describe("Spacer's Dare — opponents are drawn from in-system NPCs (asserted)",
 
     const { state: after, events } = resolveVisitHangout(
       state,
-      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100, spendDie: 0 },
+      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100 },
       new SeededRng(1),
     );
 
@@ -164,13 +177,14 @@ describe("Spacer's Dare — opponents are drawn from in-system NPCs (asserted)",
     const state = hangoutState([15, 3, 3, 3, 3]);
     const { state: after, events } = resolveVisitHangout(
       state,
-      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100, spendDie: 0 },
+      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100 },
       new SeededRng(1),
     );
     expect(events.some((e) => e.type === 'DareHandStarted')).toBe(true);
     expect(events.some((e) => e.type === 'HangoutEvent')).toBe(false); // no refusal
     expect(after.dareHand?.dealerId).toBe(DEALER);
-    expect(after.player.dawnHand?.spent[0]).toBe(true);
+    // T-197 · the venue is FREE — the hand is untouched (§3).
+    expect(after.player.dawnHand?.spent).toEqual([false, false, false, false, false]);
   });
 });
 
@@ -179,7 +193,7 @@ describe('Hangout social beats feed T-1204 disposition readers', () => {
     const state = hangoutState([10, 3, 3, 3, 3]);
     const { state: after, events } = resolveVisitHangout(
       state,
-      { type: 'VisitHangout', venue: 'insult', opponentId: DEALER, spendDie: 0 },
+      { type: 'VisitHangout', venue: 'insult', opponentId: DEALER },
       new SeededRng(1),
     );
     expect(events.some((e) => e.type === 'StatCheck')).toBe(false); // no roll — it always lands
@@ -216,7 +230,7 @@ describe('rumor slot renders ≥1 fact from live NPC state', () => {
     const state = hangoutState([10, 3, 3, 3, 3]);
     const { events } = resolveVisitHangout(
       state,
-      { type: 'VisitHangout', venue: 'rumor', spendDie: 0 },
+      { type: 'VisitHangout', venue: 'rumor' },
       new SeededRng(1),
     );
     const hangout = events.find((e) => e.type === 'HangoutEvent') as { rumors?: string[] };
@@ -229,7 +243,7 @@ describe('rumor slot renders ≥1 fact from live NPC state', () => {
   // type, details, position, disposition).
   it('fills ≥3 dynamic slots from live NPC state (distinct co-located NPCs)', () => {
     const state = hangoutState([10, 3, 3, 3, 3]);
-    // Seat three distinct NPCs at the player's table (Sun-3), each with a
+    // Seat three distinct NPCs at the player's table (Sol-3), each with a
     // different live action-type + details, and a distinct disposition sign.
     const seated = state.npcs.slice(0, 3);
     expect(seated).toHaveLength(3);
@@ -238,10 +252,10 @@ describe('rumor slot renders ≥1 fact from live NPC state', () => {
     seated[0].lastAction = { type: 'Trade', details: 'hauled Spices to Aldebaran-1' };
     seated[1].currentSystemId = 1;
     seated[1].disposition = -6; // grudge → cold phrasing
-    seated[1].lastAction = { type: 'Combat', details: 'traded fire near Sun-3' };
+    seated[1].lastAction = { type: 'Combat', details: 'traded fire near Sol-3' };
     seated[2].currentSystemId = 1;
     seated[2].disposition = 0; // neutral → warm phrasing
-    seated[2].lastAction = { type: 'Patrol', details: 'ran a clean sweep of the Sun-3 lanes' };
+    seated[2].lastAction = { type: 'Patrol', details: 'ran a clean sweep of the Sol-3 lanes' };
     // Push every other NPC out of system so the three seated ones lead the roster.
     for (const npc of state.npcs.slice(3)) npc.currentSystemId = 5;
 
@@ -249,8 +263,8 @@ describe('rumor slot renders ≥1 fact from live NPC state', () => {
     expect(rumors.length).toBeGreaterThanOrEqual(3);
     // Each seated NPC's live details clause appears in a slot.
     expect(rumors.some((r) => r.includes('hauled Spices to Aldebaran-1'))).toBe(true);
-    expect(rumors.some((r) => r.includes('traded fire near Sun-3'))).toBe(true);
-    expect(rumors.some((r) => r.includes('ran a clean sweep of the Sun-3 lanes'))).toBe(true);
+    expect(rumors.some((r) => r.includes('traded fire near Sol-3'))).toBe(true);
+    expect(rumors.some((r) => r.includes('ran a clean sweep of the Sol-3 lanes'))).toBe(true);
 
     // The slots are genuinely dynamic: distinct action types + dispositions
     // produce three DISTINCT authored phrasings (not one repeated template).
@@ -259,23 +273,63 @@ describe('rumor slot renders ≥1 fact from live NPC state', () => {
 
     // And disposition is live: the grudge-holder's line uses the cold variant,
     // which is NOT the warm phrasing for the same action + fields.
-    const combatLine = rumors.find((r) => r.includes('traded fire near Sun-3'))!;
+    const combatLine = rumors.find((r) => r.includes('traded fire near Sol-3'))!;
     seated[1].disposition = 5; // flip to warm and re-log
     const warmRumors = hangoutRumors(state);
-    const warmCombatLine = warmRumors.find((r) => r.includes('traded fire near Sun-3'))!;
+    const warmCombatLine = warmRumors.find((r) => r.includes('traded fire near Sol-3'))!;
     expect(warmCombatLine).not.toBe(combatLine);
   });
 });
 
-describe('malformed die input is a typed fail, never a throw', () => {
-  it('a missing die yields no-die and spends nothing', () => {
+describe('T-197 · an action carrying no die is simply RESOLVED — the die reasons are gone', () => {
+  // This block used to assert `failReason: 'no-die'` for a `VisitHangout` with no
+  // `spendDie`. T-197 freed all seven venues (docs/DAWN-HAND-REDESIGN.md §3), so
+  // the field does not exist on the action shape any more and the three
+  // malformed-die refusals are unreachable from this resolver. The test is
+  // INVERTED rather than deleted: the interesting claim is now that the same call
+  // that used to refuse RESOLVES.
+  it('a rumor visit with no die resolves normally and spends no die', () => {
     const state = hangoutState([10, 3, 3, 3, 3]);
-    const { events } = resolveVisitHangout(
+    const { state: after, events } = resolveVisitHangout(
       state,
       { type: 'VisitHangout', venue: 'rumor' },
       new SeededRng(1),
     );
-    expect(events.find((e) => e.type === 'HangoutEvent')).toMatchObject({ failReason: 'no-die' });
+    const hangout = events.find((e) => e.type === 'HangoutEvent') as {
+      failReason?: string;
+      rumors?: string[];
+    };
+    expect(hangout.failReason).toBeUndefined();
+    expect(hangout.rumors?.length ?? 0).toBeGreaterThan(0);
+    expect(after.player.dawnHand?.spent).toEqual([false, false, false, false, false]);
+  });
+
+  // The three die reasons SURVIVE in `HangoutFailReason` because PEEK still
+  // raises them — asserted in liarsDice.test.ts, not here. What this pins is that
+  // no VENUE can raise one any more.
+  it('no venue can raise a die refusal — every one of the seven resolves', () => {
+    for (const venue of [
+      'dare',
+      'meet',
+      'befriend',
+      'insult',
+      'rumor',
+      'borrow',
+      'repay',
+    ] as const) {
+      const state = hangoutState([10, 3, 3, 3, 3]);
+      state.player.loan = venue === 'repay' ? state.player.loan : null;
+      const { events } = resolveVisitHangout(
+        state,
+        { type: 'VisitHangout', venue, opponentId: DEALER, wager: 50, amount: 300 },
+        new SeededRng(1),
+      );
+      for (const e of events) {
+        if (e.type === 'HangoutEvent' || e.type === 'LoanEvent') {
+          expect(['no-die', 'invalid-die-index', 'die-already-spent']).not.toContain(e.failReason);
+        }
+      }
+    }
   });
 });
 
@@ -295,7 +349,6 @@ describe('day loop: a Dare nat makes the wire (via T-1202) naming the in-system 
       venue: 'dare',
       opponentId: DEALER,
       wager: 100,
-      spendDie: 0,
     });
     expect(events.some((e) => e.type === 'StatCheck')).toBe(false);
   });
@@ -311,7 +364,6 @@ describe('day loop: a Dare nat makes the wire (via T-1202) naming the in-system 
       venue: 'dare',
       opponentId: DEALER,
       wager: 100,
-      spendDie: 0,
     }).state;
     const { events } = applyPlayerAction(opened, { type: 'Dare', move: 'peek', spendDie: 1 });
 
@@ -320,7 +372,7 @@ describe('day loop: a Dare nat makes the wire (via T-1202) naming the in-system 
     const wire = events.filter((e) => e.type === 'WireEntry');
     // The gamble templates all name the Hangout, and the player's nat names the
     // co-located dealer (Iron Vex) as the loser — "an NPC actually present".
-    expect(wire.some((w) => w.message.includes('Hangout'))).toBe(true);
+    expect(wire.some((w) => w.message.includes('Cantina'))).toBe(true);
     expect(wire.some((w) => w.message.includes('Iron Vex'))).toBe(true);
   });
 });
@@ -333,7 +385,6 @@ describe('mid-day serialization round-trip', () => {
       venue: 'dare',
       opponentId: DEALER,
       wager: 100,
-      spendDie: 0,
     });
     const s1 = serializeState(after);
     const restored = deserializeState(s1);
@@ -355,7 +406,6 @@ describe('hangout-system gate', () => {
     const { state: after, events } = applyPlayerAction(state, {
       type: 'VisitHangout',
       venue: 'rumor',
-      spendDie: 0,
     });
     expect(events).toEqual([
       expect.objectContaining({
@@ -375,7 +425,7 @@ describe('hangout-system gate', () => {
 // in `day.ts` is precisely the thing that changed, so a test that calls the
 // resolver directly would have passed before this task and proves nothing.
 //
-// The numbers here were Sun-3's numbers, on purpose: at T-121 ids 2–14 all carried
+// The numbers here were Sol-3's numbers, on purpose: at T-121 ids 2–14 all carried
 // BASELINE rows that resolved field-wise to `DEFAULT_PORT_HANGOUT`, so this was a
 // proof about REACH and not about parameters.
 //
@@ -387,7 +437,7 @@ describe('hangout-system gate', () => {
 // is that the action resolves off-hub at all, that the transfer is zero-sum, and
 // that the die is spent.
 // ---------------------------------------------------------------------------
-describe('T-121 · VisitHangout resolves at a port that is not Sun-3', () => {
+describe('T-121 · VisitHangout resolves at a port that is not Sol-3', () => {
   it('a Dare plays at Vega-6 (id 14) — no ActionBlocked, credits move, the die is spent', () => {
     const VEGA_6 = 14;
     const state = hangoutState([20, 3, 3, 3, 3], VEGA_6); // die[0] = 20 → player wins
@@ -401,7 +451,6 @@ describe('T-121 · VisitHangout resolves at a port that is not Sun-3', () => {
       venue: 'dare',
       opponentId: DEALER,
       wager: stake,
-      spendDie: 0,
     });
 
     expect(events.some((e) => e.type === 'ActionBlocked')).toBe(false);
@@ -411,7 +460,8 @@ describe('T-121 · VisitHangout resolves at a port that is not Sun-3', () => {
     expect(after.player.credits).toBe(10_000 - stake);
     expect(dealerOf(after).credits).toBe(dealerStart - stake);
     expect(after.dareHand?.systemId).toBe(VEGA_6);
-    expect(after.player.dawnHand?.spent[0]).toBe(true);
+    // T-197 · the venue is FREE — the hand is untouched (§3).
+    expect(after.player.dawnHand?.spent).toEqual([false, false, false, false, false]);
   });
 
   it('a borrow works at Mira-9 (id 8) with NO co-located NPC — the desk travels with the flag', () => {
@@ -427,7 +477,6 @@ describe('T-121 · VisitHangout resolves at a port that is not Sun-3', () => {
       type: 'VisitHangout',
       venue: 'borrow',
       amount: 500,
-      spendDie: 0,
     });
 
     expect(events.some((e) => e.type === 'ActionBlocked')).toBe(false);
@@ -446,7 +495,7 @@ describe('T-121 · VisitHangout resolves at a port that is not Sun-3', () => {
 // the two lending venues report a LoanEvent.
 //
 // F-120-1 · THE REFUSAL WAS NOT REACHABLE END TO END AT T-120, and that was
-// deliberate rather than an omission: Sun-3's row and `DEFAULT_PORT_HANGOUT` both
+// deliberate rather than an omission: Sol-3's row and `DEFAULT_PORT_HANGOUT` both
 // offer all seven venues, so no state could drive `resolveVisitHangout` into that
 // branch while exactly one port existed. What is asserted here is the SERIALIZED
 // SHAPE of both event variants (the schema mirror + the drift guard); the
@@ -535,7 +584,7 @@ describe('T-123 · a port that withholds a venue refuses it BEFORE the die is sp
 
     const { state: after, events } = resolveVisitHangout(
       state,
-      { type: 'VisitHangout', venue: 'meet', opponentId: DEALER, spendDie: 0 },
+      { type: 'VisitHangout', venue: 'meet', opponentId: DEALER },
       new SeededRng(1),
     );
 
@@ -559,7 +608,7 @@ describe('T-123 · a port that withholds a venue refuses it BEFORE the die is sp
 
     const { state: after, events } = resolveVisitHangout(
       state,
-      { type: 'VisitHangout', venue: 'insult', opponentId: DEALER, spendDie: 0 },
+      { type: 'VisitHangout', venue: 'insult', opponentId: DEALER },
       new SeededRng(1),
     );
 
@@ -583,14 +632,15 @@ describe('T-123 · a port that withholds a venue refuses it BEFORE the die is sp
     state.player.credits = 1000;
     const { state: after, events } = resolveVisitHangout(
       state,
-      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 200, spendDie: 0 },
+      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 200 },
       new SeededRng(1),
     );
     expect(events.some((e) => e.type === 'DareHandStarted')).toBe(true);
     expect(
       events.some((e) => e.type === 'HangoutEvent' && e.failReason === 'venue-not-offered'),
     ).toBe(false);
-    expect(after.player.dawnHand?.spent[0]).toBe(true);
+    // T-197 · the venue is FREE — the hand is untouched (§3).
+    expect(after.player.dawnHand?.spent).toEqual([false, false, false, false, false]);
 
     // …and the same at Spica-3, on a venue it DOES run, so the insult refusal above
     // is a statement about the venue rather than about the port being broken.
@@ -598,14 +648,15 @@ describe('T-123 · a port that withholds a venue refuses it BEFORE the die is sp
     const watch = hangoutState([20, 3, 3, 3, 3], SPICA_3);
     const { state: afterWatch, events: watchEvents } = resolveVisitHangout(
       watch,
-      { type: 'VisitHangout', venue: 'befriend', opponentId: DEALER, spendDie: 0 },
+      { type: 'VisitHangout', venue: 'befriend', opponentId: DEALER },
       new SeededRng(1),
     );
     expect(watchEvents.some((e) => e.type === 'HangoutEvent' && e.venue === 'befriend')).toBe(true);
     expect(
       watchEvents.some((e) => e.type === 'HangoutEvent' && e.failReason === 'venue-not-offered'),
     ).toBe(false);
-    expect(afterWatch.player.dawnHand?.spent[0]).toBe(true);
+    // T-197 · the venue is FREE — the hand is untouched (§3).
+    expect(afterWatch.player.dawnHand?.spent).toEqual([false, false, false, false, false]);
   });
 });
 
@@ -641,7 +692,6 @@ describe('T-133 · a requested principal clamps into the PORT’s band', () => {
       type: 'VisitHangout',
       venue: 'borrow',
       amount,
-      spendDie: 0,
     });
     return { after, events, before };
   }
@@ -668,8 +718,10 @@ describe('T-133 · a requested principal clamps into the PORT’s band', () => {
     expect(after.player.loan?.outstanding).toBe(ceiling);
     // Credits moved by exactly the CLAMPED amount, not by the amount asked for.
     expect(after.player.credits).toBe(before + ceiling);
-    // …and the die was spent, because the action resolved rather than refusing.
-    expect(after.player.dawnHand?.spent[0]).toBe(true);
+    // T-197 · …and NO die was spent, because borrowing is a Free Action now — the
+    // assertion is inverted, not deleted: it used to prove the resolution charged
+    // the hand, and it now proves it does not (docs/DAWN-HAND-REDESIGN.md §3).
+    expect(after.player.dawnHand?.spent).toEqual([false, false, false, false, false]);
   });
 
   it('an under-ask at Arcturus-6 clamps UP to the port’s floor', () => {
@@ -688,5 +740,335 @@ describe('T-133 · a requested principal clamps into the PORT’s band', () => {
     expect(after.player.loan?.principal).toBe(asked);
     expect(after.player.credits).toBe(before + asked);
     expect(asked).toBeGreaterThan(loanBandFor(ARCTURUS_6).max);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-197 · THE HANGOUT VENUES ARE FREE, AND TWO CAPS REPLACE THE DIE
+// (`docs/DAWN-HAND-REDESIGN.md` §3, §4a, §4b — owner-ruled 2026-08-04)
+//
+// The die used to be the only throttle on seven venues at once. This block is the
+// evidence that it is gone AND that what replaced it actually bites: every test
+// here drives a cap TO ITS LIMIT and asserts the typed refusal, because a happy
+// path proves a counter exists and nothing more.
+// ---------------------------------------------------------------------------
+
+describe('T-197 · the Hangout venues are FREE, and two caps replace the die', () => {
+  /** A DAY state seated at Sol-3 with a solvent dealer and a FULLY SPENT hand —
+   *  the strongest form of "costs no die". Nothing here can borrow a die. */
+  function spentOutHangout(): GameState {
+    const state = hangoutState([10, 3, 3, 3, 3]);
+    state.player.credits = 20_000;
+    state.player.dawnHand!.spent = state.player.dawnHand!.spent.map(() => true);
+    return state;
+  }
+
+  const visit = (state: GameState, action: Parameters<typeof resolveVisitHangout>[1], seed = 1) =>
+    resolveVisitHangout(state, action, new SeededRng(seed));
+
+  it('ALL SEVEN venues resolve against a FULLY SPENT hand, and leave it untouched', () => {
+    // The headline criterion. A spent-out hand is the state in which the OLD
+    // resolver refused every one of these with `die-already-spent`.
+    const cases = [
+      { venue: 'dare' as const, opponentId: DEALER, wager: 100 },
+      { venue: 'meet' as const, opponentId: DEALER },
+      { venue: 'befriend' as const, opponentId: DEALER },
+      { venue: 'insult' as const, opponentId: DEALER },
+      { venue: 'rumor' as const },
+      { venue: 'borrow' as const, amount: 500 },
+    ];
+    for (const c of cases) {
+      const state = spentOutHangout();
+      const { state: after, events } = visit(state, { type: 'VisitHangout', ...c });
+      for (const e of events) {
+        if (e.type === 'HangoutEvent' || e.type === 'LoanEvent') {
+          expect(e.failReason, `${c.venue} was refused`).toBeUndefined();
+        }
+      }
+      expect(after.player.dawnHand!.spent, `${c.venue} touched the hand`).toEqual([
+        true,
+        true,
+        true,
+        true,
+        true,
+      ]);
+    }
+    // `repay` needs a loan to exist, so it rides the borrow's own state.
+    const borrowed = visit(spentOutHangout(), {
+      type: 'VisitHangout',
+      venue: 'borrow',
+      amount: 500,
+    }).state;
+    const repaid = visit(borrowed, { type: 'VisitHangout', venue: 'repay', amount: 500 });
+    expect(repaid.state.player.loan).toBeNull();
+    expect(repaid.state.player.dawnHand!.spent).toEqual([true, true, true, true, true]);
+  });
+
+  // -------------------------------------------------------------------------
+  // §5's resolved blocker: Befriend rolls an INTERNAL d20 now.
+  // -------------------------------------------------------------------------
+
+  it('befriend rolls an internal d20 against the PORT’s authored DC — both ways', () => {
+    const dc = venueParamsFor(1, 'befriend').dc;
+    let sawSuccess = false;
+    let sawFailure = false;
+    for (let seed = 1; seed <= 200 && !(sawSuccess && sawFailure); seed += 1) {
+      const state = spentOutHangout();
+      const before = dealerOf(state).disposition;
+      const { state: after, events } = visit(
+        state,
+        { type: 'VisitHangout', venue: 'befriend', opponentId: DEALER },
+        seed,
+      );
+      const check = events.find((e) => e.type === 'StatCheck');
+      // THE CHECK IS STILL LIVE, on every seed, against the PORT's own DC — the
+      // content §5 explicitly refused to delete.
+      expect(check).toMatchObject({ actor: 'Player', stat: Stat.GUILE, dc });
+      const success = (check as { result: { success: boolean } }).result.success;
+      const moved = dealerOf(after).disposition !== before;
+      // Disposition moves on success and ONLY on success.
+      expect(moved).toBe(success);
+      // …and BOTH outcomes spend a play (§4a's accounting: spent on RESOLUTION,
+      // whatever the outcome). This is the clause a failure-refunds bug breaks.
+      expect(after.player.socialPlaysRemaining).toBe(SOCIAL_PLAYS_PER_DAY - 1);
+      if (success) sawSuccess = true;
+      else sawFailure = true;
+    }
+    // NON-VACUITY: the sweep really saw a failing roll and a passing one, so
+    // "covered both ways" is a fact about this run, not about the loop bound.
+    expect(sawSuccess, 'no befriend seed succeeded').toBe(true);
+    expect(sawFailure, 'no befriend seed failed').toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // §4a · the social pool, driven TO its limit
+  // -------------------------------------------------------------------------
+
+  it('the pool spends out after SOCIAL_PLAYS_PER_DAY, then refuses with social-limit-reached', () => {
+    let state = spentOutHangout();
+    const venues = ['meet', 'insult', 'meet', 'befriend'] as const;
+    for (let i = 0; i < SOCIAL_PLAYS_PER_DAY; i += 1) {
+      const step = visit(state, { type: 'VisitHangout', venue: venues[i], opponentId: DEALER });
+      expect(
+        step.events.some((e) => e.type === 'HangoutEvent' && e.failReason !== undefined),
+        `play ${i + 1} was refused`,
+      ).toBe(false);
+      expect(step.state.player.socialPlaysRemaining).toBe(SOCIAL_PLAYS_PER_DAY - (i + 1));
+      state = step.state;
+    }
+    expect(socialPlaysRemaining(state)).toBe(0);
+
+    // THE LIMIT. The next social beat is a TYPED refusal — never a silent no-op.
+    const dispositionBefore = dealerOf(state).disposition;
+    const creditsBefore = state.player.credits;
+    const refused = visit(state, {
+      type: 'VisitHangout',
+      venue: 'befriend',
+      opponentId: DEALER,
+    });
+    expect(refused.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+      venue: 'befriend',
+      opponentId: DEALER,
+      failReason: 'social-limit-reached',
+    });
+    // NOTHING moved: no disposition, no credits, no further decrement, and no
+    // check was rolled at all.
+    expect(refused.events.some((e) => e.type === 'StatCheck')).toBe(false);
+    expect(refused.events.some((e) => e.type === 'DispositionChanged')).toBe(false);
+    expect(dealerOf(refused.state).disposition).toBe(dispositionBefore);
+    expect(refused.state.player.credits).toBe(creditsBefore);
+    expect(refused.state.player.socialPlaysRemaining).toBe(0);
+  });
+
+  it('all three pool venues draw from ONE shared counter, not three of their own', () => {
+    // One of each, in one day: the fourth beat of ANY kind is refused.
+    let state = spentOutHangout();
+    for (const venue of ['meet', 'befriend', 'insult'] as const) {
+      state = visit(state, { type: 'VisitHangout', venue, opponentId: DEALER }).state;
+    }
+    expect(state.player.socialPlaysRemaining).toBe(0);
+    for (const venue of ['meet', 'befriend', 'insult'] as const) {
+      const refused = visit(state, { type: 'VisitHangout', venue, opponentId: DEALER });
+      expect(refused.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+        failReason: 'social-limit-reached',
+      });
+    }
+  });
+
+  it('rumor, borrow, repay and dare-open leave the pool UNTOUCHED — all four, explicitly', () => {
+    // The negative half of §4a, and the one a "decrement everything" bug breaks.
+    let state = spentOutHangout();
+    const start = state.player.socialPlaysRemaining;
+
+    state = visit(state, { type: 'VisitHangout', venue: 'rumor' }).state;
+    expect(state.player.socialPlaysRemaining, 'rumor drew from the pool').toBe(start);
+
+    state = visit(state, { type: 'VisitHangout', venue: 'borrow', amount: 500 }).state;
+    expect(state.player.socialPlaysRemaining, 'borrow drew from the pool').toBe(start);
+
+    state = visit(state, { type: 'VisitHangout', venue: 'repay', amount: 500 }).state;
+    expect(state.player.socialPlaysRemaining, 'repay drew from the pool').toBe(start);
+
+    state = visit(state, {
+      type: 'VisitHangout',
+      venue: 'dare',
+      opponentId: DEALER,
+      wager: 100,
+    }).state;
+    expect(state.dareHand, 'the dare did not open').not.toBeNull();
+    expect(state.player.socialPlaysRemaining, 'dare-open drew from the pool').toBe(start);
+  });
+
+  // -------------------------------------------------------------------------
+  // §4b · the rounds-per-day cap, driven TO its limit at two tiers
+  // -------------------------------------------------------------------------
+
+  /** Settle the standing hand so the next open is not refused with
+   *  `dare-hand-open` — the gate that would otherwise mask the cap. */
+  function foldStandingHand(state: GameState): GameState {
+    const settled = applyPlayerAction(state, { type: 'Dare', move: 'fold' }).state;
+    expect(settled.dareHand, 'the fold did not settle the hand').toBeNull();
+    return settled;
+  }
+
+  it('tier 0 allows exactly its cap, then refuses the next open with daily-round-limit', () => {
+    let state = spentOutHangout();
+    state.player.liarsDiceGamesPlayed = 0;
+    const cap = liarsDiceRoundsPerDay(liarsDiceTier(0));
+    expect(cap).toBeGreaterThan(0); // NON-VACUITY: a cap of 0 would pass trivially
+
+    for (let i = 0; i < cap; i += 1) {
+      const step = visit(state, {
+        type: 'VisitHangout',
+        venue: 'dare',
+        opponentId: DEALER,
+        wager: 100,
+      });
+      expect(step.state.dareHand, `open ${i + 1} was refused`).not.toBeNull();
+      expect(step.state.player.dareRoundsToday).toBe(i + 1);
+      state = foldStandingHand(step.state);
+    }
+
+    const creditsBefore = state.player.credits;
+    const refused = visit(state, {
+      type: 'VisitHangout',
+      venue: 'dare',
+      opponentId: DEALER,
+      wager: 100,
+    });
+    expect(refused.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+      venue: 'dare',
+      opponentId: DEALER,
+      failReason: 'daily-round-limit',
+    });
+    // Nothing was drawn, escrowed or counted.
+    expect(refused.state.dareHand).toBeNull();
+    expect(refused.state.player.credits).toBe(creditsBefore);
+    expect(refused.state.player.dareRoundsToday).toBe(cap);
+    expect(refused.events.some((e) => e.type === 'DareHandStarted')).toBe(false);
+  });
+
+  it('a HIGHER unlock tier buys a BIGGER allowance — the ruled "rewarding good play" shape', () => {
+    const tier1Games = LIARS_DICE_UNLOCK_GAMES[0];
+    const capAtTier0 = liarsDiceRoundsPerDay(liarsDiceTier(0));
+    const capAtTier1 = liarsDiceRoundsPerDay(liarsDiceTier(tier1Games));
+    expect(capAtTier1).toBeGreaterThan(capAtTier0);
+
+    let state = spentOutHangout();
+    state.player.liarsDiceGamesPlayed = tier1Games;
+    for (let i = 0; i < capAtTier1; i += 1) {
+      const step = visit(state, {
+        type: 'VisitHangout',
+        venue: 'dare',
+        opponentId: DEALER,
+        wager: 100,
+      });
+      expect(step.state.dareHand, `open ${i + 1} at tier 1 was refused`).not.toBeNull();
+      state = foldStandingHand(step.state);
+      // `liarsDiceGamesPlayed` climbs as hands settle; pin it so the tier — and so
+      // the cap — is the one this test is measuring rather than a moving target.
+      state.player.liarsDiceGamesPlayed = tier1Games;
+    }
+    const refused = visit(state, {
+      type: 'VisitHangout',
+      venue: 'dare',
+      opponentId: DEALER,
+      wager: 100,
+    });
+    expect(refused.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+      failReason: 'daily-round-limit',
+    });
+  });
+
+  it('the round is counted AT OPEN — an unsettled hand has already spent it', () => {
+    // §4b's ruling, asserted rather than assumed: a hand persists across dusk, so
+    // counting at settlement would let a hand opened before dusk dodge the reset.
+    const state = spentOutHangout();
+    const opened = visit(state, {
+      type: 'VisitHangout',
+      venue: 'dare',
+      opponentId: DEALER,
+      wager: 100,
+    }).state;
+    expect(opened.dareHand).not.toBeNull();
+    expect(opened.player.dareRoundsToday).toBe(1);
+  });
+
+  it('an open-and-FOLD burns the round — the cap cannot be laundered through folds', () => {
+    let state = spentOutHangout();
+    state.player.liarsDiceGamesPlayed = 0;
+    const cap = liarsDiceRoundsPerDay(liarsDiceTier(0));
+    for (let i = 0; i < cap; i += 1) {
+      state = foldStandingHand(
+        visit(state, { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100 }).state,
+      );
+    }
+    expect(state.player.dareRoundsToday).toBe(cap);
+    const refused = visit(state, {
+      type: 'VisitHangout',
+      venue: 'dare',
+      opponentId: DEALER,
+      wager: 100,
+    });
+    expect(refused.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+      failReason: 'daily-round-limit',
+    });
+  });
+
+  it('a venue-not-offered refusal spends NEITHER cap — a refusal is never charged', () => {
+    // The invariant every pre-resolution refusal in the resolver keeps, carried
+    // over from the die to the two counters.
+    const state = spentOutHangout();
+    // Arcturus-6 (id 6) is reached through the same accessor the resolver uses, so
+    // this test cannot go stale against a content re-authoring: find any port that
+    // withholds a social venue, and if none does, the assertion is skipped rather
+    // than faked.
+    for (let systemId = 1; systemId <= 14; systemId += 1) {
+      if (venueOffered(systemId, 'meet')) continue;
+      const away = { ...state, player: { ...state.player, currentSystemId: systemId } };
+      const refused = visit(away, {
+        type: 'VisitHangout',
+        venue: 'meet',
+        opponentId: DEALER,
+      });
+      expect(refused.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+        failReason: 'venue-not-offered',
+      });
+      expect(refused.state.player.socialPlaysRemaining).toBe(SOCIAL_PLAYS_PER_DAY);
+      return;
+    }
+    // No port withholds `meet` today — assert the same law through the reason that
+    // IS always reachable: a dealer who is not co-located.
+    const orphan = spentOutHangout();
+    dealerOf(orphan).currentSystemId = 9;
+    const refused = visit(orphan, {
+      type: 'VisitHangout',
+      venue: 'meet',
+      opponentId: DEALER,
+    });
+    expect(refused.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+      failReason: 'no-opponent',
+    });
+    expect(refused.state.player.socialPlaysRemaining).toBe(SOCIAL_PLAYS_PER_DAY);
   });
 });

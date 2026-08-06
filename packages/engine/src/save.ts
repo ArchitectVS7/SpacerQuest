@@ -4,8 +4,10 @@ import { GameState, ShipState } from './types.js';
 import { validateGameState } from './schema.js';
 import { emptyDeedRegistry, rankForDeedCount } from './deeds.js';
 import { computePlayerTier } from './tier.js';
-import { seedNpcShip } from './npc.js';
+import { questHomePortForProfile, seedNpcShip } from './npc.js';
 import { JOB_POOL_MAX_CLAIMS } from './economy.js';
+import { dicePerSideForTier, maxQuantityForDice, seedLiarsDicePurses } from './liarsDiceRules.js';
+import { freshDailyHangoutCaps, wagerBandFor } from './hangoutRules.js';
 
 // T-1401 · The v5→v6 WireEntry.kind migration's ONE legitimate, retro-only use of
 // the flaw-detail suffix heuristic. A v5 save's WireEntry events predate the typed
@@ -198,6 +200,109 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * except `eventLog` and `npcs`, so a new plain-data top-level field is deep-copied
  * for free). Stated here so nobody adds a branch: a hand-written clause there
  * would be exactly the aliasing bug that module's header warns about.
+ *
+ * T-145 bumped {@link CURRENT_SAVE_VERSION} to 15, and this is THE ONLY VERSION
+ * MOVE IN MILESTONE M4e (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §5) — T-146 and
+ * T-147 read fields that already exist and must not move it, which is the ruling
+ * that stops two parallel tasks racing. The v14->v15 change lands the whole fixed
+ * Liar's Dice roster's persisted state at once, in FOUR additive steps:
+ *
+ *   1. the player's `liarsDiceBeaten` defaults to `[]`  (pool-A ids beaten so far)
+ *   2. the player's `liarsDiceGamesPlayed` defaults to 0 (settled hands, either pool)
+ *   3. `liarsDicePurses` comes from `seedLiarsDicePurses(v14's own map)`
+ *   4. an OPEN `dareHand` gets its five new keys backfilled at TIER-0 values
+ *
+ * STEPS 1 AND 2 ARE STATEMENTS OF FACT ABOUT A v14 SAVE, NOT DEFAULTS — the same
+ * wording MIGRATIONS[12] and [13] use, and for the same reason: a v14 save was
+ * written by an engine in which no roster existed, so "this captain has beaten
+ * nobody in the roster" and "has played zero hands under the new counter" are TRUE
+ * of that save rather than values this migration is picking.
+ *
+ * STEP 3 IS WHERE THE HOUSE RULE ACTUALLY BITES. Unlike the last three entries the
+ * backfilled value is NOT a literal, so there IS a rule to call, and it is called:
+ * `seedLiarsDicePurses` (liarsDiceRules.ts) — the SAME function `createInitialState`
+ * and `deserializeState` use, the `emptyDeedRegistry` pattern by name. It preserves
+ * every key already present, which is what makes it idempotent and what lets a
+ * later content pass add a fourth seat to a port with NO further save version.
+ *
+ * STEP 4 CALLS RULES TOO, never literals: `dicePerSideForTier(0)`,
+ * `maxQuantityForDice(...)` and `wagerBandFor(hand.systemId).max`, with
+ * `opponentKind: 'roaming'` (true by construction — no roster existed at v14) and
+ * `opponentArchetype: null` (required to be null for a roaming hand).
+ *
+ * `cloneState` needs NO change for `liarsDicePurses` either, for the third time and
+ * the same reason: it is a plain-data root field on a module that JSON round-trips
+ * everything except `eventLog` and `npcs`. A hand-written clone clause would be the
+ * aliasing bug that module's header warns about.
+ *
+ * T-197 bumped {@link CURRENT_SAVE_VERSION} to 16. The v15->v16 change is an
+ * additive TWO-KEY player backfill, and it exists because
+ * `docs/DAWN-HAND-REDESIGN.md` §4a/§4b replaced the Hangout's die cost with two
+ * DAILY ALLOWANCES that must survive a mid-day save/load:
+ *
+ *   1. `player.socialPlaysRemaining` — free `meet`/`befriend`/`insult` plays left
+ *      today (§4a's social pool)
+ *   2. `player.dareRoundsToday` — Liar's Dice hands OPENED today (§4b's rounds
+ *      cap, counted at open)
+ *
+ * BOTH ARE STATEMENTS OF FACT ABOUT A v15 SAVE, NOT DEFAULTS — `MIGRATIONS[12]`,
+ * `[13]` and `[14]`'s wording, and for the same reason: a v15 save was written by
+ * an engine in which neither cap existed, so "no social plays have been spent
+ * today" and "no hands have been opened today" are TRUE of that save rather than
+ * values this migration is picking. A captain reloading such a save gets a full
+ * day's allowance because they demonstrably spent none of it.
+ *
+ * AND THE HOUSE RULE BITES AGAIN: unlike [12] and [13] the values are NOT literals,
+ * so there IS a rule to call, and it is called — `freshDailyHangoutCaps`
+ * (`hangoutRules.ts`), the SAME rule `createInitialState`, `deserializeState` and
+ * `day.ts`'s dawn reset read. `SOCIAL_PLAYS_PER_DAY` is a CONTENT constant, so a
+ * later tuning pass moves one content number and this migration follows it with no
+ * further version bump. That is the `emptyDeedRegistry` / `seedLiarsDicePurses`
+ * pattern by name.
+ *
+ * `cloneState` needs no change (two plain numbers on the player, JSON round-tripped
+ * for free) and neither does `dareHand`: the rounds counter deliberately lives on
+ * the PLAYER, not on the hand, because it counts opens across a whole day and a
+ * hand is a single scene.
+ *
+ * T-208 bumped {@link CURRENT_SAVE_VERSION} to 17. The v16->v17 change is THE ONLY
+ * ONE IN THIS REGISTRY THAT CHANGES NO SHAPE AT ALL — every key it touches
+ * (`npcs[].currentSystemId`) already exists and is already required by the strict
+ * schema. It is a VALUE migration, and it is owed for the v7->v8 reason: the RULE
+ * behind a persisted DERIVED value moved.
+ *
+ * WHAT MOVED. Before T-208, `createInitialState` seeded all 41 roster records at an
+ * arbitrary `(index % 20) + 1`. The 11 `QUEST_PROFILES` occupy indices 30-40, so six
+ * of them landed on RIM systems (15-20) that have no Cantina — and a quest captain
+ * never moves off their birth system for an entire career, because the only two
+ * writers of `currentSystemId` in the engine (`npc.ts`'s `executeTrade` and
+ * `executeTravel`) are reachable only through `resolveNpcDay`, which `day.ts` gates
+ * behind `isSimulatedCaptain`. Six of eleven were therefore frozen forever somewhere
+ * the player cannot meet them at a bar. T-208 replaced that seed with the port each
+ * captain's own content declares (`NpcProfile.homePortSystemId`).
+ *
+ * WHY RE-SEEDING IS SAFE HERE WHERE N2 REFUSED IT FOR THE SIMULATED ROSTER. N2's
+ * ruling is that you must not re-seed a captain the simulation has been writing —
+ * you would confiscate purchases and undo a career. A quest captain has been written
+ * by nothing: they take no turn, buy nothing and go nowhere, so their
+ * `currentSystemId` is a constant of CONTENT that a stale save is simply carrying
+ * the old value of. Skipping the migration would half-deliver the feature on every
+ * existing career: Rust Bucket would stay parked at Antares-5 while
+ * `npc.rust-bucket.scrap-sliver` says his pile is at Fomalhaut-2.
+ *
+ * AND THE HOUSE RULE BITES: the value is not a literal, so there IS a rule to call,
+ * and it is called — `questHomePortForProfile` (`npc.ts`), the SAME rule
+ * `createInitialState` and `deserializeState` read, the `seedNpcShip` /
+ * `emptyDeedRegistry` pattern by name. An unresolvable `profileId` returns
+ * `undefined` and its record is left EXACTLY as-is: a migration must never throw and
+ * must never teleport a record it does not recognise.
+ *
+ * IDEMPOTENT BY CONSTRUCTION — re-running it on an already-correct save writes the
+ * same value, which is what lets `deserializeState` run the identical backfill
+ * unconditionally rather than behind a `??=`.
+ *
+ * `cloneState` needs no change: `currentSystemId` is a plain number on a roster
+ * record that already round-trips.
  *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
@@ -424,9 +529,102 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
     const s = v13State as { dareHand?: unknown };
     return { ...(v13State as object), dareHand: s.dareHand ?? null };
   },
+  // v14->v15: T-145 landed the fixed Liar's Dice roster (pool A) and ALL of its
+  // persisted state in one migration — the only version move in M4e. See the
+  // registry header above for the four steps and why each is a fact rather than a
+  // default. Idempotent: a state that already carries the keys keeps them exactly,
+  // hidden dice and escrow included.
+  14: (v14State) => {
+    const s = v14State as {
+      player?: Record<string, unknown>;
+      dareHand?: Record<string, unknown> | null;
+      liarsDicePurses?: Record<string, number>;
+    };
+    const player = s.player ?? {};
+
+    // Step 4 — an OPEN v14 hand. Every pre-existing key is carried through
+    // untouched; only the five new ones are written, and each from a RULE.
+    let dareHand = s.dareHand ?? null;
+    if (dareHand !== null && typeof dareHand === 'object') {
+      const dicePerSide =
+        typeof dareHand.dicePerSide === 'number' ? dareHand.dicePerSide : dicePerSideForTier(0);
+      dareHand = {
+        ...dareHand,
+        opponentKind: dareHand.opponentKind ?? 'roaming',
+        opponentArchetype: dareHand.opponentArchetype ?? null,
+        dicePerSide,
+        maxQuantity: dareHand.maxQuantity ?? maxQuantityForDice(dicePerSide),
+        bandMax:
+          dareHand.bandMax !== undefined
+            ? dareHand.bandMax
+            : wagerBandFor(Number(dareHand.systemId)).max,
+      };
+    }
+
+    return {
+      ...(v14State as object),
+      player: {
+        ...player,
+        liarsDiceBeaten: (player as { liarsDiceBeaten?: unknown }).liarsDiceBeaten ?? [],
+        liarsDiceGamesPlayed:
+          (player as { liarsDiceGamesPlayed?: unknown }).liarsDiceGamesPlayed ?? 0,
+      },
+      liarsDicePurses: seedLiarsDicePurses(s.liarsDicePurses),
+      dareHand,
+    };
+  },
+  // v15->v16: T-197 freed all seven Hangout venues and replaced the die with two
+  // DAILY ALLOWANCES that live on the player (docs/DAWN-HAND-REDESIGN.md §4a/§4b).
+  // A v15 save has neither key. See the registry header for why both backfills are
+  // statements of fact about such a save rather than defaults, and why the values
+  // come from `freshDailyHangoutCaps` rather than from two literals here.
+  // Idempotent: a state that already carries a key keeps it EXACTLY — a captain who
+  // saved mid-day with one social play left reloads with one, not with three.
+  15: (v15State) => {
+    const s = v15State as { player?: Record<string, unknown> };
+    const player = s.player ?? {};
+    const fresh = freshDailyHangoutCaps();
+    return {
+      ...(v15State as object),
+      player: {
+        ...player,
+        socialPlaysRemaining:
+          (player as { socialPlaysRemaining?: unknown }).socialPlaysRemaining ??
+          fresh.socialPlaysRemaining,
+        dareRoundsToday:
+          (player as { dareRoundsToday?: unknown }).dareRoundsToday ?? fresh.dareRoundsToday,
+      },
+    };
+  },
+  // T-208 · v16 -> v17. NO SHAPE CHANGE: `npcs[].currentSystemId` already exists on
+  // every v16 record. This re-seeds the ELEVEN quest captains onto the core port
+  // their content declares, and touches nothing else — see the registry header above
+  // for why a value migration is owed here and why re-seeding these eleven is safe
+  // where N2 refused it for the simulated 30.
+  // The value comes from the RULE (`questHomePortForProfile`), never from a table
+  // restated here, so this site cannot drift from `createInitialState`.
+  // A record whose `profileId` does not resolve — hand-edited, or a captain a later
+  // cast dropped — is LEFT EXACTLY AS-IS rather than defaulted anywhere: a migration
+  // must never throw and must never move a record it cannot identify.
+  16: (v16State) => {
+    const s = v16State as { npcs?: unknown };
+    if (!Array.isArray(s.npcs)) return v16State;
+    const npcs = s.npcs as unknown[];
+    return {
+      ...(v16State as object),
+      npcs: npcs.map((raw: unknown) => {
+        if (typeof raw !== 'object' || raw === null) return raw;
+        const npc = raw as { profileId?: unknown };
+        if (typeof npc.profileId !== 'string') return raw;
+        const homePort = questHomePortForProfile(npc.profileId);
+        if (homePort === undefined) return raw;
+        return { ...raw, currentSystemId: homePort };
+      }),
+    };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 14;
+export const CURRENT_SAVE_VERSION = 17;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

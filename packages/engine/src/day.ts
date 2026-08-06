@@ -21,7 +21,7 @@ import { SeededRng } from './rng.js';
 import { dawnDiceModifiers, equipmentDiceBenefits, rollDawnHand } from './dice.js';
 import { autoRepairRegen, lifeSupportCritical } from './components.js';
 import { applySuccession } from './legacy.js';
-import { applyDisposition, mutableNpc, resolveNpcDay } from './npc.js';
+import { applyDisposition, mutableNpc, resolveNpcDay, type NpcDecisionTraceSink } from './npc.js';
 import {
   debitJobPool,
   generateManifestBoard,
@@ -31,6 +31,7 @@ import {
   syncMaxFuel,
 } from './economy.js';
 import { advanceEraSchedule } from './era.js';
+import { resetDailyHangoutCaps } from './hangoutRules.js';
 import { resolveTrade } from './actions/trade.js';
 import { resolveTravel } from './actions/travel.js';
 import {
@@ -424,7 +425,7 @@ export function applyPlayerAction(
   }
 
   // T-1303 · Hangout gate. A VisitHangout is only legal at a system flagged
-  // `hasHangout` (Sun-3 first, systems.ts). Elsewhere it is a player-possible act,
+  // `hasHangout` (Sol-3 first, systems.ts). Elsewhere it is a player-possible act,
   // not malformed input — surface a typed ActionBlocked (mirrors the destination
   // gate above: refusal logged, no die spent, no RNG fork, dayEventCount not
   // bumped, no throw). READER of `hasHangout`: this branch (and the sim protocol's
@@ -478,13 +479,16 @@ export function applyPlayerAction(
     result = resolveReroll(nextState, action, dayRng.fork(`action-reroll-${actionEventIndex}`));
   } else if (action.type === 'Crew') {
     // resolveCrew is pure (no rng), but fork+discard to keep the action rng stream
-    // aligned with the other die-costed actions (mirrors the Shipyard branch).
+    // aligned with every OTHER action (mirrors the Shipyard branch). T-196a: the
+    // hire/dismiss verbs are FREE now (docs/DAWN-HAND-REDESIGN.md §3), and the fork
+    // stays exactly as it was — dropping it would re-phase every seeded campaign
+    // and every golden for a second, unrelated reason.
     dayRng.fork(`action-crew-${actionEventIndex}`);
     result = resolveCrew(nextState, action);
   } else if (action.type === 'Port') {
     // resolvePortPurchase is pure (no rng), but fork+discard to keep the action rng
-    // stream aligned with the other die-costed actions (mirrors the Crew/Shipyard
-    // branches).
+    // stream aligned with every OTHER action (mirrors the Crew/Shipyard branches).
+    // T-196a: the buy is FREE now, and the fork stays — see the Crew branch.
     dayRng.fork(`action-port-${actionEventIndex}`);
     result = resolvePortPurchase(nextState, action);
   } else {
@@ -532,7 +536,25 @@ export function applyPlayerAction(
   return { state: resolvedState, events };
 }
 
-export function endDay(state: GameState): { state: GameState; events: GameEvent[] } {
+/**
+ * T-140 · Diagnostic-only options for {@link endDay}. Absent on every ordinary
+ * call — the parameter defaults to `{}` precisely so that every existing caller
+ * (the cockpit's `endDay(state)`, the sim's day loop, ~120 tests) compiles and
+ * behaves untouched, which is what makes the addition provably inert.
+ */
+export interface EndDayOptions {
+  /**
+   * Where the dusk's NPC decision traces go (docs/BALANCE-TELEMETRY_SPEC.md).
+   * Supplied ONLY by `packages/sim`'s sweep runner behind `--trace-npc-decisions`;
+   * `packages/ui` and `packages/desktop` never pass one.
+   */
+  npcDecisionTrace?: NpcDecisionTraceSink;
+}
+
+export function endDay(
+  state: GameState,
+  options: EndDayOptions = {},
+): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
   let nextState = cloneState(state);
 
@@ -855,6 +877,10 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       // N11 · Same argument for the licence: the demo's CONQUEROR ceiling is a
       // property of the world, so a captain's deed accrual meets it too.
       edition: nextState.edition,
+      // T-140 · Undefined on every ordinary dusk. Observation only: `resolveNpcDay`
+      // reads this to decide whether to build an entry, never to decide anything a
+      // captain does.
+      npcDecisionTrace: options.npcDecisionTrace,
     });
 
     // N10 · The pool claim: a captain trading anywhere but under the player's nose
@@ -1284,7 +1310,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     // TIMING is safe: the flip is at dusk, AFTER the DAY-phase T-113a Wise One
     // hook (`eras:['TOUR_ONE'] + day:30`) has had its chance to fire, so it is
     // not clobbered; from the day-31 dawn onward all TOUR_ONE-gated storylets
-    // (guild-pressure, the Sun-3 auditor, etc.) go ineligible via the
+    // (guild-pressure, the Sol-3 auditor, etc.) go ineligible via the
     // `trigger.eras` gate. READERS already written against this flip: the
     // storylet eligibility gate (`storylets.ts` triggerMatches, `trigger.eras`)
     // that expires TOUR_ONE content and admits VETERAN content, and
@@ -1461,6 +1487,14 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   nextState.rngState = dayRng.getState();
   nextState.dayPhase = DayPhase.DAWN;
   nextState.dayEventCount = 0;
+  // T-197 · THE DAWN RESET FOR BOTH HANGOUT CAPS
+  // (docs/DAWN-HAND-REDESIGN.md §4a/§4b), at the EXISTING chokepoint beside
+  // `dayEventCount` rather than in a second reset of its own. `startDay` must NOT
+  // acquire a matching write: two reset sites for one daily allowance is exactly
+  // how a mid-day reload or a re-entered dawn silently refills a cap. The values
+  // come from the rule (`resetDailyHangoutCaps`), which `MIGRATIONS[15]` and
+  // `createInitialState` also read, so the three cannot drift.
+  resetDailyHangoutCaps(nextState.player);
   events.push({ type: 'DayAdvanced', day: nextDay });
   appendEvents(nextState, events);
 

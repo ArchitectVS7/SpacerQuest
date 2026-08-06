@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +19,7 @@ import { RENOWN_RANKS } from '@spacerquest/content';
 //   3. Storylet locks and the rank readout are asserted against the IMPORTED engine
 //      exports (quoteStoryletChoice / nextRankFor), not hard-coded literals.
 //
-// The store's default career is the deterministic seed 424242 → Day 1, Sun-3; the
+// The store's default career is the deterministic seed 424242 → Day 1, Sol-3; the
 // headless state below is built the exact way the store boots a fresh game
 // (startDay(createInitialState(DEFAULT_SEED))), so the engine truth the DOM is
 // checked against is the same run the UI renders.
@@ -28,6 +29,10 @@ const GUILD_AUDITOR = 'port.sun3.guild-auditor';
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 // ---- 1. Guard: format.ts imports rather than reimplements ------------------
@@ -89,14 +94,18 @@ function choice(page: Page, choiceId: string) {
   return page.locator(`[data-testid="storylet-choice"][data-choice-id="${choiceId}"]`);
 }
 
-test('the manifest sign flow renders a die cost, not a TRADE check', async ({ page }) => {
+test('the manifest sign flow renders a FREE signature, not a TRADE check', async ({ page }) => {
   await page.goto('/');
 
-  // The sign row on every offer speaks in a DIE COST — no "+ TRADE" fragment, no
-  // check-stat element. Signing spends the die; the engine never rolls it.
+  // The sign row on every offer prices the signature as FREE — no "+ TRADE"
+  // fragment, no check-stat element. T-196c: it used to read "costs 1 die", which
+  // stopped being true when M17 (docs/DAWN-HAND-REDESIGN.md §3) freed signing;
+  // the die slot and the "assign a die" prompt went with the cost. The contrast
+  // this test exists for — signature vs. honest check — is untouched.
   const signRow = page.getByTestId('sign-row').first();
   await expect(signRow).toBeVisible();
-  await expect(signRow).toContainText('costs 1 die');
+  await expect(signRow).toContainText('FREE');
+  await expect(signRow).not.toContainText('costs 1 die');
   await expect(signRow).not.toContainText('TRADE');
   await expect(signRow.getByTestId('check-stat')).toHaveCount(0);
   // No check breakdown is open at rest — signing is not a check surface.

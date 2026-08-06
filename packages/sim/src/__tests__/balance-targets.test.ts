@@ -94,13 +94,129 @@ const TRADER_CLEAR_DAY_MAX = 30;
  *
  * Read from disk rather than imported so that re-pinning the baseline is a data
  * change, not a code change, and so a MISSING or RENAMED baseline fails loudly here
- * instead of silently grading nothing. The path is deliberately the single string
- * that must be updated when the baseline is re-pinned — the same commit that writes
- * the new file updates this line and the pointer in
- * `docs/NPC_REDESIGN.md`'s standing amendment 1.
+ * instead of silently grading nothing.
+ *
+ * THIS IS THE AUTHORITATIVE POINTER — the only one of the five that is READ at
+ * runtime; the other four are prose that describes it. BR-14
+ * (`docs/BALANCE-RIG-DECISIONS.md`) requires the same commit that writes a new
+ * capstone to move ALL FIVE:
+ *
+ *   1. this line;
+ *   2. `docs/NPC_REDESIGN.md` — standing amendment 1's "Baseline of record is …";
+ *   3. `docs/NPC_REDESIGN.md` — the status banner's newest "BASELINE OF RECORD
+ *      RE-PINNED AT T-nnn" block, which goes at the TOP of the banner;
+ *   4. `docs/balance/smoke/README.md` — the "The current baseline (…)" line;
+ *   5. `docs/BALANCE-RIG-DECISIONS.md` — BR-14's own "current baseline of record
+ *      is …" sentence (the fifth site, added at T-182).
+ *
+ * (T-165's task block and `TODO.md` both said FOUR; they predate T-182's fifth.)
+ * Agreement is no longer a matter of anyone remembering: since T-165,
+ * `packages/sim/src/__tests__/baseline-pointers.test.ts` reads all five and fails
+ * when any disagrees — it was RED ON ARRIVAL against three genuinely stale sites
+ * left by T-188, T-195 and T-199.
  */
+// T-196b re-pin (t196a-free-actions -> t196b-instruments). Same shape, same 8,000
+// rows, same eight policies, same milestone days (21,29,30,41,60,120). This is ARM 2
+// of the control-arm pair T-196a opened: the RULES did not move (`rulesFingerprint`
+// is still 55414694d7187afc — no engine or content file is touched), the INSTRUMENTS
+// did (6106da3575355153 -> 812d9e87d7307f3c), because the eight sim policies stopped
+// budgeting a dawn die for the nine M17 Free Actions and the protocol enumerator
+// stopped advertising one. The diff against the T-196a arm is therefore the measured
+// value of EXPLOITATION alone. The bands below are UNTOUCHED. SEVEN of the eight
+// policy rows moved (all but `greedy`, whose plan did not change) against T-196a's
+// two — that breadth contrast is the result. Fleet `tourOneClearRate` 0.6305 ->
+// 0.6342, median final credits 49,517 -> 49,839 (+0.7%), ships lost 465 -> 487; the
+// fighter carries the arm (clear rate 0.499 -> 0.603, median credits 45,551 ->
+// 82,671) because its three-planner shopping chain no longer has to win a die each.
+//
+// (Prior) T-196a re-pin (t199-pacifist -> t196a-free-actions). Same shape, same 8,000 rows,
+// same eight policies, same milestone days (21,29,30,41,60,120). The capstone was
+// re-taken because M17 (`docs/DAWN-HAND-REDESIGN.md` §3) freed nine administrative
+// action types from the dawn hand, which moves the RULES fingerprint
+// (febc55edd3a94b3f -> 55414694d7187afc) and stales every fixture measured against
+// it. The bands below are UNTOUCHED — nothing here was re-derived to accommodate the
+// new sample. EXACTLY TWO policy rows moved, `explorer` and `smuggler` (the only two
+// that queue `Explore`); the other six are byte-identical on every headline metric.
+//
+// (Prior) T-199 re-pin (t195-dawn-dice -> t199-pacifist). Same shape, same 8,000 rows, same
+// eight policies, same milestone days: the capstone was re-taken because
+// `packages/sim/src/index.ts` moved (the shared pacifist-combat planner and the
+// anti-idle rim-strand rules), which moves the INSTRUMENT fingerprint and stales
+// every fixture measured against it. The bands below are UNTOUCHED — nothing here
+// was re-derived to accommodate the new sample.
+// T-197 re-pin (t196b-instruments -> t197-hangout-caps). Same shape, same 8,000 rows,
+// same eight policies, same milestone days. UNLIKE the T-196a/T-196b pair this capstone
+// moves BOTH fingerprints — the engine and content changed (all seven Hangout venues went
+// free; the social pool and the rounds cap arrived) AND the instruments changed (three
+// planners lost their `DieLedger`, two gained the rounds mirror) — so it is not a clean
+// single-arm attribution and the block comment above should not be read as claiming one.
+// The bands below are UNTOUCHED; nothing here was re-derived to accommodate the new sample.
+// T-202 re-pin (t197-hangout-caps -> t202-liars-dice-ceiling). Same shape, same 8,000 rows,
+// same eight policies, same milestone days. A CONTENT-ONLY capstone: it ships R3's ruled
+// `LIARS_DICE_ROUNDS_PER_DAY = [1, 2, 3, 4, 5, 6]`, so `rulesFingerprint` moves and
+// `instrumentFingerprint` does NOT. EVERY ONE OF THE EIGHT POLICY ROWS CAME BACK
+// BYTE-IDENTICAL, and that is an INSTRUMENT-GAP NULL RESULT rather than a verdict that the
+// new ceiling is balanced: the sim's gambler is the only policy that plans a Dare and it is
+// bounded by `GAMBLER_MAX_DARES_PER_DAY = 2` (`packages/sim/src/index.ts:4058,4584`), below
+// the ruled ceiling, so it plays `1,2,2,2,2,2` hands by tier under BOTH tables. See F-202-1
+// in `TASKS.md`'s T-202 block. The bands below are UNTOUCHED — nothing here was re-derived
+// to accommodate the new sample (there was nothing to re-derive: the sample did not move).
+// T-206 re-pin (t204-cantina-rename -> t206-captain-voice). Same shape, same 8,000 rows,
+// same eight policies, same milestone days. A CONTENT-ONLY capstone in the same class as
+// T-204's rename: it ships the authored `tableTalk` and `catchphrases` lines for the 27
+// captains T-205 left on its worklist, so `rulesFingerprint` moves (content is hashed
+// WHOLESALE, so even prose with no reader moves it — `5ae9a5d473827024` on the outgoing
+// baseline -> `cbb087860825aa35`) and `instrumentFingerprint` does NOT (unmoved at
+// `5c230e99648cddee`). `balance:diff` printed "NOTHING MOVED. Every compared field is equal
+// on both sides", which was PREDICTED IN WRITING BEFORE THE RUN (`TASKS.md` T-206) and is the
+// only correct outcome: nothing reads either field until T-207, so a moved row would have
+// meant something consumes the profile object wholesale and would have been filed as a
+// finding. The bands below are UNTOUCHED — there was nothing to re-derive.
+// RE-PINNED AT T-208 (2026-08-05) to `baseline-t208-quest-captain-ports.json` — the M19
+// milestone closer, and the first capstone in this run whose rows actually MOVED. T-208 gives
+// the 11 `QUEST_PROFILES` captains a declared home port (`NpcProfile.homePortSystemId`)
+// instead of the arbitrary `(index % 20) + 1` seed that had frozen six of them at rim systems
+// with no Cantina for a whole career. `rulesFingerprint` cbb087860825aa35 ->
+// 2f93098dc9ab15f0; `instrumentFingerprint` UNMOVED at 5c230e99648cddee, so the attribution
+// is single-arm. SIX OF TEN ROWS MOVED (fleet, explorer, gambler, greedy, smuggler, veteran;
+// fighter / trader / trader-degraded byte-identical) — PREDICTED IN WRITING BEFORE THE RUN
+// (`TASKS.md` T-208) with its channel named: `resolveVisitHangout` resolves a Dare dealer from
+// co-located NPCs with no `isSimulatedCaptain` filter, and the bond hook requires co-location,
+// so relocating eleven records changes who is in which room. The movement is small in every
+// headline (fleet tourOneClearRate 0.6329 -> 0.6348, fleet finalCredits.median 49,839 ->
+// 49,687). Gate PASS, 0 invariant violations. THE BANDS BELOW ARE UNTOUCHED — nothing was
+// tuned to meet a number.
+// RE-PINNED AT T-168 (2026-08-05) to `baseline-t168-effective-band.json` — F-148-4's fix:
+// `planDare` and the UGT enumerator now size the Dare wager domain off the engine's
+// `preHandWagerBand` (the tier's EFFECTIVE band) instead of the port's raw tier-0 band, so a
+// career can at last REQUEST into the raised tier-4 ceiling and tier 5's removed clamp. BOTH
+// fingerprints move — `rulesFingerprint` 2f93098dc9ab15f0 -> f264d7f4a2d56fde (the new
+// `preHandWagerBand` accessor in `engine/liarsDiceRules.ts`), `instrumentFingerprint`
+// 5c230e99648cddee -> b8894cb6c678fce6 (`sim/index.ts`: `planDare` plus three additive
+// `HangoutPlayStats` fields) — so the attribution is NOT single-arm and the write-up says so.
+// TWO OF TEN ROWS MOVED (fleet, gambler; explorer, fighter, greedy, smuggler, trader,
+// trader-degraded and veteran all byte-identical) — PREDICTED IN WRITING BEFORE THE RUN
+// (`TASKS.md` T-168), because `planDare` is called by `gamblerPolicy` and by nothing else and
+// `fleet` pools it. Gambler `finalCredits.median` 80,244 -> 115,612; ONE shape change reported
+// and not suppressed (`byPolicy[gambler].renownRanks.GIGA_HERO`, a bucket the richer gambler
+// now reaches). Gate PASS, 0 invariant violations. THE BANDS BELOW ARE UNTOUCHED.
+// RE-PINNED AT T-175 (2026-08-06) to `baseline-t175-archetype-ordering.json` — F-160-1's
+// close: `archetypeMove`'s `optimal` branch now READS THE STANDING CLAIM instead of pricing it
+// with the unconditioned Binomial (`probClaimTrue` / `creditedClaimSupport`, which are
+// `minOpeningQuantity` read backwards and carry no free parameter). `rulesFingerprint`
+// f264d7f4a2d56fde -> cabd2112ccf4cefb; `instrumentFingerprint` b8894cb6c678fce6 ->
+// e84d8e074fde0b98 (the `dareCells` split, plus `gamblerPolicy` gaining T-199's two shared
+// anti-idle rungs) — so the attribution is NOT single-arm and this note says so rather than
+// implying otherwise. TWO OF TEN ROWS MOVED (fleet, gambler; explorer, fighter, greedy,
+// smuggler, trader, trader-degraded and veteran all byte-identical) — PREDICTED IN WRITING
+// BEFORE THE RUN (`TASKS.md` T-175) with its containment argument: `archetypeMove` has one
+// call site, reachable only through an open Liar's Dice hand, and `planDare` is queued by
+// `gamblerPolicy` and by nothing else. Gambler `finalCredits.median` 115,612 -> 63,653 and
+// `tourOneClearRate` 0.9610 -> 0.9360 — the tables stop being a money printer, which IS the
+// finding rather than a regression. Gate PASS, 0 invariant violations. THE BANDS BELOW ARE
+// UNTOUCHED — nothing was tuned to meet a number.
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
-  new URL('../../../../docs/balance/baseline-t137-liars-dice.json', import.meta.url),
+  new URL('../../../../docs/balance/baseline-t175-archetype-ordering.json', import.meta.url),
 );
 const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
   label: string;
@@ -190,22 +306,30 @@ describe('T-1603b balance targets (pinned slice of the committed sweep)', () => 
     ).toBeGreaterThan(0.5);
     expect(trader.debtClearedDay.n).toBeGreaterThan(SEEDS.length / 2);
 
-    // The marker is a real 30-day clock, not a formality: the trader is the
-    // FASTEST of the three policies here, and the other two sit at or past it.
-    // If a tuning change ever made a different line strictly better than trading
-    // at clearing the marker, that is a balance finding, and it lands here.
-    // This comparison is ROBUST at n=40 in a way the band is not: it is an
-    // ordering between three medians measured on identical seeds, not the
-    // absolute position of one of them.
-    for (const policy of POLICIES) {
-      if (policy === 'trader') continue;
-      const row = policyRow(policy);
-      if (row.debtClearedDay.n === 0) continue;
-      expect(
-        row.debtClearedDay.median,
-        `${policy} now clears the marker faster than the trader`,
-      ).toBeGreaterThanOrEqual(trader.debtClearedDay.median);
-    }
+    // THE ORDERING ASSERTION MOVED OUT OF THIS 40-SEED ARM AT T-156, for exactly
+    // the reason the band moved out before it: THE SAMPLE CANNOT RESOLVE IT. Its
+    // old comment claimed the comparison was "ROBUST at n=40 in a way the band is
+    // not"; N13 re-phased the cast and the 40-seed slice promptly reported the
+    // gambler clearing on day 19 against the trader's 22 — an inversion that does
+    // not exist at any sample large enough to see. Measured on this exact driver
+    // at 35 days, seeds 1..N, AFTER N13:
+    //     N=40  trader 22 · gambler 19 · smuggler 26
+    //     N=80  trader 22 · gambler 20 · smuggler 26
+    //     N=120 trader 21 · gambler 20 · smuggler 26
+    //     N=200 trader 21 · gambler 20 · smuggler 26
+    //     N=300 trader 21 · gambler 21 · smuggler 25   <- the ordering holds
+    // and at CAPSTONE scale (1,000 seeds x 120 days) the trader and the gambler
+    // are EXACTLY TIED on 21 in ALL THREE N13 arms — pre, control and shipped —
+    // so N13 did not move this at all. The assertion is re-homed below onto the
+    // committed capstone, which is the only sample that resolves it, rather than
+    // widened here (300 seeds x 3 policies would multiply this file's runtime by
+    // 7.5 to re-derive a number the capstone already holds).
+    //
+    // THE REAL FINDING, RECORDED RATHER THAN PAPERED OVER: "the trader clears it
+    // FASTEST" is not what the capstone says. It says the trader and the gambler
+    // are tied at 21, and have been for at least three arms. The trader is the
+    // fastest-or-equal line, not the fastest one, and if that is not the intended
+    // shape it is a balance question for R2.5, not a test to re-tune.
   });
 });
 
@@ -241,6 +365,36 @@ describe('T-1603b · the [22, 30] band, graded on the committed capstone', () =>
       `trader median debt-clear day ${trader.debtClearedDay.median} outside [${TRADER_CLEAR_DAY_MIN}, ${TRADER_CLEAR_DAY_MAX}]`,
     ).toBeGreaterThanOrEqual(TRADER_CLEAR_DAY_MIN);
     expect(trader.debtClearedDay.median).toBeLessThanOrEqual(TRADER_CLEAR_DAY_MAX);
+  });
+
+  it('no competing line clears the Guild marker faster than the trader', () => {
+    // MOVED HERE FROM THE 40-SEED ARM AT T-156 — see the note there for the
+    // measurement that showed n=40 cannot resolve a one-day ordering. Graded on
+    // the committed capstone at n ~ 1,000 clearing careers per policy, which can.
+    const rowFor = (
+      policy: string,
+    ): { policy: string; debtClearedDay: { median: number; n: number } } => {
+      const row = BASELINE_OF_RECORD.byPolicy.find((candidate) => candidate.policy === policy);
+      if (!row) throw new Error(`baseline of record has no '${policy}' row`);
+      return row;
+    };
+    const trader = rowFor('trader');
+    // Non-degeneracy, same guard the band above carries: an ordering read off a
+    // thin arm is not an ordering.
+    expect(trader.debtClearedDay.n).toBeGreaterThan(500);
+
+    for (const policy of POLICIES) {
+      if (policy === 'trader') continue;
+      const row = rowFor(policy);
+      if (row.debtClearedDay.n <= 500) continue;
+      // `>=` allows a TIE deliberately, and the gambler currently takes it (21 vs
+      // 21). What this forbids is a competing line being strictly FASTER, which
+      // would be a real balance finding about what the marker rewards.
+      expect(
+        row.debtClearedDay.median,
+        `${policy} clears the marker faster than the trader (${row.debtClearedDay.median} vs ${trader.debtClearedDay.median}) on the baseline of record`,
+      ).toBeGreaterThanOrEqual(trader.debtClearedDay.median);
+    }
   });
 
   it('no single route dominates the fleet', () => {

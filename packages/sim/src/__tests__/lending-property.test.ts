@@ -58,12 +58,12 @@ function freshHand(state: GameState): void {
 }
 
 function borrow(state: GameState, amount: number, seed: number): GameState {
-  const action: PlayerAction = { type: 'VisitHangout', venue: 'borrow', amount, spendDie: 0 };
+  const action: PlayerAction = { type: 'VisitHangout', venue: 'borrow', amount };
   return resolveVisitHangout(state, action, new SeededRng(seed)).state;
 }
 
 function repay(state: GameState, amount: number, seed: number): GameState {
-  const action: PlayerAction = { type: 'VisitHangout', venue: 'repay', amount, spendDie: 0 };
+  const action: PlayerAction = { type: 'VisitHangout', venue: 'repay', amount };
   return resolveVisitHangout(state, action, new SeededRng(seed)).state;
 }
 

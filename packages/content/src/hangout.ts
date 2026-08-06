@@ -99,6 +99,27 @@ export const INSULT_DISPOSITION = -4;
  *  handshake, not yet a bond. */
 export const MEET_DISPOSITION = 1;
 
+/**
+ * T-197 · THE SOCIAL POOL (`docs/DAWN-HAND-REDESIGN.md` §4a, owner ruling
+ * 2026-08-04). How many free social plays a captain gets per day, shared by
+ * `meet`, `befriend` and `insult` — the three venues that move disposition with
+ * no other bound. Rumor (read-only), borrow/repay (ledger-bounded) and the Dare
+ * open (§4b's own rounds cap) are OUTSIDE the pool.
+ *
+ * It lives here, beside `MEET_DISPOSITION` / `BEFRIEND_DISPOSITION` /
+ * `INSULT_DISPOSITION`, because it is the same KIND of number as those three: a
+ * tuning value the engine reads, not a rule the engine runs. Retuning X later is
+ * a content edit, exactly as retuning the deltas is (§4a).
+ *
+ * WHY 3 (§4a's arithmetic, recorded so a later retune argues against the reason
+ * rather than the number): disposition clamps at ±10, `meet` is +1 and a
+ * successful `befriend` +3, so walking one NPC to the ceiling takes ~4 dedicated
+ * days against the every-3rd-dusk decay — a relationship costs real time across
+ * days. And the insult farm (−4 always lands; −10 is a 16× hunt weight) costs a
+ * FULL DAY'S POOL per manufactured grudge instead of three clicks.
+ */
+export const SOCIAL_PLAYS_PER_DAY = 3;
+
 // ---------------------------------------------------------------------------
 // T-135 · LIAR'S DICE (docs/LIARS-DICE_REDESIGN.md, owner ruling D2). The Dare is
 // no longer one opposed GUILE roll; it is a multi-turn bluffing hand. Three

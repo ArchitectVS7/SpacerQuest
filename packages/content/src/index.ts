@@ -5,6 +5,9 @@ export * from './disposition.js';
 export * from './factions.js';
 export * from './hangout.js';
 export * from './portHangouts.js';
+// T-145 · the fixed 42-opponent Liar's Dice roster (pool A) and its validator.
+export * from './liarsDice.js';
+export * from './liarsDiceValidation.js';
 export * from './lending.js';
 export * from './subsistence.js';
 export * from './guild.js';
@@ -17,7 +20,9 @@ export * from './eraEvents.js';
 export * from './exploration.js';
 export * from './nemesis.js';
 export * from './nemesisValidation.js';
+// T-205 · the 41 named-captain profiles and their voice validator.
 export * from './cast.js';
+export * from './castValidation.js';
 export * from './flaws.js';
 export * from './ideals.js';
 export * from './upgrades.js';

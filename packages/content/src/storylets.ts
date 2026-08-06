@@ -243,7 +243,7 @@ export const STORYLETS = defineStorylets(
       id: 'port.sun3.guild-auditor',
       title: 'Guild Auditor',
       prose:
-        'A Guild auditor catches you at the Sun-3 gantry with a debt slate in one hand and a bored expression in the other.',
+        'A Guild auditor catches you at the Sol-3 gantry with a debt slate in one hand and a bored expression in the other.',
       repeat: 'never',
       trigger: {
         systemIds: [1],
@@ -374,7 +374,7 @@ export const STORYLETS = defineStorylets(
 
     // --- Tour One guild-pressure beats (T-113a) ---
     // The 30-day debt arc (PRD §5.1) surfaces as three timed wire messages from
-    // the Merchant Guild of Sun-3: a first reminder (day 10), the marker coming
+    // the Merchant Guild of Sol-3: a first reminder (day 10), the marker coming
     // due (day 20), and a final notice (day 25). These author the PRESSURE only;
     // the day-30 debt-cleared/unpaid resolution and veteran-unlock branching is
     // T-113b. Each beat is one decision that records the captain's stance in a
@@ -3537,7 +3537,7 @@ export const STORYLETS = defineStorylets(
     // --- Astro League · the patrol writ (law / patrol contracts; GRIT). Anchor:
     //     Deneb-4 (system 5, a League port the veteran ranges to). The VETERAN era
     //     gate (see the SHARED SHAPE header) is what keeps this off the Tour One
-    //     early-game seeds; the anchor is simply a League port, not Sun-3. ---
+    //     early-game seeds; the anchor is simply a League port, not Sol-3. ---
     {
       id: 'alliance.league.writ',
       title: 'A League Patrol Writ',

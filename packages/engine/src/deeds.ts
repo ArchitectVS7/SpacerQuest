@@ -97,6 +97,14 @@ export const EVENT_PATHS: Readonly<Record<string, readonly string[]>> = {
   ],
   // T-1207 combat tribute.
   TributePaid: ['amount', 'round', 'creditsRemaining', 'encounterId'],
+  // T-147 · the Liar's Dice completion signal. `scope` discriminates the two deed
+  // families (a house cleared vs the whole roster); `systemId` is the
+  // port-discriminating path the fourteen per-port deeds need.
+  // `opponentId`/`beatenCount` are DELIBERATELY UNLISTED — an allowlist grants
+  // exactly what a matcher names, and no shipped deed names either. This is an
+  // ALLOWLIST ENTRY, not a DSL change: `matchesEvent`, `readPath`, `FieldMatcher`
+  // and `DeedTrigger` are untouched, and a numeric `equals` already worked.
+  LiarsDiceSetCleared: ['scope', 'systemId'],
 };
 
 /** The allowlist for `trigger.state` matchers (read off GameState, not the

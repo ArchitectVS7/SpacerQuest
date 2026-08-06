@@ -13,7 +13,6 @@ import {
   ShipyardFail,
   SpecialEquipmentId,
 } from '../types.js';
-import { spendDie } from '../dice.js';
 import { renownRankIndex } from '../deeds.js';
 import { jumpFuelCost, maxJumpDistance } from '../economy.js';
 import { crewCapacity, hasSpecialEquipment, navFuelFactor, repairRate } from '../components.js';
@@ -618,17 +617,16 @@ export function resolveShipyard(
   const nextState = cloneState(state);
   const events: GameEvent[] = [];
 
-  if (action.spendDie === undefined) {
-    throw new Error('Must spend a die for shipyard action');
-  }
   validateShipyardShape(action);
 
-  // Established ShipyardFail convention: the die is spent BEFORE the business
-  // checks, so even a refused purchase consumes it. The UI avoids wasting a die
-  // on a predictable refusal by gating its buttons on `quoteShipyard().ok`.
-  const { hand } = spendDie(nextState.player.dawnHand!, action.spendDie);
-  nextState.player.dawnHand = hand;
-
+  // T-196a · FREE ACTION, all four kinds (docs/DAWN-HAND-REDESIGN.md §3). The die
+  // was never read here and every kind is already bounded by credits plus a
+  // physical slot/tier ceiling, so the shipyard costs no die and never touches the
+  // dawn hand. A refused purchase now costs NOTHING at all — the old convention
+  // ("the die is spent BEFORE the business checks, so even a refused purchase
+  // consumes it") is gone with the spend. The UI's `quoteShipyard().ok` button
+  // gating survives as a UX nicety rather than a die-saver.
+  //
   // N2 · The player is one ShipyardActor among two; `PlayerState` satisfies the
   // interface as-is, so this is the same object the rules already read — no
   // wrapper, which is what keeps `applyShipyardMutation`'s credit debit landing

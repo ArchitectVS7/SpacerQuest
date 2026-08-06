@@ -180,7 +180,7 @@ describe('T-1503 · smuggling-scan rep (patrol.ts — the patrol.ts:106 + contra
 
 describe('T-1503 · port-deal rep (port.ts — the ports.ts alliance deferral)', () => {
   it('buying an aligned port warms that port’s faction', () => {
-    // Sun-3 (system 1) is a League port. Buy it and League warms by the deal delta.
+    // Sol-3 (system 1) is a League port. Buy it and League warms by the deal delta.
     const league = PURCHASABLE_PORTS_BY_SYSTEM[1];
     expect(league.alliance).toBe('league');
     let state = createInitialState(1);
@@ -192,10 +192,11 @@ describe('T-1503 · port-deal rep (port.ts — the ports.ts alliance deferral)',
       type: 'Port',
       action: 'buy',
       systemId: 1,
-      spendDie: die,
     });
 
     expect(bought.player.reputation.league).toBe(PORT_PURCHASE_ALLIANCE_DELTA);
+    // T-196a: the buy is FREE — the rep delta costs no die.
+    expect(bought.player.dawnHand!.spent[die]).toBe(false);
     expect(
       events.some(
         (e) => e.type === 'ReputationChanged' && e.faction === 'league' && e.reason === 'port-deal',
@@ -217,14 +218,15 @@ describe('T-1503 · port-deal rep (port.ts — the ports.ts alliance deferral)',
       type: 'Port',
       action: 'buy',
       systemId: 3,
-      spendDie: die,
     });
     expect(bought.player.reputation.confederation).toBe(PORT_PURCHASE_ALLIANCE_DELTA);
+    // T-196a: the buy is FREE — the rep delta costs no die.
+    expect(bought.player.dawnHand!.spent[die]).toBe(false);
   });
 });
 
 describe('T-1503 · patrol-encounter rep (combat.ts resolveEncounter — the patrol-tribute mover)', () => {
-  // Find a seed whose real jump from Sun-3 yields an ANONYMOUS PATROL encounter.
+  // Find a seed whose real jump from Sol-3 yields an ANONYMOUS PATROL encounter.
   function findPatrolJump(): { state: GameState; targetId: string } {
     for (let seed = 1; seed <= 8000; seed += 1) {
       const state = createInitialState(seed);

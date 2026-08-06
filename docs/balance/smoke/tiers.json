@@ -1,11 +1,11 @@
 {
-  "productVersion": "0.5.2",
-  "saveSchemaVersion": 14,
-  "rulesFingerprint": "a5ec29dba6457f77",
-  "instrumentFingerprint": "4de222a04b05a537",
-  "docsFingerprint": "b8ed2b1cdefceaf7",
+  "productVersion": "0.5.3",
+  "saveSchemaVersion": 17,
+  "rulesFingerprint": "cabd2112ccf4cefb",
+  "instrumentFingerprint": "2d6d1990eaf13031",
+  "docsFingerprint": "623e5c31c9437aa6",
   "provenance": {
-    "sweepLabel": "t137-liars-dice",
+    "sweepLabel": "t175-archetype-ordering",
     "seeds": 1000,
     "days": 120,
     "runs": 8000,
@@ -19,8 +19,8 @@
       "trader-degraded",
       "veteran"
     ],
-    "extractedOn": "2026-07-31",
-    "gitCommit": "2cc35b87413c4df653d845b2338ea9567ff7f1a6",
+    "extractedOn": "2026-08-06",
+    "gitCommit": "bb21fa9726b36d5db335f6c98fd3b9435ca81419",
     "spreadSource": "harvested",
     "note": "Tier spreads are milestone samples harvested from the named sweep. They are still SYNTHESIZED starting states and are never balance verdicts — see docs/balance/smoke/README.md."
   },
@@ -58,51 +58,51 @@
           "runs": 7,
           "endDay": 4,
           "creditsMin": 3000,
-          "creditsMedian": 7100,
-          "creditsMax": 8346,
-          "debtTotal": 172580,
-          "incomeDays": 19,
-          "encounters": 6,
+          "creditsMedian": 7470,
+          "creditsMax": 8511,
+          "debtTotal": 168599,
+          "incomeDays": 21,
+          "encounters": 5,
           "shipsLost": 0,
-          "deliveredLegs": 21,
+          "deliveredLegs": 24,
           "fuelStarvationDays": 0,
           "deedsEarned": 42,
           "tourOneResolved": 0,
-          "outcomeHash": "ca5bd28fd3b45185"
+          "outcomeHash": "18ade3a849c8b0a1"
         },
         {
           "policy": "trader-degraded",
           "runs": 7,
           "endDay": 4,
           "creditsMin": 3000,
-          "creditsMedian": 5680,
+          "creditsMedian": 7220,
           "creditsMax": 8030,
-          "debtTotal": 172670,
-          "incomeDays": 19,
-          "encounters": 6,
+          "debtTotal": 169679,
+          "incomeDays": 21,
+          "encounters": 5,
           "shipsLost": 0,
-          "deliveredLegs": 19,
+          "deliveredLegs": 23,
           "fuelStarvationDays": 0,
-          "deedsEarned": 40,
+          "deedsEarned": 41,
           "tourOneResolved": 0,
-          "outcomeHash": "36c00edf563a06be"
+          "outcomeHash": "34e27f7aa44f3f81"
         },
         {
           "policy": "fighter",
           "runs": 7,
           "endDay": 4,
-          "creditsMin": 3000,
-          "creditsMedian": 4600,
-          "creditsMax": 5502,
-          "debtTotal": 173160,
+          "creditsMin": 2877,
+          "creditsMedian": 4705,
+          "creditsMax": 5450,
+          "debtTotal": 170309,
           "incomeDays": 21,
-          "encounters": 6,
+          "encounters": 4,
           "shipsLost": 0,
-          "deliveredLegs": 14,
+          "deliveredLegs": 16,
           "fuelStarvationDays": 0,
-          "deedsEarned": 34,
+          "deedsEarned": 33,
           "tourOneResolved": 0,
-          "outcomeHash": "98cda0e3bf73d924"
+          "outcomeHash": "95605148d74694d3"
         },
         {
           "policy": "explorer",
@@ -110,16 +110,16 @@
           "endDay": 4,
           "creditsMin": 825,
           "creditsMedian": 2605,
-          "creditsMax": 12985,
+          "creditsMax": 10456,
           "debtTotal": 175000,
-          "incomeDays": 16,
+          "incomeDays": 21,
           "encounters": 6,
           "shipsLost": 0,
           "deliveredLegs": 10,
           "fuelStarvationDays": 0,
-          "deedsEarned": 43,
+          "deedsEarned": 40,
           "tourOneResolved": 0,
-          "outcomeHash": "0d303537af886b46"
+          "outcomeHash": "c1e35469a89c4a5c"
         },
         {
           "policy": "veteran",
@@ -142,35 +142,35 @@
           "policy": "smuggler",
           "runs": 7,
           "endDay": 4,
-          "creditsMin": 1625,
-          "creditsMedian": 5055,
-          "creditsMax": 5237,
-          "debtTotal": 173475,
-          "incomeDays": 20,
+          "creditsMin": 1710,
+          "creditsMedian": 5072,
+          "creditsMax": 5397,
+          "debtTotal": 173785,
+          "incomeDays": 21,
           "encounters": 5,
           "shipsLost": 0,
           "deliveredLegs": 15,
           "fuelStarvationDays": 0,
           "deedsEarned": 63,
           "tourOneResolved": 0,
-          "outcomeHash": "251efb866cc43269"
+          "outcomeHash": "d0579dd55852c2ad"
         },
         {
           "policy": "gambler",
           "runs": 7,
           "endDay": 4,
-          "creditsMin": 3137,
-          "creditsMedian": 4520,
-          "creditsMax": 5959,
-          "debtTotal": 173929,
+          "creditsMin": 4893,
+          "creditsMedian": 5418,
+          "creditsMax": 6600,
+          "debtTotal": 169893,
           "incomeDays": 21,
-          "encounters": 7,
+          "encounters": 3,
           "shipsLost": 0,
-          "deliveredLegs": 14,
+          "deliveredLegs": 18,
           "fuelStarvationDays": 0,
-          "deedsEarned": 63,
+          "deedsEarned": 57,
           "tourOneResolved": 0,
-          "outcomeHash": "6b8092e3215f4aa9"
+          "outcomeHash": "e9980b1e679c6522"
         },
         {
           "policy": "greedy",
@@ -231,64 +231,64 @@
             "fuelShare": 0
           },
           {
-            "credits": 1200,
+            "credits": 2480,
             "debt": 0,
             "weaponsStrength": 1,
             "hullStrength": 1,
             "shieldsStrength": 1,
             "drivesStrength": 10,
             "cargoPods": 10,
-            "fuelShare": 0.10666666666666667
+            "fuelShare": 0.12333333333333334
           },
           {
-            "credits": 3610,
+            "credits": 4350,
             "debt": 0,
             "weaponsStrength": 1,
             "hullStrength": 1,
             "shieldsStrength": 1,
             "drivesStrength": 10,
             "cargoPods": 10,
-            "fuelShare": 0.32
+            "fuelShare": 0.21333333333333335
           },
           {
-            "credits": 5365,
-            "debt": 6995,
+            "credits": 5520,
+            "debt": 4461,
             "weaponsStrength": 1,
             "hullStrength": 1,
             "shieldsStrength": 1,
             "drivesStrength": 10,
             "cargoPods": 10,
-            "fuelShare": 0.52
+            "fuelShare": 0.5166666666666667
           },
           {
-            "credits": 7284,
-            "debt": 19643,
-            "weaponsStrength": 1,
+            "credits": 7605,
+            "debt": 18077,
+            "weaponsStrength": 11,
             "hullStrength": 1,
             "shieldsStrength": 1,
             "drivesStrength": 30,
             "cargoPods": 10,
-            "fuelShare": 0.76
+            "fuelShare": 0.7266666666666667
           },
           {
-            "credits": 9887,
-            "debt": 22783,
+            "credits": 10799,
+            "debt": 22115,
             "weaponsStrength": 70,
             "hullStrength": 30,
             "shieldsStrength": 30,
             "drivesStrength": 30,
             "cargoPods": 10,
-            "fuelShare": 0.03211111111111111
+            "fuelShare": 0.03077777777777778
           },
           {
-            "credits": 70512,
+            "credits": 53554,
             "debt": 25000,
             "weaponsStrength": 90,
             "hullStrength": 70,
             "shieldsStrength": 70,
-            "drivesStrength": 38,
-            "cargoPods": 11,
-            "fuelShare": 0.018523809523809522
+            "drivesStrength": 43,
+            "cargoPods": 12,
+            "fuelShare": 0.01876190476190476
           }
         ],
         "npc": [
@@ -313,189 +313,189 @@
             "fuelShare": 0
           },
           {
-            "credits": 126,
+            "credits": 127,
             "hullStrength": 1,
             "fuelShare": 0
           },
           {
-            "credits": 126,
+            "credits": 127,
             "hullStrength": 1,
             "fuelShare": 0
           },
           {
-            "credits": 126,
+            "credits": 127,
             "hullStrength": 1,
             "fuelShare": 0
           },
           {
-            "credits": 126,
+            "credits": 127,
             "hullStrength": 1,
             "fuelShare": 0
           },
           {
-            "credits": 126,
+            "credits": 127,
             "hullStrength": 1,
             "fuelShare": 0
           },
           {
-            "credits": 126,
+            "credits": 127,
             "hullStrength": 1,
             "fuelShare": 0
           },
           {
-            "credits": 380,
+            "credits": 555,
             "hullStrength": 1,
-            "fuelShare": 0.03333333333333333
+            "fuelShare": 0.03666666666666667
           },
           {
-            "credits": 380,
+            "credits": 555,
             "hullStrength": 1,
-            "fuelShare": 0.03333333333333333
+            "fuelShare": 0.03666666666666667
           },
           {
-            "credits": 380,
+            "credits": 555,
             "hullStrength": 1,
-            "fuelShare": 0.03333333333333333
+            "fuelShare": 0.03666666666666667
           },
           {
-            "credits": 380,
+            "credits": 555,
             "hullStrength": 1,
-            "fuelShare": 0.03333333333333333
+            "fuelShare": 0.03666666666666667
           },
           {
-            "credits": 380,
+            "credits": 555,
             "hullStrength": 1,
-            "fuelShare": 0.03333333333333333
+            "fuelShare": 0.03666666666666667
           },
           {
-            "credits": 380,
+            "credits": 555,
             "hullStrength": 1,
-            "fuelShare": 0.03333333333333333
+            "fuelShare": 0.03666666666666667
           },
           {
-            "credits": 380,
+            "credits": 555,
             "hullStrength": 1,
-            "fuelShare": 0.03333333333333333
+            "fuelShare": 0.03666666666666667
           },
           {
-            "credits": 1014,
+            "credits": 1020,
             "hullStrength": 10,
             "fuelShare": 0.016666666666666666
           },
           {
-            "credits": 1014,
+            "credits": 1020,
             "hullStrength": 10,
             "fuelShare": 0.016666666666666666
           },
           {
-            "credits": 1014,
+            "credits": 1020,
             "hullStrength": 10,
             "fuelShare": 0.016666666666666666
           },
           {
-            "credits": 1014,
+            "credits": 1020,
             "hullStrength": 10,
             "fuelShare": 0.016666666666666666
           },
           {
-            "credits": 1014,
+            "credits": 1020,
             "hullStrength": 10,
             "fuelShare": 0.016666666666666666
           },
           {
-            "credits": 1014,
+            "credits": 1020,
             "hullStrength": 10,
             "fuelShare": 0.016666666666666666
           },
           {
-            "credits": 1014,
+            "credits": 1020,
             "hullStrength": 10,
             "fuelShare": 0.016666666666666666
           },
           {
-            "credits": 2656,
+            "credits": 2685,
             "hullStrength": 40,
             "fuelShare": 0.008333333333333333
           },
           {
-            "credits": 2656,
+            "credits": 2685,
             "hullStrength": 40,
             "fuelShare": 0.008333333333333333
           },
           {
-            "credits": 2656,
+            "credits": 2685,
             "hullStrength": 40,
             "fuelShare": 0.008333333333333333
           },
           {
-            "credits": 2656,
+            "credits": 2685,
             "hullStrength": 40,
             "fuelShare": 0.008333333333333333
           },
           {
-            "credits": 2656,
+            "credits": 2685,
             "hullStrength": 40,
             "fuelShare": 0.008333333333333333
           },
           {
-            "credits": 2656,
+            "credits": 2685,
             "hullStrength": 40,
             "fuelShare": 0.008333333333333333
           },
           {
-            "credits": 22330,
+            "credits": 22267,
             "hullStrength": 90,
-            "fuelShare": 0.0042592592592592595
+            "fuelShare": 0.004629629629629629
           },
           {
-            "credits": 22330,
+            "credits": 22267,
             "hullStrength": 90,
-            "fuelShare": 0.0042592592592592595
+            "fuelShare": 0.004629629629629629
           },
           {
-            "credits": 22330,
+            "credits": 22267,
             "hullStrength": 90,
-            "fuelShare": 0.0042592592592592595
+            "fuelShare": 0.004629629629629629
           },
           {
-            "credits": 22330,
+            "credits": 22267,
             "hullStrength": 90,
-            "fuelShare": 0.0042592592592592595
+            "fuelShare": 0.004629629629629629
           },
           {
-            "credits": 22330,
+            "credits": 22267,
             "hullStrength": 90,
-            "fuelShare": 0.0042592592592592595
+            "fuelShare": 0.004629629629629629
           },
           {
-            "credits": 22330,
+            "credits": 22267,
             "hullStrength": 90,
-            "fuelShare": 0.0042592592592592595
+            "fuelShare": 0.004629629629629629
           },
           {
-            "credits": 22330,
+            "credits": 22267,
             "hullStrength": 90,
-            "fuelShare": 0.0042592592592592595
+            "fuelShare": 0.004629629629629629
           },
           {
-            "credits": 321297,
+            "credits": 321639,
             "hullStrength": 90,
-            "fuelShare": 0.019333333333333334
+            "fuelShare": 0.018666666666666668
           },
           {
-            "credits": 321297,
+            "credits": 321639,
             "hullStrength": 90,
-            "fuelShare": 0.019333333333333334
+            "fuelShare": 0.018666666666666668
           },
           {
-            "credits": 321297,
+            "credits": 321639,
             "hullStrength": 90,
-            "fuelShare": 0.019333333333333334
+            "fuelShare": 0.018666666666666668
           },
           {
-            "credits": 321297,
+            "credits": 321639,
             "hullStrength": 90,
-            "fuelShare": 0.019333333333333334
+            "fuelShare": 0.018666666666666668
           }
         ]
       },
@@ -504,78 +504,78 @@
           "policy": "trader",
           "runs": 7,
           "endDay": 24,
-          "creditsMin": 425,
-          "creditsMedian": 7840,
-          "creditsMax": 47283,
-          "debtTotal": 42046,
-          "incomeDays": 20,
-          "encounters": 6,
+          "creditsMin": 485,
+          "creditsMedian": 7000,
+          "creditsMax": 33103,
+          "debtTotal": 36164,
+          "incomeDays": 21,
+          "encounters": 5,
           "shipsLost": 0,
           "deliveredLegs": 18,
           "fuelStarvationDays": 0,
-          "deedsEarned": 38,
+          "deedsEarned": 37,
           "tourOneResolved": 0,
-          "outcomeHash": "dd7b2bfc2e6e709d"
+          "outcomeHash": "e52b4328177c26ec"
         },
         {
           "policy": "trader-degraded",
           "runs": 7,
           "endDay": 24,
-          "creditsMin": 425,
-          "creditsMedian": 7574,
-          "creditsMax": 45604,
-          "debtTotal": 42046,
-          "incomeDays": 20,
+          "creditsMin": 450,
+          "creditsMedian": 7000,
+          "creditsMax": 28746,
+          "debtTotal": 36164,
+          "incomeDays": 21,
           "encounters": 6,
           "shipsLost": 0,
-          "deliveredLegs": 17,
+          "deliveredLegs": 16,
           "fuelStarvationDays": 0,
           "deedsEarned": 34,
           "tourOneResolved": 0,
-          "outcomeHash": "c144880c01b8e077"
+          "outcomeHash": "902a23efd8524d21"
         },
         {
           "policy": "fighter",
           "runs": 7,
           "endDay": 24,
           "creditsMin": 100,
-          "creditsMedian": 5073,
-          "creditsMax": 46684,
-          "debtTotal": 34647,
+          "creditsMedian": 5925,
+          "creditsMax": 29856,
+          "debtTotal": 28444,
           "incomeDays": 21,
-          "encounters": 5,
+          "encounters": 4,
           "shipsLost": 0,
-          "deliveredLegs": 13,
+          "deliveredLegs": 14,
           "fuelStarvationDays": 3,
-          "deedsEarned": 37,
+          "deedsEarned": 35,
           "tourOneResolved": 0,
-          "outcomeHash": "fd5629cad02f2390"
+          "outcomeHash": "68aee384ad98eec3"
         },
         {
           "policy": "explorer",
           "runs": 7,
           "endDay": 24,
           "creditsMin": 177,
-          "creditsMedian": 8106,
-          "creditsMax": 48178,
-          "debtTotal": 37740,
+          "creditsMedian": 6663,
+          "creditsMax": 30241,
+          "debtTotal": 35608,
           "incomeDays": 18,
-          "encounters": 6,
+          "encounters": 4,
           "shipsLost": 0,
-          "deliveredLegs": 12,
-          "fuelStarvationDays": 3,
-          "deedsEarned": 55,
+          "deliveredLegs": 14,
+          "fuelStarvationDays": 2,
+          "deedsEarned": 56,
           "tourOneResolved": 0,
-          "outcomeHash": "cecbb278aa65e21c"
+          "outcomeHash": "628792eefb3e8258"
         },
         {
           "policy": "veteran",
           "runs": 7,
           "endDay": 24,
           "creditsMin": 225,
-          "creditsMedian": 5490,
-          "creditsMax": 70637,
-          "debtTotal": 74421,
+          "creditsMedian": 5645,
+          "creditsMax": 53679,
+          "debtTotal": 69653,
           "incomeDays": 0,
           "encounters": 0,
           "shipsLost": 0,
@@ -583,50 +583,50 @@
           "fuelStarvationDays": 3,
           "deedsEarned": 7,
           "tourOneResolved": 0,
-          "outcomeHash": "c358a5decdeef328"
+          "outcomeHash": "0cadb37a4f148ba1"
         },
         {
           "policy": "smuggler",
           "runs": 7,
           "endDay": 24,
-          "creditsMin": 250,
-          "creditsMedian": 4885,
-          "creditsMax": 43893,
-          "debtTotal": 32612,
-          "incomeDays": 20,
-          "encounters": 4,
+          "creditsMin": 310,
+          "creditsMedian": 5912,
+          "creditsMax": 27872,
+          "debtTotal": 26714,
+          "incomeDays": 21,
+          "encounters": 5,
           "shipsLost": 0,
-          "deliveredLegs": 16,
+          "deliveredLegs": 14,
           "fuelStarvationDays": 0,
-          "deedsEarned": 57,
+          "deedsEarned": 58,
           "tourOneResolved": 0,
-          "outcomeHash": "f8e55e287264ca43"
+          "outcomeHash": "8de47de0820f5a81"
         },
         {
           "policy": "gambler",
           "runs": 7,
           "endDay": 24,
-          "creditsMin": 3654,
-          "creditsMedian": 5036,
-          "creditsMax": 60973,
-          "debtTotal": 25986,
+          "creditsMin": 3564,
+          "creditsMedian": 5147,
+          "creditsMax": 24806,
+          "debtTotal": 20430,
           "incomeDays": 21,
-          "encounters": 1,
+          "encounters": 2,
           "shipsLost": 0,
-          "deliveredLegs": 20,
+          "deliveredLegs": 19,
           "fuelStarvationDays": 0,
-          "deedsEarned": 50,
+          "deedsEarned": 46,
           "tourOneResolved": 0,
-          "outcomeHash": "f983d3b888afb7fd"
+          "outcomeHash": "f821ac48f0ee2116"
         },
         {
           "policy": "greedy",
           "runs": 7,
           "endDay": 24,
           "creditsMin": 100,
-          "creditsMedian": 1000,
-          "creditsMax": 45512,
-          "debtTotal": 34250,
+          "creditsMedian": 1680,
+          "creditsMax": 28554,
+          "debtTotal": 28249,
           "incomeDays": 3,
           "encounters": 0,
           "shipsLost": 0,
@@ -634,7 +634,7 @@
           "fuelStarvationDays": 3,
           "deedsEarned": 7,
           "tourOneResolved": 0,
-          "outcomeHash": "7304fc22725f7fb5"
+          "outcomeHash": "26f9a77ada0ce0ca"
         }
       ]
     },
@@ -678,64 +678,64 @@
             "fuelShare": 0
           },
           {
-            "credits": 1150,
+            "credits": 2575,
             "debt": 0,
             "weaponsStrength": 1,
             "hullStrength": 1,
             "shieldsStrength": 1,
             "drivesStrength": 10,
             "cargoPods": 10,
-            "fuelShare": 0.14
+            "fuelShare": 0.13
           },
           {
-            "credits": 3652,
+            "credits": 4470,
             "debt": 0,
             "weaponsStrength": 1,
             "hullStrength": 1,
             "shieldsStrength": 1,
             "drivesStrength": 10,
             "cargoPods": 10,
-            "fuelShare": 0.34
+            "fuelShare": 0.24
           },
           {
-            "credits": 6087,
+            "credits": 6941,
             "debt": 0,
             "weaponsStrength": 1,
             "hullStrength": 1,
             "shieldsStrength": 1,
             "drivesStrength": 10,
             "cargoPods": 10,
-            "fuelShare": 0.5233333333333333
+            "fuelShare": 0.52
           },
           {
-            "credits": 10122,
-            "debt": 18092,
-            "weaponsStrength": 2,
-            "hullStrength": 1,
+            "credits": 11776,
+            "debt": 15878,
+            "weaponsStrength": 16,
+            "hullStrength": 4,
             "shieldsStrength": 1,
             "drivesStrength": 30,
             "cargoPods": 10,
-            "fuelShare": 0.76
+            "fuelShare": 0.17666666666666667
           },
           {
-            "credits": 16964,
-            "debt": 21666,
+            "credits": 18475,
+            "debt": 20975,
             "weaponsStrength": 70,
             "hullStrength": 30,
             "shieldsStrength": 30,
             "drivesStrength": 30,
             "cargoPods": 10,
-            "fuelShare": 0.03211111111111111
+            "fuelShare": 0.030444444444444444
           },
           {
-            "credits": 87651,
+            "credits": 80130,
             "debt": 25000,
             "weaponsStrength": 90,
             "hullStrength": 70,
             "shieldsStrength": 70,
-            "drivesStrength": 38,
-            "cargoPods": 11,
-            "fuelShare": 0.01880952380952381
+            "drivesStrength": 48,
+            "cargoPods": 13,
+            "fuelShare": 0.018714285714285715
           }
         ],
         "npc": [
@@ -790,159 +790,159 @@
             "fuelShare": 0
           },
           {
-            "credits": 150,
+            "credits": 170,
             "hullStrength": 10,
-            "fuelShare": 0.0023333333333333335
+            "fuelShare": 0.003
           },
           {
-            "credits": 150,
+            "credits": 170,
             "hullStrength": 10,
-            "fuelShare": 0.0023333333333333335
+            "fuelShare": 0.003
           },
           {
-            "credits": 150,
+            "credits": 170,
             "hullStrength": 10,
-            "fuelShare": 0.0023333333333333335
+            "fuelShare": 0.003
           },
           {
-            "credits": 150,
+            "credits": 170,
             "hullStrength": 10,
-            "fuelShare": 0.0023333333333333335
+            "fuelShare": 0.003
           },
           {
-            "credits": 150,
+            "credits": 170,
             "hullStrength": 10,
-            "fuelShare": 0.0023333333333333335
+            "fuelShare": 0.003
           },
           {
-            "credits": 150,
+            "credits": 170,
             "hullStrength": 10,
-            "fuelShare": 0.0023333333333333335
+            "fuelShare": 0.003
           },
           {
-            "credits": 150,
+            "credits": 170,
             "hullStrength": 10,
-            "fuelShare": 0.0023333333333333335
+            "fuelShare": 0.003
           },
           {
-            "credits": 1007,
+            "credits": 1009,
             "hullStrength": 20,
-            "fuelShare": 0.006666666666666667
+            "fuelShare": 0.007333333333333333
           },
           {
-            "credits": 1007,
+            "credits": 1009,
             "hullStrength": 20,
-            "fuelShare": 0.006666666666666667
+            "fuelShare": 0.007333333333333333
           },
           {
-            "credits": 1007,
+            "credits": 1009,
             "hullStrength": 20,
-            "fuelShare": 0.006666666666666667
+            "fuelShare": 0.007333333333333333
           },
           {
-            "credits": 1007,
+            "credits": 1009,
             "hullStrength": 20,
-            "fuelShare": 0.006666666666666667
+            "fuelShare": 0.007333333333333333
           },
           {
-            "credits": 1007,
+            "credits": 1009,
             "hullStrength": 20,
-            "fuelShare": 0.006666666666666667
+            "fuelShare": 0.007333333333333333
           },
           {
-            "credits": 1007,
+            "credits": 1009,
             "hullStrength": 20,
-            "fuelShare": 0.006666666666666667
+            "fuelShare": 0.007333333333333333
           },
           {
-            "credits": 1007,
+            "credits": 1009,
             "hullStrength": 20,
-            "fuelShare": 0.006666666666666667
+            "fuelShare": 0.007333333333333333
           },
           {
-            "credits": 5105,
+            "credits": 5275,
             "hullStrength": 60,
-            "fuelShare": 0.0047777777777777775
+            "fuelShare": 0.005
           },
           {
-            "credits": 5105,
+            "credits": 5275,
             "hullStrength": 60,
-            "fuelShare": 0.0047777777777777775
+            "fuelShare": 0.005
           },
           {
-            "credits": 5105,
+            "credits": 5275,
             "hullStrength": 60,
-            "fuelShare": 0.0047777777777777775
+            "fuelShare": 0.005
           },
           {
-            "credits": 5105,
+            "credits": 5275,
             "hullStrength": 60,
-            "fuelShare": 0.0047777777777777775
+            "fuelShare": 0.005
           },
           {
-            "credits": 5105,
+            "credits": 5275,
             "hullStrength": 60,
-            "fuelShare": 0.0047777777777777775
+            "fuelShare": 0.005
           },
           {
-            "credits": 5105,
+            "credits": 5275,
             "hullStrength": 60,
-            "fuelShare": 0.0047777777777777775
+            "fuelShare": 0.005
           },
           {
-            "credits": 53209,
+            "credits": 52992,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 53209,
+            "credits": 52992,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 53209,
+            "credits": 52992,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 53209,
+            "credits": 52992,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 53209,
+            "credits": 52992,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 53209,
+            "credits": 52992,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 53209,
+            "credits": 52992,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 473843,
+            "credits": 494647,
             "hullStrength": 90,
-            "fuelShare": 0.019074074074074073
+            "fuelShare": 0.016370370370370372
           },
           {
-            "credits": 473843,
+            "credits": 494647,
             "hullStrength": 90,
-            "fuelShare": 0.019074074074074073
+            "fuelShare": 0.016370370370370372
           },
           {
-            "credits": 473843,
+            "credits": 494647,
             "hullStrength": 90,
-            "fuelShare": 0.019074074074074073
+            "fuelShare": 0.016370370370370372
           },
           {
-            "credits": 473843,
+            "credits": 494647,
             "hullStrength": 90,
-            "fuelShare": 0.019074074074074073
+            "fuelShare": 0.016370370370370372
           }
         ]
       },
@@ -951,78 +951,78 @@
           "policy": "trader",
           "runs": 7,
           "endDay": 32,
-          "creditsMin": 1963,
-          "creditsMedian": 7158,
-          "creditsMax": 71990,
-          "debtTotal": 4945,
+          "creditsMin": 3781,
+          "creditsMedian": 6414,
+          "creditsMax": 66422,
+          "debtTotal": 1107,
           "incomeDays": 21,
-          "encounters": 6,
+          "encounters": 4,
           "shipsLost": 0,
-          "deliveredLegs": 19,
+          "deliveredLegs": 20,
           "fuelStarvationDays": 0,
-          "deedsEarned": 48,
+          "deedsEarned": 51,
           "tourOneResolved": 7,
-          "outcomeHash": "e7f7b2740d3eacb4"
+          "outcomeHash": "ea1914a3129a9d02"
         },
         {
           "policy": "trader-degraded",
           "runs": 7,
           "endDay": 32,
-          "creditsMin": 1963,
-          "creditsMedian": 7158,
-          "creditsMax": 67220,
-          "debtTotal": 4945,
-          "incomeDays": 20,
-          "encounters": 6,
+          "creditsMin": 2083,
+          "creditsMedian": 5872,
+          "creditsMax": 60720,
+          "debtTotal": 1107,
+          "incomeDays": 21,
+          "encounters": 5,
           "shipsLost": 0,
           "deliveredLegs": 16,
           "fuelStarvationDays": 0,
-          "deedsEarned": 44,
+          "deedsEarned": 48,
           "tourOneResolved": 7,
-          "outcomeHash": "bc0b1a3130051881"
+          "outcomeHash": "37f0989d941d1716"
         },
         {
           "policy": "fighter",
           "runs": 7,
           "endDay": 32,
           "creditsMin": 100,
-          "creditsMedian": 3558,
-          "creditsMax": 44279,
-          "debtTotal": 12315,
+          "creditsMedian": 6176,
+          "creditsMax": 39293,
+          "debtTotal": 7650,
           "incomeDays": 21,
-          "encounters": 4,
+          "encounters": 3,
           "shipsLost": 0,
-          "deliveredLegs": 13,
+          "deliveredLegs": 15,
           "fuelStarvationDays": 3,
-          "deedsEarned": 43,
+          "deedsEarned": 46,
           "tourOneResolved": 7,
-          "outcomeHash": "d00a287e3e59503b"
+          "outcomeHash": "ce6f11a8b116c877"
         },
         {
           "policy": "explorer",
           "runs": 7,
           "endDay": 32,
           "creditsMin": 100,
-          "creditsMedian": 6303,
-          "creditsMax": 82131,
-          "debtTotal": 50667,
-          "incomeDays": 17,
-          "encounters": 7,
+          "creditsMedian": 5142,
+          "creditsMax": 74610,
+          "debtTotal": 42828,
+          "incomeDays": 18,
+          "encounters": 5,
           "shipsLost": 0,
-          "deliveredLegs": 5,
+          "deliveredLegs": 7,
           "fuelStarvationDays": 3,
-          "deedsEarned": 48,
+          "deedsEarned": 49,
           "tourOneResolved": 7,
-          "outcomeHash": "4e8a397e778392e7"
+          "outcomeHash": "bc9e8efc9cf3bb25"
         },
         {
           "policy": "veteran",
           "runs": 7,
           "endDay": 32,
           "creditsMin": 100,
-          "creditsMedian": 6087,
-          "creditsMax": 87651,
-          "debtTotal": 66054,
+          "creditsMedian": 6941,
+          "creditsMax": 80130,
+          "debtTotal": 63091,
           "incomeDays": 0,
           "encounters": 0,
           "shipsLost": 0,
@@ -1030,50 +1030,50 @@
           "fuelStarvationDays": 3,
           "deedsEarned": 4,
           "tourOneResolved": 7,
-          "outcomeHash": "016e267c85298f70"
+          "outcomeHash": "386205552a9e976e"
         },
         {
           "policy": "smuggler",
           "runs": 7,
           "endDay": 32,
-          "creditsMin": 2427,
-          "creditsMedian": 6312,
-          "creditsMax": 66614,
-          "debtTotal": 19047,
-          "incomeDays": 20,
+          "creditsMin": 2492,
+          "creditsMedian": 5919,
+          "creditsMax": 53481,
+          "debtTotal": 12615,
+          "incomeDays": 21,
           "encounters": 5,
           "shipsLost": 0,
           "deliveredLegs": 15,
           "fuelStarvationDays": 0,
           "deedsEarned": 62,
           "tourOneResolved": 7,
-          "outcomeHash": "489ada253d4f1648"
+          "outcomeHash": "48753e1540db51b8"
         },
         {
           "policy": "gambler",
           "runs": 7,
           "endDay": 32,
-          "creditsMin": 2117,
-          "creditsMedian": 6849,
-          "creditsMax": 69000,
-          "debtTotal": 12220,
+          "creditsMin": 2842,
+          "creditsMedian": 5845,
+          "creditsMax": 54288,
+          "debtTotal": 27647,
           "incomeDays": 21,
-          "encounters": 5,
+          "encounters": 7,
           "shipsLost": 0,
-          "deliveredLegs": 16,
+          "deliveredLegs": 14,
           "fuelStarvationDays": 0,
-          "deedsEarned": 57,
+          "deedsEarned": 50,
           "tourOneResolved": 7,
-          "outcomeHash": "ed04ec23749fb94b"
+          "outcomeHash": "a79c3a8acf358fc4"
         },
         {
           "policy": "greedy",
           "runs": 7,
           "endDay": 32,
           "creditsMin": 100,
-          "creditsMedian": 1000,
-          "creditsMax": 62651,
-          "debtTotal": 14967,
+          "creditsMedian": 1775,
+          "creditsMax": 55130,
+          "debtTotal": 8775,
           "incomeDays": 3,
           "encounters": 0,
           "shipsLost": 0,
@@ -1081,7 +1081,7 @@
           "fuelStarvationDays": 3,
           "deedsEarned": 12,
           "tourOneResolved": 7,
-          "outcomeHash": "3d1a147cc373127e"
+          "outcomeHash": "73d74ed5d76c945a"
         }
       ]
     },
@@ -1121,11 +1121,11 @@
             "hullStrength": 1,
             "shieldsStrength": 1,
             "drivesStrength": 10,
-            "cargoPods": 7,
+            "cargoPods": 6,
             "fuelShare": 0
           },
           {
-            "credits": 1000,
+            "credits": 1617,
             "debt": 0,
             "weaponsStrength": 1,
             "hullStrength": 1,
@@ -1135,54 +1135,54 @@
             "fuelShare": 0.13333333333333333
           },
           {
-            "credits": 3200,
+            "credits": 4569,
             "debt": 0,
             "weaponsStrength": 1,
             "hullStrength": 1,
             "shieldsStrength": 1,
             "drivesStrength": 10,
             "cargoPods": 10,
-            "fuelShare": 0.3466666666666667
+            "fuelShare": 0.28
           },
           {
-            "credits": 8496,
+            "credits": 11856,
             "debt": 0,
             "weaponsStrength": 1,
             "hullStrength": 1,
             "shieldsStrength": 1,
             "drivesStrength": 10,
             "cargoPods": 10,
-            "fuelShare": 0.54
+            "fuelShare": 0.5366666666666666
           },
           {
-            "credits": 18563,
-            "debt": 20606,
-            "weaponsStrength": 6,
-            "hullStrength": 1,
+            "credits": 20987,
+            "debt": 16828,
+            "weaponsStrength": 16,
+            "hullStrength": 8,
             "shieldsStrength": 1,
             "drivesStrength": 30,
             "cargoPods": 10,
-            "fuelShare": 0.76
+            "fuelShare": 0.09166666666666666
           },
           {
-            "credits": 28542,
-            "debt": 25234,
+            "credits": 29590,
+            "debt": 23757,
             "weaponsStrength": 70,
-            "hullStrength": 30,
+            "hullStrength": 70,
             "shieldsStrength": 30,
             "drivesStrength": 30,
             "cargoPods": 10,
-            "fuelShare": 0.03233333333333333
+            "fuelShare": 0.013428571428571429
           },
           {
-            "credits": 87716,
+            "credits": 96428,
             "debt": 30480,
             "weaponsStrength": 90,
             "hullStrength": 70,
             "shieldsStrength": 70,
-            "drivesStrength": 43,
-            "cargoPods": 11,
-            "fuelShare": 0.01876190476190476
+            "drivesStrength": 51,
+            "cargoPods": 13,
+            "fuelShare": 0.020761904761904763
           }
         ],
         "npc": [
@@ -1207,189 +1207,189 @@
             "fuelShare": 0
           },
           {
-            "credits": 125,
+            "credits": 126,
             "hullStrength": 10,
             "fuelShare": 0
           },
           {
-            "credits": 125,
+            "credits": 126,
             "hullStrength": 10,
             "fuelShare": 0
           },
           {
-            "credits": 125,
+            "credits": 126,
             "hullStrength": 10,
             "fuelShare": 0
           },
           {
-            "credits": 125,
+            "credits": 126,
             "hullStrength": 10,
             "fuelShare": 0
           },
           {
-            "credits": 125,
+            "credits": 126,
             "hullStrength": 10,
             "fuelShare": 0
           },
           {
-            "credits": 125,
+            "credits": 126,
             "hullStrength": 10,
             "fuelShare": 0
           },
           {
-            "credits": 131,
+            "credits": 150,
             "hullStrength": 20,
             "fuelShare": 0.0008333333333333334
           },
           {
-            "credits": 131,
+            "credits": 150,
             "hullStrength": 20,
             "fuelShare": 0.0008333333333333334
           },
           {
-            "credits": 131,
+            "credits": 150,
             "hullStrength": 20,
             "fuelShare": 0.0008333333333333334
           },
           {
-            "credits": 131,
+            "credits": 150,
             "hullStrength": 20,
             "fuelShare": 0.0008333333333333334
           },
           {
-            "credits": 131,
+            "credits": 150,
             "hullStrength": 20,
             "fuelShare": 0.0008333333333333334
           },
           {
-            "credits": 131,
+            "credits": 150,
             "hullStrength": 20,
             "fuelShare": 0.0008333333333333334
           },
           {
-            "credits": 131,
+            "credits": 150,
             "hullStrength": 20,
             "fuelShare": 0.0008333333333333334
           },
           {
-            "credits": 1020,
+            "credits": 1045,
             "hullStrength": 40,
-            "fuelShare": 0.0025
+            "fuelShare": 0.0028333333333333335
           },
           {
-            "credits": 1020,
+            "credits": 1045,
             "hullStrength": 40,
-            "fuelShare": 0.0025
+            "fuelShare": 0.0028333333333333335
           },
           {
-            "credits": 1020,
+            "credits": 1045,
             "hullStrength": 40,
-            "fuelShare": 0.0025
+            "fuelShare": 0.0028333333333333335
           },
           {
-            "credits": 1020,
+            "credits": 1045,
             "hullStrength": 40,
-            "fuelShare": 0.0025
+            "fuelShare": 0.0028333333333333335
           },
           {
-            "credits": 1020,
+            "credits": 1045,
             "hullStrength": 40,
-            "fuelShare": 0.0025
+            "fuelShare": 0.0028333333333333335
           },
           {
-            "credits": 1020,
+            "credits": 1045,
             "hullStrength": 40,
-            "fuelShare": 0.0025
+            "fuelShare": 0.0028333333333333335
           },
           {
-            "credits": 1020,
+            "credits": 1045,
             "hullStrength": 40,
-            "fuelShare": 0.0025
+            "fuelShare": 0.0028333333333333335
           },
           {
-            "credits": 34208,
+            "credits": 34308,
             "hullStrength": 90,
-            "fuelShare": 0.002777777777777778
+            "fuelShare": 0.0028148148148148147
           },
           {
-            "credits": 34208,
+            "credits": 34308,
             "hullStrength": 90,
-            "fuelShare": 0.002777777777777778
+            "fuelShare": 0.0028148148148148147
           },
           {
-            "credits": 34208,
+            "credits": 34308,
             "hullStrength": 90,
-            "fuelShare": 0.002777777777777778
+            "fuelShare": 0.0028148148148148147
           },
           {
-            "credits": 34208,
+            "credits": 34308,
             "hullStrength": 90,
-            "fuelShare": 0.002777777777777778
+            "fuelShare": 0.0028148148148148147
           },
           {
-            "credits": 34208,
+            "credits": 34308,
             "hullStrength": 90,
-            "fuelShare": 0.002777777777777778
+            "fuelShare": 0.0028148148148148147
           },
           {
-            "credits": 34208,
+            "credits": 34308,
             "hullStrength": 90,
-            "fuelShare": 0.002777777777777778
+            "fuelShare": 0.0028148148148148147
           },
           {
-            "credits": 111602,
+            "credits": 111299,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 111602,
+            "credits": 111299,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 111602,
+            "credits": 111299,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 111602,
+            "credits": 111299,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 111602,
+            "credits": 111299,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 111602,
+            "credits": 111299,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 111602,
+            "credits": 111299,
             "hullStrength": 90,
             "fuelShare": 0.003703703703703704
           },
           {
-            "credits": 762391,
+            "credits": 745115,
             "hullStrength": 90,
-            "fuelShare": 0.015222222222222222
+            "fuelShare": 0.013518518518518518
           },
           {
-            "credits": 762391,
+            "credits": 745115,
             "hullStrength": 90,
-            "fuelShare": 0.015222222222222222
+            "fuelShare": 0.013518518518518518
           },
           {
-            "credits": 762391,
+            "credits": 745115,
             "hullStrength": 90,
-            "fuelShare": 0.015222222222222222
+            "fuelShare": 0.013518518518518518
           },
           {
-            "credits": 762391,
+            "credits": 745115,
             "hullStrength": 90,
-            "fuelShare": 0.015222222222222222
+            "fuelShare": 0.013518518518518518
           }
         ]
       },
@@ -1398,137 +1398,137 @@
           "policy": "trader",
           "runs": 7,
           "endDay": 44,
-          "creditsMin": 1470,
-          "creditsMedian": 4760,
-          "creditsMax": 57746,
-          "debtTotal": 3699,
-          "incomeDays": 19,
-          "encounters": 5,
+          "creditsMin": 4211,
+          "creditsMedian": 9428,
+          "creditsMax": 66728,
+          "debtTotal": 0,
+          "incomeDays": 21,
+          "encounters": 4,
           "shipsLost": 0,
-          "deliveredLegs": 17,
+          "deliveredLegs": 20,
           "fuelStarvationDays": 0,
           "deedsEarned": 47,
           "tourOneResolved": 0,
-          "outcomeHash": "8cdbdfbdd9f18e16"
+          "outcomeHash": "641d227a179bb4d4"
         },
         {
           "policy": "trader-degraded",
           "runs": 7,
           "endDay": 44,
-          "creditsMin": 1506,
-          "creditsMedian": 6427,
-          "creditsMax": 57746,
-          "debtTotal": 3069,
-          "incomeDays": 19,
-          "encounters": 5,
+          "creditsMin": 4211,
+          "creditsMedian": 9428,
+          "creditsMax": 66728,
+          "debtTotal": 0,
+          "incomeDays": 21,
+          "encounters": 4,
           "shipsLost": 0,
-          "deliveredLegs": 18,
+          "deliveredLegs": 20,
           "fuelStarvationDays": 0,
-          "deedsEarned": 48,
+          "deedsEarned": 50,
           "tourOneResolved": 0,
-          "outcomeHash": "4198db2f48ecee64"
+          "outcomeHash": "049b49f88f75c412"
         },
         {
           "policy": "fighter",
           "runs": 7,
           "endDay": 44,
           "creditsMin": 100,
-          "creditsMedian": 5130,
-          "creditsMax": 28249,
-          "debtTotal": 4302,
-          "incomeDays": 20,
-          "encounters": 1,
+          "creditsMedian": 6349,
+          "creditsMax": 45395,
+          "debtTotal": 0,
+          "incomeDays": 21,
+          "encounters": 2,
           "shipsLost": 0,
-          "deliveredLegs": 15,
+          "deliveredLegs": 16,
           "fuelStarvationDays": 3,
-          "deedsEarned": 39,
+          "deedsEarned": 41,
           "tourOneResolved": 0,
-          "outcomeHash": "3bebe6516cea141e"
+          "outcomeHash": "97bf8d4a50990bb0"
         },
         {
           "policy": "explorer",
           "runs": 7,
           "endDay": 44,
           "creditsMin": 177,
-          "creditsMedian": 4812,
-          "creditsMax": 55326,
-          "debtTotal": 11905,
-          "incomeDays": 16,
+          "creditsMedian": 5960,
+          "creditsMax": 64550,
+          "debtTotal": 10416,
+          "incomeDays": 18,
           "encounters": 5,
           "shipsLost": 0,
           "deliveredLegs": 6,
-          "fuelStarvationDays": 3,
-          "deedsEarned": 47,
+          "fuelStarvationDays": 2,
+          "deedsEarned": 51,
           "tourOneResolved": 0,
-          "outcomeHash": "ebd984b50111892c"
+          "outcomeHash": "63b8d72331d8529d"
         },
         {
           "policy": "veteran",
           "runs": 7,
           "endDay": 44,
           "creditsMin": 225,
-          "creditsMedian": 8621,
-          "creditsMax": 87841,
-          "debtTotal": 76320,
+          "creditsMedian": 11981,
+          "creditsMax": 96553,
+          "debtTotal": 71065,
           "incomeDays": 0,
           "encounters": 0,
           "shipsLost": 0,
           "deliveredLegs": 0,
-          "fuelStarvationDays": 3,
+          "fuelStarvationDays": 2,
           "deedsEarned": 7,
           "tourOneResolved": 0,
-          "outcomeHash": "6fac96e98f254474"
+          "outcomeHash": "39400c75f75559f8"
         },
         {
           "policy": "smuggler",
           "runs": 7,
           "endDay": 44,
-          "creditsMin": 132,
-          "creditsMedian": 4662,
-          "creditsMax": 58056,
-          "debtTotal": 2093,
-          "incomeDays": 19,
-          "encounters": 6,
+          "creditsMin": 4169,
+          "creditsMedian": 6694,
+          "creditsMax": 65036,
+          "debtTotal": 0,
+          "incomeDays": 21,
+          "encounters": 3,
           "shipsLost": 0,
-          "deliveredLegs": 13,
+          "deliveredLegs": 18,
           "fuelStarvationDays": 0,
-          "deedsEarned": 57,
+          "deedsEarned": 63,
           "tourOneResolved": 0,
-          "outcomeHash": "f62fbb5b8cf1c4b5"
+          "outcomeHash": "cb4ab8995135dae7"
         },
         {
           "policy": "gambler",
           "runs": 7,
           "endDay": 44,
-          "creditsMin": 4063,
-          "creditsMedian": 5854,
-          "creditsMax": 65755,
-          "debtTotal": 5043,
+          "creditsMin": 3289,
+          "creditsMedian": 6007,
+          "creditsMax": 65279,
+          "debtTotal": 0,
           "incomeDays": 21,
-          "encounters": 4,
+          "encounters": 3,
           "shipsLost": 0,
-          "deliveredLegs": 17,
+          "deliveredLegs": 18,
           "fuelStarvationDays": 0,
-          "deedsEarned": 63,
+          "deedsEarned": 54,
           "tourOneResolved": 0,
-          "outcomeHash": "6e106c9ba20afee0"
+          "outcomeHash": "8cbca265682dc7cf"
         },
         {
           "policy": "greedy",
           "runs": 7,
           "endDay": 44,
           "creditsMin": 100,
-          "creditsMedian": 2400,
-          "creditsMax": 57236,
-          "debtTotal": 3043,
+          "creditsMedian": 4159,
+          "creditsMax": 65948,
+          "debtTotal": 0,
           "incomeDays": 3,
           "encounters": 0,
           "shipsLost": 0,
           "deliveredLegs": 0,
           "fuelStarvationDays": 3,
-          "deedsEarned": 8,
+          "deedsEarned": 9,
           "tourOneResolved": 0,
-          "outcomeHash": "ee9776be1c4e212b"
+          "outcomeHash": "7a11afec2b218eff"
         }
       ]
     }

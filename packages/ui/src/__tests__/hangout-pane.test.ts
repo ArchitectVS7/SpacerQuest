@@ -1,15 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { createInitialState, loanBandFor, portHangoutFor, venueOffered } from '@spacerquest/engine';
+import {
+  createInitialState,
+  liarsDiceRoundsRemaining,
+  loanBandFor,
+  portHangoutFor,
+  socialPlaysRemaining,
+  venueOffered,
+} from '@spacerquest/engine';
 import {
   DEFAULT_PORT_HANGOUT,
   PORT_HANGOUTS,
+  SOCIAL_PLAYS_PER_DAY,
   STAR_SYSTEMS,
   type HangoutVenueId,
 } from '@spacerquest/content';
 import {
+  hangoutDareRounds,
   hangoutFailExplanation,
   hangoutHouse,
   hangoutNpcs,
+  hangoutSocialPlays,
   hangoutVenueOffered,
   lendingTerms,
   loanFailExplanation,
@@ -57,6 +67,13 @@ const HANGOUT_REASONS = [
   'die-already-spent',
   'no-opponent',
   'venue-not-offered',
+  // T-197 · the two DAILY CAPS that replaced the Hangout's die
+  // (docs/DAWN-HAND-REDESIGN.md §4a/§4b). They are refusals a player can hit on a
+  // perfectly ordinary day, so silence here would be worse than for any reason
+  // above it — which is why they are added to this sweep in the same commit as the
+  // refusals themselves.
+  'social-limit-reached',
+  'daily-round-limit',
 ] as const;
 
 const LOAN_REASONS = [
@@ -90,6 +107,24 @@ describe('T-132 · every Hangout fail reason renders a visible notice', () => {
     // situation); everything else must be tellable apart.
     const lines = new Set(HANGOUT_REASONS.map(hangoutFailExplanation));
     expect(lines.size).toBe(HANGOUT_REASONS.length - 2);
+  });
+
+  // T-197 · THE TWO CAPS GET TWO DISTINCT VOICES, and that is a requirement rather
+  // than a flourish: a spent-out social pool and a table closed for the night are
+  // different refusals with different remedies (come back tomorrow vs. play better
+  // and earn more rounds). The check above already forbids them collapsing into one
+  // another; these two pin what each actually says.
+  it('T-197 · social-limit-reached says the room has heard enough, not that a die is missing', () => {
+    const line = hangoutFailExplanation('social-limit-reached');
+    expect(line).not.toMatch(/die/i);
+    expect(line).toMatch(/today|room/i);
+    expect(line).not.toBe(hangoutFailExplanation('daily-round-limit'));
+  });
+
+  it('T-197 · daily-round-limit says the HOUSE closed the table, not that the player is broke', () => {
+    const line = hangoutFailExplanation('daily-round-limit');
+    expect(line).not.toMatch(/die/i);
+    expect(line).toMatch(/table|tonight|tomorrow/i);
   });
 });
 
@@ -285,5 +320,70 @@ describe('T-133 · the pane’s loan control reads the live port’s band', () =
     expect(home.ratePercent).toBeGreaterThan(0);
     expect(home.termDays).toBeGreaterThan(0);
     expect(home.lenderId.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-197 · THE TWO DAILY CAPS, MADE VISIBLE
+// (docs/DAWN-HAND-REDESIGN.md §4a/§4b)
+//
+// The Accept clause is "never a silent dead button": a freed Hangout verb has no
+// armed die for the player to look at, so the caps must be READABLE BEFORE THE
+// CLICK or a typed refusal is the first they hear of them. These two selectors are
+// what the pane renders (`social-plays-left` / `dare-rounds-left`), and every
+// assertion below is that they REPORT THE ENGINE rather than restating it — the
+// `lendingTerms` → `loanBandFor` discipline the block above holds `format.ts` to.
+// ---------------------------------------------------------------------------
+
+describe('T-197 · the social pool readout reports the engine, never its own arithmetic', () => {
+  it('a fresh day reads the full CONTENT allowance', () => {
+    const plays = hangoutSocialPlays(createInitialState(1));
+    expect(plays.perDay).toBe(SOCIAL_PLAYS_PER_DAY);
+    expect(plays.remaining).toBe(SOCIAL_PLAYS_PER_DAY);
+    // NON-VACUITY: a pool of zero would satisfy an equality between the two.
+    expect(plays.perDay).toBeGreaterThan(0);
+  });
+
+  it('tracks the engine accessor exactly as the pool is drawn down, and floors at 0', () => {
+    for (const spent of [0, 1, 2, 3, 4]) {
+      const game = createInitialState(1);
+      game.player.socialPlaysRemaining = SOCIAL_PLAYS_PER_DAY - spent;
+      const plays = hangoutSocialPlays(game);
+      expect(plays.remaining, `after ${spent} plays`).toBe(socialPlaysRemaining(game));
+      expect(plays.remaining).toBeGreaterThanOrEqual(0);
+      expect(plays.perDay).toBe(SOCIAL_PLAYS_PER_DAY);
+    }
+  });
+});
+
+describe('T-197 · the Liar’s Dice rounds readout reports the engine, never its own arithmetic', () => {
+  it('a fresh captain has their whole tier-0 allowance, and it is at least one hand', () => {
+    const rounds = hangoutDareRounds(createInitialState(1));
+    expect(rounds.remaining).toBe(liarsDiceRoundsRemaining(createInitialState(1)));
+    expect(rounds.remaining).toBeGreaterThan(0);
+    expect(rounds.perDay).toBe(rounds.remaining);
+  });
+
+  it('remaining + opened === perDay at every point in a day, and never goes negative', () => {
+    const game = createInitialState(1);
+    const cap = liarsDiceRoundsRemaining(game);
+    for (let opened = 0; opened <= cap + 2; opened += 1) {
+      game.player.dareRoundsToday = opened;
+      const rounds = hangoutDareRounds(game);
+      expect(rounds.remaining, `after ${opened} opens`).toBe(liarsDiceRoundsRemaining(game));
+      expect(rounds.remaining).toBeGreaterThanOrEqual(0);
+      // `perDay` is derived as remaining + opened rather than by re-reading the
+      // tier — a second tier read in the UI is the drift `liarsDiceRules.ts`'s
+      // header forbids. It therefore only equals the true cap while the player is
+      // AT or under it, which is the only state a real save can be in.
+      if (opened <= cap) expect(rounds.perDay).toBe(cap);
+    }
+  });
+
+  it('a HIGHER unlock tier reads a bigger allowance — the "rewarding good play" shape', () => {
+    const novice = createInitialState(1);
+    const veteran = createInitialState(1);
+    veteran.player.liarsDiceGamesPlayed = 500; // top rung, whatever the thresholds are
+    expect(hangoutDareRounds(veteran).perDay).toBeGreaterThan(hangoutDareRounds(novice).perDay);
   });
 });

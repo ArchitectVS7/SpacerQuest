@@ -18,7 +18,6 @@
  * flips `provenance.spreadSource` on its own.
  */
 
-import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +26,7 @@ import { createInitialState } from '@spacerquest/engine';
 
 import type { BaselineAggregate } from './aggregate.js';
 import { extractFixture } from './checkpoints.js';
+import { headCommit } from './provenance.js';
 import { resolveArtifact } from './resolve-artifact.js';
 import { REPO_ROOT } from './rules-fingerprint.js';
 
@@ -79,16 +79,6 @@ export function parseExtractArgs(argv: readonly string[]): ExtractCliOptions | {
   return options;
 }
 
-function gitCommit(): string {
-  try {
-    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
-  } catch {
-    // Recorded as 'unknown' by the extractor rather than omitted — a missing
-    // provenance field reads as "nobody thought about it".
-    return 'unknown';
-  }
-}
-
 export function main(argv: string[] = process.argv.slice(2)): void {
   try {
     const parsed = parseExtractArgs(argv);
@@ -100,7 +90,8 @@ export function main(argv: string[] = process.argv.slice(2)): void {
     const started = Date.now();
     const fixture = extractFixture(aggregate, {
       extractedOn: parsed.date,
-      gitCommit: gitCommit(),
+      // T-183 · One definition, in `./provenance.js`, shared with `./sweep.ts --merge`.
+      gitCommit: headCommit(),
       // The roster size the spread must cover, taken from the engine's own world
       // creation rather than a literal 30.
       npcCount: createInitialState(1).npcs.length,

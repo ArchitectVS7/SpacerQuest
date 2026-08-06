@@ -519,6 +519,18 @@ const DareHandStateSchema = z
     peekUsed: z.boolean(),
     peekedDealerDie: z.object({ index: z.number(), value: z.number() }).strict().nullable(),
     history: z.array(DareBidEntrySchema),
+    // T-145 · the five fields the roster and the unlock ladder need on the hand
+    // (docs/LIARS-DICE-PROGRESSION_SPEC.md §5.3). ALL NON-OPTIONAL: from v15 on
+    // every open hand carries them (`actions/hangout.ts`'s open arm writes all
+    // five, and `MIGRATIONS[14]` backfills a v14 hand at tier-0 values), and
+    // `.strict()` plus a required key is what makes a half-done migration fail
+    // loudly instead of leaving a hand with no counterparty kind.
+    opponentKind: z.enum(['roaming', 'roster']),
+    opponentArchetype: z.enum(['optimal', 'bad', 'random']).nullable(),
+    dicePerSide: z.number(),
+    maxQuantity: z.number(),
+    // `null` IS the encoding of tier 5 (unlimited), not a missing value.
+    bandMax: z.number().nullable(),
   })
   .strict();
 
@@ -608,6 +620,18 @@ const PlayerStateSchema = z
     charts: ChartsStateSchema,
     nemesisFile: NemesisFileStateSchema,
     legacy: LegacyStateSchema,
+    // T-145: the roster career record. Non-optional — every v15+ save serializes
+    // both keys (v14 saves backfill them via the migration, and
+    // `deserializeState` performs the same backfill for the loader path).
+    liarsDiceBeaten: z.array(z.string()),
+    liarsDiceGamesPlayed: z.number(),
+    // T-197 · the two daily Hangout caps (docs/DAWN-HAND-REDESIGN.md §4a/§4b).
+    // Non-optional — every v16+ save serializes both keys; a v15 save backfills
+    // them via `MIGRATIONS[15]`, and `deserializeState` performs the same backfill
+    // for the loader path that never runs `migrate`. Both halves are owed, exactly
+    // as they were for the T-145 pair above.
+    socialPlaysRemaining: z.number(),
+    dareRoundsToday: z.number(),
     // `activeContract?: CargoContract | null` — absent, null, or a contract.
     activeContract: CargoContractSchema.nullable().optional(),
   })
@@ -946,6 +970,17 @@ const GameEventSchema = z.discriminatedUnion('type', [
         'dare-hand-open',
         'no-dare-hand',
         'illegal-dare-move',
+        // T-145 · the roster's broke rule (§7.4). ADDED HERE AND IN types.ts's
+        // union in the same commit as the refusal that raises it — a value added
+        // to one and forgotten in the other sails past `AssertEventKeys` (which
+        // compares KEYS) and a save carrying it fails to parse at load.
+        'opponent-broke',
+        // T-197 · the two caps that replaced the Hangout die
+        // (docs/DAWN-HAND-REDESIGN.md §4a/§4b). Added HERE and in types.ts's union
+        // in the SAME commit as the refusals that raise them, for the reason the
+        // T-145 note above states verbatim.
+        'social-limit-reached',
+        'daily-round-limit',
       ])
       .optional(),
   }),
@@ -962,6 +997,16 @@ const GameEventSchema = z.discriminatedUnion('type', [
     seedWager: z.number(),
     ante: z.number(),
     playerDice: z.array(z.number()),
+    // T-145 · both OPTIONAL, and that is load-bearing rather than lax: this union
+    // runs in STRIP mode, which drops unknown keys but does NOT tolerate a missing
+    // required one, so a required `dicePerSide` would make every v14 save's
+    // existing DareHandStarted entries fail to parse at v15.
+    dicePerSide: z.number().optional(),
+    opponentLine: z.string().optional(),
+    // T-146 · "Read the Table" (§8 row 30c). Optional for exactly the same
+    // strip-mode reason, which is also why it needs no version move: an optional
+    // key on an existing variant parses every prior save unchanged.
+    opponentRead: z.string().optional(),
   }),
   z.object({
     // T-135 · a Peek was attempted (see types.ts DarePeeked).
@@ -1006,6 +1051,33 @@ const GameEventSchema = z.discriminatedUnion('type', [
     dealerDice: z.array(z.number()).optional(),
     creditsDelta: z.number(),
     dispositionDelta: z.number(),
+    // T-145 · the roster opponent's win/lose catchphrase; absent on a roaming
+    // hand. Optional for the same strip-mode reason as DareHandStarted's pair.
+    opponentLine: z.string().optional(),
+    // T-175 · the three MEASUREMENT COPIES of frozen hand fields (see types.ts).
+    // `.optional()` on all three, so an older save's already-written
+    // DareHandResolved entries still parse under STRIP mode — the property that
+    // keeps this off CURRENT_SAVE_VERSION (`docs/VERSIONING.md` §2).
+    //
+    // KEEPING THE TWO SIDES IN STEP IS A COMPILE ERROR, NOT A CONVENTION:
+    // `AssertEventKeys<'DareHandResolved'>` below fails to typecheck the moment
+    // types.ts and this object disagree on a key, in EITHER direction.
+    opponentKind: z.enum(['roaming', 'roster']).optional(),
+    opponentArchetype: z.enum(['optimal', 'bad', 'random']).nullable().optional(),
+    dicePerSide: z.number().optional(),
+  }),
+  z.object({
+    // T-147 · a Liar's Dice set closed (see types.ts LiarsDiceSetCleared). It is
+    // serialized into `eventLog` like every other player-action event, so a
+    // mid-day save taken on the hand that closed a set would fail to PARSE at load
+    // without this member — which is why it is mandatory rather than optional.
+    // No GameState field is added, so CURRENT_SAVE_VERSION does not move.
+    type: z.literal('LiarsDiceSetCleared'),
+    day: z.number(),
+    scope: z.enum(['port', 'roster']),
+    systemId: z.number(),
+    opponentId: z.string(),
+    beatenCount: z.number(),
   }),
   z.object({
     // T-1304 · a Penny Wise lending beat (see types.ts LoanEvent). Serialized in
@@ -1059,6 +1131,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
     amount: z.number().optional(),
     berths: z.number().optional(),
     crewCount: z.number().optional(),
+    // T-196a · the first three are LEGACY-ONLY: unreachable now that Crew is a
+    // Free Action, kept so pre-M17 saves still load under `.strict()`.
     failReason: z
       .enum([
         'no-die',
@@ -1082,6 +1156,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
     cost: z.number().optional(),
     income: z.number().optional(),
     portCount: z.number().optional(),
+    // T-196a · the first three are LEGACY-ONLY: unreachable now that the port buy
+    // is a Free Action, kept so pre-M17 saves still load under `.strict()`.
     failReason: z
       .enum([
         'no-die',
@@ -1378,15 +1454,29 @@ const GameEventSchema = z.discriminatedUnion('type', [
 // validator for callers that persist/replay command logs.
 // ---------------------------------------------------------------------------
 
+// T-196a · The Trade member is split (types.ts PlayerAction): the four FREE
+// actions reject `spendDie`, `haggle` keeps it. These CANNOT be two options of
+// the outer `z.discriminatedUnion('type', …)` — zod rejects duplicate
+// discriminator values ("Duplicate discriminator value \"Trade\""). The working
+// shape is a NESTED discriminated union on `action`, used as the outer union's
+// single Trade option. Do not "simplify" this back into one object.
+const TradeFreeActionSchema = z.object({
+  type: z.literal('Trade'),
+  action: z.enum(['buy-fuel', 'sign-contract', 'pay-debt', 'abandon-contract']),
+  contractIndex: z.number().optional(),
+  fuelAmount: z.number().optional(),
+  amount: z.number().optional(),
+});
+
+const TradeHaggleActionSchema = z.object({
+  type: z.literal('Trade'),
+  action: z.literal('haggle'),
+  contractIndex: z.number().optional(),
+  spendDie: z.number().optional(),
+});
+
 export const PlayerActionSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('Trade'),
-    action: z.enum(['buy-fuel', 'sign-contract', 'haggle', 'pay-debt', 'abandon-contract']),
-    contractIndex: z.number().optional(),
-    fuelAmount: z.number().optional(),
-    amount: z.number().optional(),
-    spendDie: z.number().optional(),
-  }),
+  z.discriminatedUnion('action', [TradeFreeActionSchema, TradeHaggleActionSchema]),
   z.object({
     type: z.literal('Travel'),
     destinationId: z.number(),
@@ -1399,9 +1489,10 @@ export const PlayerActionSchema = z.discriminatedUnion('type', [
     spendDie: z.number().optional(),
   }),
   z.object({
+    // T-196a · FREE ACTION, all four kinds (docs/DAWN-HAND-REDESIGN.md §3): no
+    // `spendDie`. A stale caller's field is STRIPPED by zod, not accepted.
     type: z.literal('Shipyard'),
     action: ShipyardActionKindSchema,
-    spendDie: z.number(),
     component: ShipComponentIdSchema.optional(),
     tier: z.number().optional(),
     repairMode: z.enum(['all', 'single']).optional(),
@@ -1417,13 +1508,17 @@ export const PlayerActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('Explore'), spendDie: z.number().optional() }),
   z.object({
     // T-1303 · Visit the Spacers Hangout (see types.ts PlayerAction).
+    // T-197 · FREE ACTION, ALL SEVEN VENUES (docs/DAWN-HAND-REDESIGN.md §3): no
+    // `spendDie`. Action schemas are STRICT-less (zod's default strip), so a stale
+    // caller that still sends the field has it DROPPED here rather than accepted
+    // and silently ignored by the resolver — the T-196a precedent for the nine
+    // administrative verbs, applied to the Hangout.
     type: z.literal('VisitHangout'),
     venue: z.enum(['dare', 'meet', 'befriend', 'insult', 'rumor', 'borrow', 'repay']),
     opponentId: z.string().optional(),
     wager: z.number().optional(),
     // T-1304: borrow principal / repay amount.
     amount: z.number().optional(),
-    spendDie: z.number().optional(),
   }),
   z.object({
     // T-135 · one move in the open Liar's Dice hand (see types.ts PlayerAction).
@@ -1448,17 +1543,17 @@ export const PlayerActionSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     // T-1306 · hire/dismiss a crew role (see types.ts PlayerAction).
+    // T-196a · FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3): no `spendDie`.
     type: z.literal('Crew'),
     action: z.enum(['hire', 'dismiss']),
     roleId: z.string(),
-    spendDie: z.number(),
   }),
   z.object({
     // T-1307 · buy a stake in the local port authority (see types.ts PlayerAction).
+    // T-196a · FREE ACTION (docs/DAWN-HAND-REDESIGN.md §3): no `spendDie`.
     type: z.literal('Port'),
     action: z.literal('buy'),
     systemId: z.number(),
-    spendDie: z.number(),
   }),
   z.object({ type: z.literal('Wait') }),
 ]);
@@ -1490,6 +1585,10 @@ export const GameStateSchema = z
     encounter: EncounterStateSchema.nullable(),
     // T-135 · the open Liar's Dice hand, beside its sibling scene.
     dareHand: DareHandStateSchema.nullable(),
+    // T-145 · the live purse of every fixed roster opponent, keyed by opponent id
+    // (docs/LIARS-DICE-PROGRESSION_SPEC.md §5.2). At the ROOT, beside `npcs`,
+    // because these balances belong to the counterparties rather than the captain.
+    liarsDicePurses: z.record(z.string(), z.number()),
     eraEvent: EraEventStateSchema.nullable(),
     lastEraEventEndedDay: z.number(),
     eventLog: z.array(GameEventSchema),
@@ -1667,6 +1766,9 @@ const _covEvDareHandStarted: AssertEventKeys<'DareHandStarted'> = true;
 const _covEvDarePeeked: AssertEventKeys<'DarePeeked'> = true;
 const _covEvDareBidPlaced: AssertEventKeys<'DareBidPlaced'> = true;
 const _covEvDareHandResolved: AssertEventKeys<'DareHandResolved'> = true;
+// T-147 · the completion signal. Pairs types.ts's variant with the schema member
+// above; without both, `_covEventTypes` below is already a tsc error.
+const _covEvLiarsDiceSetCleared: AssertEventKeys<'LiarsDiceSetCleared'> = true;
 const _covEvLoanEvent: AssertEventKeys<'LoanEvent'> = true;
 const _covEvDiceRerolled: AssertEventKeys<'DiceRerolled'> = true;
 const _covEvCrewEvent: AssertEventKeys<'CrewEvent'> = true;
@@ -1766,6 +1868,7 @@ void _covEvDareHandStarted;
 void _covEvDarePeeked;
 void _covEvDareBidPlaced;
 void _covEvDareHandResolved;
+void _covEvLiarsDiceSetCleared;
 void _covEvLoanEvent;
 void _covEvDiceRerolled;
 void _covEvCrewEvent;

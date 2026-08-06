@@ -129,7 +129,7 @@ describe('Galactic Wire nat-20/nat-1 stories (T-1202, PRD §6)', () => {
       // T-1401: a nat-wire story is an actor-driven line — it carries kind 'npc'.
       kind: 'npc',
       message:
-        "Lucky Seven wins the Fat Profit off Cargo King in a Spacer's Dare at the Hangout. Cargo King unavailable for comment.",
+        "Lucky Seven wins the Fat Profit off Cargo King in a Spacer's Dare at the Cantina. Cargo King unavailable for comment.",
     });
   });
 

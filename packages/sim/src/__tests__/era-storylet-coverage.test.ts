@@ -98,11 +98,27 @@ import { emptySighting, runSeed, TIE_INS } from './support/era-sweep.js';
 //        keeps its redundancy.
 // ONLY THE SEEDS MOVED, AGAIN. Neither assertion widened, banded or dropped; the
 //        200-day horizon is unchanged.
+//
+// N13/T-156 (2026-08-02) — the fourth instance of the identical mechanism, and by
+//        now it is a known class rather than a surprise. The NPC virtual hand
+//        (`packages/engine/src/npcHand.ts`) re-phases all thirty captains' dusk
+//        draws; the era-event scheduler shares the day rng with those turns, so
+//        every seeded career's era-roll sequence shifts. Seed 4 now misses
+//        `famine` inside 200 days.
+// RE-SWEEP: seeds 1..40, horizon 200, this exact `runSeed` module, run through a
+//        temporary in-file seed list so the swept code IS the shipped code.
+//        Individually-total seeds are 8, 26, 27, 28, 33 and 39 — 6 of 40, against
+//        3 of 40 before, so the set is if anything THICKER on this horizon and no
+//        era event has become a long pole. Seeds 8 and 26 are pinned, both
+//        individually total on BOTH unions, so the union assertion keeps the
+//        redundancy the previous pin was chosen for.
+// ONLY THE SEEDS MOVED, ONCE MORE. Neither assertion widened, banded or dropped;
+//        the 200-day horizon is unchanged.
 // ==========================================================================
 // ---------------------------------------------------------------------------
 
 /** See SWEEP PROVENANCE above. Explicit and fixed — never a hunt range. */
-const PINNED_SEEDS = [4, 22] as const;
+const PINNED_SEEDS = [8, 26] as const;
 /** See SWEEP PROVENANCE above. Each pinned seed is individually total here. */
 const HORIZON = 200;
 

@@ -173,7 +173,6 @@ function ensureFuel(state: GameState): GameState {
     type: 'Trade',
     action: 'buy-fuel',
     fuelAmount: units,
-    spendDie: die,
   }).state;
 }
 
@@ -382,7 +381,6 @@ describe('T-1505c · the whole Nemesis arc, played: fragments → decode → cro
       type: 'Trade',
       action: 'buy-fuel',
       fuelAmount: 1,
-      spendDie: 0,
     });
     expect(refused.events).toEqual([
       {

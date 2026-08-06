@@ -1,10 +1,15 @@
 import { test, expect } from '@playwright/test';
+import { skipFirstTurnWalkthrough } from './support/career';
 
 // T-301 boot-smoke: the cockpit boots to a playable day, the dawn roll is
 // visible, and the day-advance control actually advances the engine.
 test.beforeEach(async ({ page }) => {
   // Fresh career every run — clear any autosave the store may have persisted.
   await page.addInitScript(() => window.localStorage.clear());
+  // T-187 · This spec is NOT testing the first-time flow — retire the scripted
+  // first-turn walkthrough before the app boots, or its rails would make the
+  // panes below inert. See `support/career.ts`.
+  await skipFirstTurnWalkthrough(page);
 });
 
 test('cockpit boots to a playable day', async ({ page }) => {
@@ -37,7 +42,14 @@ test('ending the day advances the engine and rolls a new hand', async ({ page })
   expect(spent.every((s) => s === '0')).toBe(true);
 });
 
-test('signing a contract requires a die and then consumes it', async ({ page }) => {
+test('signing a contract is FREE: the hold fills and the hand is untouched', async ({ page }) => {
+  // T-196a · This test used to be "signing a contract requires a die and then
+  // consumes it". M17 (docs/DAWN-HAND-REDESIGN.md §3) freed the signature, so the
+  // assertion is INVERTED rather than deleted: signing must still WORK, and must
+  // now leave every die unspent. T-196c retired the cockpit's armed-die gate too,
+  // so the die armed below is no longer a precondition — it is kept deliberately,
+  // as proof that a Free Action does not DISARM what a player queued for their
+  // next Main Action (asserted at the end).
   await page.goto('/');
   const contracts = page.getByTestId('contract');
   await expect(contracts.first()).toBeVisible();
@@ -46,9 +58,14 @@ test('signing a contract requires a die and then consumes it', async ({ page }) 
   await page.getByTestId('die').first().click();
   await contracts.first().click();
 
-  // The die is now spent (one fewer unspent die in the hand).
+  // The contract landed…
+  await expect(page.getByTestId('active-contract')).toBeVisible();
+  // …and NO die was consumed.
   const spent = await page
     .getByTestId('die')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-spent')));
-  expect(spent.filter((s) => s === '1').length).toBe(1);
+  expect(spent.filter((s) => s === '1').length).toBe(0);
+  // T-196c · …nor DISARMED. The die armed before the signature is still armed
+  // after it, ready for the Main Action it was queued for.
+  await expect(page.getByTestId('die').first()).toHaveAttribute('aria-pressed', 'true');
 });

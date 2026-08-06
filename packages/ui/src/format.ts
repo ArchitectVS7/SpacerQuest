@@ -18,6 +18,9 @@ import {
   LOAN_DAILY_RATE,
   LOAN_TERM_DAYS,
   LENDER_ID,
+  // T-197 · the social pool's size, so the "x of N left" readout prints the
+  // CONTENT number and a retune moves it with no UI edit (§4a).
+  SOCIAL_PLAYS_PER_DAY,
   CREW_ROLES,
   CREW_BY_ID,
   EXPLORE_MODULES,
@@ -78,11 +81,26 @@ import {
   rankClientele,
   venueOffered,
   venueParamsFor,
-  wagerBandFor,
+  // T-197 · the two daily Hangout caps, read through the engine's own accessors —
+  // the readouts below are pure pass-throughs, never restated arithmetic (§4a/§4b).
+  socialPlaysRemaining,
+  liarsDiceRoundsRemaining,
   // T-136 · The Liar's Dice RULES the fog projection reads. The pane never
   // re-derives legality or headroom; it asks the engine's own functions.
   headroomFor,
   legalDareMoves,
+  // T-145 · the ROSTER accessors. The pane resolves a pool-A opponent's authored
+  // name and lines through the engine, exactly as it reads `wagerBandFor` /
+  // `headroomFor` rather than re-deriving them.
+  liarsDiceOpponentFor,
+  liarsDiceOpponentsAt,
+  // T-146 · the UNLOCK LADDER. `liarsDiceTier` is read in exactly one place in
+  // this package (`preHandTier`), for the reason stated there. T-168: the STAKE
+  // INPUT no longer derives its own band — it asks the engine's `preHandWagerBand`
+  // (§4.6a item 3), so this package no longer imports `effectiveWagerBand` at all.
+  preHandWagerBand,
+  liarsDiceTier,
+  readTheTableLine,
   dawnDiceModifiers,
   equipmentDiceBenefits,
   hasExploreModule,
@@ -182,12 +200,109 @@ export function contractIsUrgent(game: GameState, destination: number): boolean 
   return game.eraEvent?.affectedSystemIds.includes(destination) ?? false;
 }
 
+// ---- T-190 the manifest board as a physical, port-bound sheet -------------
+//
+// PRESENTATION ONLY. Every field below is a value the manifest header already
+// renders, or a plain identity read off the state — this selector derives no
+// rule, owns no threshold, and adds nothing to `MarketState` or `CargoContract`.
+// It exists so `App.tsx` stays render-only (T-189's precedent) and so the one
+// genuinely non-obvious value — `boardKey` — has a tested home.
+
+/** The manifest board's identity as a physical sheet pinned to a port's clip. */
+export interface ManifestSheet {
+  /** The port whose depot posted this board. */
+  portName: string;
+  /** How many offers are pinned to it right now. */
+  offerCount: number;
+  /** The day it was posted (the board is regenerated at dawn). */
+  day: number;
+  /**
+   * `${systemId}:${day}` — the React key the sheet element is mounted under.
+   *
+   * The board is regenerated per port at dawn (`generateManifestBoard`, engine
+   * `day.ts`), so a new (system, day) pair is a genuinely NEW sheet. Keying on
+   * it remounts the element, which is what fires the "re-post" animation. That
+   * is the only honest port-bound cue available while jumps are still instant
+   * (T-188 unruled) — a presentation cue, never a game rule.
+   */
+  boardKey: string;
+}
+
+/** Pure projection of the manifest board's sheet identity (display-only). */
+export function manifestSheet(game: GameState): ManifestSheet {
+  const systemId = game.player.currentSystemId;
+  return {
+    portName: systemName(systemId),
+    offerCount: game.market.manifestBoard.length,
+    day: game.day,
+    boardKey: `${systemId}:${game.day}`,
+  };
+}
+
 /** T-1402 · The engine's advisory fuel-purchase preview (cost, delivered, wasted,
  *  overspend, affordability), re-exported so the fuel depot can warn BEFORE the buy
  *  commits. A pure read — the engine still clamps the tank on resolve; this only
  *  surfaces the clamp so the spacer isn't silently charged for fuel they can't hold. */
 export function fuelPurchaseQuote(game: GameState, fuelAmount: number): FuelPurchaseQuote {
   return quoteFuelPurchase(game, fuelAmount);
+}
+
+// ---- T-191 the port ledger as a service rack ------------------------------
+//
+// PRESENTATION ONLY. Every field below is either a plain identity read off the
+// state or a string built from numbers the Port Ledger ALREADY renders. This
+// selector derives no rule, owns no threshold, invents no field, and reads
+// nothing the pane did not read before it existed.
+//
+// WHY IT EXISTS. The rack's three animations (a readout tick, a charge sweep, a
+// dispatch re-post) are driven the way T-190 drove the manifest's re-post: by a
+// React `key` that CHANGES when — and only when — the engine value behind the
+// module moved. That is zero state, zero effect and zero timer in the UI. But a
+// key that silently stopped moving would silently stop the animation with no
+// e2e assertion noticing, so the keys get a tested home here rather than being
+// interpolated inline in JSX (T-190's `boardKey` precedent).
+//
+// NAMING: deliberately NOT `portLedger` — that name is already taken further
+// down this file (T-1405) and means the port-ownership income ledger, an
+// entirely different thing.
+
+/** The Port Ledger's fascia: the port it serves, plus the three re-mount keys
+ *  its service modules animate off. Four fields, all pure projection. */
+export interface LedgerFascia {
+  /** The port whose services these modules are — the same read the pane's tag
+   *  already renders. */
+  portName: string;
+  /**
+   * `${fuel}/${maxFuel}` — the exact pair the FUEL DEPOT readout prints. Moves
+   * when the tank moves (a purchase, a jump, a tank upgrade) and at no other
+   * time, so keying the readout on it ticks precisely once per real change.
+   */
+  fuelKey: string;
+  /**
+   * `${debt}:${debtDueDay}` — moves on a pay-down and on a re-markered due day.
+   * Both are player-visible numbers the GUILD DEBT module already prints.
+   */
+  debtKey: string;
+  /**
+   * The live PORT-surface storylet ids, SORTED and joined. Sorted on purpose:
+   * an engine-side reordering of an unchanged offer set must not fire a
+   * spurious re-post, so the key is order-independent by construction.
+   */
+  dispatchKey: string;
+}
+
+/** Pure projection of the Port Ledger's fascia identity (display-only). */
+export function ledgerFascia(game: GameState): LedgerFascia {
+  const p = game.player;
+  return {
+    portName: systemName(p.currentSystemId),
+    fuelKey: `${p.ship.fuel}/${p.ship.maxFuel}`,
+    debtKey: `${p.debt}:${p.debtDueDay}`,
+    dispatchKey: offersForSurface(game, 'port')
+      .map((o) => o.storyletId)
+      .sort()
+      .join('|'),
+  };
 }
 
 // ---- T-304 starmap -------------------------------------------------------
@@ -380,7 +495,7 @@ export function hangoutNpcs(game: GameState): HangoutNpc[] {
   // in-system set by the port's authored `clientele` — regulars first, then the
   // preferred archetypes, then everyone else, each bucket keeping its incoming
   // order. It never adds an NPC, so the pane still lists exactly the captains the
-  // Dare resolver will accept as an opponent. Under Sun-3's default (empty)
+  // Dare resolver will accept as an opponent. Under Sol-3's default (empty)
   // clientele it is the identity and this list is unchanged.
   //
   // T-132 (F-101-5) · `!n.dead` is load-bearing, not defensive. `rankClientele`'s
@@ -397,6 +512,185 @@ export function hangoutNpcs(game: GameState): HangoutNpc[] {
   }));
 }
 
+/**
+ * T-145 · One row of the house's OWN table — a fixed Liar's Dice roster opponent
+ * (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §8 row 46a).
+ *
+ * A PARALLEL PROJECTION beside {@link hangoutNpcs}, never a replacement:
+ * `hangoutNpcs` is unchanged, and the picker renders the two pools as two visually
+ * separated sections. This row is how "all 42 opponents are reachable through the
+ * real UI at their authored port" is actually satisfied.
+ */
+export interface HangoutRosterOpponent {
+  id: string;
+  name: string;
+  /** In `player.liarsDiceBeaten` — the captain has already taken a hand off them.
+   *  A rematch is perfectly legal and pays normally; it simply records nothing. */
+  beaten: boolean;
+  /** The LIVE purse (`GameState.liarsDicePurses`), not the authored bankroll. */
+  purse: number;
+  /** Purse <= 0. The engine refuses the sit-down with
+   *  `HangoutEvent{failReason:'opponent-broke'}` (§7.4), so the pane disables the
+   *  row rather than offering a button that can only fail. They never regenerate —
+   *  see the theorem at the refusal site for why that cannot lock an achievement. */
+  broke: boolean;
+  /**
+   * T-146 · The "Read the Table" line for this seat, present only at unlock
+   * tier ≥ 3 (§8 row 46b).
+   *
+   * **UNDEFINED ON A `'mixed'` ROW, DELIBERATELY, AND THAT IS A RULING** (§4.5
+   * ruling 1): a mix is resolved to a concrete arm at OPEN, so before the hand
+   * exists there is no resolved arm and therefore no honest read. The pane renders
+   * nothing (the `roomLine` convention — never a placeholder), and the mixed
+   * opponent's real read arrives at open on `DareHandStarted.opponentRead`.
+   * Mapping mixed to the `random` line here would be the pane inventing a read the
+   * engine never made.
+   */
+  read?: string;
+}
+
+/**
+ * T-146 · THE ONE LIVE-TIER READ IN THIS PACKAGE (§4.6a item 4). A PRE-HAND
+ * projection, which is exactly what makes a live read legitimate here: there is no
+ * hand yet to read a frozen field off. Every reader that HAS a hand reads the
+ * hand's frozen fields.
+ *
+ * T-168 · NARROWED TO ONE CALLER. It now serves ONLY the tier ≥ 3 "Read the Table"
+ * unlock in `hangoutRosterOpponents` (§4.5). The stake input used to derive its
+ * bounds from this tier plus `effectiveWagerBand`; it now asks the engine's
+ * `preHandWagerBand` for the answer whole, so the tier→band mapping is derived in
+ * exactly one place in the repo. Behaviour-identical by construction — that
+ * accessor is the same two calls, moved inside the engine.
+ *
+ * DISPLAY ONLY, and it decides nothing: the unlock it gates adds one string.
+ */
+function preHandTier(game: GameState): number {
+  return liarsDiceTier(game.player.liarsDiceGamesPlayed);
+}
+
+export function hangoutRosterOpponents(game: GameState): HangoutRosterOpponent[] {
+  const beaten = new Set(game.player.liarsDiceBeaten);
+  const readUnlocked = preHandTier(game) >= 3;
+  // In authored SEAT ORDER, straight off the engine's accessor — pool A has no
+  // `currentSystemId` and takes no part in the roam, so there is nothing to filter
+  // and no `rankClientele` to apply. The house's three are always at the house.
+  return liarsDiceOpponentsAt(game.player.currentSystemId).map((opponent) => {
+    const purse = game.liarsDicePurses[opponent.id] ?? 0;
+    return {
+      id: opponent.id,
+      name: opponent.name,
+      beaten: beaten.has(opponent.id),
+      purse,
+      broke: purse <= 0,
+      // A 'mixed' row has no resolved arm before the hand exists — see `read`'s
+      // own note. `undefined` here, and the pane renders nothing.
+      ...(readUnlocked && opponent.archetype !== 'mixed'
+        ? { read: readTheTableLine('roster', opponent.archetype) }
+        : {}),
+    };
+  });
+}
+
+/**
+ * T-207 · ONE authored line out of a pool, picked DETERMINISTICALLY. This is NOT
+ * an RNG, and the reason is structural rather than stylistic: `format.ts` runs on
+ * EVERY React render, so a random pick would reshuffle the captain's line on every
+ * paint — the bark would flicker while the player was still reading it. The seed
+ * is the id of the THING the line belongs to (the hand, the encounter, the
+ * encounter+round), so the line is stable for exactly as long as that thing is,
+ * and two different things draw independently.
+ *
+ * FNV-1a over the seed string. No engine RNG is forked and none could be: nothing
+ * here consumes randomness the engine owns, and a display projection that pulled
+ * from the engine's stream would change the world by being rendered.
+ *
+ * `null` — never a placeholder, never `''` — when the pool is absent or empty. A
+ * QUEST captain carries neither `tableTalk` nor `catchphrases` (T-205's ruling
+ * that ABSENT MEANS "this record has no voiced surface"), and this is the one
+ * place that ruling becomes a rendered nothing rather than a crash.
+ */
+function pickAuthoredLine(lines: readonly string[] | undefined, seed: string): string | null {
+  if (!lines || lines.length === 0) return null;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return lines[hash % lines.length];
+}
+
+/**
+ * T-203 · A ROAMING dealer's standing with the player, at the Liar's Dice table.
+ *
+ * The same 30 named captains the player Meets / Befriends / Insults at a Hangout
+ * are the ones who turn up as a roaming dealer at whatever port they happen to be
+ * docked at, and until now that connection was invisible at the table. This is the
+ * Hangout-appropriate trim of {@link encounterReadout}'s history clause: it reuses
+ * {@link dispositionHint} and `countWireMentions` verbatim rather than restating
+ * either, so the bands and the wire wording exist in exactly one place each.
+ */
+export interface LiarsDiceDealerReadout {
+  /** `dispositionHint(npc.disposition)` — the band, never the number. */
+  standing: string;
+  /** Prior `WireEntry` lines naming this captain; 0 when they have no record. */
+  mentions: number;
+  /** The one-line composition the pane prints.
+   *
+   *  DELIBERATELY WITHOUT `encounterReadout`'s "Last known at <system>" clause: a
+   *  roaming dealer is co-located with the player by construction (`hangoutNpcs`
+   *  filters on `currentSystemId === here`, and a hand can only open where both
+   *  are standing), so the clause could only ever print the port the player is
+   *  already in. It is omitted because it carries no information here, not because
+   *  it was overlooked — do not "restore" it. */
+  line: string;
+  /** T-207 · ONE of this roaming captain's authored `NpcProfile.tableTalk` lines,
+   *  or `null` when their profile carries none (a quest captain — T-205's
+   *  ABSENT-means-no-voiced-surface ruling).
+   *
+   *  It lives on THIS interface, and not on a second exported function, because
+   *  the `ld-` / `NpcState` gate below is the ONE place the roaming-vs-roster
+   *  distinction is made in this file. T-207 extends that gate; it must not open a
+   *  second one that could later disagree with it.
+   *
+   *  Note that {@link line} above is UNCHANGED by this field — the table-talk line
+   *  is rendered as its own element, never composed into the standing line. */
+  tableTalk: string | null;
+}
+
+/**
+ * Null for a `ld-` ROSTER seat and for any id with no live `NpcState`.
+ *
+ * Pool A is outside the NPC economy entirely — a roster opponent has no
+ * `NpcState` and therefore no player disposition (the same §7.6 ruling that makes
+ * `DareRevealView.dispositionDelta` honestly 0 on every roster hand). Synthesising
+ * `dispositionHint(0)` for one would print "No standing with you" on a seat that
+ * CANNOT have standing, which is a false cue rather than a neutral one — hence the
+ * hard null, never a fallback.
+ */
+export function liarsDiceDealerReadout(
+  game: GameState,
+  dealerId: string,
+): LiarsDiceDealerReadout | null {
+  if (dealerId.startsWith('ld-')) return null;
+  const npc = game.npcs.find((n) => n.id === dealerId);
+  if (!npc) return null;
+  const standing = dispositionHint(npc.disposition);
+  const mentions = countWireMentions(game, npc.name);
+  const parts = [standing];
+  if (mentions > 0) parts.push(`${mentions} prior wire ${mentions === 1 ? 'mention' : 'mentions'}`);
+  // T-207 · seeded on the LIVE HAND's id (falling back to the dealer's id when
+  // there is no hand, which keeps the function total for a bare readout call), so
+  // the captain says one thing for the life of one hand and something else across
+  // a career of hands. Read off `game` inside the function deliberately: adding a
+  // seed parameter would be an optional-argument wart on a function T-203's tests
+  // and `dareScene` both call with exactly two arguments.
+  const tableTalk = pickAuthoredLine(
+    NPC_PROFILES.find((p) => p.id === npc.profileId)?.tableTalk,
+    game.dareHand?.id ?? dealerId,
+  );
+  return { standing, mentions, line: `${parts.join(' · ')}.`, tableTalk };
+}
+
 /** The rumor-table lines — a pure pass-through to the engine's own exported
  *  `hangoutRumors` (synthesized from live NPC state). The UI never re-synthesizes
  *  gossip; it renders exactly what the engine produces. Reader: the pane's rumor
@@ -406,16 +700,39 @@ export function hangoutRumorLines(game: GameState): string[] {
 }
 
 /** The Dare wager band — the same bounds the engine clamps a requested wager into.
- *  T-120: the band is now the PORT's (`wagerBandFor`), so a high table and a
- *  dockside room show different limits; the UI reads the engine's accessor rather
- *  than a bare constant. Reader: the pane's wager input + its label. */
+ *  T-120: the band is the PORT's, so a high table and a dockside room show
+ *  different limits; the UI reads the engine's accessor rather than a bare
+ *  constant. T-146: that accessor layers the live unlock tier over the port's
+ *  authored band — this file no longer imports `wagerBandFor` at all, because a
+ *  raw port band is never the right answer here. T-168: the accessor is now
+ *  `preHandWagerBand`, which does the layering inside the engine.
+ *  Reader: the pane's wager input + its label. */
 export interface DareWagerBounds {
   min: number;
-  max: number;
+  /** T-146 · `null` at unlock tier 5 — the band clamp is removed at both ends and
+   *  there is NO ceiling to render. The pane must branch on this rather than print
+   *  a blank number. The solvency clamp still applies; it is simply not a *band*. */
+  max: number | null;
 }
 
+/**
+ * T-146 · The pre-hand stake bounds (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §8 row
+ * 51). Every reader that HAS a hand reads the hand's FROZEN `bandMax`; this one is
+ * legitimate precisely because there is no hand yet — the player is choosing a
+ * stake before the hand exists, so there is no frozen field to read off.
+ *
+ * T-168 · IT NO LONGER DERIVES THE BAND, it asks for it. `preHandWagerBand` (§4.6a
+ * item 3) is the ONE place the tier→band mapping is computed pre-hand, and the
+ * cockpit, the sim's `planDare` and the UGT protocol enumerator all read it. This
+ * function is now a pass-through and is BEHAVIOUR-IDENTICAL BY CONSTRUCTION — the
+ * accessor is `effectiveWagerBand(currentSystemId, liarsDiceTier(gamesPlayed))`,
+ * the same two calls this line used to make, moved inside the engine.
+ *
+ * DISPLAY ONLY. It decides nothing: the engine re-clamps the requested wager at
+ * open, against this same effective band AND against both sides' live credits.
+ */
 export function dareWagerBounds(game: GameState): DareWagerBounds {
-  return wagerBandFor(game.player.currentSystemId);
+  return preHandWagerBand(game);
 }
 
 // ---- T-136 · THE LIAR'S DICE FOG PROJECTION ------------------------------
@@ -442,6 +759,49 @@ export function dareWagerBounds(game: GameState): DareWagerBounds {
 // resolver wrote.
 
 /**
+ * T-221 · BOTH ARMS OF THE FOLD TRADE, priced at the point of decision
+ * (`docs/LIARS-DICE-DECISIONS.md` **LD-26**, `docs/LIARS-DICE_REDESIGN.md` §17.7;
+ * filed as F-177-1).
+ *
+ * LD-26 rules that FOLD is a PRICED PURCHASE of goodwill rather than a null
+ * mechanic: it forfeits the escrow with certainty and buys the dealer's warmth.
+ * A purchase whose price the buyer cannot see is not a design, it is a trap — and
+ * until this view existed nothing at the table named either side of it.
+ *
+ * WHAT THIS IS NOT. It is not the ruling restated in the UI. There is no
+ * crossover here, no `P_false`, no `probAtLeast`, and no `DARE_*_DISPOSITION`
+ * import: the ruling's DERIVATION stays in the engine's tests, and the pane reads
+ * only what the live hand and the live port row already say. Every number below is
+ * a read, never a computation:
+ *   - the credit arm is the hand's own escrow (`potPlayer` / `potDealer`, money
+ *     already debited at contribution time, §2.4) — the same two numbers
+ *     `settleDareHand` pays out as `creditsDelta = −potPlayer` on both fold arms
+ *     (`packages/engine/src/actions/dare.ts:145`);
+ *   - the disposition arm is the PORT's own `dare` row (`dispositionOnFold`),
+ *     resolved through the engine's `venueParamsFor` exactly as `peekDc` above it
+ *     is — the same field `settleDareHand` reads at `actions/dare.ts:173`.
+ * A retune of either therefore moves what the table says, with no edit here.
+ */
+export interface DareFoldTrade {
+  /** Forfeited WITH CERTAINTY if the player folds — `hand.potPlayer`, the escrow
+   *  already debited. Not a re-derivation: it is the exact magnitude of the
+   *  `creditsDelta` the resolver pays on both fold arms. */
+  creditsForfeited: number;
+  /** The house money the fold walks away from — `hand.potDealer`. */
+  creditsLeftOnTable: number;
+  /** What the fold BUYS: the port's own `dispositionOnFold`, never a constant
+   *  restated here. `null` on a ROSTER seat — pool A is outside the NPC economy
+   *  (§7.6), so there is no standing to buy and the resolver moves nothing; naming
+   *  one would be the same false cue {@link liarsDiceDealerReadout}'s hard null
+   *  exists to prevent. */
+  disposition: number | null;
+  /** The composed sentence the pane prints. Composed HERE, for the same reason
+   *  {@link LiarsDiceDealerReadout.line} is: the view owns no branch, and the
+   *  hover title and the printed line come off ONE string so they cannot drift. */
+  line: string;
+}
+
+/**
  * The live hand, as the PLAYER may see it. One peeked die is the single legal
  * leak (§8.3) and is marked as such; everything else about the dealer's hand is a
  * count.
@@ -453,8 +813,15 @@ export interface DareSceneView {
   /** PUBLIC — the player's own four dice, in roll order (never sorted: a sorted
    *  hand is a different hand to look at). */
   playerDice: number[];
-  /** A COUNT, never values. This field is the whole point of the projection. */
+  /** A COUNT, never values. This field is the whole point of the projection.
+   *  T-146 · already `hand.dealerDice.length`, so it is length-agnostic and needed
+   *  no ladder edit — confirmed, not changed (§8 row 49's confirm half). */
   dealerDieCount: number;
+  /** T-146 · The hand's FROZEN claim ceiling (`2 × dicePerSide`), so the pane's
+   *  stepper clamp and its `data-max` come off the HAND rather than the tier-0
+   *  `DARE_MAX_QUANTITY` constant (§8 rows 43, 45). The pane still decides no
+   *  legality of its own — it asks the engine's `isLatticeMove` with this. */
+  maxQuantity: number;
   /** The ONE dealer die a successful Peek revealed (§8.3), or null. */
   peeked: { index: number; value: number } | null;
   bid: DareBid | null;
@@ -471,19 +838,151 @@ export interface DareSceneView {
   legalMoves: DareMoveKind[];
   /** The port's Peek DC — DISPLAY ONLY; the engine rolls it. */
   peekDc: number;
+  /** T-145 · Which pool the counterparty came from, straight off the hand. */
+  opponentKind: 'roaming' | 'roster';
+  /** T-145 · The roster opponent's authored TABLE TALK, shown at the table for the
+   *  life of the hand. `null` on a roaming hand — pool B has no authored lines. */
+  tableTalk: string | null;
+  /**
+   * T-146 · "READ THE TABLE" (§4.5, §8 row 47) — the line the ENGINE put on this
+   * hand's `DareHandStarted`, or `null` when the hand opened below unlock tier 3.
+   *
+   * READ OFF `state.eventLog`, NOT RE-DERIVED. The pane owns no rule here: it does
+   * not know the thresholds, does not call `liarsDiceTier`, and cannot map an
+   * archetype or a GUILE to a line — it renders the string the engine already
+   * emitted, keyed on this hand's own `handId`.
+   *
+   * WHY NOT THE STORE'S `dareBeats`, which also carry the event: the scene's beat
+   * effect calls `clearDareBeats()` on its very first run whenever the dealer has
+   * not answered — which is exactly the state at open — so a beat-sourced read
+   * would render for one paint and vanish. The event log is append-only and
+   * survives a reload, so the read is stable for the life of the hand, in the same
+   * way `tableTalk` above is.
+   */
+  opponentRead: string | null;
+  /**
+   * T-203 · The ROAMING dealer's standing-with-you line
+   * ({@link liarsDiceDealerReadout}'s `line`), or `null` on a roster hand — pool A
+   * has no disposition to read, so nothing renders there at all (the `roomLine`
+   * convention, never a placeholder).
+   *
+   * Composed HERE, in the projection, so `LiarsDiceScene` is still handed a
+   * `DareSceneView` and never the `GameState` — the hidden-dice discipline stated
+   * at the top of the scene component. The value is a function of `npcs` and
+   * `eventLog` only, never of `hand.dealerDice`, so the T-136 deep-equal-across-
+   * three-dealer-hands experiment still holds with this field present.
+   */
+  dealerHistory: string | null;
+  /**
+   * T-207 · The ROAMING captain's OWN VOICE at the table — one of the authored
+   * `NpcProfile.tableTalk` lines T-206 wrote for all 30 of them
+   * ({@link LiarsDiceDealerReadout.tableTalk}).
+   *
+   * MUTUALLY EXCLUSIVE WITH {@link tableTalk} ABOVE BY CONSTRUCTION, not by
+   * convention: that field is the pool-A ROSTER seat's authored line and is null on
+   * every roaming hand; this one comes off the pool-B captain's `NpcProfile` and is
+   * null on every roster hand, because the readout that produces it hard-nulls on a
+   * `ld-` id. The pane may therefore render both without ever showing two barks.
+   *
+   * Like `dealerHistory`, it is a function of `npcs` and the hand's ID only, never
+   * of `hand.dealerDice`, so the T-136 deep-equal experiment still holds.
+   */
+  dealerTableTalk: string | null;
+  /**
+   * T-221 · What a FOLD costs and what it buys — see {@link DareFoldTrade} for the
+   * argument and for where each number is read from.
+   *
+   * Like `dealerHistory` and `dealerTableTalk`, it is a function of the hand's
+   * ESCROW (`potPlayer` / `potDealer`), its `systemId` and `npcs` only, and never
+   * of `hand.dealerDice`, so the T-136 deep-equal-across-three-dealer-hands
+   * experiment still holds with this field present.
+   */
+  foldTrade: DareFoldTrade;
+}
+
+/** T-146 · This hand's "Read the Table" line, straight off the `DareHandStarted`
+ *  the engine emitted for it. Scanned from the tail because the log is
+ *  append-only and the newest matching hand is the live one. */
+function dareOpponentRead(game: GameState, handId: string): string | null {
+  for (let i = game.eventLog.length - 1; i >= 0; i -= 1) {
+    const event = game.eventLog[i];
+    if (event.type === 'DareHandStarted' && event.handId === handId) {
+      return event.opponentRead ?? null;
+    }
+  }
+  return null;
+}
+
+/**
+ * T-221 · The FOLD trade, composed. See {@link DareFoldTrade} for what each arm
+ * is read from and why nothing is derived here.
+ *
+ * THE ROAMING/ROSTER GATE IS NOT RE-OPENED. It is handed in as `dealerReadout`,
+ * which is {@link liarsDiceDealerReadout}'s hard null — "the ONE place the
+ * roaming-vs-roster distinction is made in this file". A `hand.opponentKind`
+ * test here would be a second gate that could later disagree with it, exactly
+ * what `dealerHistory` and `dealerTableTalk` were written to avoid.
+ */
+function dareFoldTrade(
+  hand: NonNullable<GameState['dareHand']>,
+  dealerName: string,
+  dealerReadout: LiarsDiceDealerReadout | null,
+): DareFoldTrade {
+  const creditsForfeited = hand.potPlayer;
+  const creditsLeftOnTable = hand.potDealer;
+  // The PORT's own `dare` row, resolved by the engine — never a constant. Null on
+  // a roster seat, through the readout's gate and no test of our own.
+  const disposition = dealerReadout
+    ? venueParamsFor(hand.systemId, 'dare').dispositionOnFold
+    : null;
+  const price =
+    `Fold and the ${creditsForfeited}cr you have already staked is gone — the cup is never ` +
+    `lifted, and the ${creditsLeftOnTable}cr the house put up stays with them.`;
+  // The `!== 0` arm is NOT a rule of the pane's: it mirrors `applyDisposition`'s
+  // own `delta === 0` early return, which a port authoring `dispositionOnFold: 0`
+  // already triggers (`packages/engine/src/actions/dare.ts:180`). Where the engine
+  // emits no `DispositionChanged` at all, the table must not say "warmer by 0".
+  const buys =
+    disposition !== null && disposition !== 0
+      ? ` What it buys: ${dealerName} takes the pot unshown and comes away ` +
+        `${signedMargin(disposition)} warmer toward you — and a captain who is warm to you is ` +
+        `likelier to wave you past than to fly the intercept.`
+      : '';
+  return { creditsForfeited, creditsLeftOnTable, disposition, line: `${price}${buys}` };
 }
 
 export function dareScene(game: GameState): DareSceneView | null {
   const hand = game.dareHand;
   if (!hand) return null;
-  const dealer = game.npcs.find((n) => n.id === hand.dealerId);
+  // T-145 · THE NAME MUST BE RESOLVED BY POOL. `game.npcs.find(...)` returns
+  // undefined for every roster hand — pool A has no `NpcState` at all — so the
+  // shipped fallback rendered the raw id (`ld-5-2`) at the table. Resolved through
+  // the engine's own `liarsDiceOpponentFor`, the same way this file already calls
+  // `wagerBandFor` / `headroomFor` rather than re-deriving them.
+  const roster =
+    hand.opponentKind === 'roster' ? liarsDiceOpponentFor(hand.systemId, hand.dealerId) : undefined;
+  const dealer = roster ?? game.npcs.find((n) => n.id === hand.dealerId);
+  // T-207 · ONE call, two fields. T-221 · three. Hoisted so the projection asks
+  // the roaming/roster gate exactly once — a second call site would be a second
+  // place for the fields to drift out of step.
+  const dealerReadout = liarsDiceDealerReadout(game, hand.dealerId);
+  const dealerName = dealer?.name ?? hand.dealerId;
   return {
     handId: hand.id,
     dealerId: hand.dealerId,
-    dealerName: dealer?.name ?? hand.dealerId,
+    dealerName,
+    opponentKind: hand.opponentKind,
+    tableTalk: roster?.lines.tableTalk ?? null,
+    opponentRead: dareOpponentRead(game, hand.id),
+    // T-203 · null on every roster hand, by the readout's own hard null.
+    dealerHistory: dealerReadout?.line ?? null,
+    // T-207 · null on every roster hand for the same reason, and null on a roaming
+    // hand whose captain has no authored voice (a quest captain).
+    dealerTableTalk: dealerReadout?.tableTalk ?? null,
     playerDice: [...hand.playerDice],
     // `.length`, deliberately. Never a value, never a map over the array.
     dealerDieCount: hand.dealerDice.length,
+    maxQuantity: hand.maxQuantity,
     peeked: hand.peekedDealerDie ? { ...hand.peekedDealerDie } : null,
     bid: hand.bid ? { ...hand.bid } : null,
     bidder: hand.bidder,
@@ -495,6 +994,10 @@ export function dareScene(game: GameState): DareSceneView | null {
     history: hand.history.map((h) => ({ ...h })),
     legalMoves: legalDareMoves(hand, 'player', game.player.credits),
     peekDc: venueParamsFor(hand.systemId, 'dare').dc,
+    // T-221 · LD-26's trade, priced at the table. Same hoisted readout, so the
+    // disposition arm is absent on a roster seat for the same one reason
+    // `dealerHistory` and `dealerTableTalk` are.
+    foldTrade: dareFoldTrade(hand, dealerName, dealerReadout),
   };
 }
 
@@ -519,8 +1022,15 @@ export interface DareRevealView {
   /** null on BOTH fold arms. */
   dealerDice: number[] | null;
   creditsDelta: number;
+  /** T-145 · legitimately 0 on EVERY roster hand — pool A is outside the NPC
+   *  economy, so there is no disposition to move (§7.6). The pane already renders
+   *  a zero as an honest nothing, so this needs no new branch and gets none. */
   dispositionDelta: number;
   dealerName: string;
+  /** T-145 · The roster opponent's authored line for how the hand ended — their
+   *  `lines.win` when they won, `lines.lose` when they lost. `null` on a roaming
+   *  hand. Taken off the EVENT, never re-derived; the engine picked the arm. */
+  opponentLine: string | null;
 }
 
 export function dareRevealFrom(events: GameEvent[], game: GameState): DareRevealView | null {
@@ -528,7 +1038,14 @@ export function dareRevealFrom(events: GameEvent[], game: GameState): DareReveal
     (e): e is Extract<GameEvent, { type: 'DareHandResolved' }> => e.type === 'DareHandResolved',
   );
   if (!resolved) return null;
-  const dealer = game.npcs.find((n) => n.id === resolved.opponentId);
+  // T-145 · the same by-pool name resolution as `dareScene`, off the event's
+  // `opponentId`. `game.dareHand` is null by the time this runs, so the systemId
+  // comes from the player's current port — which is the hand's port by
+  // construction: a hand can only settle where it was opened (a `VisitHangout` is
+  // the only opener, `Travel` is refused while a hand stands, and the dusk
+  // timeout-fold settles before any move).
+  const roster = liarsDiceOpponentFor(game.player.currentSystemId, resolved.opponentId);
+  const dealer = roster ?? game.npcs.find((n) => n.id === resolved.opponentId);
   return {
     outcome: resolved.outcome,
     bid: resolved.bid ? { ...resolved.bid } : null,
@@ -538,6 +1055,7 @@ export function dareRevealFrom(events: GameEvent[], game: GameState): DareReveal
     creditsDelta: resolved.creditsDelta,
     dispositionDelta: resolved.dispositionDelta,
     dealerName: dealer?.name ?? resolved.opponentId,
+    opponentLine: resolved.opponentLine ?? null,
   };
 }
 
@@ -599,7 +1117,7 @@ export function hangoutVenueOffered(game: GameState, venue: HangoutVenueId): boo
  *
  * T-133 (owner ruling D7) · THE BAND IS NOW THE PORT'S, read through the engine's
  * `loanBandFor` — the SAME accessor `resolveVisitHangout`'s `borrow` arm clamps
- * with — exactly as `dareWagerBounds` reads `wagerBandFor`. The garrison mess
+ * with — exactly as `dareWagerBounds` reads the engine's own band accessor. The garrison mess
  * fronts a soldier a month's wages and the home hall fronts a hull, and the pane
  * says so without a per-port branch of its own. The RATE, the TERM and the LENDER
  * stay global constants, because D7 narrowed ruling 5 rather than repealing it:
@@ -624,6 +1142,51 @@ export function lendingTerms(game: GameState): LendingTerms {
     ratePercent: LOAN_DAILY_RATE * 100,
     termDays: LOAN_TERM_DAYS,
   };
+}
+
+/**
+ * T-197 · THE SOCIAL POOL, MADE VISIBLE (`docs/DAWN-HAND-REDESIGN.md` §4a).
+ *
+ * All seven Hangout venues are Free Actions now, so a player has no armed die to
+ * look at and NOTHING on screen would otherwise say why a fourth introduction is
+ * refused. This is the readout that stops `social-limit-reached` from being the
+ * first the player hears of the cap — the criterion is "never a silent dead
+ * button", and a button that explains itself only AFTER the click fails it.
+ *
+ * A PURE PASS-THROUGH TO THE ENGINE'S OWN RULES, the `lendingTerms` /
+ * `hangoutVenueOffered` precedent: `remaining` is `socialPlaysRemaining` (the
+ * accessor the resolver's refusal reads) and `perDay` is the CONTENT constant, so
+ * a retune of `SOCIAL_PLAYS_PER_DAY` moves this line with no UI edit. There is no
+ * arithmetic here of the UI's own.
+ */
+export interface SocialPlays {
+  remaining: number;
+  perDay: number;
+}
+
+export function hangoutSocialPlays(game: GameState): SocialPlays {
+  return { remaining: socialPlaysRemaining(game), perDay: SOCIAL_PLAYS_PER_DAY };
+}
+
+/**
+ * T-197 · THE LIAR'S DICE ROUNDS CAP, MADE VISIBLE (§4b). The Dare twin of
+ * `hangoutSocialPlays` above, and it exists for the same reason: the commit button
+ * must say the table is closed BEFORE the click, not after.
+ *
+ * `remaining` reads the engine's `liarsDiceRoundsRemaining`, which resolves the
+ * captain's live unlock tier against the content rounds table. `perDay` is that
+ * same cap at full strength, derived as `remaining + opened-today` rather than by
+ * re-reading the tier here — a second tier read in the UI is the exact drift
+ * `liarsDiceRules.ts`'s header warns about, and this way there is none.
+ */
+export interface DareRounds {
+  remaining: number;
+  perDay: number;
+}
+
+export function hangoutDareRounds(game: GameState): DareRounds {
+  const remaining = liarsDiceRoundsRemaining(game);
+  return { remaining, perDay: remaining + game.player.dareRoundsToday };
 }
 
 // ---- T-1405 progression, property & smuggling surfaces (display-only) -----
@@ -912,10 +1475,22 @@ export function hangoutFailExplanation(reason: HangoutFailReason): string {
   switch (reason) {
     case 'no-opponent':
       return 'That spacer has left the tables — no one here to wager against.';
+    // T-197 · REACHABLE FROM PEEK ONLY now that all seven venues are free
+    // (docs/DAWN-HAND-REDESIGN.md §3). Peek is the one check inside an open hand
+    // and stayed a Main Action, so the line stays and is narrowed to say so.
     case 'no-die':
     case 'invalid-die-index':
     case 'die-already-spent':
-      return 'That table needs a fresh die from the hand.';
+      return 'A peek needs a fresh die from the hand.';
+    // T-197 · the two daily caps that replaced the Hangout's die (§4a, §4b). Two
+    // DISTINCT voices, deliberately: a spent-out social pool and a closed table
+    // are different refusals with different remedies (come back tomorrow vs. play
+    // better and earn more rounds), and collapsing them into one line is exactly
+    // what the no-`default` mechanism above exists to prevent.
+    case 'social-limit-reached':
+      return 'You have said your piece for today — the room has heard enough of you.';
+    case 'daily-round-limit':
+      return 'The house has closed the table to you for tonight — come back tomorrow.';
     // T-132 · the reason that used to be silence.
     case 'venue-not-offered':
       return 'No one here takes that kind of wager.';
@@ -929,6 +1504,11 @@ export function hangoutFailExplanation(reason: HangoutFailReason): string {
       return 'There is no hand on the table to play.';
     case 'illegal-dare-move':
       return 'The house will not take that call.';
+    // T-145 · the roster's broke rule. They are cleaned out and will not sit; the
+    // purse never regenerates, so the line says "tonight" rather than promising a
+    // return the engine cannot make.
+    case 'opponent-broke':
+      return 'They are cleaned out — that seat will not take a wager.';
   }
 }
 
@@ -1246,8 +1826,13 @@ export interface NpcDossier {
 }
 
 /** Disposition rendered as a standing HINT, never the number. Checked in
- *  most-extreme-first order so the bands don't overlap. */
-function dispositionHint(disposition: number): string {
+ *  most-extreme-first order so the bands don't overlap.
+ *
+ *  T-203 · EXPORTED so the combat readout, the wire dossier and the Liar's Dice
+ *  table all print the SAME five bands from this one place. The wording lives
+ *  here and nowhere else — a second copy of `'Holds a grudge'` anywhere in the
+ *  package is the bug this export exists to prevent. */
+export function dispositionHint(disposition: number): string {
   if (disposition < -2) return 'Wants you dead';
   if (disposition < 0) return 'Holds a grudge';
   if (disposition === 0) return 'No standing with you';
@@ -1298,6 +1883,32 @@ export interface EncounterReadout {
   kindLabel: string;
   /** Prose known-history HINT — never a raw stat block. */
   history: string;
+  /**
+   * T-207 · The named captain's authored ENTER bark, on the OPENING ROUND ONLY —
+   * it is what they say ARRIVING, not a banner that hangs over the whole fight.
+   *
+   * `null` for an anonymous raider, always and at every round:
+   * `AnonymousInterceptorProfile` has no `catchphrases` at all (T-205's deliberate
+   * shape — "65 anonymous pirates and patrols are noise with a name"), so this is a
+   * rendered nothing there and never a placeholder line.
+   */
+  enterLine: string | null;
+  /**
+   * T-207 · An OCCASIONAL mid-fight bark.
+   *
+   * THE TIMING RULE (the task left this to the implementer, so it is stated here
+   * rather than left to be re-derived from the code): `null` on round 1 — the enter
+   * line owns the opening and two barks in one header is noise — and thereafter
+   * only on EVEN rounds, so it lands every other round. A bark on every round is
+   * wallpaper; the player stops reading it, which costs the enter and resolution
+   * lines their weight too.
+   *
+   * Seeded on `${encounter.id}:${round}` rather than on the encounter alone, so two
+   * showings within one fight can differ while neither moves between paints.
+   * `null` for an anonymous raider at every round — the timing rule must not leak a
+   * bark onto a raider who has none.
+   */
+  battleLine: string | null;
 }
 
 /**
@@ -1312,6 +1923,11 @@ export function encounterReadout(game: GameState): EncounterReadout | null {
   if (!enc) return null;
   const int = enc.interceptor;
   let history: string;
+  // T-207 · Both barks are resolved INSIDE the existing named/anonymous gate below
+  // — the branch the task said to extend — rather than through a second lookup that
+  // could one day disagree with it about who counts as named.
+  let enterLine: string | null = null;
+  let battleLine: string | null = null;
   if (int.source === 'named') {
     const npc = game.npcs.find((n) => n.id === int.id);
     const mentions = countWireMentions(game, int.name);
@@ -1320,8 +1936,21 @@ export function encounterReadout(game: GameState): EncounterReadout | null {
     if (mentions > 0)
       parts.push(`${mentions} prior wire ${mentions === 1 ? 'mention' : 'mentions'}`);
     history = `${parts.join(' · ')}.`;
+    // `createInitialState` sets `npc.id === npc.profileId === profile.id`, so the
+    // `?? int.id` fallback is the same identity `shipLostToLabel` already relies on.
+    const catchphrases = NPC_PROFILES.find((p) => p.id === (int.profileId ?? int.id))?.catchphrases;
+    enterLine = enc.round === 1 ? pickAuthoredLine(catchphrases?.enter, enc.id) : null;
+    battleLine =
+      enc.round > 1 && enc.round % 2 === 0
+        ? pickAuthoredLine(catchphrases?.duringBattle, `${enc.id}:${enc.round}`)
+        : null;
   } else {
     history = 'Unknown raider — no record on file.';
+    // Set EXPLICITLY on the anonymous arm rather than left to the initialisers
+    // above: an anonymous raider gaining a bark is the one regression this task
+    // must not ship, and it should be readable here, at the gate, not inferred.
+    enterLine = null;
+    battleLine = null;
   }
   return {
     name: int.name,
@@ -1334,6 +1963,8 @@ export function encounterReadout(game: GameState): EncounterReadout | null {
         ? 'Named'
         : 'Raider',
     history,
+    enterLine,
+    battleLine,
   };
 }
 
@@ -1398,7 +2029,45 @@ export function tributeThisRound(
 export interface CombatAftermath {
   resolution: 'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled' | 'interceptor-escaped';
   lines: string[];
+  /**
+   * T-207 · The captain's authored `win` / `loss` bark at the resolution, or `null`
+   * for an anonymous raider.
+   *
+   * DELIBERATELY ITS OWN FIELD RATHER THAN A SIXTH ENTRY IN {@link lines}:
+   * `lines[0]` is the headline the panel renders as its `<h2 data-resolution>` and
+   * `lines.slice(1)` is the `<ul>` of things that HAPPENED ("Paid 1,200cr
+   * tribute", "Resolved on round 3"). A captain's quip is a different register, and
+   * pushing it in there would also have made the anonymous panel's DOM a function
+   * of a T-207 code path. A separate nullable field keeps that panel byte-identical
+   * BY CONSTRUCTION, not by care.
+   */
+  opponentLine: string | null;
 }
+
+/**
+ * T-207 · WHOSE line the resolution is, FROM THE CAPTAIN'S POINT OF VIEW. The
+ * engine already decided the resolution; this table only chooses which authored
+ * slot to quote, and it reads counter-intuitively in two places, so each arm
+ * carries its reason:
+ *
+ * A `Record` and NOT a `switch` on purpose. A sixth resolution arm must fail to
+ * COMPILE here rather than fall through a `default` and quietly quote the wrong
+ * half of a captain's voice.
+ */
+const CAPTAIN_OUTCOME: Record<CombatAftermath['resolution'], 'win' | 'loss'> = {
+  // The PLAYER fled the field. The captain held it.
+  escaped: 'win',
+  // Tribute paid — they got exactly what they stopped you for.
+  'talked-down': 'win',
+  // The wreck drifts.
+  defeated: 'loss',
+  // A bonded friend drove them off (T-106 bond hook).
+  'interceptor-fled': 'loss',
+  // T-1207's "miracle burn": they slipped the KILL off a fight they LOST, so they
+  // live — but `types.ts` is explicit that the player still won the field
+  // ("travel completes, unlike 'escaped', which is the PLAYER fleeing"). A loss.
+  'interceptor-escaped': 'loss',
+};
 
 const RESOLUTION_HEADLINE: Record<CombatAftermath['resolution'], string> = {
   escaped: 'Broke off — you slipped the net.',
@@ -1442,7 +2111,21 @@ export function combatAftermathSummary(events: GameEvent[]): CombatAftermath | n
     }
   }
   lines.push(`Resolved on round ${resolved.round}.`);
-  return { resolution: resolved.resolution, lines };
+  // T-207 · The captain's parting word, resolved from the event's own
+  // `interceptorId` straight in `NPC_PROFILES` — the same content lookup
+  // `shipLostToLabel` below already does off `ShipLost.interceptorId`. That lookup
+  // doubles as the named/anonymous test: an anonymous interceptor's id is `anon-*`
+  // and is not in the cast, so it finds nothing and the field stays null. The
+  // one-argument signature is therefore preserved — a `game` parameter would buy
+  // nothing here (the encounter is already nulled by the time this runs) at the
+  // cost of touching both store call sites and every existing test.
+  const opponentLine = pickAuthoredLine(
+    NPC_PROFILES.find((p) => p.id === resolved.interceptorId)?.catchphrases?.[
+      CAPTAIN_OUTCOME[resolved.resolution]
+    ],
+    resolved.encounterId,
+  );
+  return { resolution: resolved.resolution, lines, opponentLine };
 }
 
 // ---- T-1602b · death & succession (display-only) -------------------------
@@ -1679,6 +2362,427 @@ export function shipComponents(game: GameState): ShipComponentRow[] {
   });
 }
 
+// ===========================================================================
+// T-189 · THE SHIP DIAGRAM — the ledger becomes a ship
+//
+// The ship pane used to be eight table rows and a flat six-cell instrument
+// strip: every number was legible and none of them were LOCATABLE. "How many
+// cargo pods do I have" and "what do my engines burn" were the same act of
+// scanning a column. This model turns the pane's existing readouts into an
+// annotated top-down outline: one region per ship system, each carrying the
+// numbers that belong to THAT part of the hull, at THAT part of the hull.
+//
+// TWO RULES GOVERN THIS BLOCK, and both are load-bearing:
+//
+//  1. IT INVENTS NOTHING. Every strength, condition, effect string, capacity and
+//     berth count below is a re-projection of a reader the pane ALREADY called —
+//     `shipComponents` (engine `componentEffect`), `quoteShipyard(...).before`
+//     (the same no-op repair-all quote the pane's fuel-curve strip read),
+//     `crewRoster`, `fittedModuleRows`, and the raw ship/contract fields. There
+//     is no second derivation of a rule here, so the diagram cannot disagree
+//     with the grid beneath it.
+//
+//  2. THE GEOMETRY IS UI, NOT CONTENT. `SHIP_DIAGRAM_GEOMETRY` is hand-authored
+//     here in `packages/ui` deliberately: `computeRulesFingerprint`
+//     (`packages/sim/src/balance/rules-fingerprint.ts`) hashes
+//     `packages/engine/src` + `packages/content/src` wholesale, so putting a
+//     picture's coordinates in content would stale every balance fixture for a
+//     drawing. Nothing here is a rule; nothing here is persisted.
+//
+// The projection follows `starmapProjection`'s precedent — SVG geometry and the
+// derived readouts are computed in this file and `App.tsx` only renders them —
+// which is what makes the whole surface unit-testable without a DOM.
+// ===========================================================================
+
+/** The ten diagram regions: the eight ship components plus the two instruments
+ *  that have no component of their own (the cargo hold and the fuel load). */
+export type ShipDiagramRegionId = ShipComponentId | 'pods' | 'fuel';
+
+/** One labelled number inside a region's callout. `testId` is set only where a
+ *  spec already reads that number by id — those ids moved onto the diagram with
+ *  the readouts they name, and must stay BARE (the value and nothing else). */
+export interface ShipDiagramReadout {
+  key: string;
+  value: string;
+  testId?: string;
+}
+
+/** A hull mark: the shape (or shapes) drawn for a region, in viewBox units. */
+export type ShipDiagramMark =
+  | { kind: 'rect'; x: number; y: number; w: number; h: number; rx: number }
+  | { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
+  | { kind: 'path'; d: string };
+
+/** Where a region sits on the hull and where its callout hangs. `x`/`y` is the
+ *  leader-line origin ON the hull; `labelX`/`labelY` is the callout anchor. */
+export interface ShipDiagramGeometry {
+  x: number;
+  y: number;
+  labelX: number;
+  labelY: number;
+  anchor: 'start' | 'middle' | 'end';
+  /** False for the two callouts that sit ON their own mark (hold, fuel bar). */
+  leader: boolean;
+  marks: ShipDiagramMark[];
+}
+
+/** One region of the diagram — a part of the ship and the numbers that live at
+ *  it. `componentId` is null for the two non-component instruments. */
+export interface ShipDiagramRegion {
+  id: ShipDiagramRegionId;
+  componentId: ShipComponentId | null;
+  label: string;
+  readouts: ShipDiagramReadout[];
+  /** Component strength / condition (0-9), or null for `pods` / `fuel`. */
+  strength: number | null;
+  condition: number | null;
+  /** Condition below the 9 maximum — the same flag the grid row highlights. */
+  damaged: boolean;
+  /** Condition at zero — the failure state, drawn in reverse video. */
+  critical: boolean;
+  /** Hover text: the long form of what the callout says in shorthand. */
+  title: string;
+}
+
+export interface ShipDiagramModel {
+  hullVariant: 'junker' | 'astraxial';
+  regions: ShipDiagramRegion[];
+  podsOwned: number;
+  podsMax: number;
+  podsInUse: number;
+  /** Owned pods as a fraction of hull capacity, 0..1. Zero (never NaN) when the
+   *  hull holds nothing — an SVG attribute must not receive NaN. */
+  podFill: number;
+  /** Contracted pods as a fraction of the SAME capacity, 0..1. */
+  podUseFill: number;
+  fuel: number;
+  maxFuel: number;
+  fuelFill: number;
+  crewUsed: number;
+  crewBerths: number;
+  fittings: { id: string; name: string }[];
+  viewBox: string;
+}
+
+/**
+ * The diagram's coordinate space — WIDE AND SHORT, and measured rather than
+ * guessed: the ship pane's box in the cockpit's left column is 623 x 220 CSS px
+ * at the suite's 1280x720 viewport (`.col.left`'s ship row is
+ * `minmax(220px, 1fr)`). A tall diagram would eat the whole pane and push the
+ * pods block and the yard bench below the fold, so the ship lies along the long
+ * axis — nose right, engine bells left — with the callouts in the top and bottom
+ * gutters. At the CSS cap of 480px wide the diagram is 156px tall, leaving the
+ * pane's own controls visible beneath it.
+ */
+export const SHIP_DIAGRAM_VIEWBOX = { width: 480, height: 156 } as const;
+
+/** The stock hull, seen from above and lying nose-right: a pointed fore hull, a
+ *  wide cargo midsection (the largest shape on the diagram, deliberately), a
+ *  narrow neck, and a tail block carrying twin engine bells. */
+export const JUNKER_PATH =
+  'M466 78 L440 64 L336 64 L330 46 L196 46 L192 64 L120 64 L120 56 L92 56 ' +
+  'L92 100 L120 100 L120 92 L192 92 L196 110 L330 110 L336 92 L440 92 Z';
+
+/** The Astraxial hull: the same anatomy, longer and swept — the silhouette is
+ *  the ONLY thing the hull upgrade changes here (it changes no readout). */
+export const ASTRAXIAL_PATH =
+  'M472 78 L438 62 L332 60 L326 42 L192 44 L188 62 L114 60 L114 52 L86 52 ' +
+  'L86 104 L114 104 L114 96 L188 94 L192 112 L326 114 L332 96 L438 94 Z';
+
+/** The cargo bay's interior, in viewBox units — the fill meter is drawn inside
+ *  it. Ten segments, NOT one cell per pod: `maxCargoPods` reaches 100, so the
+ *  segments are texture and the callout carries the exact numerals. */
+export const SHIP_DIAGRAM_BAY = { x: 196, y: 46, w: 134, h: 64 } as const;
+export const SHIP_DIAGRAM_BAY_SEGMENTS = 10;
+
+/** The fuel bar, drawn under the engine bells it feeds. */
+export const SHIP_DIAGRAM_FUEL_BAR = { x: 46, y: 114, w: 56, h: 8 } as const;
+
+/** Where the salvaged-fitting pips ride: along the neck's spine, one per fitted
+ *  module. The named list stays below the diagram, unchanged. */
+export const SHIP_DIAGRAM_FITTING_ORIGIN = { x: 132, y: 78, step: 12 } as const;
+
+/**
+ * Where each region lives. Hand-authored, and checked by
+ * `ship-diagram.test.ts`: every region id has an entry, every coordinate is
+ * finite and inside the viewBox, and no two callout anchors stack closer than
+ * the line height (which is what would make the diagram unreadable).
+ */
+export const SHIP_DIAGRAM_GEOMETRY: Record<ShipDiagramRegionId, ShipDiagramGeometry> = {
+  // --- top gutter, read fore-to-aft ---------------------------------------
+  drives: {
+    x: 74,
+    y: 46,
+    labelX: 74,
+    labelY: 22,
+    anchor: 'middle',
+    leader: true,
+    // Twin bells on the tail block — mirrored, so "the engines" is a shape a
+    // player recognises before reading a single digit.
+    marks: [
+      { kind: 'rect', x: 56, y: 46, w: 36, h: 24, rx: 3 },
+      { kind: 'rect', x: 56, y: 86, w: 36, h: 24, rx: 3 },
+      // Grille bars, so a bell reads as an engine rather than a box.
+      { kind: 'path', d: 'M62 52 L86 52 M62 58 L86 58 M62 64 L86 64' },
+      { kind: 'path', d: 'M62 92 L86 92 M62 98 L86 98 M62 104 L86 104' },
+    ],
+  },
+  lifeSupport: {
+    x: 157,
+    y: 64,
+    labelX: 157,
+    labelY: 22,
+    anchor: 'middle',
+    leader: true,
+    marks: [{ kind: 'rect', x: 134, y: 70, w: 46, h: 16, rx: 2 }],
+  },
+  shields: {
+    x: 262,
+    y: 12,
+    labelX: 262,
+    labelY: 22,
+    anchor: 'middle',
+    // The envelope is the whole ship, so the callout sits ON it rather than
+    // pointing at one spot.
+    leader: false,
+    marks: [{ kind: 'ellipse', cx: 262, cy: 78, rx: 214, ry: 66 }],
+  },
+  weapons: {
+    x: 360,
+    y: 64,
+    labelX: 360,
+    labelY: 22,
+    anchor: 'middle',
+    leader: true,
+    marks: [
+      { kind: 'rect', x: 358.5, y: 66, w: 3, h: 12, rx: 1 },
+      { kind: 'ellipse', cx: 360, cy: 78, rx: 10, ry: 7 },
+    ],
+  },
+  navigation: {
+    x: 440,
+    y: 64,
+    labelX: 440,
+    labelY: 22,
+    anchor: 'middle',
+    leader: true,
+    marks: [{ kind: 'path', d: 'M466 78 L438 68 L438 88 Z' }],
+  },
+  // --- bottom gutter -------------------------------------------------------
+  fuel: {
+    x: 74,
+    y: 122,
+    labelX: 74,
+    labelY: 138,
+    anchor: 'middle',
+    leader: false,
+    marks: [
+      {
+        kind: 'rect',
+        x: SHIP_DIAGRAM_FUEL_BAR.x,
+        y: SHIP_DIAGRAM_FUEL_BAR.y,
+        w: SHIP_DIAGRAM_FUEL_BAR.w,
+        h: SHIP_DIAGRAM_FUEL_BAR.h,
+        rx: 2,
+      },
+    ],
+  },
+  robotics: {
+    x: 220,
+    y: 121,
+    labelX: 220,
+    labelY: 138,
+    anchor: 'middle',
+    leader: false,
+    marks: [{ kind: 'rect', x: 205, y: 112, w: 30, h: 9, rx: 2 }],
+  },
+  cabin: {
+    x: 297,
+    y: 121,
+    labelX: 300,
+    labelY: 138,
+    anchor: 'middle',
+    leader: false,
+    marks: [{ kind: 'rect', x: 280, y: 112, w: 34, h: 9, rx: 2 }],
+  },
+  hull: {
+    x: 400,
+    y: 92,
+    labelX: 400,
+    labelY: 138,
+    anchor: 'middle',
+    leader: true,
+    // No mark of its own: the hull IS the silhouette, drawn from the variant
+    // path above and owned by this region's group.
+    marks: [],
+  },
+  // --- inside the bay it measures -----------------------------------------
+  pods: {
+    x: 262,
+    y: 78,
+    labelX: 262,
+    labelY: 72,
+    anchor: 'middle',
+    leader: false,
+    marks: [
+      {
+        kind: 'rect',
+        x: SHIP_DIAGRAM_BAY.x,
+        y: SHIP_DIAGRAM_BAY.y,
+        w: SHIP_DIAGRAM_BAY.w,
+        h: SHIP_DIAGRAM_BAY.h,
+        rx: 2,
+      },
+    ],
+  },
+};
+
+/** The short name printed at each region. Deliberately terse — the long form is
+ *  the hover title, and the authored component name is in the grid below. */
+const SHIP_DIAGRAM_LABEL: Record<ShipDiagramRegionId, string> = {
+  hull: 'HULL',
+  drives: 'DRIVES',
+  cabin: 'CABIN',
+  lifeSupport: 'LIFE',
+  weapons: 'WEAPONS',
+  navigation: 'NAV',
+  robotics: 'ROBOTICS',
+  shields: 'SHIELDS',
+  pods: 'CARGO HOLD',
+  fuel: 'FUEL',
+};
+
+/** A fraction guarded against a zero (or absent) denominator, clamped to 0..1.
+ *  An SVG width/x attribute must never receive NaN. */
+function fill(part: number, whole: number): number {
+  if (!Number.isFinite(part) || !Number.isFinite(whole) || whole <= 0) return 0;
+  return Math.min(1, Math.max(0, part / whole));
+}
+
+/**
+ * The ship diagram model: the pane's existing numbers, re-projected onto the
+ * hull they describe. Pure — reads `game`, mutates nothing.
+ *
+ * READER: `App.tsx` `ShipDiagram`, inside `ShipPane`.
+ */
+export function shipDiagram(game: GameState): ShipDiagramModel {
+  const ship = game.player.ship;
+  // The SAME no-op repair-all quote the pane already used for its fuel curve:
+  // `before` is a pure read of the current ship, so the diagram's capacity /
+  // fuel-curve / berth numbers are the engine's, not the UI's.
+  const curve = quoteShipyard(game.player, {
+    type: 'Shipyard',
+    action: 'repair',
+    repairMode: 'all',
+  }).before;
+  const components = shipComponents(game);
+  const roster = crewRoster(game);
+
+  const podsOwned = ship.cargoPods;
+  const podsMax = curve.maxCargoPods;
+  const podsInUse = game.player.activeContract?.pods ?? 0;
+
+  /** The per-component readouts. Every value is a string the engine produced. */
+  const componentReadouts = (row: ShipComponentRow): ShipDiagramReadout[] => {
+    switch (row.id) {
+      // The hull's own effect IS the fuel capacity, and that number already has
+      // a region of its own (the bar under the drives, `300/300`) — so the hull
+      // callout carries only what nothing else says. The long form is still in
+      // the bench row below, verbatim, and in this region's hover title.
+      case 'hull':
+        return [{ key: 'STR', value: `${row.strength}` }];
+      case 'drives':
+        // The two ids that moved off the deleted flat strip; both stay bare
+        // numbers (`shipyard.spec.ts` reads `fuel-per-jump` with `innerText`).
+        return [
+          { key: 'FUEL/JUMP', value: `${curve.fuelPerJump}`, testId: 'fuel-per-jump' },
+          { key: 'RANGE', value: `${curve.maxJumpDistance}`, testId: 'jump-range' },
+        ];
+      case 'cabin':
+        return [
+          { key: 'BERTHS', value: `${roster.berths}`, testId: 'crew-capacity' },
+          { key: 'ABOARD', value: `${roster.berthsUsed}` },
+        ];
+      case 'weapons':
+        return [{ key: 'HP/VOLLEY', value: row.effectNow }];
+      case 'shields':
+        return [{ key: 'ABSORB', value: row.effectNow }];
+      // Two engine strings that are already self-describing ("+0 / x1.00",
+      // "holding") take no key: in a gutter this shallow a redundant word is what
+      // turns a callout back into a ledger line.
+      case 'navigation':
+        return [{ key: '', value: row.effectNow }];
+      case 'lifeSupport':
+        return [{ key: '', value: row.effectNow }];
+      case 'robotics':
+        return [{ key: 'REPAIR', value: row.effectNow }];
+    }
+  };
+
+  // Built by mapping the CONTENT table (via `shipComponents`), never a literal
+  // list, so a ninth component cannot be silently missing from the diagram.
+  const regions: ShipDiagramRegion[] = components.map((row) => ({
+    id: row.id,
+    componentId: row.id,
+    label: SHIP_DIAGRAM_LABEL[row.id],
+    readouts: componentReadouts(row),
+    strength: row.strength,
+    condition: row.condition,
+    damaged: row.damaged,
+    critical: row.condition === 0,
+    title: `${row.name} — strength ${row.strength}, condition ${row.condition}/9 · ${row.effectLabel}: ${row.effectNow}`,
+  }));
+
+  regions.push({
+    id: 'pods',
+    componentId: null,
+    label: SHIP_DIAGRAM_LABEL.pods,
+    readouts: [
+      { key: '', value: `${podsOwned}/${podsMax}` },
+      ...(podsInUse > 0 ? [{ key: 'IN USE', value: `${podsInUse}` }] : []),
+    ],
+    strength: null,
+    condition: null,
+    damaged: false,
+    critical: false,
+    title:
+      podsInUse > 0
+        ? `Cargo hold — ${podsOwned} of ${podsMax} pods fitted, ${podsInUse} loaded`
+        : `Cargo hold — ${podsOwned} of ${podsMax} pods fitted, empty`,
+  });
+
+  regions.push({
+    id: 'fuel',
+    componentId: null,
+    label: SHIP_DIAGRAM_LABEL.fuel,
+    readouts: [
+      { key: '', value: `${ship.fuel.toLocaleString()}/${ship.maxFuel.toLocaleString()}` },
+    ],
+    strength: null,
+    condition: null,
+    damaged: false,
+    critical: false,
+    title: `Fuel — ${ship.fuel.toLocaleString()} of ${ship.maxFuel.toLocaleString()} units`,
+  });
+
+  return {
+    hullVariant: ship.isAstraxialHull === true ? 'astraxial' : 'junker',
+    regions,
+    podsOwned,
+    podsMax,
+    podsInUse,
+    podFill: fill(podsOwned, podsMax),
+    podUseFill: fill(podsInUse, podsMax),
+    fuel: ship.fuel,
+    maxFuel: ship.maxFuel,
+    fuelFill: fill(ship.fuel, ship.maxFuel),
+    crewUsed: roster.berthsUsed,
+    crewBerths: roster.berths,
+    fittings: fittedModuleRows(game).map((m) => ({ id: m.id, name: m.name })),
+    viewBox: `0 0 ${SHIP_DIAGRAM_VIEWBOX.width} ${SHIP_DIAGRAM_VIEWBOX.height}`,
+  };
+}
+
 /** Whether the player already owns a special-equipment item (read from the
  *  ship's install flags — the same booleans the engine sets on purchase). */
 function equipmentOwned(game: GameState, id: SpecialEquipmentId): boolean {
@@ -1722,7 +2826,6 @@ export function specialEquipmentRows(game: GameState): SpecialEquipmentRow[] {
         type: 'Shipyard',
         action: 'buy-special-equipment',
         equipment: id,
-        spendDie: 0,
       }),
     };
   });
@@ -2329,6 +3432,14 @@ export interface OnboardingPrompt {
  * the combat teaching instead of the jump teaching. Predicates read only
  * existing engine surface (`encounter`, `day`, `dawnHand`, `activeContract`,
  * `market.manifestBoard`).
+ *
+ * T-196c · STALE COPY BELOW, LEFT DELIBERATELY AND OWNED BY T-194. `first-sign`
+ * still says "assign a die to a manifest offer", and `dawn-roll` still frames a
+ * die as the price of every action. M17 (docs/DAWN-HAND-REDESIGN.md §3) made
+ * signing free, so that instruction is now false. T-196c changes UI BEHAVIOUR
+ * only; the teaching copy belongs to T-194, which is gated behind T-198 for the
+ * express reason that the new economy must settle before the tutorial bakes it
+ * in. Marked here rather than silently half-fixed.
  */
 export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   {
@@ -2374,8 +3485,8 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   // (the screen mount, plus the in-panel `hangout` mount for `first-loan`).
   {
     id: 'first-hangout',
-    title: 'The Spacers Hangout',
-    body: 'This port keeps a Hangout — open it to wager at the tables or borrow from Penny Wise.',
+    title: 'The Spacers Cantina',
+    body: 'This port keeps a Cantina — open it to wager at the tables or borrow from Penny Wise.',
     // Ranked ABOVE first-loan: at a hangout system both are active, but the
     // player must be told to OPEN the panel before the in-panel loan nudge (which
     // renders inside that panel) can be reached.

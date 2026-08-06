@@ -152,12 +152,60 @@ export const SIM_NON_INSTRUMENT_SOURCES: Readonly<Record<string, string>> = {
     'The UGT protocol adapter — an external-client surface. `runCampaign` never calls it, so ' +
     'no sweep or smoke number can depend on it.',
   'protocol-stdio.ts': 'The stdio wrapper around the above. Transport, not measurement.',
+  'pilot.ts':
+    "T-154 · The Tier-2 LLM pilot's pure core. It drives the protocol seam (`protocol.ts`, already " +
+    'non-instrument for the same reason) and never participates in a campaign: `runCampaign` does ' +
+    'not call it and `index.ts` does not export it, so no sweep or smoke number can depend on it. ' +
+    'What it produces is a JSONL trail for a human to read, which is the `balance/diff.ts` class of ' +
+    'artefact, not a measurement.',
+  'pilot-anthropic.ts':
+    "T-154 · The pilot's live LLM brain — a network client. It decides which of the actions the " +
+    'engine already advertised a pilot run picks, and nothing whatsoever about what a day produces. ' +
+    'It is also the one file here that cannot run offline, which is a second reason no measurement ' +
+    'may ever depend on it.',
+  'pilot-cli.ts':
+    'T-154 · The argv/filesystem half of the pilot — same pure/IO split, and the same reason, as ' +
+    '`balance/sweep.ts` above.',
   'balance/sweep.ts':
     'The I/O half of the sweep (argv, sharding, file writes). The arithmetic it invokes lives ' +
     'in `balance/aggregate.ts`, which IS hashed — the T-1602b pure/IO split, used here to keep ' +
     'the hash on the pure side.',
+  'balance/gate.ts':
+    'T-152 · The sweep GATE — pure predicates over finished reports and finished rows, plus the ' +
+    'expected-event-rate table they are checked against. Same class as `balance/diff.ts` below: ' +
+    'it reads measurements and asserts about them, and cannot produce one. A change here alters ' +
+    'whether a sweep FAILS, never what a career does or what the sweep measures — so folding it ' +
+    'in would invalidate every committed smoke fixture on a widened band, which is churn with no ' +
+    'signal in it. (The bands themselves are held honest by the no-editing-to-pass rule stated ' +
+    'in that file and at the top of this one, not by a hash.)',
+  'balance/coverage.ts':
+    "T-157 · The COVERAGE MATRIX — a transcription of `docs/NPC_REDESIGN.md`'s PARITY LEDGER and " +
+    "`docs/BALANCE-POLICY.md` D.2a's archetype table, plus the pure cross-reference between them. " +
+    'Same class as `balance/gate.ts` above: it asserts about what the sweep MEASURED (is this ' +
+    "archetype's headline verb even testable?), and cannot change a career or a measurement. " +
+    'Folding it in would invalidate every committed smoke fixture the day a ledger row is ruled, ' +
+    'which is churn with no signal in it. The table is held honest by the drift check in ' +
+    '`../__tests__/archetype-coverage.test.ts`, which parses both source documents, not by a hash.',
   'balance/diff.ts': 'Reads two finished aggregates and reports. It cannot produce a number.',
   'balance/diff-cli.ts': 'The argv/filesystem half of the above.',
+  'balance/report-model.ts':
+    'T-142 · The telemetry report VIEWER, pure half. It reads finished aggregates, finished ' +
+    'trace files and finished playtest exports and turns them into counts and sorted bars. Same ' +
+    'reason as `balance/diff.ts`: it cannot produce a number, only re-describe one that already ' +
+    'exists. A change here alters what a REPORT says, never what a career does or what a sweep ' +
+    'measures.',
+  'balance/report-html.ts':
+    'T-142 · The same viewer, markup half. It renders a view model as HTML and SVG; it does not ' +
+    'even read the artefacts. Nothing it can do is visible to a sweep.',
+  'balance/report-cli.ts':
+    'T-142 · The argv/filesystem half of the report generator. Reads inputs, writes one HTML file ' +
+    'into a gitignored directory. Same split, same reason as `balance/sweep.ts` and ' +
+    '`balance/diff-cli.ts`.',
+  'balance/provenance.ts':
+    'T-183 · Stamps a finished artefact with the two fingerprints and HEAD. It reads the tree and ' +
+    'describes it; it plays no career, folds no row and scores nothing, so it cannot produce a ' +
+    'measurement — the same class as `balance/smoke-extract.ts`, whose git helper it now owns. ' +
+    'Self-inclusion would also be circular: it CALLS `computeInstrumentFingerprint`.',
   'balance/resolve-artifact.ts':
     'One path rule shared by the two CLIs above. Filesystem plumbing; it resolves where an ' +
     'artefact lives, never what is in it.',
@@ -207,8 +255,11 @@ export interface SourceFingerprint {
 export const HASHED_ROOT_IGNORED_DIRECTORIES: Readonly<Record<string, string>> = {
   __tests__:
     'Tests. They observe the rules and never author them; a career run by the sim imports ' +
-    'none of it. This is the only one that actually exists today (under `engine/src` and ' +
-    '`sim/src`) — the other two are named ahead of the mistake rather than after it.',
+    'none of it. This is the only one that actually exists today (under `engine/src`, ' +
+    '`sim/src` and — since T-164 gave content a test runner — `content/src`) — the other two ' +
+    'are named ahead of the mistake rather than after it. NOTE for a content author: this ' +
+    'entry is what makes a content-side validator free of a capstone, and it is why such a ' +
+    'test must live under `src/__tests__/` and nowhere else (docs/TESTING-STRATEGY.md Part I).',
   node_modules:
     "Dependencies. Not this repo's sources at all; their version is pinned by the lockfile, " +
     'which is the thing that would have to change for them to move an outcome.',

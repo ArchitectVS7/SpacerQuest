@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 // passing after a row was removed, which is the one failure this assertion
 // exists to catch.
 import { CREDITS, creditLine } from '../src/credits';
+import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
 
 /** The single source of truth for what this build calls itself. Read off disk
  *  rather than pinned to a literal — see the assertion for the reasoning. */
@@ -29,6 +30,10 @@ async function newGameSeed(page: Page, seed: number): Promise<void> {
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(seed));
   await page.getByRole('button', { name: 'Roll' }).click();
+  // T-200 · Sign the Guild marker this new career opened under. `newGame` arms
+  // it unconditionally (every career has its own), so this is the click a player
+  // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
+  await signOpeningMarker(page);
 }
 
 /** Select the first unspent die in the hand. */
@@ -78,6 +83,10 @@ async function buyFuel(page: Page, amount: number): Promise<void> {
 test.describe('T-312 settings, saves & new-game UX', () => {
   test('save, mutate, load restores exactly (asserted via displayed state)', async ({ page }) => {
     await page.addInitScript(() => window.localStorage.clear());
+    // T-187 · Not the first-time flow — retire the scripted walkthrough AFTER the
+    // clear above (init scripts run in the order they were added), or its rails
+    // would make the panes below inert. See `support/career.ts`.
+    await skipFirstTurnWalkthrough(page);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     await newGameSeed(page, 424242);
@@ -121,6 +130,10 @@ test.describe('T-312 settings, saves & new-game UX', () => {
         window.sessionStorage.setItem('sq.test.cleared', '1');
       }
     });
+    // T-187 · Not the first-time flow — retire the scripted walkthrough AFTER the
+    // clear above (init scripts run in the order they were added), or its rails
+    // would make the panes below inert. See `support/career.ts`.
+    await skipFirstTurnWalkthrough(page);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     await newGameSeed(page, 424242);
@@ -143,6 +156,10 @@ test.describe('T-312 settings, saves & new-game UX', () => {
 
   test('deleting a slot asks first', async ({ page }) => {
     await page.addInitScript(() => window.localStorage.clear());
+    // T-187 · Not the first-time flow — retire the scripted walkthrough AFTER the
+    // clear above (init scripts run in the order they were added), or its rails
+    // would make the panes below inert. See `support/career.ts`.
+    await skipFirstTurnWalkthrough(page);
     await page.goto('/');
     await newGameSeed(page, 424242);
 
@@ -180,6 +197,10 @@ test.describe('T-312 settings, saves & new-game UX', () => {
         window.sessionStorage.setItem('sq.test.cleared', '1');
       }
     });
+    // T-187 · Not the first-time flow — retire the scripted walkthrough AFTER the
+    // clear above (init scripts run in the order they were added), or its rails
+    // would make the panes below inert. See `support/career.ts`.
+    await skipFirstTurnWalkthrough(page);
     await page.goto('/');
 
     const root = page.locator(':root');
@@ -215,6 +236,10 @@ test.describe('T-312 settings, saves & new-game UX', () => {
         window.sessionStorage.setItem('sq.test.cleared', '1');
       }
     });
+    // T-187 · Not the first-time flow — retire the scripted walkthrough AFTER the
+    // clear above (init scripts run in the order they were added), or its rails
+    // would make the panes below inert. See `support/career.ts`.
+    await skipFirstTurnWalkthrough(page);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
 
@@ -238,6 +263,10 @@ test.describe('T-312 settings, saves & new-game UX', () => {
   // `App.tsx`'s `StorageRow` (standing constraint 7).
   test('Settings names where saves live — browser storage on the web build', async ({ page }) => {
     await page.addInitScript(() => window.localStorage.clear());
+    // T-187 · Not the first-time flow — retire the scripted walkthrough AFTER the
+    // clear above (init scripts run in the order they were added), or its rails
+    // would make the panes below inert. See `support/career.ts`.
+    await skipFirstTurnWalkthrough(page);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     await newGameSeed(page, 424242);

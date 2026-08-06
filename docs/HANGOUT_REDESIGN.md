@@ -141,7 +141,7 @@ Hangout beats (`types.ts:355–372`).
 
 ### 1.3 The gate, and where it is read
 
-`StarSystem.hasHangout` (`packages/content/src/systems.ts:37`) is set on **Sun-3 only**
+`StarSystem.hasHangout` (`packages/content/src/systems.ts:37`) is set on **Sol-3 only**
 (`:79`) — **1 of 28 systems**. `day.ts:382–392` emits `ActionBlocked{reason:'no-hangout'}`
 before the resolver is ever reached, with no die spent and no rng fork.
 
@@ -282,7 +282,7 @@ is no predicate, no `if`-shaped field, no rate, no term, no per-port lender and 
 `hangout.ts` keeps the tuning constants and the rumor templates; those constants become the
 values `DEFAULT_PORT_HANGOUT` is *built from*, imported, never restated. Two payoffs: a row
 that omits a field inherits today's number by construction, so T-120's behaviour-preserving
-proof for Sun-3 is trivial and mechanical; and the R-owned balance constants keep their
+proof for Sol-3 is trivial and mechanical; and the R-owned balance constants keep their
 existing provenance comments and their existing home, so a tuning change still lands in one
 reviewed place. **Rejected:** authoring 14 rows into `hangout.ts` beside the rumor templates —
 one file with two jobs, and a diff in which a tuning change and a content pass are
@@ -379,11 +379,11 @@ and T-150 owns the read.
 
 **(6) Exactly one new engine event value: `'venue-not-offered'`.** See §2.6.
 
-### 2.3 Sun-3 is `DEFAULT_PORT_HANGOUT` plus prose — the behaviour-preserving proof
+### 2.3 Sol-3 is `DEFAULT_PORT_HANGOUT` plus prose — the behaviour-preserving proof
 
 T-120's acceptance is that every pre-existing hangout test passes unchanged and the goldens
 are byte-identical. The shape above makes that a two-line argument rather than a diff review:
-Sun-3's row sets `venues` to all seven and leaves `wager` and `venueParams` **omitted**, so
+Sol-3's row sets `venues` to all seven and leaves `wager` and `venueParams` **omitted**, so
 every number the resolver reads is imported from the same constant it reads today. Only
 `prose` is new, and prose is not read by any assertion in the engine suite.
 
@@ -517,7 +517,7 @@ confirm it stays green.
 
 The mechanical form of the constraint: after T-120, `packages/content/src/portHangouts.ts`
 contains no `if (`, and `packages/engine/src/actions/hangout.ts` contains no port id — the
-`grep` for `Sun-3` / `systemId === 1` that T-120's acceptance names.
+`grep` for `Sol-3` / `systemId === 1` that T-120's acceptance names.
 
 ---
 
@@ -535,7 +535,7 @@ contains no `if (`, and `packages/engine/src/actions/hangout.ts` contains no por
 from content, **the sim's policies change behaviour with zero sim edits.** Four mechanisms, all
 verified against the source:
 
-1. **`planDare` (`sim/index.ts:3401`) becomes legal on most days instead of only at Sun-3.**
+1. **`planDare` (`sim/index.ts:3401`) becomes legal on most days instead of only at Sol-3.**
    The gambler currently plays the tables only when its route happens to pass home; after
    T-121 nearly every docked day is a table day, up to `GAMBLER_MAX_DARES_PER_DAY = 2`.
 2. **`planLoanBorrow` (`:2036`) and `planLoanRepay` (`:2064`) become legal nearly
@@ -559,7 +559,7 @@ implementing task measures and reports.
 | `packages/ui/e2e/hangout.spec.ts:126–146` ("the Hangout is offered only where the engine says one exists") | **BREAKS** | It jumps to Aldebaran-1 expecting the launcher to vanish. **Do not retarget it to a rim system**: the rim shell is ~20–24 units out (`systems.ts` layout note) and a fresh start cannot fund that hop, so the test would become unrunnable. **Recommended fix:** invert it — assert the launcher is *present* after the jump (the gate is still tracked, positively, and the assertion is now stronger because it proves the pane follows content to a second port) — and cover the negative case with a unit test over `hangoutOpen()` at a rim id in `packages/ui/src/__tests__`. Also fix the fixture comment at `:16` ("the sole `hasHangout` system"). |
 | `packages/sim/src/__tests__/protocol.test.ts:461–471` (`no-hangout` ActionBlocked parity) | **BREAKS** | Retarget to a rim/gated id. This is why §4.5 keeps a non-empty no-Hangout set. |
 | `packages/engine/src/__tests__/hangout.test.ts:305–318` (the `no-hangout` gate test) | **BREAKS** | Same retarget. |
-| `packages/sim/src/__tests__/support/deed-hunter.ts:110`, `:298`, `:324`, `:349` | **comments false; routing degrades** | `HANGOUT_SYSTEM = 1` and "Sun-3 is the ONLY `hasHangout` system" are load-bearing *prose* for the veteran deed hunter's errand. The logic still runs (Sun-3 keeps its bar) but the errand becomes redundant. Fix the comments; consider routing to the nearest Hangout instead of the constant. |
+| `packages/sim/src/__tests__/support/deed-hunter.ts:110`, `:298`, `:324`, `:349` | **comments false; routing degrades** | `HANGOUT_SYSTEM = 1` and "Sol-3 is the ONLY `hasHangout` system" are load-bearing *prose* for the veteran deed hunter's errand. The logic still runs (Sol-3 keeps its bar) but the errand becomes redundant. Fix the comments; consider routing to the nearest Hangout instead of the constant. |
 | `dareWagerBounds` (`packages/ui/src/format.ts:297`) | **signature change** | Takes no argument today; must take the game (or port id) to show the port's band. Its only caller is `App.tsx:1765`. |
 | `packages/sim/src/index.ts:3417–3421` (`planDare`'s clamp) | **must read the port band** | It clamps with `DARE_MIN_WAGER` / `DARE_MAX_WAGER` directly, under a comment that says "clamped with the CONTENT band constants, never with restated numbers". After T-120 it must read the port's band through the same accessor the engine uses, or the gambler will size a stake the engine then re-clamps and the measured `expectedValuePerDare` will drift. |
 | `packages/sim/src/protocol.ts:795` (`wager` param domain) | **must read the port band** | Same reason, one line up from `venueChoices`. |
@@ -587,7 +587,7 @@ T-102 is **one bump for the whole 0.5.2 track (Explore's, 12 → 13)**, and the 
 ### 4.5 The rim/gated ruling — the 14 core ports only
 
 **Ruled here because T-121's acceptance depends on it: `hasHangout` is set on ids 1–14
-(Sun-3, Aldebaran-1, Altair-3, Arcturus-6, Deneb-4, Denebola-5, Fomalhaut-2, Mira-9, Pollux-7,
+(Sol-3, Aldebaran-1, Altair-3, Arcturus-6, Deneb-4, Denebola-5, Fomalhaut-2, Mira-9, Pollux-7,
 Procyon-5, Regulus-6, Rigel-8, Spica-3, Vega-6) and nowhere else.** The rim (15–20), Maligna
 (27) and Nemesis (28) get **no venue**.
 
@@ -761,7 +761,7 @@ Keyed to real ids from `packages/content/src/systems.ts`. Concept **labels** onl
 
 | id | System | Concept label | Axis notes |
 | --- | --- | --- | --- |
-| 1 | Sun-3 | the home-port hall | **must reproduce today's behaviour exactly** — the default row plus prose (§2.3) |
+| 1 | Sol-3 | the home-port hall | **must reproduce today's behaviour exactly** — the default row plus prose (§2.3) |
 | 2 | Aldebaran-1 | the exchange-floor bar | trader clientele; modest band; everything offered |
 | 3 | Altair-3 | the lane-side stopover | **numerically the mean; distinct on clientele alone** — one port must be the mean *(corrected in place at T-122; see the note below the table)* |
 | 8 | Mira-9 | the fuellers' canteen | the cheap-fuel working port; low `min`, low ceiling, warm deltas |
@@ -769,8 +769,8 @@ Keyed to real ids from `packages/content/src/systems.ts`. Concept **labels** onl
 
 > **T-122's in-place correction to the Altair-3 row.** As originally written, §6.3 asked for a
 > port that is "fully generic, deliberately" while §6.4 requires cardinality 14 over the axis
-> vectors **and** fixes Sun-3's vector to the default row. Both cannot hold literally: a fully
-> generic port *is* Sun-3's vector. §6.4's own closing sentence settles it — "Sun-3 is the one
+> vectors **and** fixes Sol-3's vector to the default row. Both cannot hold literally: a fully
+> generic port *is* Sol-3's vector. §6.4's own closing sentence settles it — "Sol-3 is the one
 > port whose tuple is fixed … which means the other thirteen are the ones that must move."
 > **Resolution taken:** Altair-3 is the *numeric* mean (default band, default DCs, default
 > deltas, all seven venues, `wager` and `venueParams` OMITTED rather than restated) and is
@@ -832,7 +832,7 @@ Keyed to real ids from `packages/content/src/systems.ts`. Concept **labels** onl
 > least one consequence axis, then a `comic` port must be **no harsher than the default on
 > any** of them — because *the joke is never at the player's expense*. That is the assertion in
 > `hangoutContent.test.ts`, over the same four clauses the `dangerous` test uses and read
-> through Sun-3's resolved values, so the two registers are graded on one axis set rather than
+> through Sol-3's resolved values, so the two registers are graded on one axis set rather than
 > two invented ones. Denebola-5 is additionally pinned as the strict per-axis **softest**
 > authored port on `insult` and on the dare-failure arm — the mirror of Arcturus-6's
 > maximality test, which is what makes "the forgiving pole" a measurement rather than a claim.
@@ -877,7 +877,7 @@ as a **set-cardinality assertion over the serialized parameter tuples** — `ven
 may not share a mechanical fingerprint. The check T-124 runs at the close: the set of
 serialized tuples has cardinality **14**.
 
-Sun-3 is the one port whose tuple is fixed by §2.3, which means the other thirteen are the
+Sol-3 is the one port whose tuple is fixed by §2.3, which means the other thirteen are the
 ones that must move — a useful constraint, not an exception.
 
 ---
@@ -916,7 +916,7 @@ existed, and every `HangoutEvent{venue:'dare'}` with the stake the resolver actu
 | --- | --- | --- | --- | --- | --- |
 | **Regulus-6** (the high table) | 500 / 3,000 | 99 | 0 / 1,383 / **3,000** | 41 of 99 (41%) | **5 of 99 (5%)** |
 | Rigel-8 (the underbelly) | 10 / 3,000 | 108 | 53 / 865 / **3,000** | 24 of 108 (22%) | 5 of 108 (5%) |
-| Sun-3 (the default band) | 25 / 1,000 | 124 | 39 / 1,000 / **1,000** | 75 of 124 (**60%**) | 1 of 124 (0.8%) |
+| Sol-3 (the default band) | 25 / 1,000 | 124 | 39 / 1,000 / **1,000** | 75 of 124 (**60%**) | 1 of 124 (0.8%) |
 
 **The plain gap sentence: declared max 3,000 versus realized max 3,000 — at the high table there
 is no gap at the top at all.** The declared ceiling is reached on 41 of 99 hands, and the
@@ -930,7 +930,7 @@ ledger entries 6, 9 and 10 of `campaign-degraded.test.ts`. A dealer that rich ca
 nothing. The constraint the finding names is real in the ALGEBRA (`hangout.ts:279`, the stake is
 still `min(band.max, player.credits, dealer.credits)`) and it still bites on ~5% of hands, but
 it is no longer the operative limit on a Tour One captain's table. **What binds instead is the
-BAND ITSELF**, and it binds hardest where the band is smallest: at Sun-3's default 1,000 the
+BAND ITSELF**, and it binds hardest where the band is smallest: at Sol-3's default 1,000 the
 ceiling is the operative limit on 60% of hands.
 
 **And the floor does not price the run out either — measured, not assumed.** At Regulus-6 the
@@ -1030,7 +1030,7 @@ reported to T-130 if T-121 chooses to keep its diff to the reach change alone.
 > (the authored port, a second differently-voiced port, and the rowless fallback).
 
 **Found by T-122, reported and not fixed.** `HangoutProse.houseName`, `.roomLine` and
-`.flavour` are authored by T-120 (Sun-3), by T-121 (thirteen baseline house names) and now by
+`.flavour` are authored by T-120 (Sol-3), by T-121 (thirteen baseline house names) and now by
 T-122 (four houses, four room lines, twenty-eight flavour lines), and **nothing reads any of
 them**. `grep` over the workspace finds no consumer of `prose` outside the content file and
 this spec; the Hangout pane header is a literal — `App.tsx:1805` renders
@@ -1107,7 +1107,7 @@ the idiom. **Do not land that inside a content pass.**
 deed (`content/src/deeds.ts:604`) requires a 250cr Dare stake. Mira-9's authored ceiling is
 200 — §6.1's named dive shape, "min 5 and a ceiling far under the global 1,000" — so the deed
 **cannot** be earned at that port. It stays reachable at the other four pass-1 ports
-(Sun-3 1,000, Aldebaran-1 750, Altair-3 1,000, Procyon-5 500) and at the nine unauthored ones.
+(Sol-3 1,000, Aldebaran-1 750, Altair-3 1,000, Procyon-5 500) and at the nine unauthored ones.
 
 This is a *correct* consequence of a dive bar and **is not a reason to inflate the band**;
 inflating it would be tuning a number to reach an answer. It is recorded because per-port
@@ -1130,7 +1130,7 @@ Regulus-6 saturation, and a Regulus-6 count that rises with career age rather th
 > `venueOffered` — and the repay controls on `'repay'` independently, so Arcturus-6 shows no
 > desk at all rather than a desk that refuses. Asserted by `packages/ui/e2e/hangout.spec.ts`
 > ("a port with no credit desk shows none"; the offering case stays covered by the existing
-> Sun-3 loan test) and by the 14-ports × 7-venues agreement table in
+> Sol-3 loan test) and by the 14-ports × 7-venues agreement table in
 > `packages/ui/src/__tests__/hangout-pane.test.ts`. (2) The prose moved to
 > `hangoutFailExplanation` / `loanFailExplanation` (`packages/ui/src/format.ts`), both
 > exhaustive `switch`es with **no `default`** — the T-131 mechanism — so `'venue-not-offered'`
@@ -1246,6 +1246,18 @@ its own before/after — thread the queued stake through the dealer pick, or cap
 `GAMBLER_MAX_DARES_PER_DAY` at one hand per dealer per day. Report the effect on
 `expectedValuePerDare` when it lands.
 
+> **CLOSED AT T-150 (2026-08-01) — FIXED, by the first of the two options. SEE §11.2.**
+> Applicability was CHECKED rather than assumed: M4d/M4e replaced the HAND, not the DEALER
+> PICK, and both T-145's own parameter doc and `docs/LIARS-DICE_REDESIGN.md` §16 record the
+> ROAMING case as surviving the redesign — so the finding was still live, on the roaming pool
+> only. `planDare` now carries a per-dealer `committedStakes` map, and the pre-existing
+> `dealer.credits < band.min` guard closes both the zero-stake and the sub-floor case.
+> **AND THE HONEST HEADLINE IS THAT THE RATE HAD ALREADY COLLAPSED:** 0 of 101,791 hands on
+> the parent commit as well as on HEAD (`< 1/101,791`, never reported as 0.00%) — **T-145's
+> two-pool candidate set**, not this fix, is what closed the window in practice. The fix is
+> preventive and structural: the code path was live, and only a content fact was suppressing
+> it. `expectedValuePerDare` did not measurably move.
+
 ### Finding F-124-1 · A `clientele.regulars` entry naming a QUEST captain is permanently dead content — **FOUND AND CLOSED BY A TEST**
 
 **Found by T-124 while authoring Denebola-5's and Fomalhaut-2's regulars, and fixed inside this
@@ -1265,7 +1277,7 @@ nobody forever.
 
 The two rows this task first drafted hit it exactly. `npc-wild-card` (the Denebola-5 storylet's
 own captain, `storylets.ts:2950`) is seeded at system **16** — a rim system with no bar at all;
-`npc-rust-bucket` (the Fomalhaut-2 salvage storylet, `storylets.ts:4549`) is seeded at **Sun-3**.
+`npc-rust-bucket` (the Fomalhaut-2 salvage storylet, `storylets.ts:4549`) is seeded at **Sol-3**.
 Both are the thematically obvious regular for their port and both would have been dead the day
 they shipped. T-123's three `regulars` lists are all simulated captains and were correct by
 luck rather than by rule.
@@ -1284,6 +1296,36 @@ the only existing check was membership of `ALL_NPC_PROFILES`.
 stands), and it is not a request to simulate the quest roster (an owner ruling of 2026-07-29).
 It is the narrower statement that **`regulars` is a field only a simulated captain can
 satisfy**, now enforced.
+
+> **RECORD CORRECTION (T-208, 2026-08-05): HALF OF THE PREMISE ABOVE IS NOW STALE, AND THE
+> ENFORCEMENT IS UNCHANGED.** This finding rests on two facts. The first — that
+> `rankClientele` ranks the set it is handed and never adds to it — is UNTOUCHED, and F-101-2's
+> ruling 4 still stands: nothing spawns a captain into a room.
+>
+> The second — that a quest captain sits at an ARBITRARY system, `(index % 20) + 1` in
+> `engine/state.ts` — is no longer true. T-208 replaced that seed for the eleven
+> `QUEST_PROFILES` records only with the CORE PORT each captain's own content declares
+> (`NpcProfile.homePortSystemId`, `content/cast.ts`), every one of them a port with a Cantina,
+> and pinned the stationary guarantee with a test. The concrete examples above are the two
+> this correction is most owed to: `npc-wild-card` sat at system **16**, a rim system with no
+> bar, and now sits at **Denebola-5 (6)** — the port of the very storylet this finding cites;
+> `npc-rust-bucket` sat at **Sol-3** and now sits at **Fomalhaut-2 (7)**, likewise the port of
+> its own storylet. Both are now exactly where the thematic reading said they should be.
+>
+> T-208 CONFIRMED, RATHER THAN ASSUMED, THE OTHER HALF OF THE SENTENCE: quest captains did not
+> merely start frozen, they have never moved at all, and cannot. The only two writers of
+> `NpcState.currentSystemId` in the engine (`npc.ts`'s `executeTrade` and `executeTravel`) are
+> reachable only through `resolveNpcDay`, whose one production caller is the dusk loop, which
+> is gated by `isSimulatedCaptain`.
+>
+> **WHAT THIS DOES NOT DO.** It does not add any quest captain to a `regulars` list, and
+> `hangoutContent.test.ts`'s `isSimulatedCaptain(profileId)` assertion is left exactly as it
+> is. What changed is the JUSTIFICATION available for that field, not the field: a quest
+> captain is now reliably at exactly one Cantina forever, so a `regulars` entry naming one
+> would no longer be permanently dead content — it would rank at that one port, every day. That
+> makes "should a quest captain be a regular anywhere?" a live CONTENT-DESIGN question with its
+> own capstone, and it is not the question T-208 was asked. Until it is asked and answered, the
+> enforced rule stands as written.
 
 ---
 
@@ -1345,9 +1387,9 @@ satisfy**, now enforced.
 
 | Task | Implements | The accept criterion this spec makes checkable |
 | --- | --- | --- |
-| **T-120** | §2 (all), §3 (all), §2.6 | `portHangouts.ts` + `hangoutRules.ts` exist; Sun-3's row is `DEFAULT_PORT_HANGOUT` + prose and reproduces today's behaviour with every hangout test unchanged and **all four day-loop golden hashes byte-identical** (stated in the commit body); the resolver reads `venueParamsFor` / `wagerBandFor` and contains no port id; `'venue-not-offered'` lands in `types.ts` + `schema.ts` + a unit test + the `protocol.ts` mirror; `grep 'if ('` over `portHangouts.ts` finds nothing that decides an outcome; `balance-rig.test.ts` still classifies every engine source |
-| **T-121** | §4 (all), §2.2 ruling 3 | ids 1–14 carry `hasHangout: true` and a placeholder row, asserted by an enumerating test; **the `hasHangout` ↔ `PORT_HANGOUTS` two-way equality test**; a `VisitHangout` driven successfully at a non-Sun-3 port; the six test/comment retargets in §4.2's table; replay goldens regenerated with the event-count diff and **both `rngState`s verified unchanged**; no rim or gated system flagged (§4.5); **no `npc.ts` edit** (§5.2's obligation) |
-| **T-122** | §6.3 pass 1, §6.4 | five everyday ports authored; distinctness asserted as a cardinality check over the axis tuples; Sun-3's mechanical tuple still the default row; no placeholder strings; zero lines under `packages/engine/src` |
+| **T-120** | §2 (all), §3 (all), §2.6 | `portHangouts.ts` + `hangoutRules.ts` exist; Sol-3's row is `DEFAULT_PORT_HANGOUT` + prose and reproduces today's behaviour with every hangout test unchanged and **all four day-loop golden hashes byte-identical** (stated in the commit body); the resolver reads `venueParamsFor` / `wagerBandFor` and contains no port id; `'venue-not-offered'` lands in `types.ts` + `schema.ts` + a unit test + the `protocol.ts` mirror; `grep 'if ('` over `portHangouts.ts` finds nothing that decides an outcome; `balance-rig.test.ts` still classifies every engine source |
+| **T-121** | §4 (all), §2.2 ruling 3 | ids 1–14 carry `hasHangout: true` and a placeholder row, asserted by an enumerating test; **the `hasHangout` ↔ `PORT_HANGOUTS` two-way equality test**; a `VisitHangout` driven successfully at a non-Sol-3 port; the six test/comment retargets in §4.2's table; replay goldens regenerated with the event-count diff and **both `rngState`s verified unchanged**; no rim or gated system flagged (§4.5); **no `npc.ts` edit** (§5.2's obligation) |
+| **T-122** | §6.3 pass 1, §6.4 | five everyday ports authored; distinctness asserted as a cardinality check over the axis tuples; Sol-3's mechanical tuple still the default row; no placeholder strings; zero lines under `packages/engine/src` |
 | **T-123** | §6.3 pass 2, §6.2 | five ports authored; at least one **measurably hostile** and one **measurably exotic** against §6.1's axes; the governance axis exercised without touching `isRim` / `allowsContraband`; **F-101-1's realized-vs-declared stake measurement reported** for the high-band port; any house rule wanted reported in F-101-3's format; zero engine changes |
 | **T-124** | §6.3 pass 3, §6.4 | the last four, including `tone: 'comic'`; the full 14 enumerated and distinct (cardinality 14); tonal spread asserted against the axes; zero engine changes. **Delivered as written, plus two things the criterion did not ask for and the work required:** the T-121 baseline-row builder is DELETED and its "the unauthored rows are still baseline rows" test inverted rather than emptied (§6.3 correction (e)), and **F-124-1** closes the frozen-quest-captain `regulars` trap with an `isSimulatedCaptain` assertion |
 | **T-125** | §4.2, §5.1's and §5.2's obligations, §10 | `npm run format`, THEN the milestone's single capstone; 8,000 merged rows from 1-indexed shards through `--merge`; fixture re-extracted with `spreads harvested`; reports hangout usage per run, the before/after disposition spread, **the dealer-purse distribution** (§5.1), **the re-measured off-Hangout Socialize percentage** (§5.2), and a measured statement about disposition's effect on `chooseWeighted`'s interceptor draw; appends to §10; **tunes nothing to reach a result**, and escalates rather than adjusts if `balance-targets.test.ts:180` went red. **Delivered 2026-07-30** — `baseline-t125-hangout.json` (8,000 rows, `spreads harvested`), baseline of record re-pinned, and a two-arm probe (HEAD vs `e0dbd40a`, 960 runs each) run in the T-116 shape. **The verdict is YES for the captain who plays the tables**: wronged-captain named interceptions 4.22% → **29.28%** on the `gambler` arm against a 9.90% uniform counterfactual, with the inertness rate falling 76.26% → **31.65%** — but disposition still reaches the draw only ~25% of the time and is inert on 69.56% of fleet named draws. §5.1's obligation discharged at §10.5 (the BAND binds 88.93% of stakes, the DEALER 10.97%), §5.2's at §10.6 (**95.91% → 37.96%**). **Zero constants, bands, DCs, thresholds, goldens or fingerprints edited**; F-123-3 re-measured (2.67%) and filed, not fixed |
@@ -1385,7 +1427,9 @@ control that says the movement is the Hangout and nothing else.
 
 ### 10.1 Method
 
-**The probe.** `.scratch/t125-hangout.ts` (gitignored; source fenced at §10.7). It plans,
+**The probe.** `.scratch/t125-hangout.ts` (gitignored; source fenced at §10.7 — **retired at
+T-173; the shipped instrument now carries these fields, see §10.7's retirement note and its
+counter → field table**). It plans,
 applies and reads the event stream, and adds nothing but counters — no action is added,
 removed or reordered, and no rng is drawn.
 
@@ -1401,7 +1445,7 @@ dawn → actions → dusk order and its `policy / day-N / index-i` rng forks exa
 | | arm BEFORE | arm AFTER |
 | --- | --- | --- |
 | commit | **`e0dbd40a`** (T-116) | HEAD (T-124 + this commit's docs) |
-| Hangout reach | **1 of 28** (Sun-3) | **14 of 28** (ids 1–14) |
+| Hangout reach | **1 of 28** (Sol-3) | **14 of 28** (ids 1–14) |
 | built in | a `git worktree` with its **own** `node_modules` (third-party symlinked, `@spacerquest/*` pointed at the worktree's own packages) and its own `tsc -b` output | the repo |
 | sample | seeds 1..120 × 120 days × 8 policies = **960 runs** | identical |
 
@@ -1443,6 +1487,15 @@ Adding those fields would move `instrumentFingerprint` and fill `balance:diff` w
 of phantom shape deltas **in the same commit that takes the capstone**. So the capstone is
 owed for the baseline/fixture obligation (§10.9) and the probe is what produces the result —
 exactly the split T-116 used.
+
+> **TRUE AS OF T-125; NO LONGER TRUE AS OF T-173 (2026-08-04).** All three shapes now carry
+> the fields — see §10.7's retirement note for the counter → field table. The paragraph above
+> is kept because it is the reasoning that produced four probes, and because the objection it
+> raises is still correct: the fields could not ride in on a capstone commit. T-173 therefore
+> added them in their OWN non-capstone commit (BR-10), with a `balance:extract` re-extract and
+> no baseline move — `rulesFingerprint` unmoved, every recorded checkpoint byte-identical, and
+> a two-arm 320-run sweep whose differ reported *"NO MEASURED VALUE MOVED"* on every shared
+> path.
 
 ### 10.2 Hangout usage per run (fleet, 960 runs per arm)
 
@@ -1677,7 +1730,7 @@ dawn (days 21, 29, 30, 41, 60, 120):
 | max | 2,149,459 | 2,307,108 |
 | mean | 39,867 | 57,479 |
 
-The BEFORE column samples only the captains who happened to be at Sun-3; the AFTER column
+The BEFORE column samples only the captains who happened to be at Sol-3; the AFTER column
 samples the captains at any of 14 ports. **They are different populations, not a time series**,
 which is why only the shape is comparable and not the level. The shape that matters is the
 same in both: a median dealer carries 5,000 credits against a default band ceiling of
@@ -1760,6 +1813,77 @@ per 960 runs of rumour-mill prose naming a Hangout at a port where the player is
 none** (`npc.ts:1845`, `:1851` → `lastAction.details` → `hangoutRumors`, `hangout.ts:88`).
 
 ### 10.7 The probe source
+
+**RETIRED AT T-173 (2026-08-04). The shipped instrument now carries these fields, so the next
+Hangout/disposition measurement reads the sweep's own rows instead of descending from this
+file.** The fence below is kept **verbatim as the historical record** — it is what T-125,
+T-137, T-148 and T-150 actually ran, and §10.2–§10.6 / §11.3 are its output — but it is no
+longer the route to any of these numbers. Nothing in it may be re-derived to answer a new
+question; use the shipped fields.
+
+Every counter maps onto a committed field, one for one:
+
+| probe counter (below) | shipped field (T-173) |
+| --- | --- |
+| `chosen.source`, `bump(tierCounts, …)` | `CombatEncounterRecord.interceptorSource` (+ the existing `interceptorTier`) |
+| the chosen captain's id | `CombatEncounterRecord.interceptorId` |
+| `chosenDisposition` | `CombatEncounterRecord.interceptorDisposition` |
+| `namedInert` (`ds.every(d => d === 0)`) | derived from `CombatEncounterRecord.namedPoolDispositions` (every entry 0), rolled up as `PolicyAggregate.interceptor.inertShare` |
+| `pUniform`, `uniformWrongedExpectation` | derived from the same raw pool; rolled up as `PolicyAggregate.interceptor.uniformWrongedShare` (still ANALYTIC, still summed, never re-rolled) |
+| `chosenWronged` | `PolicyAggregate.interceptor.chosenWrongedShare` |
+| `reconstructMiss` | `CombatEncounterRecord.namedPoolReconstructed` (a field, so it is counted rather than assumed) — summed as `PolicyAggregate.interceptor.reconstructionMisses` |
+| M1's `HangoutEvent` fold | `SeedRow.hangout` (`CampaignStatsReport.hangoutPlay`, carried whole) |
+| M2's `DispositionChanged`-by-`reason` fold | `SeedRow.disposition.movesByReason` |
+| M2's dusk disposition sampling (sample point C) | `SeedRow.disposition` (`liveNpcDays`, `zeroDispositionNpcDays`, `absDispositionSum`, `peakAbsDisposition`, `standingSpanDays`, `standingsOpenAtHorizon`) and, per milestone day, `MilestoneSample.npcDisposition` → `MilestoneAggregate.npcDisposition` / `npcNonzeroDispositionShare` |
+| the day-0 all-neutral `throw` guard | asserted in `packages/sim/src/__tests__/campaign-disposition.test.ts` |
+
+The one thing NOT carried across, deliberately: `interceptWeight` — `chooseWeighted`'s own
+formula. The rows carry the RAW pool dispositions instead, so a future re-cut of the weighting
+reads them off the sweep rather than reading a number some instrument baked in.
+
+**EXTENDED AT T-175 (2026-08-06) — the LIAR'S DICE half of this retirement is now shipped too.**
+T-173 carried `hangoutPlay` across whole (`SeedRow.hangout`), but the block it carried could not
+answer a question split by pool, archetype or unlock tier — the three fields lived only on
+`state.dareHand` and rode no event, which is exactly why F-160-1 had to be measured off a probe at
+T-160. T-175 closed that:
+
+| what a probe used to have to reconstruct | shipped field (T-175) |
+| --- | --- |
+| `hand.opponentKind` at settlement | `DareHandResolved.opponentKind` (optional; strip-mode safe, no save-version move) |
+| `hand.opponentArchetype` at settlement | `DareHandResolved.opponentArchetype` (`null` on a roaming hand — an absent key means a pre-T-175 event, which is a different reading) |
+| `hand.dicePerSide` at settlement | `DareHandResolved.dicePerSide` |
+| the whole pool × archetype × tier cut | `HangoutPlayStats.dareCells` — 48 zero-filled cells of `{hands, playerWon, netCredits, bids}`, arriving on `SeedRow.hangout` with NO `aggregate.ts` edit |
+| "was the tier frozen correctly?" | `HangoutPlayStats.dareTierDisagreements`, asserted zero in `packages/sim/src/__tests__/campaign-dare-cells.test.ts` |
+
+The tier is DERIVED arithmetically from `LIARS_DICE_UNLOCK_GAMES` rather than read live, because
+`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.6a closes the licensed live-`liarsDiceTier` list at four —
+T-148's precedent, and it buys a free correctness check on freeze-at-open as a side effect. Raw
+counts, not rates, so a later re-cut needs no new sweep. T-175's own headline ordering table came
+off these fields; only its PER-DECISION counters (the calibration table) needed a temporary probe,
+and that probe was not committed.
+
+**EXTENDED AGAIN AT T-176 (2026-08-06) — the CHALLENGE half, and this one needed no engine change
+at all.** F-160-2's re-derived criterion (C3′, `docs/LIARS-DICE_REDESIGN.md` §18) compares the two
+challenger rows at MATCHED EVIDENCE, which needs the challenger's identity, the evidence level and
+the outcome per settled challenge. All three were already in the stream and none of them was
+reachable from `hangoutPlay`. Three more counters close it, **sim-only**:
+
+| what a probe would have had to reconstruct | shipped field (T-176) |
+| --- | --- |
+| who played CALL | derived from the actor of the LAST `DareBidPlaced` on the hand, parked against `handId` exactly as `dareCells.bids` is — the challenger is by construction the other actor |
+| the evidence the challenge was played at | `k = bid.quantity − own(bid.face)` off the CHALLENGER's own revealed hand, against the other side's `dicePerSide`; both hands ride `DareHandResolved` on the two challenge outcomes and on nothing else |
+| the whole pool × challenger × dicePerSide × k cut | `HangoutPlayStats.dareChallengeCells` — 108 zero-filled cells of `{challenges, won}` |
+| ...and by archetype, since post-T-175 `optimal` is a different challenger | `HangoutPlayStats.dareChallengeSplit` — 16 zero-filled cells, same shape |
+| "did the two derivations of who won agree?" | `HangoutPlayStats.dareChallengeDisagreements`, asserted zero in `packages/sim/src/__tests__/campaign-dare-challenges.test.ts` |
+
+Same three disciplines as T-175's row above: raw counts rather than rates (`w`, `p_backed`,
+`p_unbacked`, the standardised rates and the mixture decomposition are all summation over these
+cells); every key present and zero-filled; and **no `aggregate.ts` edit**, because `SeedRow.hangout`
+carries the block whole. The evidence classifier (`isEvidenceBackedChallenge`) applies **one
+engine-exported constant** — `DARE_AI_CHALLENGE_MARGIN` — identically to both sides rather than
+mirroring either policy's if-chain, which is the drift failure this file's own retirement note
+exists to prevent. `packages/engine/src` was touched by a comment only, and `rulesFingerprint`
+stayed at `cabd2112ccf4cefb` across the change.
 
 Fenced so the measurement is reproducible without the gitignored file (T-010 / T-116
 precedent). The console formatting is elided; every counter and every sample point is here.
@@ -2073,3 +2197,394 @@ re-pin was done correctly.
    stakes and the band binds 88.93%, so the third reason to defer is now the minor term.
 4. **F-123-3** (`planDare`'s once-per-day dealer pick, 2.67% zero stakes) — a sim-policy fix,
    cheap, and it should land in a commit that is allowed to move a capstone.
+   **— CLOSED AT T-150 (2026-08-01), in exactly such a commit. See §11.2.**
+
+**Where the other three went.** Lever 2 (**F-101-4**, surfacing `befriend` / `meet` / `insult`)
+was **shipped by T-132**. Lever 3 (§5.1's faucet) is **re-measured and still open** — §11.4(1),
+now +3.44cr/captain-day and 0.22% of terminal NPC wealth. Lever 1 (**the 0.25 gate and the decay
+interval**) is **re-measured, still unpulled, and re-filed as F-150-1** — §11.3 — with the
+levers-not-pulled table this document owes it.
+
+---
+
+## §11 · Appendix: T-150 post-fix re-measurement
+
+**Measured 2026-08-01 by T-150, on HEAD after every fix and build task in M4a–M4f shipped
+(T-131, T-132, T-133, T-137, T-148, T-149).** This appendix records the capstone the track
+owed, closes **F-123-3**, files **F-150-1** as a DESIGN QUESTION for the owner, and RE-ASKS
+the two vacated PARITY LEDGER rows with current numbers beside them. **It changes no
+constant.**
+
+### 11.1 The gate work, in order
+
+**1 · `npm run format` FIRST, before anything was measured.** It reported every file
+unchanged, so no source moved between the edits and the sweep. It was **not** re-run
+afterwards; the only files touched after the capstone are markdown, which is in no
+fingerprint corpus.
+
+**2 · The sweep — the same shape as every capstone back to `baseline-r2c-explorer-remit`.**
+Eight **1-indexed** shards, run concurrently:
+
+```
+npm run balance:sweep -w @spacerquest/sim -- --label t150-postfix --seeds 1000 --days 120 \
+  --policies trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy \
+  --milestone-days 21,29,30,41,60,120 --shard i/8      # i = 1..8
+npm run balance:sweep -w @spacerquest/sim -- --label t150-postfix --merge
+```
+
+The merge printed **`[balance] wrote aggregate for 8000 rows`** — eight shards of exactly
+1,000 rows each. Both `--milestone-days` and `--aggregate` (below) were honoured; a run
+missing either is not a capstone.
+
+**3 · The diff, with the prediction written down BEFORE the run.** The predicted moved set was
+`{explorer, gambler, fleet}` — the Explore guard is a term inside `explorerPolicy`'s own loop,
+and `planDare` has exactly one caller (`gamblerPolicy`) — with `trader`, `trader-degraded`,
+`fighter`, `veteran`, `smuggler` and `greedy` byte-identical.
+
+```
+MOVED ROWS (3): fleet, explorer, gambler
+UNCHANGED ROWS: header, fighter, greedy, smuggler, trader, trader-degraded, veteran
+```
+
+**THE PREDICTION HELD EXACTLY.** (`smuggler` is in the unchanged set rather than the moved set
+because the twin fix was measured and backed out — see `docs/EXPLORE_REDESIGN.md` §10.3,
+finding F-150-2. Had it shipped, `smuggler` would have been the fourth moved row.)
+
+**4 · One extract, `--aggregate` load-bearing.**
+`npm run balance:extract -- --aggregate docs/balance/baseline-t150-postfix.json` printed
+`4 tiers, spreads harvested`, and `docs/balance/smoke/tiers.json` now carries
+`provenance.sweepLabel = "t150-postfix"`, `runs = 8000`, `spreadSource = "harvested"` — the
+last of which `balance-smoke.test.ts` asserts, precisely so a dropped `--aggregate` fails loudly.
+
+**5 · The three fingerprints, and this is the interesting part of the capstone.**
+
+| fingerprint | parent commit | HEAD | verdict |
+| --- | --- | --- | --- |
+| `rulesFingerprint` | `30956ac30326f246` | `30956ac30326f246` | **UNMOVED** |
+| `instrumentFingerprint` | `c80ebc59869406bb` | `342e248189f7ac34` | **MOVED** |
+| `docsFingerprint` | `6754f4ab2c779999` | `a3ef073897c54166` | **MOVED** |
+
+*Verified against a `git worktree` at the parent commit rather than asserted.* **rules is
+UNMOVED because T-150 edits no engine and no content source at all** — it is worth saying that
+the value differs from the one T-148 recorded (`09deb1e41c99bdeb`); that move belongs to
+**T-149**, not to this task, and the worktree comparison is what separates the two.
+**instrument MOVED correctly:** `packages/sim/src/index.ts` is inside the instrument corpus
+(`SIM_NON_INSTRUMENT_SOURCES` excludes only `protocol.ts`, `protocol-stdio.ts`, `balance/sweep.ts`,
+`balance/diff*.ts`, `balance/resolve-artifact.ts`, `balance/smoke-extract.ts`,
+`balance/checkpoints.ts` and `balance/rules-fingerprint.ts`), so a policy edit necessarily
+stales the fixture. **That is exactly the "a stale fixture gets a new capstone" case, and it is
+why the two fixes and the capstone had to be one task.** **docs MOVED** because it is a
+raw-byte hash and the new comments alone move it; it is informational by design and can never
+fail a test.
+
+**6 · Baseline of record re-pinned in all four places:**
+`packages/sim/src/__tests__/balance-targets.test.ts` (the single path string),
+`docs/NPC_REDESIGN.md`'s "BASELINE OF RECORD RE-PINNED AT …" block and standing amendment 1's
+blockquote, and `docs/balance/smoke/README.md`.
+
+**Probe provenance.** `.scratch/t150-postfix.ts`, descended from `.scratch/t148-roster-ladder.ts`
+with the **M5 interceptor block carried VERBATIM** — it has now travelled unchanged from
+`.scratch/t125-hangout.ts` through T-137, T-148 and here, which is what makes §11.3's column
+like-for-like against §10.4's AFTER column rather than a new number off a new instrument. It
+passes the same six-channel fidelity check against `runCampaign` before any number is believed.
+**Arm 1** = seeds 1..120 × 120 days × 8 policies (960 runs, identical shape to §12.6).
+**Arm 2** = a depth arm, `gambler` and `explorer` at 600 seeds (1,200 runs), so every cell
+reported below clears **n ≥ 1,000**.
+
+### 11.2 F-123-3 — **CLOSED, FIXED** (and applicability was checked, not assumed)
+
+#### It was still applicable — to the ROAMING pool only
+
+The task brief asked whether M4d/M4e's Liar's Dice resolver had made this finding moot. **It had
+not, and here is the check rather than an assertion:** M4d/M4e replaced the **hand** — one
+opposed-GUILE roll became the full bid / raise / challenge resolver — and did not touch the
+**dealer pick**, which still ran once off the dawn state. Two citations, both in-repo:
+
+1. **T-145 already fixed the ROSTER half and its own parameter doc says the roaming half was
+   left**, verbatim: *"A ROAMING dealer whose purse the first hand emptied is merely clamped to a
+   zero-stake hand by the engine, but a ROSTER opponent is REFUSED outright."*
+2. **`docs/LIARS-DICE_REDESIGN.md` §16 re-confirms it under the NEW resolver**: *"the seed is
+   clamped to the dealer's purse, and a broke dealer deals a free hand. Unchanged by this
+   redesign, still not fixed here."*
+
+#### The fix — the finding's own option A
+
+`planDare` takes a fourth parameter, `committedStakes: ReadonlyMap<string, number>`, and the
+roaming loop reads `npc.credits − (committedStakes.get(npc.id) ?? 0)` instead of the raw dawn
+purse. **The worst case is the dealer LOSING every stake already queued against them, which is
+the identical convention the caller already applies to the player's own purse** (`purse -=
+dare.wager`) — the symmetry is the argument. The pre-existing `dealer.credits < band.min` guard
+then closes **both** halves the finding measured, the zero stake and the sub-floor stake, with
+no new downstream check.
+
+Option B — capping `GAMBLER_MAX_DARES_PER_DAY` at one hand per dealer — was **refused**:
+`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.9 lists it as a lever deliberately left alone (*"the
+instrument's throttle; changing it would move the pacing answer by fiat"*), and it would also
+destroy hands a rich dealer could legitimately play twice.
+
+`committedRosterIds` is **kept alongside** it, not collapsed into it: the roster refusal is
+CATEGORICAL (`HangoutEvent{failReason:'opponent-broke'}` at any purse ≤ 0), the roaming clamp is
+QUANTITATIVE (below `band.min` is merely worthless). Two mechanisms, two reasons, both documented
+at the parameter.
+
+#### The measurement — and the honest headline is that the defect had ALREADY stopped firing
+
+| stake quality, `gambler` | **BEFORE** (parent) | **AFTER** (HEAD) | **AFTER, depth arm** |
+| --- | --- | --- | --- |
+| settled hands | 20,477 | 20,418 | **101,791** |
+| of which ROAMING (the affected pool) | — | 8,649 | **43,501** |
+| **ZERO-stake hands** | **0** | **0** | **0** |
+| **sub-`band.min` hands** | **0** | **0** | **0** |
+| `expectedValuePerDare` | 562.63cr | 564.95cr | 558.19cr |
+
+**Reported as `< 1/101,791` (and `< 1/43,501` on the roaming pool alone), never as 0.00%** —
+standing amendment 1's corollary. And the honest reading is not "the fix worked": **the rate was
+already below 1/20,000 on the parent commit.** T-125 measured 2.67%; **T-145's two-pool candidate
+set is what actually collapsed it**, by seating a roster opponent — authored bankrolls of
+3,000–8,000cr against a port ceiling of 1,000 — in 57.26% of hands, so the narrow window this
+finding needed (a roaming dealer whose dawn purse sits in `[band.min, band.min + wager)`) now
+almost never opens.
+
+**The fix is therefore PREVENTIVE and STRUCTURAL rather than corrective, and it is still worth
+having.** The defective code path was live: nothing in `planDare` prevented it, and the only
+thing suppressing it was a *content* fact (roster bankrolls out-bank roaming captains) that a
+single re-authored `bankroll` could undo silently. Recording this honestly matters more than
+claiming a delta: **this task did not measurably move `expectedValuePerDare`, and the ±0.4%
+between the arms is career re-phasing, not the fix.**
+
+### 11.3 THE NEW FINDING · **F-150-1** — the 0.25 named-pool gate and the decay interval, read together
+
+**STATUS: A DESIGN QUESTION FOR THE OWNER, NOT A TUNING KNOB.** T-125 ruled it so and T-150
+does not overturn that. **Neither constant is changed by this task.**
+
+**RULED (owner, 2026-08-03, at the T-158 checkpoint): DEFER.** Neither constant (`rng.next() <
+0.25`, `DISPOSITION_DECAY_INTERVAL_DAYS = 3`) is fixed or accepted-as-final by this ruling — the
+owner is prioritizing UI/visual-design iteration (T-186, T-188, T-189, T-190, T-191) first and
+will revisit this design question afterward. This is a deferral, not a close.
+
+The two constants are `rng.next() < 0.25` in `packages/engine/src/actions/travel.ts` (the
+named-pool gate on the interceptor draw) and `DISPOSITION_DECAY_INTERVAL_DAYS = 3` in
+`packages/content/src/disposition.ts`. They are filed **together** because they compose: the
+gate decides *how often* disposition can matter at all, and the interval decides *how long*
+any disposition survives to matter with.
+
+#### The numbers, at HEAD, like-for-like against §10.4's AFTER column
+
+| fleet-wide | §10.4 AFTER (T-125) | §12.6 (T-148) | **T-150 arm 1** | **T-150 arm 2 (depth)** |
+| --- | --- | --- | --- | --- |
+| interceptions | 23,092 | 23,013 | 23,077 | 39,970 |
+| of which **named** | 5,706 (**24.70%**) | 5,807 (**25.23%**) | 5,786 (**25.07%**) | 9,907 (**24.79%**) |
+| **inertness** (every candidate at 0) | 3,969 (**69.56%**) | 4,111 (**70.79%**) | 4,138 (**71.52%**) | 6,257 (**63.16%**) |
+| chosen captain at disposition < 0 | 578 (**10.13%**) | 548 (**9.44%**) | 556 (**9.61%**) | 1,231 (**12.43%**) |
+| analytic UNIFORM over the same pools | 4.223% | 3.966% | 4.075% | 4.572% |
+| **lift over uniform** | **2.40×** | **2.379×** | **2.358×** | **2.717×** |
+
+**The named share sits at 25.07% against the analytic 25.00% — the gate does exactly what it
+says.** Nothing this track shipped moved it, which is the point of showing it: T-131's recovery
+model, T-132's UI, T-133's loan band, T-137/T-148's Liar's Dice and T-149's `hasHangout` gate
+all landed between §10.4 and this row, and the interceptor column is unmoved to within sampling
+noise. **The two constants are the only things that could move it.**
+
+**The grudge weighting works where it can reach.** A wronged captain is chosen at ~2.4× the
+uniform rate. But it can only reach **one interception in four**, and **71.52% of those** are
+draws in which every candidate in the pool sits at exactly 0 — so disposition changes nothing.
+Multiplying through: **disposition alters the outcome of roughly 7% of all interceptions.**
+
+**And it is a player-behaviour effect, not a global one.** Split by policy, arm 1:
+
+| policy | named | inertness | chosen wronged | lift |
+| --- | --- | --- | --- | --- |
+| `gambler` (plays the tables) | 890 (25.13%) | **41.46%** | 246 (**27.64%**) | **2.806×** |
+| `explorer` (never sits down) | — | **79.13%** (arm 2) | 2.42%-class | ~1.7× |
+
+**The gambler is the existence proof that the system is reachable**, and it gets there entirely
+through the Dare: 7,933 `DispositionChanged{reason:'dare'}` events on that arm, against 23,009
+decay steps.
+
+#### The decay half, measured — including one correction to the brief
+
+**The brief said decay is a silent mutation with no event. It is not.** `day.ts`'s dusk loop
+routes it through `applyDisposition(..., 'decay', events)`, so it emits
+`DispositionChanged{reason:'decay'}` like any other move. State sampling is still used below for
+the share and the survival figures, which no event can answer.
+
+| decay, at dusk | arm 1 (fleet) | arm 2 (depth) | `gambler` only | `explorer` only |
+| --- | --- | --- | --- | --- |
+| live npc-days sampled | 4,674,354 | 5,843,441 | 2,921,974 | 2,921,467 |
+| **at exactly `disposition === 0`** | **96.52%** | **93.29%** | **90.12%** | **96.47%** |
+| mean \|disposition\| | 0.0847 | 0.1971 | 0.3309 | 0.0632 |
+| peak \|disposition\| reached | 10 | 10 | 10 | 8 |
+| **mean SURVIVAL of a nonzero standing** | **4.59 days** | 6.47 days | **8.33 days** | **4.09 days** |
+| median / p90 survival | 3 / 11 | 3 / 18 | 5 / 20 | 3 / 8 |
+| decay steps : interaction moves | **1.53 : 1** | 1.63 : 1 | 1.68 : 1 | 1.53 : 1 |
+
+**The cast sits at exactly zero on 96.52% of live captain-days, and decay outruns interaction
+1.53 to 1.** A standing survives a median of **3 days** — one decay interval — before it is
+gone. That is the mechanism behind the 71.52% inertness above, and it is the reason the two
+constants are one question rather than two: at `DISPOSITION_DECAY_INTERVAL_DAYS = 3` the pool
+is empty most of the time, so widening the 0.25 gate would mostly buy more *inert* named draws.
+The gambler's own column is the counter-case and the encouraging one — a player who interacts
+holds standing for a median of 5 days and drives inertness down to 41.46%.
+
+#### The levers considered and deliberately NOT PULLED
+
+In `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.9's exact shape — the number that tempted each is
+named beside it, because a lever left alone without its temptation recorded is not a decision.
+
+| lever | shipped value | the number that tempted it | why NOT pulled |
+| --- | --- | --- | --- |
+| the named-pool gate | `rng.next() < 0.25` (`travel.ts`) | disposition can reach only **25.07%** of interceptions | **T-125 ruled this a DESIGN QUESTION, not a tuning knob**, and this task's charter is to measure and hand the ruling back. Raising it without touching decay buys mostly *inert* draws (71.52% of named draws are already inert) |
+| `DISPOSITION_DECAY_INTERVAL_DAYS` | `3` (`content/disposition.ts`) | **96.52%** of live npc-days sit at exactly 0; median standing survives **3 days** | Same ruling, and it is the more load-bearing of the two: it decides whether the pool the gate draws from has anything in it. Changing it moves every disposition-reading system at once (grudge weighting, the talk DC, the bond hook) and owes its own capstone |
+| `INTERCEPT_GRUDGE_WEIGHT` / `INTERCEPT_MIN_WEIGHT` | `1.5` / `0.1` | lift is only **2.358×** over uniform | **The weighting is not the broken part.** It delivers 2.4× wherever the pool is non-inert, and the gambler arm reaches 2.806×. Raising it would paper over the reach problem with a bigger multiplier on a mostly-empty pool |
+| `DISPOSITION_DELTAS` (incl. `DARE_WIN_DISPOSITION` −2 / `DARE_LOSS_DISPOSITION` +2) | unchanged | peak \|disposition\| reaches **10**, so the ceiling is not the binding constraint | Deltas are already large enough to outrun decay when a player actually interacts — the gambler proves it. Enlarging them is the wrong fix for a reach problem, and `docs/LIARS-DICE_REDESIGN.md` §1.3 forbids retuning a spec constant to reproduce a figure |
+
+**`git diff --stat` over `packages/engine/src` and `packages/content/src` is zero files and zero
+lines. Neither constant moved.**
+
+### 11.4 THE PARITY LEDGER RE-ASK — the **VisitHangout** row, **still UNRULED**
+
+`docs/NPC_REDESIGN.md`'s VisitHangout row has read *"DEFERRED (owner 2026-07-30) — re-ruled
+after the 0.5.2 Hangout system ships"* since the day it was vacated, and the owner ruling at
+T-130 deferred it to **exactly this moment**. The system has now shipped and been capstoned, so
+the question is restated here against the system as it now is.
+
+#### What has changed under the vacated ruling
+
+The row was ruled against a Hangout that existed at **one system of 28** and whose only NPC-side
+expression was `executeSocialize`, a stub. At HEAD:
+
+- **Fourteen ports run tables** (T-120…T-124), each with its own authored wager band, clientele,
+  house rules and prose.
+- **The Dare is Liar's Dice** — a real multi-turn bid/raise/challenge scene with peeking and a
+  bid lattice (T-134…T-137), not one opposed d20 roll.
+- **A 42-seat fixed roster** across the fourteen ports, with authored bankrolls, three
+  archetypes and a zero-sum lifetime cap, plus a five-rung unlock ladder and fifteen completion
+  deeds (T-144…T-148).
+- **The player can SEE it**: T-132 surfaced `befriend` / `meet` / `insult` and the authored prose
+  (closing F-101-4 and F-101-6), and T-133 gave Arcturus-6 its own loan band (owner ruling D7).
+- **T-149 gated the rumour mill on `hasHangout`**, so the cast no longer narrates a bar at a port
+  the UI tells the player has none.
+
+#### The three defects deferred WITH the row, each re-measured at HEAD
+
+*Arm: seeds 1..40 × 120 days × 8 policies = 1,557,696 live captain-days.*
+
+**(1) The pure faucet — STILL OPEN, and smaller than it was.** `executeSocialize` mints
+`NPC_SOCIALIZE_WIN_CREDITS` (150) on a pass and burns `NPC_SOCIALIZE_LOSS_CREDITS` (50) on a
+fail, **with no counterparty on either side**, where the player's Dare is strictly zero-sum.
+
+| | at ruling time | **at HEAD** |
+| --- | --- | --- |
+| the mint | +4.86cr / captain-day | **+3.44cr / captain-day** |
+| Socialize captain-days | — | 121,715 (7.81% of all captain-days) |
+| pass rate | — | 47.03% (57,239 / 121,715) |
+| net minted | — | 5,362,050cr |
+| **share of terminal NPC wealth** | `< 0.3%` (D3 bakeoff) | **0.22%** — and **0.23%** of the wealth *gained* |
+
+**A METHOD WARNING WORTH KEEPING**, because the first measurement of this was wrong: reading a
+captain's whole-day credit delta on a Socialize day gives **−899cr**, because trade, patrol,
+interdiction and port income all move the same purse in the same dusk. The faucet must be
+isolated off the `npc-socialize` `StatCheck`, which is what the table above does. **The D3
+bakeoff's "under 0.3% of NPC wealth" verdict re-measures at 0.22% and stands.** The mint is
+deliberately still open.
+
+**(2) The off-Hangout Socialize share — STILL 37.97%, and T-149 did NOT move it.**
+
+| | §1.5 | §10.6 BEFORE | §10.6 AFTER (T-125) | **HEAD (post-T-149)** |
+| --- | --- | --- | --- | --- |
+| share of Socialize captain-days at a port with no Hangout | 95.91% | 96.07% | 37.96% | **37.97%** |
+
+**This is the finding, and it is worth being explicit about it: T-149 fixed the FICTION, not the
+VERB.** Its change is a `hasBar` read that selects *prose* — "the Hangout tables" vs "the docks"
+— and it sits deliberately **above and outside** the roll so the T-1201 verb⟺StatCheck invariant
+holds. The mint, the DC and the rng draw are identical on both sides. So the player-facing
+contradiction is gone (which is what T-149 was chartered to do) while **46,220 captain-days per
+arm of the cast still "visit the Hangout" where there is no Hangout.** §5.2's obligation is
+therefore *narrower* than it was, not discharged: what remains is whether the VERB should be
+gated, which changes the cast's action mix and owes its own capstone.
+
+**(3) The 150cr socialize ante — STILL OPEN, and D3 deferred it to exactly this re-ask.**
+`packages/engine/src/npc.ts` gates the verb on `npc.credits < NPC_BROKE_CREDITS + 50`, an inline
+`+ 50` over the 100cr floor — so there is a **50-credit dead band** in which a captain is solvent
+enough to act but not to socialise.
+
+| at dusk, live captains | share |
+| --- | --- |
+| in the 100–150cr dead band the `+ 50` creates | 262,047 (**16.82%**) |
+| below the 100cr `NPC_BROKE_CREDITS` floor | 10,415 (0.67%) |
+| **locked out of the verb entirely** | **17.49%** |
+
+**Nearly a fifth of live captain-days cannot reach the one verb that would help them**, and
+five-sixths of that is the undocumented inline `+ 50` rather than the named floor. That is the
+regressive shape the original ruling flagged, now quantified.
+
+#### Also carried into this re-ask, as the ledger requires
+
+- **`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.10 item 7 — do the 42 roster seats get cast
+  parity?** They are NPCs by content but not by `NpcState`: they hold purses
+  (`state.liarsDicePurses`) and are seated by the player, but they do not fly, trade, or die.
+  **Reported, not ruled.** Note the parity ruling cuts *both* ways here — giving them parity is a
+  save-shape change (42 new `NpcState` rows) and owes a migration; leaving them is a recorded
+  exemption of exactly the kind THE PARITY LEDGER exists to make visible.
+- **`docs/HANGOUT_REDESIGN.md` §2.2 — Arcturus-6's 1,000cr loan ceiling** (*"T-150 owns the
+  read"*). **Read and reported: it is doing what D7 asked and nothing pathological.** It is a
+  first-pass content call against R-owned defaults, and §8's R-ownership of
+  `LOAN_MIN_PRINCIPAL` / `LOAN_MAX_PRINCIPAL` is unchanged. **Not re-priced here** — a band moves
+  by playtest, per D7's own words, not by fitting a sweep sample.
+- **§8 — the per-port wager ceiling** (*"a first-pass content call for T-150 to read"*).
+  **Read and reported.** The realised mean stake-to-band ratio and the fact that the band binds
+  88.93% of stakes (§10.5) are unchanged in kind; the fourteen authored bands are not re-priced
+  here for the same reason.
+
+#### The question, restated — and left UNRULED
+
+**Should the 30 NPCs play `VisitHangout` properly, through the player's own
+`resolveVisitHangout` / Liar's Dice resolver, instead of the `executeSocialize` stub?** The
+parity ruling forbids a private parallel model, so "properly" means the real resolver with an
+actor parameter — which would make the verb zero-sum by construction and close defect (1) as a
+side effect rather than as a patch. Against that: it is a substantial N-series build, it would
+put the cast at the same 42 seats the player is climbing (a shared, capped, zero-sum resource —
+see §2.6's lifetime cap), and it would move the cast's action mix enough to owe its own capstone.
+
+**LEFT UNRULED, IN BOLD BECAUSE IT MATTERS: this is the owner's call, not T-150's.** T-150's
+charter is to re-ask with current numbers and hand the ruling back. Ruling it is what un-gates
+**N8** and the N-series resumption, and a build task does not get to do that. The companion
+re-ask of the **Explore** row is `docs/EXPLORE_REDESIGN.md` §10.4, deferred on the same terms.
+
+**RULED (owner, 2026-08-02): still Deferred.** All three re-measured defects above are smaller
+than at the 2026-07-30 ruling but none are discharged — the faucet's wealth share, the off-Hangout
+resolution share and the ante lockout are all still nonzero, and the `executeSocialize` stub is
+still not the real resolver. The gap stays open. **N8 (the actor-parameterised resolver, the
+42-seat roster made zero-sum by construction, its own capstone) is unblocked as future N-series
+work** — this ruling does not schedule it, only clears the way for it. Recorded at its source in
+`docs/NPC_REDESIGN.md`'s PARITY LEDGER `| VisitHangout |` row. This closes T-157 via THE RULING's
+option (B): the coverage gate's Accept clause is corrected to match this status, not the gate's
+logic — see `TASKS.md`.
+
+### 11.5 What was NOT tuned
+
+**No constant, DC, price, band weight, threshold, golden or fingerprint was edited to reach any
+answer above.** `git diff --stat` over `packages/engine/src`, `packages/content/src` and
+`packages/ui/src` shows **zero files and zero lines**.
+
+Specifically unchanged at their shipped values: the **0.25 named-pool gate**
+(`actions/travel.ts`), `DISPOSITION_DECAY_INTERVAL_DAYS` **3**, `INTERCEPT_GRUDGE_WEIGHT`
+**1.5** / `INTERCEPT_FRIEND_WEIGHT` **0.15** / `INTERCEPT_MIN_WEIGHT` **0.1**,
+`DARE_MIN_WAGER` **25** / `DARE_MAX_WAGER` **1,000**, `DARE_WIN_DISPOSITION` **−2** /
+`DARE_LOSS_DISPOSITION` **+2**, `NPC_SOCIALIZE_WIN_CREDITS` **150** /
+`NPC_SOCIALIZE_LOSS_CREDITS` **50**, `NPC_BROKE_CREDITS` **100** and its inline `+ 50`,
+`GAMBLER_MAX_DARES_PER_DAY` **2**, and **every one of the fourteen authored port rows**.
+
+**The only shipped-source diff is `packages/sim/src/index.ts`** — one term added to
+`explorerPolicy`'s Explore-loop condition, and `planDare`'s roaming stake carry-forward with its
+`gamblerPolicy` call site — plus the baseline-of-record re-pin (one path string) and new tests.
+
+**`CURRENT_SAVE_VERSION` is unmoved and NO MIGRATION IS OWED.** Both fixes are sim-policy-only
+and touch no save shape, so there is no round-trip test to write; this is stated explicitly
+because the standing constraint requires a save-shape change to owe one, and the absence of one
+here is a claim, not an omission.
+
+**Two `campaign-degraded.test.ts` fingerprints were re-pinned** (`explorer`, `gambler`) with a
+dated entry naming the cause of each, the five rows that did NOT move, and the containment
+argument — never by widening an assertion. **The three known-red `it.fails` tripwires were not
+touched** and are still correctly red.

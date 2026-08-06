@@ -96,6 +96,19 @@ export interface LaunchOpts {
    * T-1701a/T-1702a tests honest evidence for "runs identically without Steam".
    */
   steamFakeCloud?: string;
+  /**
+   * T-141 · Directory the shell writes opt-in playtest logs into
+   * (`docs/PLAYTEST-TELEMETRY_SPEC.md` §4, `SQ_LOG_DIR`). Test-only, and the
+   * sibling of {@link LaunchOpts.saveDir} — in a real install it is `logs/`
+   * beside `saves/` under `userData`.
+   *
+   * ABSENT BY DEFAULT, like the Steam options above and for the same reason: a
+   * launch that does not ask for it must behave exactly as every pre-existing
+   * launch in this suite does. Even when it IS set, nothing is written unless
+   * the player turns the toggle on in Settings — that is the property the test
+   * that uses this exists to prove.
+   */
+  logDir?: string;
 }
 
 /** One line of the shell's recording client log. Achievements and presence share
@@ -161,6 +174,8 @@ export async function launch(opts: LaunchOpts): Promise<{ app: ElectronApplicati
       ...(opts.steamFakeLog ? { SQ_STEAM_FAKE: opts.steamFakeLog } : {}),
       // T-1702b · Absent by default too, for the same reason.
       ...(opts.steamFakeCloud ? { SQ_STEAM_FAKE_CLOUD: opts.steamFakeCloud } : {}),
+      // T-141 · Absent by default too, on the same terms.
+      ...(opts.logDir ? { SQ_LOG_DIR: opts.logDir } : {}),
     },
   });
   const page = await app.firstWindow();
@@ -282,14 +297,89 @@ export async function expectQuitsCleanly(app: ElectronApplication): Promise<void
 // ---- player-level driving (no store, no engine, no save file) ---------------
 
 /**
+ * T-187 · RETIRE THE FIRST-TURN WALKTHROUGH, THROUGH ITS OWN CONTROL.
+ *
+ * WHY THIS EXISTS. T-187 arms a scripted seven-step walkthrough for a genuinely
+ * first-time player — no save in storage — and while its rails are up every
+ * non-scripted pane carries React's `inert`, so a click into one lands on a dead
+ * subtree (Playwright reports it as `<div class="body"> intercepts pointer
+ * events`). EVERY launch in this suite is that boot: a fresh `SQ_SAVE_DIR` and a
+ * fresh Chromium profile is the definition of a first-time player. T-187 made
+ * the same declaration in the web suite (`packages/ui/e2e/support/career.ts`'s
+ * `skipFirstTurnWalkthrough`) for all twenty of its specs but left this suite
+ * out, which is what turned the desktop battery red: the shell tests are about
+ * saves, achievements, cloud and logging, not about the tutorial.
+ *
+ * WHY IT IS A CLICK RATHER THAN THE WEB SUITE'S STORAGE STAMP. The web helper
+ * writes the walkthrough record with `page.addInitScript` before its own
+ * `page.goto('/')`. There is no such seam here — Electron's window has already
+ * navigated by the time `app.firstWindow()` hands it over, and the desktop
+ * backend is a FILE in the save dir, not `localStorage`, so a stamp would mean
+ * this suite writing into a save dir it otherwise only ever reads (the header's
+ * rule: files are read only to assert; every mutation is a click). Pressing the
+ * card's own "Skip tutorial" is the gesture a player who does not want the
+ * tutorial makes, so the suite keeps driving the product rather than its state.
+ *
+ * Tolerant by design and NOT racy: the card renders in the same React pass as
+ * the bezel, so once `day` is on screen the walkthrough is either up or was
+ * never armed (a launch that loads an existing save — every relaunch in this
+ * suite — is by definition not a first-time player's).
+ */
+export async function skipFirstTurnWalkthrough(page: Page): Promise<void> {
+  await expect(page.getByTestId('day')).toBeVisible();
+  const card = page.getByTestId('walkthrough');
+  if ((await card.count()) === 0) return;
+  await page.getByTestId('walkthrough-skip').click();
+  await expect(card).toHaveCount(0);
+}
+
+/**
+ * T-200 · Sign off the opening marker if it is currently up, tolerant of it
+ * being absent — the same shape as {@link skipFirstTurnWalkthrough} and for the
+ * identical reason: this suite has no `page.addInitScript` seam (Electron's
+ * window has already navigated by the time `app.firstWindow()` hands it over,
+ * and the record lives beside the save file, not in `localStorage`), so the
+ * only honest dismissal is the click a player makes.
+ *
+ * CALLED TWICE from {@link startCareer}, deliberately — `store.ts` arms the
+ * marker from TWO different triggers that this suite's boot hits in sequence:
+ * `init()` arms it on a virgin boot (every launch in this suite, per {@link
+ * skipFirstTurnWalkthrough}'s doc), and `newGame` arms it AGAIN, unconditionally,
+ * once the roll actually lands a career. A single call before "New game" would
+ * clear the first arm and still leave the second one standing over the cockpit
+ * `startCareer` asserts against next.
+ */
+export async function skipOpeningMarker(page: Page): Promise<void> {
+  const marker = page.getByTestId('opening-marker');
+  if ((await marker.count()) === 0) return;
+  await page.getByTestId('opening-marker-dismiss').click();
+  await expect(marker).toHaveCount(0);
+}
+
+/**
  * Tour One, start of career — the same four assertions
  * `packages/ui/e2e/support/career.ts`'s `startCareer` makes, minus its
  * `page.goto('/')` (the Electron window is already showing the cockpit).
+ *
+ * The opening marker is retired BEFORE the walkthrough, and that order is
+ * load-bearing, not stylistic: `App.tsx`'s `WalkthroughCard` renders nothing at
+ * all while the marker is pending (`openingMarkerPending` short-circuits it),
+ * so on a virgin boot — every launch in this suite — `skipFirstTurnWalkthrough`
+ * would see a zero-count card and return without clicking anything, leaving the
+ * walkthrough to appear (and block "New game") the instant the marker is
+ * cleared. Dismissing the marker first lets the walkthrough surface, if armed,
+ * so its own skip can find and click it. `skipOpeningMarker` then runs a SECOND
+ * time after the roll because `newGame` re-arms the marker unconditionally
+ * (unlike the walkthrough's one-shot record) — see {@link skipOpeningMarker}.
  */
 export async function startCareer(page: Page, seed: number): Promise<void> {
+  await skipOpeningMarker(page);
+  await skipFirstTurnWalkthrough(page);
+
   await page.getByRole('button', { name: 'New game' }).click();
   await page.getByLabel('seed').fill(String(seed));
   await page.getByRole('button', { name: 'Roll' }).click();
+  await skipOpeningMarker(page);
 
   await expect(page.getByTestId('day')).toHaveText('1');
   await expect(page.getByTestId('debt-chip')).toContainText('25,000');

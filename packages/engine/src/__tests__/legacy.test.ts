@@ -8,7 +8,7 @@ import { createInitialState, deserializeState, serializeState, starterShip } fro
 import { DayPhase, EncounterState, GameState } from '../types.js';
 
 /** A dusk-fatal encounter: a high-GUNS interceptor whose day-end free attack
- *  finishes a one-condition hull. Origin 1 (Sun-3), destination 2. */
+ *  finishes a one-condition hull. Origin 1 (Sol-3), destination 2. */
 function fatalEncounter(overrides: Partial<EncounterState> = {}): EncounterState {
   return {
     id: 'enc-fatal',
@@ -283,7 +283,7 @@ describe('T-108 · Post-death playability (anti-poverty-trap)', () => {
   it('a greedy-style contract sign works on the successor next dawn', () => {
     const afterDeath = endDay(primedForDuskDeath(99)).state;
     const result = advanceDay(afterDeath, [
-      { type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 0 },
+      { type: 'Trade', action: 'sign-contract', contractIndex: 0 },
     ]);
     // No throw, and the day advanced.
     expect(result.state.day).toBe(afterDeath.day + 1);

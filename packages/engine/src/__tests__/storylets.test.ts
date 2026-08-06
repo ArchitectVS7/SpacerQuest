@@ -612,7 +612,7 @@ describe('storylet engine', () => {
     );
   });
 
-  it('offers the Sun-3 port storylet and applies credits, flags, and checks', () => {
+  it('offers the Sol-3 port storylet and applies credits, flags, and checks', () => {
     const state = readyState();
     const dawn = startDay(createInitialState(110));
 
@@ -741,8 +741,8 @@ describe('storylet engine', () => {
     // A Medicinals (type 4) run with no live era event: the T-1302 plague-relief
     // storylet stays dormant (no state.eraEvent), so the three original eligibility
     // matches remain exactly as before. (T-1503's Astro League opener anchors at
-    // Deneb-4/system 5 — a League port off the start — deliberately NOT Sun-3, so
-    // it never perturbs the day-1 Sun-3 board or the early-game encounter timing.)
+    // Deneb-4/system 5 — a League port off the start — deliberately NOT Sol-3, so
+    // it never perturbs the day-1 Sol-3 board or the early-game encounter timing.)
     state.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
 
     expect(eligibleStorylets(state).map((offer) => offer.storyletId)).toEqual([
@@ -1035,7 +1035,7 @@ describe('T-113a Tour One guild pressure and Wise One hook', () => {
   it('gates the Wise One hook to Polaris-1', () => {
     const away = readyState();
     away.day = 30;
-    away.player.currentSystemId = 1; // Sun-3, not Polaris-1
+    away.player.currentSystemId = 1; // Sol-3, not Polaris-1
     expect(eligibleStorylets(away).map((o) => o.storyletId)).not.toContain(
       'wise-one.polaris.signal-hook',
     );
@@ -1953,7 +1953,7 @@ describe('T-1504b era-event storylet tie-ins', () => {
 describe('quoteStoryletChoice (T-1401 export pack)', () => {
   const STORYLET_ID = 'port.sun3.guild-auditor';
 
-  /** A state at Sun-3 in Tour One with the guild-auditor storylet made available
+  /** A state at Sol-3 in Tour One with the guild-auditor storylet made available
    *  (its trigger is systemIds:[1] + eras:['TOUR_ONE'], live at the start). */
   function auditorState(credits = 1000): GameState {
     const base = readyState();

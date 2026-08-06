@@ -50,27 +50,118 @@
  *   npm run balance:sweep -w @spacerquest/sim -- --label veteran --seeds 100 --days 120 --shard 1/4
  *   npm run balance:sweep -w @spacerquest/sim -- --label veteran --merge
  *
+ *   # T-140 · A TRACED run (docs/BALANCE-TELEMETRY_SPEC.md) — one JSONL line per NPC
+ *   # captain decision, beside the rows file:
+ *   npm run balance:sweep -w @spacerquest/sim -- --label npc-trace --seeds 3 --days 30 \
+ *     --shard 1/1 --trace-npc-decisions
+ *
+ *   A traced run is FOR DIAGNOSIS, NEVER FOR A CAPSTONE. The career it plays is
+ *   identical (tracing is observation only, and the untraced/traced row files are
+ *   byte-identical), but it writes tens of thousands of extra lines to disk, so keep
+ *   it small and keep it out of the 8,000-run baseline path.
+ *
  * Raw rows land in `.scratch/balance/` (gitignored — 3,500 runs of raw encounter
  * and route records are not a repo artifact). The merge step writes the COMMITTED
  * aggregate to `docs/balance/baseline-<label>.json`, which is what T-1603b/T-1603c
  * diff against.
  *
+ * T-183 · THE MERGE STAMPS WHAT IT WROTE. `--merge` records the tree's
+ * `rulesFingerprint`, `instrumentFingerprint` and `gitCommit` onto the aggregate at
+ * write time (`./provenance.ts`), so a committed baseline can say which ruleset it
+ * measured instead of leaving `balance:report` to render "RULESET UNKNOWN"
+ * (F-142-1). Aggregates committed BEFORE T-183 carry no stamp and correctly stay
+ * unknown; they are not rewritten, because a stamp nobody can re-derive is a forgery.
+ *
  * Progress goes to stderr; stdout stays clean so `--merge` output can be piped.
+ *
+ * ------------------------------------------------------------------------
+ * T-152 · THE GATE — this run can now FAIL, not only report.
+ *
+ * `docs/TESTING-STRATEGY.md` Part D, Tier 1. Every sweep and every `--merge`
+ * evaluates the invariant set and the expected-event-rate table and sets a
+ * non-zero exit code on any violation. There is no `--no-gate` flag and no
+ * environment escape hatch, deliberately — see the header of `./gate.ts`.
+ *
+ * THE DEFINITIONS ARE NOT HERE. They live in the pure `./gate.js`, the same
+ * T-1602b split this file already keeps with `./aggregate.js`: CI and a local
+ * re-run must not be able to reach different verdicts from the same rows. This
+ * file owns the CALLS, the file writes and the exit code. The manifest:
+ *
+ *   INVARIANT (per finished `CampaignStatsReport`, inside the seed loop)
+ *     assertNoNegativeResources ............ UGT inv_no_negative_resources
+ *     assertFuelWithinTank ................. UGT inv_fuel_within_tank
+ *     assertDayMonotonic ................... UGT inv_day_monotonic
+ *     assertOneSamplePerDay ................ UGT inv_phaseday_binary (analogue)
+ *     assertProgressRatchetsNeverReverse ... UGT inv_era_one_way (generalised)
+ *     assertNoIncomeStall .................. T-201/T-1605b poverty trap
+ *     assertCombatRecordsWellFormed ........ sweep-native
+ *     assertRouteRecordsWellFormed ......... sweep-native
+ *     assertBoardDepthWithinPoolBounds ..... sweep-native (N10)
+ *
+ *   RATE (per shard, and again over the merged rows)
+ *     EXPECTED_EVENT_RATES — 8 entries, each with a named band and a `minSample`
+ *     below which it reports SKIPPED rather than failing on noise.
+ *
+ *   ARM-LEVEL, AND DELIBERATELY ABSENT FROM `runGate` — `assertVariantsPerturbEveryPolicy`
+ *     (T-167) takes a CONTROL aggregate and N VARIANT arms, not one report. A sweep
+ *     has exactly one arm, so calling it here would be a check that can never fire.
+ *     It is registered in `./gate.ts`'s ARM_LEVEL_ASSERTIONS, which is what the
+ *     totality guard in `../__tests__/sweep-gate.test.ts` partitions on.
+ *
+ *   NOT OBSERVABLE HERE — SWEEP_INVARIANT_DISPOSITIONS names the three UGT
+ *   predicates the sweep cannot see (`inv_blocked_from_legal_non_increasing`,
+ *   `inv_protocol_errors_non_increasing`, `inv_dice_bounds`) and the task that
+ *   owns each. Declared, never faked into a green check.
+ *
+ * Each run writes `gate-<label>-shard<i>of<N>.json` (or `gate-<label>-merged.json`)
+ * beside the rows, in the same gitignored directory and for the same reason.
+ * ------------------------------------------------------------------------
  */
 
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { runCampaign, type SimPolicyName } from '../index.js';
+import type { NpcDecisionTrace } from '@spacerquest/engine';
+
+import { runCampaign, type CampaignStatsReport, type SimPolicyName } from '../index.js';
 import { aggregate, summarizeReport, type SeedRow } from './aggregate.js';
+import { checkArchetypeCoverage } from './coverage.js';
+import {
+  assertBoardDepthWithinPoolBounds,
+  assertCombatRecordsWellFormed,
+  assertDayMonotonic,
+  assertFuelWithinTank,
+  assertNoIncomeStall,
+  assertNoNegativeResources,
+  assertOneSamplePerDay,
+  assertProgressRatchetsNeverReverse,
+  assertRouteRecordsWellFormed,
+  buildGateReport,
+  checkExpectedEventRates,
+  formatGateReport,
+  type SweepViolation,
+} from './gate.js';
+import { computeAggregateStamp } from './provenance.js';
 
 /** The default fleet: the six competent policies (the balance instruments) plus
  *  `greedy` as a naive control, so the memo can say what "playing badly" costs.
  *  `idle` and `random` are deliberately out — they are protocol/robustness
  *  instruments, not balance ones, and would drag every fleet distribution toward
- *  noise. Both remain available via `--policies`. */
-const DEFAULT_POLICIES: readonly SimPolicyName[] = [
+ *  noise. Both remain available via `--policies`.
+ *
+ *  EXPORTED FOR T-157 (constraint 7 · readers):
+ *  `../__tests__/archetype-coverage.test.ts` asserts every default-fleet member has
+ *  a coverage-matrix row, against THIS list rather than a second copy of it. */
+export const DEFAULT_POLICIES: readonly SimPolicyName[] = [
   'trader',
   'fighter',
   'explorer',
@@ -119,6 +210,12 @@ export interface SweepOptions {
    * to re-cut the fixtures passes the smoke tiers' start days.
    */
   milestoneDays: number[];
+  /**
+   * T-140 · Write one JSONL line per NPC captain decision beside the rows file
+   * (docs/BALANCE-TELEMETRY_SPEC.md §4(4)). Off by default so the routine capstone
+   * neither slows down nor changes shape — spec §4(3). Diagnosis only.
+   */
+  traceNpcDecisions: boolean;
 }
 
 function usage(): string {
@@ -136,8 +233,14 @@ function usage(): string {
     '  --milestone-days a,b  N7: record a milestone sample at the dawn of each day, so the',
     '                        capstone harvests the real progression spread the smoke fixtures',
     '                        are seeded from. Off by default (rows stay pre-N7 shaped).',
+    '  --trace-npc-decisions T-140: also write traces-<label>-shard<i>of<N>.jsonl to the raw',
+    '                        row directory — one line per NPC captain decision, with the',
+    '                        distribution the engine otherwise discards. Off by default;',
+    '                        diagnosis only, never a capstone. Cannot be combined with --merge.',
     '  --merge               Do not sweep: read every shard row file for --label,',
     '                        aggregate, and write docs/balance/baseline-<label>.json.',
+    '                        T-183: the merged aggregate is STAMPED at write time with',
+    '                        rulesFingerprint / instrumentFingerprint / gitCommit.',
     '  --help',
     '',
     'See the header of packages/sim/src/balance/sweep.ts for the runtime budget.',
@@ -209,6 +312,7 @@ export function parseSweepArgs(argv: readonly string[]): SweepOptions | { help: 
     aggregateDir: DEFAULT_AGGREGATE_DIR,
     merge: false,
     milestoneDays: [],
+    traceNpcDecisions: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -216,6 +320,8 @@ export function parseSweepArgs(argv: readonly string[]): SweepOptions | { help: 
     if (arg === '--help') return { help: true };
     if (arg === '--merge') {
       options.merge = true;
+    } else if (arg === '--trace-npc-decisions') {
+      options.traceNpcDecisions = true;
     } else if (arg === '--label') {
       const value = argv[index + 1];
       if (value === undefined || value.trim() === '') throw new Error('Missing value for --label');
@@ -258,6 +364,16 @@ export function parseSweepArgs(argv: readonly string[]): SweepOptions | { help: 
     }
   }
 
+  // T-140 · THROW, never fall through — the same rule `parsePolicies` above states
+  // and for the same reason. `--merge` re-reads finished row files and plays no
+  // career, so it can produce no traces; silently ignoring the flag would let a
+  // run report success while having traced nothing at all.
+  if (options.merge && options.traceNpcDecisions) {
+    throw new Error(
+      '--trace-npc-decisions cannot be combined with --merge (a merge plays no days)',
+    );
+  }
+
   return options;
 }
 
@@ -273,9 +389,145 @@ function rowsFileName(options: SweepOptions): string {
   return `rows-${options.label}-shard${options.shardIndex}of${options.shardCount}.json`;
 }
 
+/** T-140 · spec §4(4)'s location convention — a sibling of the rows file, under the
+ *  same gitignored `.scratch/balance/`, for the same reason: raw per-decision
+ *  records are not a repo artifact. */
+function tracesFileName(options: SweepOptions): string {
+  return `traces-${options.label}-shard${options.shardIndex}of${options.shardCount}.jsonl`;
+}
+
+/** How many JSONL lines are buffered before a `writeSync`. */
+const TRACE_FLUSH_LINES = 1000;
+
+/**
+ * T-140 · A STREAMING JSONL writer, and streaming is not a nicety here: one shard
+ * of the veteran arm is ~30 captains x ~1-2 decisions x 120 days x 250 seeds x 7
+ * policies of entries, which no in-memory array survives. Opened before the seed
+ * loop, flushed every {@link TRACE_FLUSH_LINES}, closed after it.
+ */
+function openTraceWriter(target: string): {
+  sink: (entry: NpcDecisionTrace) => void;
+  close: () => number;
+} {
+  const fd = openSync(target, 'w');
+  let buffer: string[] = [];
+  let written = 0;
+  const flush = (): void => {
+    if (buffer.length === 0) return;
+    writeSync(fd, `${buffer.join('\n')}\n`);
+    buffer = [];
+  };
+  return {
+    sink: (entry) => {
+      buffer.push(JSON.stringify(entry));
+      written += 1;
+      if (buffer.length >= TRACE_FLUSH_LINES) flush();
+    },
+    close: () => {
+      flush();
+      closeSync(fd);
+      return written;
+    },
+  };
+}
+
 function formatElapsed(ms: number): string {
   const seconds = Math.round(ms / 1000);
   return `${Math.floor(seconds / 60)}m${String(seconds % 60).padStart(2, '0')}s`;
+}
+
+// ---------------------------------------------------------------------------
+// T-152 · The gate
+// ---------------------------------------------------------------------------
+
+/**
+ * Run every flat invariant against ONE finished report.
+ *
+ * EXPLICIT CALLS, NOT A LOOP OVER AN ARRAY OF FUNCTION REFERENCES. A table-driven
+ * `for (const check of CHECKS)` would be tidier and would erase every invariant
+ * name from this file — and the acceptance criterion is that `sweep.ts` names
+ * them, so that `grep assert packages/sim/src/balance/sweep.ts` answers "which
+ * invariants does the sweep enforce?" without a second hop.
+ *
+ * EXPORTED FOR T-153 (constraint 7 · readers): the behavioural suite
+ * `../__tests__/sweep-gate.test.ts` drives THIS function rather than re-listing
+ * the nine calls itself, because a test that re-composes them proves the TEST's
+ * composition, not the sweep's. Its kitchen-sink case is what now holds the
+ * "explicit calls, not a loop" promise above honest — a tenth invariant added to
+ * `./gate.ts` and never wired in here fails that test instead of silently never
+ * running.
+ *
+ * ONE EXPORTED `assert*` IS NOT LISTED BELOW AND MUST NOT BE (T-167).
+ * `assertVariantsPerturbEveryPolicy` compares a CONTROL aggregate against N VARIANT
+ * arms; this function is handed one finished report, which is one arm, so there is
+ * nothing for it to compare. It is registered in `./gate.ts`'s `ARM_LEVEL_ASSERTIONS`
+ * and the kitchen-sink test partitions on that registry rather than demanding a
+ * report-shaped signature it would have to be faked into.
+ */
+export function runGate(report: CampaignStatsReport): SweepViolation[] {
+  return [
+    ...assertNoNegativeResources(report),
+    ...assertFuelWithinTank(report),
+    ...assertDayMonotonic(report),
+    ...assertOneSamplePerDay(report),
+    ...assertProgressRatchetsNeverReverse(report),
+    ...assertNoIncomeStall(report),
+    ...assertCombatRecordsWellFormed(report),
+    ...assertRouteRecordsWellFormed(report),
+    ...assertBoardDepthWithinPoolBounds(report),
+  ];
+}
+
+function gateFileName(options: SweepOptions, merged: boolean): string {
+  return merged
+    ? `gate-${options.label}-merged.json`
+    : `gate-${options.label}-shard${options.shardIndex}of${options.shardCount}.json`;
+}
+
+/**
+ * Evaluate the rate table, print the verdict, write the JSON report, and FAIL the
+ * process on any violation.
+ *
+ * `process.exitCode` rather than `process.exit()`: the rows file and the
+ * aggregate are already on disk by the time this runs, and an abrupt exit would
+ * risk truncating a buffered write. A failing gate must still leave behind the
+ * artefact that explains why it failed.
+ *
+ * EXPORTED FOR T-153 (constraint 7 · readers): `../__tests__/sweep-gate.test.ts`
+ * closes the "seeded invariant violation ⇒ non-zero exit" leg through this exact
+ * function. It cannot be closed through a full `main()` sweep, because the flat
+ * invariants are functions of a report the real engine produced — making a real
+ * sweep emit a negative-credits row would require breaking the engine. So the
+ * DETECTION is proven on seeded reports and the EXIT-CODE PLUMBING is proven here,
+ * on the one function every sweep path routes its verdict through.
+ *
+ * T-157 · IT ALSO EVALUATES THE COVERAGE MATRIX, and it does so from the ROWS, not
+ * from `options.policies`: the printed verdict must describe the sample that was
+ * actually measured, and a `--merge` leg's rows can carry a fleet no single shard's
+ * argv named. Because every shard and every merge routes through here, both legs of
+ * `.github/workflows/sweep-gate.yml` run the check with no workflow change.
+ */
+export function reportGate(
+  options: SweepOptions,
+  scope: string,
+  rows: readonly SeedRow[],
+  violations: readonly SweepViolation[],
+): void {
+  const policies = rows.map((row) => row.policy);
+  const report = buildGateReport(
+    options.label,
+    scope,
+    rows.length,
+    violations,
+    checkExpectedEventRates(rows),
+    checkArchetypeCoverage(policies),
+  );
+  process.stderr.write(`${formatGateReport(report)}\n`);
+  const target = join(options.rowsDir, gateFileName(options, options.merge));
+  mkdirSync(options.rowsDir, { recursive: true });
+  writeFileSync(target, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  process.stderr.write(`[gate] wrote ${target}\n`);
+  if (!report.passed) process.exitCode = 1;
 }
 
 function runSweep(options: SweepOptions): void {
@@ -294,19 +546,34 @@ function runSweep(options: SweepOptions): void {
       `${planned} runs (${options.days} days, ${options.policies.join(',')})\n`,
   );
 
+  // T-140 · The file is opened ONCE, before the seed loop, and only when asked.
+  mkdirSync(options.rowsDir, { recursive: true });
+  const traceTarget = join(options.rowsDir, tracesFileName(options));
+  const traceWriter = options.traceNpcDecisions ? openTraceWriter(traceTarget) : null;
+  if (traceWriter) {
+    process.stderr.write(`[balance] tracing NPC decisions to ${traceTarget}\n`);
+  }
+  // The extras object handed to an UNTRACED run is byte-for-byte the one this file
+  // built before T-140 — the traced branch is a separate object, so the ordinary
+  // path cannot acquire a field by accident.
+  const milestoneExtras =
+    options.milestoneDays.length === 0 ? {} : { milestoneDays: options.milestoneDays };
+  const extras = traceWriter
+    ? { ...milestoneExtras, npcDecisionTrace: traceWriter.sink }
+    : milestoneExtras;
+
+  // T-152 · Violations only, never reports. A shard of the veteran arm holds
+  // 250 x 7 reports each carrying 120 `CampaignDayStats` plus every encounter and
+  // route record; retaining them to gate at the end would multiply the sweep's
+  // peak memory for no gain, since a flat invariant is a function of one report.
+  const violations: SweepViolation[] = [];
+
   for (let seed = options.seedStart; seed <= lastSeed; seed += 1) {
     if (!inShard(seed, options)) continue;
     for (const policy of options.policies) {
-      rows.push(
-        summarizeReport(
-          runCampaign(
-            seed,
-            options.days,
-            policy,
-            options.milestoneDays.length === 0 ? {} : { milestoneDays: options.milestoneDays },
-          ),
-        ),
-      );
+      const report = runCampaign(seed, options.days, policy, extras);
+      violations.push(...runGate(report));
+      rows.push(summarizeReport(report));
       completed += 1;
       if (completed % 25 === 0 || completed === planned) {
         process.stderr.write(
@@ -317,12 +584,22 @@ function runSweep(options: SweepOptions): void {
     }
   }
 
-  mkdirSync(options.rowsDir, { recursive: true });
+  const tracedEntries = traceWriter?.close();
+
   const target = join(options.rowsDir, rowsFileName(options));
   writeFileSync(target, `${JSON.stringify(rows)}\n`, 'utf8');
   process.stderr.write(
     `[balance] wrote ${rows.length} rows to ${target} in ${formatElapsed(Date.now() - started)}\n`,
   );
+  if (tracedEntries !== undefined) {
+    process.stderr.write(
+      `[balance] wrote ${tracedEntries} NPC decision traces to ${traceTarget}\n`,
+    );
+  }
+
+  // T-152 · The gate runs AFTER the rows are on disk, so a failing sweep still
+  // leaves the sample that produced the failure available to re-read.
+  reportGate(options, `shard ${options.shardIndex}/${options.shardCount}`, rows, violations);
 }
 
 function mergeShards(options: SweepOptions): void {
@@ -350,11 +627,41 @@ function mergeShards(options: SweepOptions): void {
   // the same shards always produces a byte-identical aggregate.
   rows.sort((a, b) => a.seed - b.seed || a.policy.localeCompare(b.policy));
 
-  const summary = aggregate(options.label, rows);
+  // T-183 · F-142-1 · THE AGGREGATE STAMPS ITSELF, at write time, unconditionally —
+  // including a `--aggregate-out` into a scratch directory, because a run whose
+  // provenance depends on where it was written is not provenance.
+  //
+  // It is computed HERE and not in `./aggregate.ts` for the reason that file's header
+  // gives: the fold is pure and a fingerprint is a walk of the filesystem.
+  //
+  // DETERMINISM, restated honestly: re-merging the same shards on the same tree at the
+  // same commit still produces a byte-identical aggregate (the sentence above the row
+  // sort). Re-merging them at a DIFFERENT commit now changes three lines, and it
+  // should — the rows describe a ruleset, and until T-183 the artefact could not say
+  // which one (`docs/TELEMETRY-REPORT_SPEC.md` §3).
+  const stamp = computeAggregateStamp();
+  const summary = aggregate(options.label, rows, stamp);
   mkdirSync(options.aggregateDir, { recursive: true });
   const target = join(options.aggregateDir, `baseline-${options.label}.json`);
   writeFileSync(target, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
   process.stderr.write(`[balance] wrote aggregate for ${rows.length} rows to ${target}\n`);
+  process.stderr.write(
+    `[balance] stamped rules ${stamp.rulesFingerprint} / instrument ${stamp.instrumentFingerprint} / commit ${stamp.gitCommit}\n`,
+  );
+
+  // T-152 · The rate table runs AGAIN over the merged rows, and this is the
+  // sample that actually matters: `minSample` is a denominator floor, and a
+  // four-way split can leave every shard below it while the union is comfortably
+  // above.
+  //
+  // THE FLAT INVARIANTS DO NOT RE-RUN HERE, and the limitation is stated rather
+  // than papered over: `SeedRow` deliberately does not carry `daily[]` (see its
+  // definition in `./aggregate.ts` — it carries `boardDepths` and the raw record
+  // arrays, not the per-day series), so a merge has no calendar, no credits curve
+  // and no income series to assert against. It does not need one: the shard that
+  // produced any offending row already failed on it, and a shard's non-zero exit
+  // is not something a later merge can launder away.
+  reportGate(options, 'merged', rows, []);
 }
 
 export function main(argv: string[] = process.argv.slice(2)): void {

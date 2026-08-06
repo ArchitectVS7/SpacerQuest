@@ -9,6 +9,11 @@ import {
   quotePort,
   quoteShipyard,
   rollDawnHand,
+  liarsDiceOpponentsAt,
+  // T-197 · the rounds cap, read from the engine so the test cannot restate the
+  // content table it is checking a mirror of.
+  liarsDiceRoundsRemaining,
+  minOpeningQuantity,
   shipyardFailure,
   startDay,
   travelPreview,
@@ -21,6 +26,10 @@ import {
 } from '@spacerquest/engine';
 import {
   DEMO_FINAL_DAY,
+  // T-168 · the ladder's own numbers, read from CONTENT so a rung literal here
+  // cannot drift from the table it is checking.
+  LIARS_DICE_RAISED_CEILING_MULT,
+  LIARS_DICE_UNLOCK_GAMES,
   LOAN_MAX_PRINCIPAL,
   LOAN_MIN_PRINCIPAL,
   NEMESIS_SYSTEM_ID,
@@ -157,7 +166,7 @@ function fixtureEncounter(): EncounterState {
 /** T-135 · A DAY state carrying an OPEN Liar's Dice hand, produced by the REAL
  *  open arm (`VisitHangout{venue:'dare'}` through `applyPlayerAction`) rather than
  *  by assigning `state.dareHand` — a poked scene would prove nothing about what a
- *  driver actually meets. Sun-3 (id 1) runs tables and seats the whole starting
+ *  driver actually meets. Sol-3 (id 1) runs tables and seats the whole starting
  *  cast, so the first co-located captain is a valid dealer. */
 function openDareHand(): GameState {
   const state = createInitialState(9);
@@ -167,14 +176,13 @@ function openDareHand(): GameState {
   const dealer = state.npcs.find(
     (npc) => !npc.dead && npc.currentSystemId === state.player.currentSystemId,
   );
-  if (!dealer) throw new Error('fixture: no co-located dealer at Sun-3');
+  if (!dealer) throw new Error('fixture: no co-located dealer at Sol-3');
   dealer.credits = 5_000;
   return applyPlayerAction(state, {
     type: 'VisitHangout',
     venue: 'dare',
     opponentId: dealer.id,
     wager: 100,
-    spendDie: 0,
   }).state;
 }
 
@@ -219,17 +227,21 @@ describe('protocol echo — full day', () => {
     expect(legal.lifecycle).toContain('end-day');
     expect(wireRoundTrip(r3.response)).toEqual(r3.response);
 
-    // apply-action #1: buy fuel, spending die 0
+    // apply-action #1: buy fuel — a FREE ACTION as of T-196a
+    // (docs/DAWN-HAND-REDESIGN.md §3), so the hand is UNTOUCHED. These two
+    // assertions were `not.toContain(0)` / `toHaveLength(4)`; they are inverted
+    // rather than dropped, because "the wire echoes the hand the engine actually
+    // kept" is the property this echo test exists to hold.
     const buyReq: ProtocolRequest = {
       type: 'apply-action',
-      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
     };
     expect(wireRoundTrip(buyReq)).toEqual(buyReq);
     const r4 = handleMessage(session2, buyReq);
     const session4 = r4.session;
     const result4 = expectActionResult(r4.response);
-    expect(result4.summary.diceRemaining).not.toContain(0);
-    expect(result4.summary.diceRemaining).toHaveLength(4);
+    expect(result4.summary.diceRemaining).toContain(0);
+    expect(result4.summary.diceRemaining).toHaveLength(5);
     expect(wireRoundTrip(r4.response)).toEqual(r4.response);
 
     // apply-action #2: travel, spending die 1 (may or may not hit an encounter)
@@ -386,7 +398,7 @@ describe('protocol deterministic replay', () => {
     const logLenBefore = encSession.state.eventLog.length;
     const blocked = handleMessage(encSession, {
       type: 'apply-action',
-      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
     });
     const blockedResult = expectActionResult(blocked.response);
     const blockEvent = blockedResult.events.find((e) => e.type === 'ActionBlocked');
@@ -405,10 +417,14 @@ describe('protocol deterministic replay', () => {
     expect(blockedResult.summary.diceRemaining).toEqual([0, 1, 2, 3, 4]);
 
     // A malformed action (missing required die) is a typed error, not a crash.
+    // T-196a: `buy-fuel` used to be the example — it threw without a `spendDie`.
+    // M17 freed it (docs/DAWN-HAND-REDESIGN.md §3) and deleted that throw, so the
+    // example is now `haggle`, the trade desk's ONE surviving die-costed verb and
+    // the only one that still throws on a missing die. Same contract, live example.
     const startDayed = handleMessage(opened.session, { type: 'start-day' });
     const malformed = handleMessage(startDayed.session, {
       type: 'apply-action',
-      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
+      action: { type: 'Trade', action: 'haggle', contractIndex: 0 },
     });
     expect(malformed.response.type).toBe('error');
     if (malformed.response.type === 'error') {
@@ -500,12 +516,7 @@ describe('protocol deterministic replay', () => {
       // precisely so this refusal — and this parity assertion — stays reachable.
       state.player.currentSystemId = 15;
     });
-    expectBlocked(
-      session,
-      { type: 'VisitHangout', venue: 'rumor', spendDie: 0 },
-      'VisitHangout',
-      'no-hangout',
-    );
+    expectBlocked(session, { type: 'VisitHangout', venue: 'rumor' }, 'VisitHangout', 'no-hangout');
   });
 
   it('T-1604a · ActionBlocked parity — career-ended commits, spends no die', () => {
@@ -563,11 +574,13 @@ describe('explore malformed inputs through the adapter', () => {
   });
 
   it('already-spent die: emits ExplorationFailed(die-already-spent) with no crash', () => {
-    // Spend die 0 first (a successful buy-fuel), then Explore on the same index.
+    // Spend die 0 first, then Explore on the same index. T-196a: `buy-fuel` is a
+    // FREE ACTION now and spends nothing, so the burner is `haggle` — the trade
+    // desk's one surviving Main Action, which spends the die it is handed.
     const session = dayStartedSession();
     const spent = handleMessage(session, {
       type: 'apply-action',
-      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+      action: { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
     });
     expectActionResult(spent.response);
     let out: ReturnType<typeof handleMessage> | undefined;
@@ -594,7 +607,7 @@ describe('session serialization resume', () => {
       { type: 'start-day' },
       {
         type: 'apply-action',
-        action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+        action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1 },
       },
     ]).session;
     expect(original).not.toBeNull();
@@ -677,8 +690,44 @@ describe('legal-actions enumerator', () => {
     // before any bid the hand offers open / peek / fold and nothing else.
     const dare = legal.actions.find((action) => action.type === 'Dare');
     expect(dare?.params.move).toEqual({ kind: 'enum', choices: ['bid', 'peek', 'fold'] });
-    expect(dare?.params.quantity).toEqual({ kind: 'int', min: 1, max: 8 });
+    // T-160 · THE OPENING FLOOR, advertised (§16.2 shape (b), fixing F-137-1).
+    // `quantity` and `face` are advertised INDEPENDENTLY, so the honest per-param
+    // floor is the one that holds for EVERY face — `1 + min over faces of
+    // own(face)` — DERIVED from the hand rather than pinned to a literal, because
+    // a literal here would be a second definition of the rule.
+    const hand = opened.dareHand!;
+    const leanestFaceCount = Math.min(
+      ...Array.from(
+        { length: 6 },
+        (_unused, i) => hand.playerDice.filter((d) => d === i + 1).length,
+      ),
+    );
+    expect(dare?.params.quantity).toEqual({
+      kind: 'int',
+      min: minOpeningQuantity(leanestFaceCount),
+      // T-160 · the ceiling is the hand's FROZEN `maxQuantity`, not a literal 8 —
+      // the literal under-advertised the domain at every tier >= 1.
+      max: hand.maxQuantity,
+    });
     expect(dare?.params.face).toEqual({ kind: 'int', min: 1, max: 6 });
+    // …and the advertised floor is REAL: a claim one under it is refused.
+    if (minOpeningQuantity(leanestFaceCount) > 1) {
+      const leanFace =
+        1 +
+        Array.from(
+          { length: 6 },
+          (_unused, i) => hand.playerDice.filter((d) => d === i + 1).length,
+        ).indexOf(leanestFaceCount);
+      const refused = applyPlayerAction(opened, {
+        type: 'Dare',
+        move: 'bid',
+        quantity: leanestFaceCount,
+        face: leanFace,
+      });
+      expect(refused.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+        failReason: 'illegal-dare-move',
+      });
+    }
   });
 
   it('after a bid stands, the advertised move domain follows the lattice', () => {
@@ -686,7 +735,9 @@ describe('legal-actions enumerator', () => {
     const bid = applyPlayerAction(opened, {
       type: 'Dare',
       move: 'bid',
-      quantity: 2,
+      // T-160 · derived from the hand, never a literal — the opening floor makes a
+      // hardcoded claim a function of the player's hidden dice.
+      quantity: minOpeningQuantity(opened.dareHand!.playerDice.filter((d) => d === 3).length),
       face: 3,
     }).state;
     // The dealer answered inside that same call; if it ended the hand there is
@@ -714,16 +765,131 @@ describe('legal-actions enumerator', () => {
     expect(dare?.params.face).toEqual({ kind: 'int', min: bid.dareHand.bid?.face, max: 6 });
   });
 
-  it('a dice-exhausted state offers only day-end', () => {
-    const state = createInitialState(1);
-    state.dayPhase = DayPhase.DAY;
+  // T-196b · THE NAMED NEW BEHAVIOUR: die-actions vanish with the hand, the nine
+  // M17 Free Actions (docs/DAWN-HAND-REDESIGN.md §3) do not. This case used to
+  // assert `legal.actions` was `[]` — "a dice-exhausted state offers only day-end"
+  // — which is exactly the claim this task inverts. The fixture buys the tank some
+  // room first, deliberately: a fresh ship starts FULL (300/300), and a full tank
+  // offers no `buy-fuel`, so asserting on it without draining would have proved
+  // nothing about the die and everything about the fixture.
+  it('T-196b · a dice-exhausted state still offers every FREE action, die-free', () => {
+    // A REAL dawn (so the manifest board is live), then the hand spent flat.
+    const state = startDay(createInitialState(1)).state;
     state.player.debt = 0;
+    state.player.credits = 50_000;
+    state.player.ship.fuel = 100; // room at the pump, and the purse to fill it
     state.player.dawnHand = { dice: [10, 10, 10, 10, 10], spent: [true, true, true, true, true] };
+    expect(state.market.manifestBoard.length).toBeGreaterThan(0);
 
     const legal = legalActions(state);
     expect(legal.diceRemaining).toEqual([]);
-    expect(legal.actions).toEqual([]);
+
+    const advertised = legal.actions.map((action) =>
+      action.action === undefined ? action.type : `${action.type}/${action.action}`,
+    );
+
+    // The freed verbs whose own (non-die) preconditions hold in this fixture: the
+    // tank has room and the purse can pay; the board is live and the hold is empty;
+    // the yard sells to a 50,000-credit captain at Sol-3.
+    expect(advertised).toContain('Trade/buy-fuel');
+    expect(advertised).toContain('Trade/sign-contract');
+    expect(advertised).toContain('Shipyard/buy-component-tier');
+    expect(advertised).toContain('Shipyard/buy-special-equipment');
+    expect(advertised).toContain('Crew/hire');
+    // THE FREED VERBS THIS FIXTURE DOES NOT REACH, named rather than glossed —
+    // each is withheld by a precondition that has nothing to do with the die, so a
+    // die-free enumerator cannot make them appear: `Trade/abandon-contract` (the
+    // hold is empty — asserted in its own test below), `Crew/dismiss` (nobody
+    // aboard), `Port/buy` (Sol-3 is not on the purchasable ladder) and
+    // `Shipyard/buy-cargo-pods` (a junker hull has no pod capacity).
+
+    // NOT ONE of the advertised specs carries a `spendDie` — that is the property,
+    // not an accident of which verbs happen to be reachable.
+    for (const spec of legal.actions) {
+      expect(Object.keys(spec.params)).not.toContain('spendDie');
+    }
+
+    // …and every MAIN action is gone with the hand.
+    //
+    // T-197 · `VisitHangout` LEFT THIS LIST, and its absence is the assertion:
+    // all seven venues are Free Actions now (docs/DAWN-HAND-REDESIGN.md §3), so
+    // the verb behaves like the nine above rather than like Travel — it stays
+    // advertised on an exhausted hand and carries no `spendDie` (both already
+    // covered by the two blanket assertions above this comment). `Dare` STAYS on
+    // this list: its `peek` move is still a Main Action and still needs a die.
+    // The fixture is not at a Hangout system anyway, which is why removing the
+    // entry does not change what this particular state advertises — the
+    // dedicated empty-hand Hangout test below is what actually exercises it.
+    for (const dieVerb of ['Travel', 'Explore', 'Combat', 'Reroll', 'Dare']) {
+      expect(advertised).not.toContain(dieVerb);
+    }
+    expect(advertised).not.toContain('Trade/haggle');
+
+    expect(legal.canWait).toBe(true);
     expect(legal.lifecycle).toEqual(['end-day']);
+  });
+
+  // T-196b · The companion to the case above, and the pair is the point: the nine
+  // are advertised WITHOUT a die whether or not a die is available, because
+  // die-freedom is a property of the VERB, not of the hand. Same fixture, full hand.
+  it('T-196b · a full hand advertises the freed verbs die-free, while haggle and Travel keep theirs', () => {
+    const state = startDay(createInitialState(1)).state;
+    state.player.debt = 0;
+    state.player.credits = 50_000;
+    state.player.ship.fuel = 100;
+    state.player.dawnHand = {
+      dice: [20, 18, 12, 9, 2],
+      spent: [false, false, false, false, false],
+    };
+
+    const legal = legalActions(state);
+    expect(legal.diceRemaining).toEqual([0, 1, 2, 3, 4]);
+
+    const specOf = (type: string, action?: string) =>
+      legal.actions.find((candidate) => candidate.type === type && candidate.action === action);
+
+    for (const [type, action] of [
+      ['Trade', 'buy-fuel'],
+      ['Trade', 'sign-contract'],
+      ['Shipyard', 'buy-component-tier'],
+      ['Shipyard', 'buy-special-equipment'],
+      ['Crew', 'hire'],
+    ] as const) {
+      const spec = specOf(type, action);
+      expect(spec, `${type}/${action} should be advertised`).toBeDefined();
+      expect(Object.keys(spec!.params)).not.toContain('spendDie');
+    }
+
+    // The Main Actions still name a die, and still name the whole hand as its domain.
+    expect(specOf('Trade', 'haggle')?.params.spendDie).toEqual({
+      kind: 'die-index',
+      choices: [0, 1, 2, 3, 4],
+    });
+    expect(specOf('Travel')?.params.spendDie).toEqual({
+      kind: 'die-index',
+      choices: [0, 1, 2, 3, 4],
+    });
+  });
+
+  // T-196b · `abandon-contract` is the one freed verb whose param set becomes
+  // EMPTY. Asserted concretely because `pilot.ts`'s odometer is fed by
+  // `Object.keys(spec.params)` and an empty params object is the edge case there.
+  it('T-196b · abandon-contract is advertised with an empty param set and no die', () => {
+    const state = startDay(createInitialState(1)).state;
+    state.player.debt = 0;
+    state.player.dawnHand = { dice: [10, 10, 10, 10, 10], spent: [true, true, true, true, true] };
+    state.player.activeContract = { destination: 4, cargoType: 1, payment: 900, pods: 1 };
+
+    const legal = legalActions(state);
+    const abandon = legal.actions.find(
+      (action) => action.type === 'Trade' && action.action === 'abandon-contract',
+    );
+    expect(abandon).toBeDefined();
+    expect(abandon?.params).toEqual({});
+    // …and sign-contract is withheld while the hold is full, unchanged by T-196b.
+    expect(
+      legal.actions.some((action) => action.type === 'Trade' && action.action === 'sign-contract'),
+    ).toBe(false);
   });
 
   // T-1505c · D8 · The headless STOP SIGNAL. On the far side of the Nemesis shear
@@ -800,7 +966,7 @@ describe('legal-actions enumerator', () => {
     const dayStarted = handleMessage(opened.session, { type: 'start-day' });
     // T-1102: a fresh ship now starts with a FULL hull-derived tank (300/300), so
     // buy-fuel is not a legal action at game start. Burn some fuel with a clean
-    // jump first (seed 3, Sun-3 → Aldebaran-1 is encounter-free and clears the
+    // jump first (seed 3, Sol-3 → Aldebaran-1 is encounter-free and clears the
     // pilot DC on die 0), leaving 240/300 so the depot has room to sell.
     const afterJump = handleMessage(dayStarted.session, {
       type: 'apply-action',
@@ -845,7 +1011,9 @@ describe('legal-actions enumerator', () => {
         ),
       );
     }
-    expect(buySpecial?.params.spendDie.kind).toBe('die-index');
+    // T-196b: `buySpecial?.params.spendDie.kind` was asserted here. The yard is a
+    // Free Action now (docs/DAWN-HAND-REDESIGN.md §3) and carries no such param;
+    // the die-domain shape is still asserted on `Travel` above, which keeps its.
   });
 
   it('T-1101 · never advertises a sealed destination the engine gate would refuse', () => {
@@ -1106,25 +1274,117 @@ describe('legal-actions enumerator', () => {
   });
 
   it('T-1303 · advertises VisitHangout at a Hangout system with an in-system NPC', () => {
-    const state = createInitialState(1); // player at Sun-3 (hasHangout); Iron Vex co-located
+    const state = createInitialState(1); // player at Sol-3 (hasHangout); Iron Vex co-located
     state.dayPhase = DayPhase.DAY;
     state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
 
     const legal = legalActions(state);
     const hangout = legal.actions.find((action) => action.type === 'VisitHangout');
     expect(hangout).toBeDefined();
-    // opponentId is enumerated to the ids of NPCs actually in-system.
+    // opponentId is enumerated to BOTH pools: the NPCs actually in-system, then —
+    // T-145 — the port's three fixed Liar's Dice roster opponents while their
+    // purses are above zero (docs/LIARS-DICE-PROGRESSION_SPEC.md §8 row 40).
+    // Without pool A here the UGT protocol could not reach the 42 at all and
+    // T-145's "all 42 reachable through the real UI" criterion would fail. This
+    // expectation moved because the enumerator's INPUT changed, not to fit a
+    // number: the roaming half below is asserted unchanged, in its original order.
     const opponentParam = hangout?.params.opponentId;
     expect(opponentParam?.kind).toBe('enum');
     if (opponentParam?.kind === 'enum') {
       const inSystemIds = state.npcs
         .filter((npc) => npc.currentSystemId === state.player.currentSystemId)
         .map((npc) => npc.id);
-      expect(opponentParam.choices).toEqual(inSystemIds);
+      const rosterIds = liarsDiceOpponentsAt(state.player.currentSystemId).map((o) => o.id);
+      expect(rosterIds).toHaveLength(3);
+      expect(opponentParam.choices).toEqual([...inSystemIds, ...rosterIds]);
       expect(opponentParam.choices).toContain('npc-iron-vex');
+      expect(opponentParam.choices).toContain('ld-1-1');
     }
     expect(hangout?.params.venue.kind).toBe('enum');
-    expect(hangout?.params.spendDie.kind).toBe('die-index');
+    // T-197 · NO `spendDie` PARAM AT ALL — all seven venues are Free Actions
+    // (docs/DAWN-HAND-REDESIGN.md §3), so the enumerator advertises none. This
+    // assertion is inverted rather than deleted: it used to prove the spec carried
+    // a die domain, and it now proves it carries no die key whatsoever.
+    expect(Object.keys(hangout!.params)).not.toContain('spendDie');
+  });
+
+  // T-197 · THE EMPTY-HAND CASE FOR THE HANGOUT, the twin of T-196b's for the nine
+  // administrative verbs (docs/DAWN-HAND-REDESIGN.md §3). Die-actions vanish with
+  // the hand; Free Actions do not — a captain who has spent all five dice on jumps
+  // can still walk into a bar.
+  it('T-197 · still advertises VisitHangout with an EMPTY dawn hand, die-free', () => {
+    const state = createInitialState(1); // Sol-3 (hasHangout), Iron Vex co-located
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = { dice: [10, 10, 10, 10, 10], spent: [true, true, true, true, true] };
+
+    const legal = legalActions(state);
+    expect(legal.diceRemaining).toEqual([]);
+    const hangout = legal.actions.find((action) => action.type === 'VisitHangout');
+    expect(hangout).toBeDefined();
+    expect(Object.keys(hangout!.params)).not.toContain('spendDie');
+    // …and the whole venue domain is still there: nothing about an exhausted hand
+    // narrows it, only the two DAILY caps do (asserted in the two tests below).
+    const venues = hangout!.params.venue;
+    if (venues.kind === 'enum') {
+      expect(venues.choices).toEqual(
+        expect.arrayContaining(['dare', 'meet', 'befriend', 'insult', 'rumor', 'borrow']),
+      );
+    }
+  });
+
+  // T-197 · THE TWO DAILY CAPS ARE MIRRORED IN THE VENUE DOMAIN (§4a/§4b).
+  // Advertising a venue the engine answers with a typed refusal is exactly the
+  // drift the `venueOffered` mirror already exists to prevent, so the enumerator
+  // drops it — the same rule, read through the same engine accessors.
+  it('T-197 · drops the three SOCIAL venues once the day’s pool is spent out', () => {
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+
+    // Premise: with plays left, all three are advertised.
+    const withPlays = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    const before = withPlays!.params.venue;
+    expect(before.kind === 'enum' && before.choices).toEqual(
+      expect.arrayContaining(['meet', 'befriend', 'insult']),
+    );
+
+    state.player.socialPlaysRemaining = 0;
+    const spentOut = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    // The action itself SURVIVES — rumor, the lending desk and the dare are all
+    // outside the pool, so the visit is still legal; only the three social beats go.
+    expect(spentOut).toBeDefined();
+    const after = spentOut!.params.venue;
+    if (after.kind === 'enum') {
+      expect(after.choices).not.toContain('meet');
+      expect(after.choices).not.toContain('befriend');
+      expect(after.choices).not.toContain('insult');
+      expect(after.choices).toContain('dare');
+      expect(after.choices).toContain('rumor');
+    }
+  });
+
+  it('T-197 · drops `dare` once the day’s Liar’s Dice rounds are used up', () => {
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+
+    // Tier 0 (`liarsDiceGamesPlayed` 0) allows exactly one open per day, so one
+    // opened hand is the whole allowance. Read the cap from the ENGINE rather than
+    // restating the content table here.
+    expect(liarsDiceRoundsRemaining(state)).toBeGreaterThan(0);
+    state.player.dareRoundsToday = liarsDiceRoundsRemaining(state);
+    expect(liarsDiceRoundsRemaining(state)).toBe(0);
+
+    const capped = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    expect(capped).toBeDefined();
+    const venues = capped!.params.venue;
+    if (venues.kind === 'enum') {
+      expect(venues.choices).not.toContain('dare');
+      // …and the social beats and the desk are untouched: the two caps are
+      // independent, which is §4a/§4b's whole shape.
+      expect(venues.choices).toContain('meet');
+      expect(venues.choices).toContain('rumor');
+    }
   });
 
   it('T-1303 · does NOT advertise VisitHangout at a non-Hangout system', () => {
@@ -1140,36 +1400,68 @@ describe('legal-actions enumerator', () => {
     expect(legal.actions.some((action) => action.type === 'VisitHangout')).toBe(false);
   });
 
-  it('T-1304 · advertises VisitHangout (lending/rumor) with no in-system NPC, but not the social beats', () => {
-    const state = createInitialState(1); // Sun-3
+  it('T-1304/T-145 · with no in-system NPC: lending/rumor AND the roster dare, but not the social beats', () => {
+    const state = createInitialState(1); // Sol-3
     state.dayPhase = DayPhase.DAY;
     state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
-    // Scatter every NPC off Sun-3 — no one to face at the tables.
+    // Scatter every NPC off Sol-3 — no one to face at the tables.
     for (const npc of state.npcs) npc.currentSystemId = 5;
 
     const legal = legalActions(state);
     const hangout = legal.actions.find((action) => action.type === 'VisitHangout');
     // T-1304: Penny Wise is the lender-of-record (the desk), so the §7.5 loan out
-    // and the rumor host slot ARE reachable with no co-located NPC — but the
-    // opponent-driven beats (dare/meet/befriend/insult) are NOT offered.
+    // and the rumor host slot ARE reachable with no co-located NPC.
+    //
+    // T-145 · AND SO IS 'dare' NOW, and the split is the point rather than a
+    // loosening: the house's own three seats are ALWAYS at their port (§1 rule 1 —
+    // pool A has no `currentSystemId` and takes no part in the roam), so the
+    // tables are never empty. The three SOCIAL beats are still gated on a roaming
+    // captain, because `applyDisposition` needs an `NpcState` and pool A has none;
+    // the engine typed-fails a roster id at `meet`/`befriend`/`insult` with
+    // 'no-opponent', so advertising them here would burn a die on a knowable
+    // refusal. `befriend` staying out is what pins that half.
     expect(hangout).toBeDefined();
     const venue = hangout?.params.venue;
     expect(venue?.kind).toBe('enum');
     if (venue?.kind === 'enum') {
       expect(venue.choices).toContain('borrow'); // no loan yet → borrow offered
       expect(venue.choices).toContain('rumor');
-      expect(venue.choices).not.toContain('dare');
+      expect(venue.choices).toContain('dare');
       expect(venue.choices).not.toContain('befriend');
+      expect(venue.choices).not.toContain('meet');
+      expect(venue.choices).not.toContain('insult');
     }
-    // opponentId enumerates to the empty set (no one in-system).
+    // opponentId enumerates to pool A alone — no roaming captain is in-system.
     const opponentParam = hangout?.params.opponentId;
     if (opponentParam?.kind === 'enum') {
-      expect(opponentParam.choices).toHaveLength(0);
+      expect(opponentParam.choices).toEqual(
+        liarsDiceOpponentsAt(state.player.currentSystemId).map((o) => o.id),
+      );
+      expect(opponentParam.choices).toHaveLength(3);
+    }
+  });
+
+  it('T-145 · a BROKE roster opponent is not advertised at all', () => {
+    const state = createInitialState(1); // Sol-3
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+    // The engine refuses a broke roster opponent with `HangoutEvent
+    // {failReason:'opponent-broke'}` before the die is spent (§7.4), so the
+    // harness must not offer one — the same mirror the `!npc.dead` filter is.
+    state.liarsDicePurses['ld-1-2'] = 0;
+
+    const legal = legalActions(state);
+    const hangout = legal.actions.find((action) => action.type === 'VisitHangout');
+    const opponentParam = hangout?.params.opponentId;
+    if (opponentParam?.kind === 'enum') {
+      expect(opponentParam.choices).toContain('ld-1-1');
+      expect(opponentParam.choices).not.toContain('ld-1-2');
+      expect(opponentParam.choices).toContain('ld-1-3');
     }
   });
 
   it('T-1304 · advertises repay (not borrow) while a loan is active', () => {
-    const state = createInitialState(1); // Sun-3, has Hangout
+    const state = createInitialState(1); // Sol-3, has Hangout
     state.dayPhase = DayPhase.DAY;
     state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
     state.player.loan = {
@@ -1283,6 +1575,62 @@ describe('legal-actions enumerator', () => {
     // NON-VACUITY: as above, the port band must differ from the global one.
     expect(JSON.stringify(band)).not.toBe(JSON.stringify(wagerBandFor(1)));
   });
+
+  // -------------------------------------------------------------------------
+  // T-168 · THE WAGER DOMAIN IS THE **EFFECTIVE** BAND (F-148-4, §4.6a item 3).
+  //
+  // The two tests above are the TIER-0 CONTROL and are deliberately unchanged:
+  // `createInitialState` starts a captain at `liarsDiceGamesPlayed = 0`, so they
+  // assert that nothing below tier 4 moved. These two assert that something above
+  // it now can. Before T-168 the enumerator sized this domain off raw
+  // `wagerBandFor`, so no UGT career could ever REQUEST a tier-4 or tier-5 stake
+  // and the raised ceiling was unmeasurable as played.
+  // -------------------------------------------------------------------------
+
+  it('T-168 · at TIER 4 the advertised wager ceiling is the RAISED one, not the port band', () => {
+    const ARCTURUS_6 = 12;
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.currentSystemId = ARCTURUS_6;
+    state.npcs[0].currentSystemId = ARCTURUS_6;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+    // Rung 4 opens at `LIARS_DICE_UNLOCK_GAMES[3]` — the index is the off-by-one
+    // §4.1 pins, and it is read from content rather than written as `40`.
+    state.player.liarsDiceGamesPlayed = LIARS_DICE_UNLOCK_GAMES[3];
+
+    const hangout = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    const band = wagerBandFor(ARCTURUS_6);
+    expect(hangout?.params.wager).toEqual({
+      kind: 'int',
+      min: band.min,
+      max: band.max * LIARS_DICE_RAISED_CEILING_MULT,
+    });
+    // NON-VACUITY, and it is the point of the whole task: the tier-4 domain is
+    // STRICTLY wider than the tier-0 one the two tests above pin.
+    const ceiling = hangout?.params.wager;
+    expect(ceiling?.kind).toBe('int');
+    if (ceiling?.kind === 'int') expect(ceiling.max).toBeGreaterThan(band.max);
+  });
+
+  it('T-168 · at TIER 5 the band is gone and the harness advertises the player’s own solvency', () => {
+    const ARCTURUS_6 = 12;
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.currentSystemId = ARCTURUS_6;
+    state.npcs[0].currentSystemId = ARCTURUS_6;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+    state.player.liarsDiceGamesPlayed = LIARS_DICE_UNLOCK_GAMES[4];
+    state.player.credits = 250_000;
+
+    const hangout = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    // §4.8 removes the clamp at BOTH ends, so the floor is 0 and the only ceiling
+    // the enumerator can honestly advertise before an opponent is chosen is the
+    // player's purse. The engine re-clamps against the DEALER's at open.
+    expect(hangout?.params.wager).toEqual({ kind: 'int', min: 0, max: 250_000 });
+    // NON-VACUITY against tier 4: the tier-5 domain is wider at both ends.
+    const band = wagerBandFor(ARCTURUS_6);
+    expect(250_000).toBeGreaterThan(band.max * LIARS_DICE_RAISED_CEILING_MULT);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1294,7 +1642,7 @@ describe('state summary', () => {
     const summary = buildStateSummary(createInitialState(1));
     expect(summary.credits).toBe(1000);
     expect(summary.debt).toBe(25000);
-    expect(summary.systemName).toBe('Sun-3');
+    expect(summary.systemName).toBe('Sol-3');
     expect(summary.encounter).toBeNull();
     expect(summary.activeContract).toBeNull();
     expect(wireRoundTrip(summary)).toEqual(summary);
@@ -1428,7 +1776,7 @@ describe('T-1604b · F2 poverty/immobility trap', () => {
     const session: ProtocolSession = { seed: 20260728, state: trap };
     const dumped = handleMessage(session, {
       type: 'apply-action',
-      action: { type: 'Trade', action: 'abandon-contract', spendDie: 0 },
+      action: { type: 'Trade', action: 'abandon-contract' },
     });
     const result = expectActionResult(dumped.response);
     expect(
@@ -1477,7 +1825,7 @@ describe('T-1604b · F2 poverty/immobility trap', () => {
 // ---------------------------------------------------------------------------
 
 describe('T-1703 · demo gate — legal-actions and the summary', () => {
-  /** A DAY-phase state at Sun-3 (a purchasable port with a Hangout) with money in
+  /** A DAY-phase state at Sol-3 (a purchasable port with a Hangout) with money in
    *  hand, so both gated verbs WOULD be advertised on a full career. */
   function richDayState(edition: 'full' | 'demo', seed = 1703): GameState {
     const state = startDay(createInitialState(seed, edition)).state;
@@ -1611,7 +1959,7 @@ describe('T-1703 · demo gate — legal-actions and the summary', () => {
     const state = richDayState('demo', 1710);
     const { response } = handleMessage(
       { seed: 1710, state },
-      { type: 'apply-action', action: { type: 'Port', action: 'buy', systemId: 1, spendDie: 0 } },
+      { type: 'apply-action', action: { type: 'Port', action: 'buy', systemId: 1 } },
     );
     const result = expectActionResult(response);
     expect(result.events).toContainEqual({

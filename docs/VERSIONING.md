@@ -226,7 +226,7 @@ Release earns its keep, and the rules are: tick **"Set as a pre-release"** so it
 mistaken for a launch, attach the `electron-builder` artefacts, and let the notes be the
 changelog for that stage.
 
-## 2. Save schema version — a plain integer, currently `14`
+## 2. Save schema version — a plain integer, currently `16`
 
 **Answers: can this build read that save file?**
 
@@ -236,6 +236,35 @@ change no persisted shape, and some internal changes migrate state without being
 release. Bump it when `GameState`'s persisted shape changes, and add the migration and
 its round-trip test in the same commit.
 
+**One bump per milestone, not one per task** (T-145, 2026-07-31). M4e's roster/ladder work
+spans four parallelizable tasks, and two of them would otherwise have raced on this
+constant. The whole milestone's persisted shape therefore lands in a single
+`MIGRATIONS[14]` — `player.liarsDiceBeaten`, `player.liarsDiceGamesPlayed`, the root-level
+`GameState.liarsDicePurses` and five new `DareHandState` keys — written by the FIRST task
+in the chain, at values the shipped engine already computed, so the later tasks read fields
+that already exist. Three things that look like schema changes and are not, recorded here
+because a careful coder will otherwise bump defensively: adding a `GameEvent` variant,
+adding an OPTIONAL field to an existing variant, and adding a `HangoutFailReason` value.
+`GameEventSchema` runs in Zod strip mode, so the append-only `eventLog` is
+forward-compatible; the obligation for all three is the compile-time drift guard in
+`schema.ts`, not a version move. (The fail-reason case is a two-file edit —
+`_covHangoutFailReason` pins the enum VALUE for value, and a value added to the union but
+not the schema sails past `AssertEventKeys` and fails to parse at load.)
+
+**M17 bumped 15 → 16 (T-197, 2026-08-05), and it is a worked example of the paragraph
+above.** `docs/DAWN-HAND-REDESIGN.md` §3 freed all seven Hangout venues and §4a/§4b
+replaced the die with two DAILY ALLOWANCES: `player.socialPlaysRemaining` (the social pool
+shared by meet/befriend/insult) and `player.dareRoundsToday` (Liar's Dice hands opened
+today, counted AT OPEN). Two things in that task looked like schema changes and were not —
+the two new `HangoutFailReason` values `social-limit-reached` and `daily-round-limit`, which
+owed only the two-file edit above. What actually forced the bump is that both counters must
+survive a MID-DAY save/load: a reload that refilled a spent allowance would make the caps
+advisory. `MIGRATIONS[15]` backfills them by CALLING `freshDailyHangoutCaps`
+(`hangoutRules.ts`) — the same rule `createInitialState`, `deserializeState` and `day.ts`'s
+dawn reset read — rather than restating two literals, so a later content retune of
+`SOCIAL_PLAYS_PER_DAY` moves the migration with it and owes no further bump. One bump for
+the whole M17 Hangout row, per the rule above.
+
 ## 3. Rules fingerprint — a content hash, not a number
 
 **Answers: is this measurement still about the game we are shipping?**
@@ -244,8 +273,10 @@ Balance artefacts — committed sweeps, and the smoke-test checkpoints under
 `docs/balance/smoke/` — are only meaningful against the ruleset that produced them. A
 hand-maintained "balance version" would be forgotten exactly when it mattered, so this is
 **derived, not declared**: a hash over the files that decide outcomes (`packages/content/src`
-plus the engine's rule modules). Change a tribute constant or a resolver and the
-fingerprint moves on its own.
+plus the engine's rule modules — but **not** a `__tests__` directory under either, which the
+walk skips by name: see `HASHED_ROOT_IGNORED_DIRECTORIES`, and `docs/TESTING-STRATEGY.md`
+Part I for why that is what lets a content validator live beside its rows). Change a tribute
+constant or a resolver and the fingerprint moves on its own.
 
 **It hashes their CODE, not their bytes** (N7-FP, 2026-07-29). Comments are stripped
 before hashing — via the TypeScript parser, not a regex, because `//` and `/* */` appear
