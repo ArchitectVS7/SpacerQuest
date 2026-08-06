@@ -85,9 +85,22 @@ test('the manifest reads as a physical object, and the trade pane does not', asy
   // A thicker frame than every other pane's 1px hairline.
   expect(boardStyle.borderTopWidth).toBe('2px');
   expect(tradeStyle.borderTopWidth).toBe('1px');
-  // Stacked-paper thickness: the board casts a shadow, the pane casts none.
+  // Stacked-paper thickness. Until T-218 this read "the board casts a shadow,
+  // the pane casts none" — but T-218's ruled material treatment gives EVERY pane
+  // a machined bevel, so "none" stopped being what differentiates them. The
+  // ASSERTION'S INTENT is unchanged and is now expressed against what actually
+  // separates the two: the board carries a stack of OUTER shadows (the offset
+  // board edges and the cast drop shadow), and the pane's shadow list is inset
+  // bevel only. Weakening this to "both have a shadow" would have dropped the
+  // claim; this keeps it.
+  const outerShadows = (shadow: string) =>
+    shadow
+      .split(/,(?![^(]*\))/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && !s.startsWith('inset')).length;
   expect(boardStyle.boxShadow).not.toBe('none');
-  expect(tradeStyle.boxShadow).toBe('none');
+  expect(outerShadows(boardStyle.boxShadow)).toBeGreaterThanOrEqual(3);
+  expect(outerShadows(tradeStyle.boxShadow)).toBeLessThan(outerShadows(boardStyle.boxShadow));
   // It hangs crooked — a real 2D matrix, not `none` like the pane beside it.
   expect(boardStyle.transform).not.toBe('none');
   expect(tradeStyle.transform).toBe('none');

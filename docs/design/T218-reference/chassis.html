@@ -1,0 +1,434 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:var(--font-data);font-size:15px;line-height:1.45;overflow:hidden;-webkit-font-smoothing:antialiased}
+.tube{position:relative;height:100vh;padding:18px 22px;overflow:hidden;isolation:isolate}
+.fx{position:fixed;inset:0;z-index:90;pointer-events:none}
+.fx::before{content:'';position:absolute;inset:0;background:radial-gradient(130% 120% at 50% 50%,transparent 56%,rgba(0,0,0,.55) 100%);mix-blend-mode:multiply}
+.fx::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);opacity:.55}
+.screen{position:relative;z-index:10;height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;gap:10px}
+
+.bezel{display:grid;grid-template-columns:1fr auto;gap:6px 20px;align-items:center;padding-bottom:9px}
+.brand{display:flex;align-items:baseline;gap:13px}
+.brand h1{font-family:var(--font-display);font-weight:700;font-size:19px;letter-spacing:.32em;margin:0;text-transform:uppercase}
+.brand .sub{font-family:var(--font-display);font-weight:500;letter-spacing:.34em;font-size:11px;text-transform:uppercase}
+.loc{font-size:12.5px;letter-spacing:.06em;margin-top:3px}
+.bezel-right{display:flex;flex-direction:column;align-items:flex-end;gap:7px}
+.switches{display:flex;gap:6px}
+.sw{font-family:var(--font-display);font-size:10.5px;letter-spacing:.14em;padding:5px 10px;cursor:pointer;background:none}
+.readouts{display:flex;gap:8px;align-items:center;font-size:12px}
+.chip{padding:4px 9px;letter-spacing:.06em;white-space:nowrap}
+.chip.rank{font-family:var(--font-display);letter-spacing:.16em;font-size:10.5px}
+.chip.fuel{display:flex;align-items:center;gap:7px;border:none;padding:0}
+.chip.fuel .bar{width:92px;height:10px;position:relative;display:block}
+.chip.fuel .bar i{position:absolute;inset:1px}
+
+.main{display:grid;grid-template-columns:1.05fr 1fr;gap:10px;min-height:0}
+.col{display:grid;gap:10px;min-height:0}
+.col.left{grid-template-rows:minmax(0,auto) minmax(200px,1fr)}
+.col.right{grid-template-rows:minmax(0,1.05fr) minmax(0,1fr)}
+.pane{display:flex;flex-direction:column;min-height:0;overflow:hidden;position:relative}
+.pane>header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 11px}
+.pane>header h2{font-family:var(--font-display);font-weight:600;letter-spacing:.24em;font-size:12px;margin:0;text-transform:uppercase;display:flex;align-items:center;gap:7px}
+.pane>header .tag{font-size:10.5px;letter-spacing:.1em}
+.pane .body{padding:10px;overflow:hidden;min-height:0;flex:1 1 auto}
+.lb-glyph{width:13px;height:13px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.2}
+
+.starmap .body{display:grid;gap:8px;align-content:start}
+.sm-plot{display:grid;gap:8px}
+.smsvg{width:100%;height:auto;max-height:142px;overflow:visible;display:block}
+.smgrid path{stroke-width:.3;fill:none}
+.fuel-ring{fill:none;stroke-width:.7;stroke-dasharray:4 3}
+.route-line{stroke-width:1;stroke-dasharray:3 2}
+.smlabel{font-size:6.4px;text-anchor:middle;font-family:var(--font-data)}
+.smsys.unreachable{opacity:.34}
+.route-preview{padding:7px 9px;display:grid;gap:5px}
+.rp-head{font-size:11.5px;letter-spacing:.04em}
+.rp-grid{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:2px 9px;align-items:baseline}
+.rp-k{font-size:9.5px;letter-spacing:.06em}
+.rp-v{font-weight:600;font-variant-numeric:tabular-nums}
+
+.ship .body{display:grid;gap:8px;align-content:start;font-size:12px;grid-template-rows:auto minmax(0,1fr)}
+.shipdiagram{position:relative;width:100%;max-width:430px;margin:0 auto}
+.shipsvg{display:block;width:100%;height:auto;overflow:visible}
+.ship-mark{fill:none;stroke-width:1;vector-effect:non-scaling-stroke}
+.rg-leader{stroke-width:.7;vector-effect:non-scaling-stroke}
+.ship-callouts{position:absolute;inset:0;pointer-events:none}
+.ship-region{position:absolute;display:grid;white-space:nowrap;line-height:1.15;font-family:var(--font-data)}
+.ship-region.anchor-middle{transform:translate(-50%,-50%);text-align:center;justify-items:center}
+.ship-region.anchor-start{transform:translate(0,-50%);justify-items:start}
+.rg-label{font-family:var(--font-display);font-size:7.5px;letter-spacing:.12em}
+.rg-ro{font-size:9px;font-variant-numeric:tabular-nums}
+.rg-k{font-style:normal;font-size:7.5px;letter-spacing:.06em;margin-right:3px}
+.rg-v{font-weight:600}
+.bay-seg{stroke-width:.6;vector-effect:non-scaling-stroke;fill:none}
+.fb-track{fill:none;stroke-width:.8}
+.ship-bench{padding:7px;display:grid;gap:6px;align-content:start;overflow:hidden}
+.bench-head{font-family:var(--font-display);font-size:9.5px;letter-spacing:.14em;padding-bottom:3px}
+.ship-grid{display:grid;gap:4px}
+.comp-row{padding:5px 7px;display:grid;gap:3px}
+.comp-id{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px}
+.comp-name{letter-spacing:.05em;font-weight:500;font-size:12px}
+.comp-str{font-size:10.5px}
+.comp-cond{display:flex;gap:2px}
+.comp-cond i{width:8px;height:8px;display:block}
+.comp-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.comp-preview{font-size:10.5px}
+.btn{font-family:var(--font-display);letter-spacing:.14em;text-transform:uppercase;font-size:11px;padding:5px 11px;cursor:pointer}
+.btn.small{padding:3px 7px;font-size:10px}
+
+.manifest-board>.body{padding:6px 8px 9px}
+.mb-clip{position:absolute;top:-9px;left:50%;transform:translateX(-50%);width:120px;height:17px;z-index:3;display:block}
+.mb-clip-jaw{position:absolute;left:7px;right:7px;bottom:3px;height:5px;display:block}
+.manifest-board>header{padding:7px 10px}
+.mb-toggle{display:flex;align-items:center;gap:9px}
+.mb-title{display:flex;align-items:center;gap:7px;font-family:var(--font-display);font-weight:600;letter-spacing:.24em;font-size:12px;text-transform:uppercase;white-space:nowrap}
+.mb-stamp{margin-left:auto;font-family:var(--font-display);font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;padding:2px 8px}
+.mb-sheet{position:relative;padding:7px 8px 4px}
+.mb-punches{height:8px;margin:-3px -1px 4px}
+.mb-tear{height:8px;margin:5px -9px -3px}
+.contract{padding:8px 9px;margin-bottom:7px;position:relative}
+.contract:last-of-type{margin-bottom:0}
+.row1{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.goods{letter-spacing:.03em;font-weight:500;font-size:14px}
+.dest{font-size:11.5px}
+.pay{font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.flag{font-family:var(--font-display);font-size:9px;letter-spacing:.16em;padding:1px 5px;margin-left:7px;vertical-align:1px}
+.check{display:flex;align-items:center;flex-wrap:wrap;font-size:11.5px;padding-top:6px;margin-top:6px}
+.check .lbl{font-family:var(--font-display);letter-spacing:.16em;font-size:9.5px;margin-right:9px}
+.slot{min-width:28px;height:22px;display:inline-flex;align-items:center;justify-content:center;margin-right:7px;font-weight:600;font-size:12px}
+.haggle{margin-left:auto;font-family:var(--font-display);letter-spacing:.14em;text-transform:uppercase;font-size:9.5px;padding:3px 8px;cursor:pointer;background:none}
+
+.pane.trade>.body{display:grid;grid-template-columns:9px minmax(0,1fr);column-gap:9px;align-content:start;row-gap:8px}
+.pane.trade>.body>*{grid-column:2}
+.pane.trade>.body>.lb-rail{grid-column:1;grid-row:1/span 30}
+.ledger-block{padding:7px 10px;position:relative}
+.lb-head{font-family:var(--font-display);letter-spacing:.15em;font-size:10px;margin-bottom:5px;display:flex;align-items:center;gap:6px}
+.lb-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12px}
+.lb-k{font-size:9.5px;letter-spacing:.08em}
+.lb-v{font-weight:600;font-variant-numeric:tabular-nums}
+.lb-v.big{font-size:21px;letter-spacing:.01em;line-height:1.1}
+.lb-u{font-size:10px;font-weight:400}
+.lb-empty{font-size:11.5px}
+.lb-controls{display:flex;gap:7px;margin-top:7px}
+.lb-controls input{flex:1;min-width:0;font-family:var(--font-data);font-size:12px;padding:4px 7px}
+
+.wire{overflow:hidden;position:relative;height:34px;display:flex;align-items:center}
+.wire .cap{display:flex;align-items:center;gap:8px;padding:0 12px;z-index:3;font-family:var(--font-display);letter-spacing:.18em;font-size:10.5px;white-space:nowrap}
+.wire .cap .dot{width:7px;height:7px;display:block;border-radius:50%}
+.wire-track{flex:1;white-space:nowrap;overflow:hidden;font-size:12px;padding-left:6px}
+.wire-log-btn{font-family:var(--font-display);font-size:9.5px;letter-spacing:.14em;padding:3px 9px;margin:0 10px;cursor:pointer;background:none;flex:0 0 auto}
+
+.dock{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:16px;padding:9px 14px}
+.dock-l{display:grid}
+.dh{font-family:var(--font-display);letter-spacing:.22em;font-size:11px}
+.dd{font-family:var(--font-display);letter-spacing:.18em;font-size:10px}
+.tray{display:flex;gap:12px;justify-content:center;justify-self:center}
+.die{width:52px;height:50px;display:grid;place-content:center;justify-items:center;position:relative}
+.die .dv{font-family:var(--font-display);font-weight:700;font-size:23px;line-height:1;font-variant-numeric:tabular-nums}
+.die .dl{font-size:8px;letter-spacing:.14em;margin-top:2px}
+.dock-r{display:grid;justify-items:end;gap:4px}
+.hint{font-size:11px;max-width:190px;text-align:right}
+
+:root{
+  --void:#040404;
+  --ember:#ffb000;--ember-hi:#ffe1a6;--amber:#c0781a;--amber-dim:#5e3b0e;--hair:#3a2408;
+  /* NEUTRAL, near-achromatic chassis: unlit metal. No second HUE — an absence of hue. */
+  --steel-hi:#2a2b26;--steel:#1d1e1a;--steel-lo:#141512;--steel-deep:#0d0e0c;
+  --etch:#7a7c75;--etch-dim:#4f514b;
+  /* the recessed phosphor well every readout is sunk into */
+  --well:#070604;
+  --font-display:'Chakra Petch',system-ui,sans-serif;--font-data:'IBM Plex Mono',ui-monospace,monospace;
+  --glow:0 0 2px rgba(255,176,0,.6),0 0 10px rgba(255,176,0,.22);
+  --glow-hi:0 0 3px rgba(255,225,166,.95),0 0 18px rgba(255,176,0,.5);
+  --bevel:inset 0 1px 0 rgba(255,255,255,.07),inset 0 -1px 0 rgba(0,0,0,.75);
+  --recess:inset 0 2px 5px rgba(0,0,0,.9),inset 0 0 0 1px rgba(0,0,0,.6);
+}
+body{background:#020202;color:var(--ember)}
+.tube{background:radial-gradient(140% 130% at 50% 36%,#1b1c19 0%,#0e0f0d 55%,#040404 100%)}
+/* the console face: brushed neutral metal, with the amber bloom of the readouts spilling on it */
+.tube::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,255,255,.012) 0 1px,rgba(0,0,0,0) 1px 3px);pointer-events:none}
+.bezel{border-bottom:1px solid #000;box-shadow:0 1px 0 rgba(255,255,255,.06);padding-bottom:10px}
+.brand h1{color:var(--ember);text-shadow:var(--glow-hi);font-size:21px}
+.brand .sub{color:var(--etch)}
+.loc{color:var(--etch)} .loc b{color:var(--ember);text-shadow:var(--glow)}
+.sw{border:1px solid #000;background:linear-gradient(180deg,var(--steel-hi),var(--steel-lo));color:var(--etch);box-shadow:var(--bevel)}
+.sw.on{color:var(--ember);text-shadow:var(--glow);box-shadow:var(--bevel),inset 0 0 10px rgba(255,176,0,.16)}
+.chip{border:1px solid #000;background:var(--well);box-shadow:var(--recess);color:var(--amber)} .chip b{color:var(--ember);text-shadow:var(--glow)}
+.chip.rev{background:var(--ember);color:#100f0c;border-color:var(--ember);font-weight:700;box-shadow:0 0 14px rgba(255,176,0,.45);text-shadow:none}
+.chip.rank{background:linear-gradient(180deg,var(--steel-hi),var(--steel-lo));box-shadow:var(--bevel);color:var(--etch);border-color:#000}
+.chip.fuel .bar{border:1px solid #000;background:var(--well);box-shadow:var(--recess)}
+.chip.fuel .bar i{background:repeating-linear-gradient(90deg,var(--ember) 0 5px,transparent 5px 7px);box-shadow:var(--glow)}
+.chip.fuel b{color:var(--ember);text-shadow:var(--glow)} .fk{color:var(--etch)}
+
+/* ---- a pane is a MACHINED PLATE bolted to the console; its body is a recessed phosphor well ---- */
+.pane{border:1px solid #000;border-radius:2px;
+  background:linear-gradient(180deg,var(--steel-hi) 0,var(--steel) 34%,var(--steel-lo) 100%);
+  box-shadow:var(--bevel),0 8px 20px rgba(0,0,0,.75)}
+/* the label strip is ETCHED into metal — neutral, no phosphor. A lamp says the instrument is live. */
+.pane>header{background:linear-gradient(180deg,#2e2f29,#1d1e18);border-bottom:1px solid #000;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 1px 0 rgba(255,255,255,.04)}
+.pane>header h2{color:var(--etch);text-shadow:0 -1px 0 rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.07);font-weight:700}
+.pane>header h2::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--ember);box-shadow:0 0 7px rgba(255,176,0,.95),inset 0 0 2px rgba(255,225,166,.9);flex:0 0 auto;margin-right:2px}
+.pane>header .tag{color:var(--etch-dim);text-shadow:0 1px 0 rgba(255,255,255,.05)}
+.pane .body{background:var(--well);box-shadow:var(--recess);margin:5px;padding:9px;border-radius:1px}
+.lb-glyph{opacity:.9}
+
+/* the phosphor content is UNCHANGED amber — it just now sits on black glass inside metal */
+.smgrid path{stroke:var(--hair)}
+.fuel-ring{stroke:var(--ember);opacity:.5} .route-line{stroke:var(--ember-hi)}
+.smdot{fill:#7a4e14;stroke:var(--hair);stroke-width:.6} .smlabel{fill:var(--amber);paint-order:stroke;stroke:var(--well);stroke-width:1.6}
+.smsys.rim .smdot{fill:var(--amber)} .smsys.visited .smdot{fill:var(--ember)} .smsys.visited .smlabel{fill:var(--ember)}
+.smsys.here .smdot{fill:var(--ember-hi);stroke:var(--ember);stroke-width:1.4;filter:drop-shadow(0 0 4px rgba(255,176,0,.95))}
+.smsys.here .smlabel{fill:var(--ember-hi);font-weight:600}
+.smsys.sel .smdot{stroke:var(--ember-hi);stroke-width:1.4;fill:var(--amber)} .smsys.sel .smlabel{fill:var(--ember-hi)}
+.smsys.unreachable .smdot{fill:none;stroke:var(--amber-dim);stroke-dasharray:1.5 1.5} .smsys.unreachable .smlabel{fill:var(--amber-dim)}
+.starmap .body{background:radial-gradient(85% 80% at 50% 62%,rgba(255,176,0,.07),transparent 72%),var(--well)}
+/* controls read as HARDWARE mounted below the glass */
+.route-preview{background:linear-gradient(180deg,var(--steel-hi),var(--steel-lo));border:1px solid #000;border-radius:2px;box-shadow:var(--bevel)}
+.rp-head{color:var(--etch)} .rp-k{color:var(--etch-dim)} .rp-v{color:var(--ember);text-shadow:var(--glow);font-size:14px}
+
+.shipdiagram{background:radial-gradient(120% 90% at 50% 42%,rgba(255,176,0,.07),transparent 72%)}
+.ship-mark{stroke:var(--amber)} .hull-outline{stroke:var(--ember);stroke-width:1.6;fill:rgba(255,176,0,.06);filter:drop-shadow(0 0 3px rgba(255,176,0,.45))}
+.mark-shields ellipse{stroke:var(--amber-dim);stroke-dasharray:5 4}
+.mark-pods rect,.mark-drives rect{stroke:var(--ember);stroke-width:1.2;fill:rgba(255,176,0,.1)}
+.mark-weapons ellipse{fill:var(--ember)}
+.rg-leader{stroke:var(--amber-dim)}
+.rg-label{color:var(--amber)} .rg-k{color:var(--amber)} .rg-v{color:var(--ember-hi);text-shadow:var(--glow);font-size:11px}
+.ship-region.damaged .rg-v{background:var(--ember);color:#100f0c;text-shadow:none;padding:0 3px}
+.bay-seg{stroke:var(--amber-dim)} .bay-seg.lit{fill:var(--ember);stroke:var(--ember-hi)}
+.fb-track{stroke:var(--hair)} .fb-fill{fill:var(--ember);opacity:.8}
+/* the bench is the CONTROLS: metal, outside the glass */
+.ship-bench{background:linear-gradient(180deg,var(--steel-hi),var(--steel-lo));border:1px solid #000;border-radius:2px;box-shadow:var(--bevel);margin:-2px -4px -4px}
+.bench-head{color:var(--etch);border-bottom:1px solid rgba(0,0,0,.7);box-shadow:0 1px 0 rgba(255,255,255,.06);font-weight:700}
+.comp-row{background:var(--well);box-shadow:var(--recess);border-radius:1px}
+.comp-row.damaged{box-shadow:var(--recess),inset 0 0 0 1px rgba(255,176,0,.5)}
+.comp-name{color:var(--ember);text-shadow:var(--glow);font-size:13px} .comp-str{color:var(--amber)}
+.comp-cond i{border:1px solid #2a2b26;background:#0b0b09} .comp-cond i.on{background:var(--ember);border-color:var(--ember);box-shadow:0 0 5px rgba(255,176,0,.8)}
+.comp-preview{color:var(--amber)} .comp-preview b{color:var(--ember-hi)}
+/* buttons are PHYSICAL KEYS: metal cap, etched legend, amber only when armed */
+.btn{background:linear-gradient(180deg,#3d3e37,#212219);color:var(--etch);border:1px solid #000;border-radius:2px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -2px 0 rgba(0,0,0,.6),0 2px 3px rgba(0,0,0,.7);font-weight:700}
+.btn.small.ghost{box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 1px 2px rgba(0,0,0,.6);font-weight:400}
+.starmap .btn,.btn.end{color:var(--ember);text-shadow:var(--glow);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 0 12px rgba(255,176,0,.18),0 2px 3px rgba(0,0,0,.7)}
+
+/* the manifest stays PAPER — a third material, and now it can actually read as paper */
+.manifest-board{overflow:visible;border:1px solid #000;border-radius:3px;
+  background:linear-gradient(180deg,#3c3d36 0,#26271f 40%,#1a1b17 100%);
+  box-shadow:var(--bevel),4px 5px 0 -1px #0a0a09,10px 12px 24px rgba(0,0,0,.7);transform:rotate(-.5deg)}
+.mb-clip{border-radius:3px 3px 0 0;background:linear-gradient(180deg,#4a4b44 0,#c9cbc2 18%,#7d7f76 42%,#3a3b34 66%,#171815 100%);border:1px solid #000;border-bottom:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 3px 8px rgba(0,0,0,.8)}
+.mb-clip-jaw{border-radius:1px;background:linear-gradient(180deg,#0c0c0a,#2c2d27);box-shadow:-40px -7px 0 -1px #d6d8cf,40px -7px 0 -1px #d6d8cf}
+.manifest-board>header{background:linear-gradient(180deg,#43443c,#2a2b23);border-bottom:1px solid #000;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+.mb-title{color:var(--etch);text-shadow:0 -1px 0 rgba(0,0,0,.9)}
+.mb-title::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--ember);box-shadow:0 0 7px rgba(255,176,0,.95);flex:0 0 auto}
+.mb-stamp{color:#f0efe6;background:none;border:1.5px solid rgba(240,239,230,.55);transform:rotate(1.2deg);opacity:.75}
+.manifest-board>.body{background:none;box-shadow:none;margin:0;padding:7px 9px 10px}
+.mb-sheet{background:repeating-linear-gradient(180deg,rgba(0,0,0,.05) 0 1px,rgba(0,0,0,0) 1px 22px),linear-gradient(180deg,#20211c 0,#171814 100%);border:1px solid #000;border-bottom:none;box-shadow:0 3px 9px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.06)}
+.mb-punches{background-image:radial-gradient(circle at 6px 4px,#0a0a09 0 3px,rgba(255,255,255,.14) 3px 3.9px,rgba(0,0,0,0) 4.1px);background-size:30px 8px;background-repeat:repeat-x}
+.mb-tear{background:linear-gradient(180deg,#1d1e19,#141510);clip-path:polygon(0 0,100% 0,100% 42%,96% 100%,92% 34%,88% 96%,84% 28%,80% 100%,76% 40%,72% 92%,68% 26%,64% 100%,60% 36%,56% 94%,52% 30%,48% 100%,44% 38%,40% 90%,36% 24%,32% 100%,28% 42%,24% 96%,20% 30%,16% 100%,12% 36%,8% 92%,4% 26%,0 100%)}
+/* each offer is a strip of paper printed by an amber-ribbon dot-matrix: the TYPE is phosphor-amber, the stock is neutral */
+.contract{background:linear-gradient(180deg,#26271f,#1a1b16);border:1px solid #000;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+.goods{color:var(--ember);text-shadow:var(--glow);font-size:15px} .dest{color:var(--etch)}
+.pay{color:var(--ember-hi);text-shadow:var(--glow-hi);font-size:17px}
+.flag.urgent{background:var(--ember);color:#100f0c;font-weight:700;box-shadow:0 0 10px rgba(255,176,0,.4)}
+.flag.shady{border:1px solid var(--etch-dim);color:var(--etch)}
+.flag.storylet{border:1px solid var(--ember);color:var(--ember)}
+.check{border-top:1px dashed rgba(255,255,255,.12)} .check .lbl{color:var(--etch-dim)} .mono{color:var(--etch)}
+.slot.ready{border:1px solid var(--ember);color:#100f0c;background:var(--ember);box-shadow:0 0 12px rgba(255,176,0,.6)}
+.haggle{color:var(--etch);border:1px solid #000;background:linear-gradient(180deg,#3d3e37,#212219);box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+
+/* the ledger rack: real steel rail + machined plates, amber only in the readouts */
+.pane.trade>.body{background:linear-gradient(180deg,var(--steel) ,var(--steel-lo));box-shadow:var(--bevel);padding:9px}
+.lb-rail{border-radius:2px;background:radial-gradient(circle at 50% 8px,#cfd1c8 0 1.1px,#8b8d84 1.1px 2px,#0d0e0c 2.4px 3.4px,rgba(0,0,0,0) 3.6px) 0 0/9px 22px repeat-y,linear-gradient(90deg,#111210 0,#4b4c44 24%,#2b2c26 52%,#141511 78%,#0a0a09 100%);box-shadow:inset 0 0 0 1px rgba(0,0,0,.7),1px 0 4px rgba(0,0,0,.7)}
+.ledger-block{clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px);
+  background:linear-gradient(135deg,#6e7067 0 8px,rgba(0,0,0,0) 8px) top left/20px 20px no-repeat,linear-gradient(315deg,#101110 0 8px,rgba(0,0,0,0) 8px) bottom right/20px 20px no-repeat,linear-gradient(180deg,#2e2f28,#1a1b16);
+  box-shadow:inset 2px 0 0 0 #7e8077,inset 0 1px 0 rgba(255,255,255,.08)}
+.ledger-block.due{box-shadow:inset 2px 0 0 0 var(--ember),inset 0 1px 0 rgba(255,255,255,.08),0 0 16px rgba(255,176,0,.14)}
+.lb-head{color:var(--etch);text-shadow:0 -1px 0 rgba(0,0,0,.8);font-weight:700}
+.lb-k{color:var(--etch-dim)} .lb-v{color:var(--ember);text-shadow:var(--glow)} .lb-u{color:var(--amber)}
+.lb-v.big{font-size:27px;color:var(--ember-hi);text-shadow:var(--glow-hi)}
+.lb-empty{color:var(--etch)} .lb-row{color:var(--etch)} .lb-row b{color:var(--ember);text-shadow:var(--glow)}
+.due-soon b{color:#100f0c;background:var(--ember);padding:0 5px;text-shadow:none}
+.lb-controls input{background:var(--well);border:1px solid #000;color:var(--ember);box-shadow:var(--recess);text-shadow:var(--glow)}
+
+/* the wire: an amber ticker running behind a slot milled in the console */
+.wire{border:1px solid #000;border-radius:2px;background:var(--well);box-shadow:var(--recess),0 0 24px rgba(255,176,0,.05)}
+.wire .cap{color:var(--etch);background:linear-gradient(90deg,#33342d 0,#25261f 72%,transparent);height:100%;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+.wire .cap .dot{background:var(--ember);box-shadow:0 0 8px rgba(255,176,0,1)}
+.wire-track{color:var(--ember);text-shadow:var(--glow)}
+.wire-log-btn{border:1px solid #000;color:var(--etch);background:linear-gradient(180deg,#3d3e37,#212219);box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+
+/* the dawn hand: dice are lit elements seated in a machined tray */
+.dock{border:1px solid #000;border-radius:2px;background:linear-gradient(180deg,#34352e 0,#232420 30%,#171814 100%);box-shadow:var(--bevel),0 -6px 18px rgba(0,0,0,.6)}
+.dh{color:var(--etch);text-shadow:0 -1px 0 rgba(0,0,0,.8)} .dd{color:var(--ember);text-shadow:var(--glow)}
+.tray{padding:4px 14px;border-radius:3px;background:linear-gradient(180deg,#111210,#1d1e19);box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 -1px 0 rgba(255,255,255,.05)}
+.die{clip-path:polygon(50% 0,100% 27%,100% 73%,50% 100%,0 73%,0 27%);width:56px;height:58px;
+  background:linear-gradient(180deg,#2e2f28,#141510);box-shadow:none}
+.die .dv{color:var(--ember);text-shadow:var(--glow);font-size:27px} .die .dl{color:var(--etch-dim)}
+.die.sel{background:linear-gradient(180deg,#ffd57a,var(--ember));filter:drop-shadow(0 0 12px rgba(255,176,0,.75))}
+.die.sel .dv{color:#100f0c;text-shadow:none} .die.sel .dl{color:#3a2408}
+.die.spent{opacity:.34}
+.btn.end{font-size:13px;padding:8px 18px}
+.hint{color:var(--etch-dim)}
+</style></head><body>
+<div class="tube">
+  <div class="screen">
+    <header class="bezel">
+      <div class="bezel-left">
+        <div class="brand"><h1>SPACER QUEST</h1><span class="sub">RIMWARD</span></div>
+        <div class="loc">DAY <b>7</b> · DOCKED AT <b>Sol-3</b> · <b>Frontier Era</b></div>
+      </div>
+      <div class="bezel-right">
+        <nav class="switches">
+          <button class="sw on">CRT: ON</button><button class="sw">CANTINA</button><button class="sw">RECORDS</button><button class="sw">SETTINGS</button><button class="sw">NEW GAME</button>
+        </nav>
+        <div class="readouts">
+          <span class="chip rank">Lieutenant</span>
+          <span class="chip">SEED 424,242</span>
+          <span class="chip">CR <b>1,000</b></span>
+          <span class="chip rev">DEBT 25,000 · DUE D30</span>
+          <span class="chip fuel"><span class="fk">FUEL</span><span class="bar"><i></i></span><b>300</b></span>
+        </div>
+      </div>
+    </header>
+
+    <div class="main">
+      <div class="col left">
+        <section class="pane starmap">
+          <header><h2><svg class="lb-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4l4-2 4 2 4-2v10l-4 2-4-2-4 2z"/><path d="M6 2v10M10 4v10"/></svg>STARMAP</h2><span class="tag">10 CHARTED</span></header>
+          <div class="body">
+            <div class="sm-plot">
+<svg class="smsvg" viewBox="0 0 200 96" preserveAspectRatio="xMidYMid meet">
+  <g class="smgrid">
+    <path d="M0 24H200M0 48H200M0 72H200M40 0V96M80 0V96M120 0V96M160 0V96"/>
+  </g>
+  <circle class="fuel-ring" cx="96" cy="70" r="54"/>
+  <path class="route-line" d="M96 70 L132 34"/>
+  <g class="smsys visited"><circle class="smdot" cx="34" cy="34" r="2.6"/><text class="smlabel" x="34" y="42">Polaris-1</text></g>
+  <g class="smsys rim"><circle class="smdot" cx="62" cy="18" r="2.2"/><text class="smlabel" x="62" y="26">Mizar-9</text></g>
+  <g class="smsys unreachable"><circle class="smdot" cx="24" cy="62" r="2.2"/><text class="smlabel" x="24" y="70">Algol-2</text></g>
+  <g class="smsys visited"><circle class="smdot" cx="58" cy="60" r="2.4"/><text class="smlabel" x="58" y="68">Spica-3</text></g>
+  <g class="smsys rim"><circle class="smdot" cx="74" cy="66" r="2.2"/><text class="smlabel" x="74" y="74">Fomalhaut-2</text></g>
+  <g class="smsys sel"><circle class="smdot" cx="132" cy="34" r="2.8"/><text class="smlabel" x="132" y="27">Pollux-7</text></g>
+  <g class="smsys rim"><circle class="smdot" cx="158" cy="44" r="2.2"/><text class="smlabel" x="158" y="52">Achernar-5</text></g>
+  <g class="smsys unreachable"><circle class="smdot" cx="176" cy="20" r="2"/><text class="smlabel" x="176" y="28">Rigel-4</text></g>
+  <g class="smsys rim"><circle class="smdot" cx="112" cy="80" r="2.2"/><text class="smlabel" x="112" y="88">Mira-9</text></g>
+  <g class="smsys here"><circle class="smdot" cx="96" cy="70" r="3.4"/><text class="smlabel" x="96" y="62">Sol-3</text></g>
+</svg>
+              <div class="route-preview">
+                <div class="rp-head">PLOT · Sol-3 → Pollux-7</div>
+                <div class="rp-grid"><span class="rp-k">FUEL</span><span class="rp-v">120</span><span class="rp-k">DAYS</span><span class="rp-v">3</span><span class="rp-k">HAZARD</span><span class="rp-v">30%</span><span class="rp-k">RANGE</span><span class="rp-v">OK</span></div>
+                <button class="btn">CONFIRM JUMP</button>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section class="pane ship">
+          <header><h2><svg class="lb-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h4l3-4h3l2 4-2 4H9L6 8"/><circle cx="12" cy="8" r="1"/></svg>SHIP &amp; YARD</h2><span class="tag">JUNKER · PODS 7/10</span></header>
+          <div class="body">
+            <div class="shipdiagram">
+<svg class="shipsvg" viewBox="0 0 480 200" preserveAspectRatio="xMidYMid meet">
+  <g class="ship-mark mark-shields"><ellipse cx="250" cy="100" rx="196" ry="76"/></g>
+  <g class="ship-mark mark-hull">
+    <path class="hull-outline" d="M120 66 H300 L372 100 L300 134 H120 Z"/>
+  </g>
+  <g class="ship-mark mark-pods"><rect x="176" y="76" width="150" height="48"/></g>
+  <g class="ship-mark mark-drives"><rect x="72" y="60" width="44" height="26"/><rect x="72" y="114" width="44" height="26"/><path d="M72 73H40M72 127H40"/></g>
+  <g class="ship-mark mark-nav"><path d="M300 66 L372 100 L300 134"/></g>
+  <g class="ship-mark mark-weapons"><ellipse cx="330" cy="100" rx="9" ry="7"/></g>
+  <g class="bay">
+    <rect class="bay-seg lit" x="184" y="108" width="10" height="10"/><rect class="bay-seg lit" x="198" y="108" width="10" height="10"/><rect class="bay-seg lit" x="212" y="108" width="10" height="10"/><rect class="bay-seg lit" x="226" y="108" width="10" height="10"/><rect class="bay-seg lit" x="240" y="108" width="10" height="10"/><rect class="bay-seg lit" x="254" y="108" width="10" height="10"/><rect class="bay-seg lit" x="268" y="108" width="10" height="10"/><rect class="bay-seg " x="282" y="108" width="10" height="10"/><rect class="bay-seg " x="296" y="108" width="10" height="10"/><rect class="bay-seg " x="310" y="108" width="10" height="10"/>
+  </g>
+  <g class="fuel-bar"><rect class="fb-track" x="72" y="150" width="120" height="8"/><rect class="fb-fill" x="73" y="151" width="94" height="6"/></g>
+  <g class="rg-leaders"><path class="rg-leader" d="M150 60 V40M250 74 V44M330 92 V52M104 148 V166"/></g>
+</svg>
+<div class="ship-callouts">
+  <div class="ship-region anchor-middle" style="left:31%;top:15%"><span class="rg-label">DRIVES</span><span class="rg-ro"><i class="rg-k">RANGE</i><b class="rg-v">25</b></span></div>
+  <div class="ship-region anchor-middle" style="left:52%;top:12%"><span class="rg-label">HOLD</span><span class="rg-ro"><b class="rg-v">7/10</b></span></div>
+  <div class="ship-region anchor-middle damaged" style="left:69%;top:18%"><span class="rg-label">WEAPONS</span><span class="rg-ro"><i class="rg-k">HP/VOL</i><b class="rg-v">1</b></span></div>
+  <div class="ship-region anchor-middle" style="left:22%;top:88%"><span class="rg-label">FUEL</span><span class="rg-ro"><b class="rg-v">300/300</b></span></div>
+  <div class="ship-region anchor-start" style="left:80%;top:52%"><span class="rg-label">NAV</span><span class="rg-ro"><i class="rg-k">MOD</i><b class="rg-v">+0</b></span></div>
+</div></div>
+            <div class="ship-bench"><div class="bench-head">YARD BENCH</div><div class="ship-grid">
+  <div class="comp-row ">
+    <div class="comp-id"><span class="comp-name">DRIVES</span><span class="comp-str">STR 2</span>
+      <span class="comp-cond"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+    <div class="comp-actions"><button class="btn small ghost">REPAIR 120cr</button><span class="comp-preview">UPGRADE → <b>STR 3</b></span></div>
+  </div>
+  <div class="comp-row damaged">
+    <div class="comp-id"><span class="comp-name">WEAPONS</span><span class="comp-str">STR 1</span>
+      <span class="comp-cond"><i class="on"></i><i class="on"></i><i class=""></i><i class=""></i></span></div>
+    <div class="comp-actions"><button class="btn small ghost">REPAIR 120cr</button><span class="comp-preview">UPGRADE → <b>STR 2</b></span></div>
+  </div>
+  <div class="comp-row ">
+    <div class="comp-id"><span class="comp-name">SHIELDS</span><span class="comp-str">STR 0</span>
+      <span class="comp-cond"><i class=""></i><i class=""></i><i class=""></i><i class=""></i></span></div>
+    <div class="comp-actions"><button class="btn small ghost">REPAIR 120cr</button><span class="comp-preview">UPGRADE → <b>STR 1</b></span></div>
+  </div></div></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="col right">
+        <section class="pane manifest-board">
+          <span class="mb-clip"><span class="mb-clip-jaw"></span></span>
+          <header><span class="mb-toggle"><span class="mb-title"><svg class="lb-glyph" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="10" height="12"/><rect x="6" y="1" width="4" height="2"/><path d="M5 7h6M5 10h4"/></svg>MANIFEST BOARD</span></span><span class="mb-stamp">SOL-3 DEPOT · 4 OFFERS</span></header>
+          <div class="body"><div class="mb-sheet"><div class="mb-punches"></div>
+  <article class="contract pickable">
+    <div class="row1"><span class="goods">Dilithium Crystal<span class="flag urgent">URGENT</span></span><span class="pay">2,500cr</span></div>
+    <div class="dest">▸ Pollux-7 · 120 fuel · 10 pods</div>
+    <div class="check"><span class="lbl">SIGN</span><span class="slot ready">14</span><span class="mono">free → click to sign</span><button class="haggle">HAGGLE</button></div>
+  </article>
+  <article class="contract pickable">
+    <div class="row1"><span class="goods">Rare Elements<span class="flag storylet">STORYLET</span></span><span class="pay">1,650cr</span></div>
+    <div class="dest">▸ Mira-9 · 60 fuel · 4 pods</div>
+    <div class="check"><span class="lbl">SIGN</span><span class="slot ready">14</span><span class="mono">free → click to sign</span><button class="haggle">HAGGLE</button></div>
+  </article>
+  <article class="contract pickable">
+    <div class="row1"><span class="goods">Salvaged Plating<span class="flag shady">SHADY</span></span><span class="pay">840cr</span></div>
+    <div class="dest">▸ Spica-3 · 40 fuel · 6 pods</div>
+    <div class="check"><span class="lbl">SIGN</span><span class="slot ready">14</span><span class="mono">free → click to sign</span><button class="haggle">HAGGLE</button></div>
+  </article><div class="mb-tear"></div></div></div>
+        </section>
+        <section class="pane trade">
+          <header><h2><svg class="lb-glyph" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="4"/><rect x="2" y="9" width="12" height="4"/><circle cx="4" cy="5" r=".8"/><circle cx="4" cy="11" r=".8"/></svg>PORT LEDGER</h2><span class="tag">Sol-3 SERVICES</span></header>
+          <div class="body">
+  <div class="lb-rail"></div>
+  <div class="ledger-block">
+    <div class="lb-head"><svg class="lb-glyph" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10"/><path d="M2 3l6 5 6-5"/></svg>PORT DISPATCHES</div>
+    <div class="lb-posts"><div class="lb-row"><span>Guild Auditor</span><b>d20 ≥ 12</b></div><div class="lb-row"><span>Distress Ping</span><b>d20 ≥ 9</b></div></div>
+  </div>
+  <div class="ledger-block">
+    <div class="lb-head"><svg class="lb-glyph" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="7" height="12"/><path d="M10 5h3v7M3 6h7"/></svg>FUEL DEPOT</div>
+    <div class="lb-row"><span class="lb-k">PRICE</span><b class="lb-v">4cr <span class="lb-u">/ unit</span></b></div>
+    <div class="lb-controls"><input value="60" readonly /><button class="btn small">BUY FUEL</button></div>
+  </div>
+  <div class="ledger-block due">
+    <div class="lb-head"><svg class="lb-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13V3M2 13h12"/><rect x="4" y="8" width="2" height="5"/><rect x="8" y="5" width="2" height="8"/><rect x="12" y="9" width="2" height="4"/></svg>DEBT LEDGER</div>
+    <div class="lb-row"><span class="lb-k">OWED</span><b class="lb-v big">25,000<span class="lb-u">cr</span></b></div>
+    <div class="lb-row due-soon"><span class="lb-k">DUE</span><b>DAY 30 · 23 DAYS</b></div>
+  </div>
+  <div class="ledger-block">
+    <div class="lb-head"><svg class="lb-glyph" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="10" height="12"/><path d="M5 6h6M5 9h6M5 12h3"/></svg>ACTIVE CONTRACT</div>
+    <div class="lb-empty">Hold is empty — sign a manifest offer to take a job.</div>
+  </div></div>
+        </section>
+      </div>
+    </div>
+
+    <div class="wire">
+      <span class="cap"><i class="dot"></i>GALACTIC WIRE</span>
+      <span class="wire-track">Patrol sweep reported near Mira-9 · Kestrel Vane seen at Pollux-7 · Fuel up 2cr at Sol-3 ·</span>
+      <button class="wire-log-btn">LOG</button>
+    </div>
+
+    <div class="dock">
+      <div class="dock-l"><span class="dh">DAWN HAND</span><span class="dd">DAY 7</span></div>
+      <div class="tray"><div class="die  "><span class="dv">19</span><span class="dl">d20</span></div><div class="die sel "><span class="dv">14</span><span class="dl">d20</span></div><div class="die  "><span class="dv">14</span><span class="dl">d20</span></div><div class="die  "><span class="dv">13</span><span class="dl">d20</span></div><div class="die  spent"><span class="dv">3</span><span class="dl">d20</span></div></div>
+      <div class="dock-r"><button class="btn end">END DAY</button><span class="hint">Pick a die, then assign it to an action.</span></div>
+    </div>
+  </div>
+  <div class="fx"></div>
+</div></body></html>

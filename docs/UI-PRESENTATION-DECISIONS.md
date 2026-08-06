@@ -22,7 +22,10 @@ T-189's annotated hull outline with callouts and yard bench (`.pane.ship`); mani
 ROUNDED 2px clipboard with bulldog clip, punched paper, torn edge and a −0.45deg hang
 (`.pane.manifest-board`); Port Ledger = T-191's bolted SERVICE RACK (chamfered plates, riveted
 mounting rail, bolt heads). Any future quadrant treatment must pick a language none of these
-already owns.
+already owns. *(T-218 note: the four SHAPE languages are unchanged, but their MATERIAL moved —
+the pane's square 1px chrome is now `var(--edge)` + `--bevel` machined steel rather than a 1px
+`--hair` amber line, and the manifest board's 2px stock and the rack's rail are neutral metal.
+Shape, not material, is what UI-1 reserves.)*
 
 **UI-2 — Quadrant differentiation is carried by SHAPE, ICON and MOTION — never by a second
 hue.** (T-190, T-191.) Every treatment stays inside the committed CRT-amber tokens (`--ember`,
@@ -35,6 +38,48 @@ and is written additively under ONE scoped block so the whole treatment is rever
 block. Local overrides that ARE required are named explicitly — T-190 needed `.pane`'s
 `overflow: hidden` → `visible` on its section, with `.pane .body` keeping its own
 `overflow: auto`; T-191 deliberately did NOT relax `.pane.trade`'s `overflow: hidden`.
+
+> **T-218 AMENDMENT (2026-08-06) — THE PALETTE RULING IS CLOSED.** T-186 ruled candidate D
+> ("one phosphor, two materials"), and T-218 shipped it. Three consequences bind future work:
+>
+> 1. **The shared-rule freeze above is LIFTED FOR THAT RULING ONLY, and is now RE-IMPOSED.**
+>    T-218 was the palette ruling, so it deliberately re-materialised `.pane`, `.pane > header`,
+>    `.contract`, `.flag`, `.btn`, `.chip`, `.dock` and the overlay frames — the exact rules UI-2
+>    froze. That licence is spent. From here the freeze reads as written again: a new quadrant
+>    treatment touches no shared rule and stays revertible in one block.
+> 2. **The token list in UI-1/UI-2 gains the STEEL family**, which is additive and is *not* a
+>    second hue: `--steel-hi`, `--steel`, `--steel-lo`, `--steel-deep`, `--etch`, `--etch-dim`,
+>    `--well`, `--edge`, plus the `--bevel` / `--recess` shadow pair. Steel is near-achromatic by
+>    definition (max−min channel spread ≤ 12), so the hue-count is unchanged at one. The five
+>    amber tokens keep their exact T-302 values — T-218 was additive, not a re-hue, and
+>    `packages/ui/src/__tests__/visual-identity.test.ts` fails the build if any of them moves.
+>    `--panel` and `--tube` were RETARGETED onto `--steel` / `--well`: they were never part of the
+>    protected five, they were the amber-on-amber haze the ruling exists to remove.
+> 3. **The material triage rule, which decides every future border and background:** *inside the
+>    glass* (readouts, charts, SVG marks, dim labels sunk into a `--well`) keeps its amber token;
+>    *outside the glass* (chassis, bezels, frames, header strips, button caps, rails, trays, chip
+>    and input frames) is `1px solid var(--edge)` plus `--bevel` or `--recess`, with
+>    `--etch`/`--etch-dim` legends. Separation comes from the bevel/recess shadow, never from a
+>    coloured hairline.
+
+**UI-2b — REVERSE VIDEO IS RESERVED TO REAL URGENCY.** (T-218, the single interaction rule the
+owner folded into candidate D — approved as a two-selector diff against D's own source,
+`docs/design/T218-reference/chassis-rvrule.html`.) A solid `--ember` fill with dark text is how
+the product says *a consequence is landing on you*. It is **not** how "selected", "armed", "on",
+"ready", "owned" or "available" is drawn — those read as **LIT** (an `--ember` outline, inset
+ring, glow and `--ember` text on the surface's own dark body), never as **INVERTED**.
+
+* The sanctioned sites are the four the ruling named — `.chip.rev` (the DEBT marker),
+  `.flag.urgent`, `.due-soon b`, `.ship-region.critical` (a dead ship system) — plus the engine's
+  own refusal/failure surfaces (`.notice`, `.result.fail`, `.ship-reason`, `.nat-juice.fumble`,
+  `.wire-entry[data-wire-kind='flaw-override']`, `.sl-lock`/`.rc-lock`) and the hostile-attitude
+  readout, which is the same category.
+* The two states the ruling explicitly MOVED off reverse video are `.slot.ready` (the
+  check-clearing badge) and `.die.sel` (the armed die). Both are pinned in both directions by
+  `visual-identity.test.ts`; re-inverting either needs a new owner ruling, not a refactor.
+* The button-body and locked-row treatments from the bake-off's legibility reviewer were
+  **explicitly excluded** from the ruling. D's own button/lock treatment ships as built. Do not
+  reach for that build for anything.
 
 **UI-3 — A new bark/annotation style is a FACE-ONLY modifier on the existing class, never a new
 sized or coloured rule.** (T-207.) `.co-enemy-bark` modifies `.co-enemy-hist` with italic +

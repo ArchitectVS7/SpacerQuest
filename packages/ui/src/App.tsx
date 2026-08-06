@@ -5529,9 +5529,16 @@ function Wire({
           {logOpen ? 'CLOSE' : 'LOG'}
         </button>
       </div>
-      <div className="ticker" data-testid="wire">
-        {run}
-        {run}
+      {/* T-217 · The ticker's scroll window. `.cap` above is a normal-flow flex
+          item that reserves exactly its own (data-dependent) width, and this
+          takes the remainder — which is what replaced `.ticker`'s hardcoded
+          `padding-left: 138px`, the magic number the LOG button and the BULLETIN
+          chips had silently outgrown. */}
+      <div className="wire-track">
+        <div className="ticker" data-testid="wire">
+          {run}
+          {run}
+        </div>
       </div>
       {logOpen && <WireLog game={game} onClose={() => setLogOpen(false)} />}
     </div>

@@ -1,9 +1,44 @@
 /* =========================================================================
-   SPACER QUEST · RIMWARD — CRT aesthetic system (T-302)
-   "P3 Amber, an instrument you hold."
+   SPACER QUEST · RIMWARD — CRT aesthetic system (T-302, re-ruled by T-186/T-218)
+   "ONE PHOSPHOR, TWO MATERIALS."
 
-   Design commitments (see docs concept / frontend-design pass):
-   - One phosphor colour. Emphasis is REVERSE VIDEO, never a second hue.
+   THE LAW (T-186 ruling, 2026-08-05; implemented by T-218, 2026-08-06):
+
+   1. ONE PHOSPHOR, ONE HUE. Amber is the only hue in the product, and it is
+      the only thing that EMITS LIGHT. The five amber tokens below carry their
+      original T-302 values byte-for-byte — T-218 was additive, not a re-hue.
+   2. TWO MATERIALS. Everything that is not lit is UNLIT METAL: the
+      near-achromatic `--steel-*` / `--etch` / `--edge` family. Steel is not a
+      second hue — it is an ABSENCE of hue (max−min channel spread ≤ 12), so
+      the one-phosphor commitment survives unchanged in hue-count. The fiction
+      is no longer "a monochrome tube"; it is amber CRT readouts set into
+      machined metal.
+      · INSIDE THE GLASS (readouts, charts, SVG marks, dim labels sunk into a
+        `--well`) → amber tokens, unchanged.
+      · OUTSIDE THE GLASS (chassis, bezels, pane frames, header strips, button
+        caps, rails, trays, chip frames, input frames) → `1px solid var(--edge)`
+        plus `--bevel` or `--recess`, with `--etch` / `--etch-dim` legends.
+        Separation comes from the bevel/recess shadow, never from a coloured
+        hairline.
+   3. REVERSE-VIDEO DISCIPLINE (T-218). Reverse video (a solid `--ember` fill
+      with dark text) is RESERVED TO REAL URGENCY. It is NOT how "selected" or
+      "ready" is drawn — those read as LIT, not INVERTED. The four canonical
+      reverse-video sites named by the ruling are `.chip.rev` (the DEBT marker),
+      `.flag.urgent`, `.due-soon b` and the dead-system callout
+      (`.ship-region.critical`); the engine's own refusal/failure surfaces
+      (`.notice`, `.result.fail`, `.ship-reason`, `.nat-juice.fumble`,
+      `.wire-entry[data-wire-kind='flaw-override']`) and the hostile-attitude
+      readout (T-216) are the same category — a consequence landing on the
+      player — and keep it. Nothing that merely means "chosen", "on", "owned" or
+      "available" may use it.
+   4. NO UNDEFINED CUSTOM PROPERTIES, NO OFF-SYSTEM HEX. Every `var(--x)` in
+      this file must have a declaration in this file, and every literal hex must
+      be amber-family, near-achromatic, or near-black. Both rules are enforced
+      mechanically by `src/__tests__/visual-identity.test.ts` — that is what
+      stops the T-216 class of leak (`--accent`/`--line` fallbacks rendering
+      teal and blue-grey in production) from ever recurring.
+
+   Also unchanged from T-302:
    - Chakra Petch (display chrome) + IBM Plex Mono (tabular instrument data).
    - Phosphor persistence: state changes bloom bright, then decay to afterglow.
    - The effect layer (scanline / vignette / flicker / curvature) is pure CSS on
@@ -11,19 +46,44 @@
    ========================================================================= */
 
 :root {
-  --tube: #0b0906;
-  --panel: #140e07;
+  /* --- the five amber tokens. EXACT T-302 values; T-218 did not touch them. --- */
   --ember: #ffb000;
   --ember-hi: #ffe1a6;
   --amber: #c0781a;
   --amber-dim: #5e3b0e;
   --hair: #3a2408;
 
+  /* --- T-218 · NEUTRAL, near-achromatic chassis: unlit metal.
+         No second HUE — an absence of hue. --- */
+  --steel-hi: #2a2b26;
+  --steel: #1d1e1a;
+  --steel-lo: #141512;
+  --steel-deep: #0d0e0c;
+  --etch: #7a7c75;
+  --etch-dim: #4f514b;
+  /* the recessed phosphor well every readout is sunk into */
+  --well: #070604;
+  /* every chassis edge is a hard black cut line, not a coloured hairline */
+  --edge: #000000;
+
+  /* --- T-218 · the two legacy structural tokens, RETARGETED (2026-08-06).
+         These are NOT among the five amber tokens the T-186 ruling protects:
+         they were the amber-on-amber haze candidate D exists to remove. Aliasing
+         them onto the steel family carries every surface this pass does not
+         hand-port (overlays, popovers, Hangout, combat, Records) off the haze in
+         one move, instead of leaving lit amber islands behind. --- */
+  --panel: #1d1e1a; /* = --steel */
+  --tube: #070604; /* = --well */
+
   --font-display: 'Chakra Petch', system-ui, sans-serif;
   --font-data: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
 
-  --glow: 0 0 2px rgba(255, 176, 0, 0.55), 0 0 10px rgba(255, 176, 0, 0.18);
-  --glow-hi: 0 0 3px rgba(255, 225, 166, 0.9), 0 0 16px rgba(255, 176, 0, 0.45);
+  --glow: 0 0 2px rgba(255, 176, 0, 0.6), 0 0 10px rgba(255, 176, 0, 0.22);
+  --glow-hi: 0 0 3px rgba(255, 225, 166, 0.95), 0 0 18px rgba(255, 176, 0, 0.5);
+  /* machined metal: a lit top edge, a shadowed bottom edge */
+  --bevel: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -1px 0 rgba(0, 0, 0, 0.75);
+  /* a well milled into the metal, with glass at the bottom of it */
+  --recess: inset 0 2px 5px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
 * {
@@ -36,7 +96,7 @@ body,
   margin: 0;
 }
 body {
-  background: #050403;
+  background: #020202;
   color: var(--ember);
   font-family: var(--font-data);
   font-size: 15px;
@@ -50,9 +110,22 @@ body {
   position: relative;
   height: 100%;
   padding: 22px 26px;
-  background: radial-gradient(130% 130% at 50% 40%, #150e07 0%, #0b0906 60%, #070502 100%);
+  /* T-218 · the console face is brushed neutral metal, not an amber haze. */
+  background: radial-gradient(140% 130% at 50% 36%, #1b1c19 0%, #0e0f0d 55%, #040404 100%);
   overflow: hidden;
   isolation: isolate;
+}
+/* the faint vertical brush grain of the console face */
+.tube::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.012) 0 1px,
+    rgba(0, 0, 0, 0) 1px 3px
+  );
+  pointer-events: none;
 }
 
 /* ---- effect layer: static, CSS-only (no per-frame React) ---- */
@@ -143,7 +216,9 @@ body {
   gap: 6px 20px;
   align-items: center;
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--hair);
+  /* T-218 · the bezel is the machined lip of the console, not a lit hairline. */
+  border-bottom: 1px solid var(--edge);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 /* T-1406 · The bezel's right column: diegetic console switches ride the top of
    the frame, the status-chip readouts sit beneath them. */
@@ -178,24 +253,27 @@ body {
   font-size: 19px;
   letter-spacing: 0.32em;
   margin: 0;
-  text-shadow: var(--glow);
+  color: var(--ember);
+  text-shadow: var(--glow-hi);
   text-transform: uppercase;
 }
+/* Etched into the bezel metal — a legend, not a readout. */
 .brand .sub {
   font-family: var(--font-display);
   font-weight: 500;
   letter-spacing: 0.34em;
   font-size: 11px;
-  color: var(--amber);
+  color: var(--etch);
   text-transform: uppercase;
 }
 .loc {
-  color: var(--amber);
+  color: var(--etch);
   font-size: 13px;
   letter-spacing: 0.06em;
 }
 .loc b {
   color: var(--ember);
+  text-shadow: var(--glow);
 }
 .readouts {
   display: flex;
@@ -205,8 +283,12 @@ body {
   flex-wrap: wrap;
   font-size: 12.5px;
 }
+/* T-218 · a readout chip is a little window milled into the bezel: black glass
+   at the bottom of a recess, amber only where a value is printed. */
 .chip {
-  border: 1px solid var(--hair);
+  border: 1px solid var(--edge);
+  background: var(--well);
+  box-shadow: var(--recess);
   padding: 5px 10px;
   letter-spacing: 0.06em;
   white-space: nowrap;
@@ -214,12 +296,15 @@ body {
 }
 .chip b {
   color: var(--ember);
+  text-shadow: var(--glow);
 }
+/* SANCTIONED REVERSE VIDEO (law §3): the DEBT marker is real urgency. */
 .chip.rev {
   background: var(--ember);
   color: var(--tube);
   border-color: var(--ember);
-  font-weight: 600;
+  font-weight: 700;
+  box-shadow: 0 0 14px rgba(255, 176, 0, 0.45);
   text-shadow: none;
 }
 .era {
@@ -227,13 +312,16 @@ body {
   letter-spacing: 0.16em;
   font-size: 11px;
 }
-/* Rank readout — the current renown standing, always in the bezel (T-309). */
+/* Rank readout — the current renown standing, always in the bezel (T-309).
+   T-218: a rank is a stamped nameplate, not a lit value: steel cap, etched legend. */
 .chip.rank {
   font-family: var(--font-display);
   letter-spacing: 0.16em;
   font-size: 11px;
-  color: var(--ember);
-  border-color: var(--amber-dim);
+  color: var(--etch);
+  background: linear-gradient(180deg, var(--steel-hi), var(--steel-lo));
+  box-shadow: var(--bevel);
+  border-color: var(--edge);
 }
 .fuel {
   display: flex;
@@ -243,9 +331,10 @@ body {
 .fuel .bar {
   width: 96px;
   height: 11px;
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
   position: relative;
-  background: #0a0704;
+  background: var(--well);
+  box-shadow: var(--recess);
 }
 .fuel .bar i {
   position: absolute;
@@ -253,8 +342,14 @@ body {
   background: repeating-linear-gradient(90deg, var(--ember) 0 5px, transparent 5px 7px);
   box-shadow: var(--glow);
 }
+/* The bare "FUEL" legend is etched beside the gauge; only the gauge and its
+   number are lit. */
+.fuel > span:first-child {
+  color: var(--etch);
+}
 .fuel b {
   color: var(--ember);
+  text-shadow: var(--glow);
 }
 
 /* ---- main columns ---- */
@@ -282,55 +377,98 @@ body {
      header — the starmap yields and scrolls first. */
   grid-template-rows: minmax(0, auto) minmax(220px, 1fr);
 }
+/* T-218 · A PANE IS A MACHINED PLATE bolted to the console, and its body is a
+   recessed phosphor well. The plate is unlit steel; everything that glows is
+   inside the well. `.pane` keeps its 1px frame — T-190 measures the manifest
+   board's 2px stock against it (`e2e/manifest-object.spec.ts`). */
 .pane {
-  border: 1px solid var(--hair);
-  background: linear-gradient(180deg, var(--panel) 0, #0d0905 100%);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--steel-hi) 0, var(--steel) 34%, var(--steel-lo) 100%);
+  box-shadow:
+    var(--bevel),
+    0 8px 20px rgba(0, 0, 0, 0.75);
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
+/* The label strip is ETCHED into metal — neutral, no phosphor. A lamp beside the
+   legend is what says the instrument is live. */
 .pane > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--hair);
+  background: linear-gradient(180deg, #2e2f29, #1d1e18);
+  border-bottom: 1px solid var(--edge);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .pane > header h2 {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.26em;
   font-size: 12px;
   margin: 0;
   text-transform: uppercase;
-  color: var(--ember);
-  text-shadow: var(--glow);
+  color: var(--etch);
+  text-shadow:
+    0 -1px 0 rgba(0, 0, 0, 0.9),
+    0 1px 0 rgba(255, 255, 255, 0.07);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+/* THE LIVE LAMP: the one lit thing on the chassis strip. */
+.pane > header h2::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ember);
+  box-shadow:
+    0 0 7px rgba(255, 176, 0, 0.95),
+    inset 0 0 2px rgba(255, 225, 166, 0.9);
+  flex: 0 0 auto;
 }
 .pane > header .tag {
   font-size: 11px;
-  color: var(--amber);
+  color: var(--etch-dim);
   letter-spacing: 0.12em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
 }
+/* The well is inset 5px from the plate edge; the 12px content inset the layout
+   was tuned against is preserved exactly (5px margin + 7px padding), so the
+   material change costs the player no content width. */
 .pane .body {
-  padding: 12px;
+  padding: 7px;
   overflow: auto;
   min-height: 0;
   flex: 1 1 auto;
+  /* the glass at the bottom of the milled well */
+  background: var(--well);
+  box-shadow: var(--recess);
+  margin: 5px;
+  border-radius: 1px;
 }
 .pane .body::-webkit-scrollbar {
   width: 9px;
 }
 .pane .body::-webkit-scrollbar-thumb {
-  background: var(--amber-dim);
+  background: var(--etch-dim);
 }
 
 /* ---- starmap (T-304 coordinate map, fuel ring, route preview) ---- */
+/* T-218 · black glass with the star plane's own amber bloom on it. */
 .starmap .body {
   display: grid;
   gap: 10px;
   align-content: start;
+  background:
+    radial-gradient(85% 80% at 50% 62%, rgba(255, 176, 0, 0.07), transparent 72%), var(--well);
 }
 /* T-187 · The plot group (chart + route preview + Confirm jump) is one rails
    region; the off-lane sweep beneath it is another. The wrapper repeats the
@@ -407,7 +545,7 @@ body {
   font-size: 8px;
   text-anchor: middle;
   paint-order: stroke;
-  stroke: var(--tube);
+  stroke: var(--well);
   stroke-width: 1.6;
 }
 .smsys.rim .smdot {
@@ -474,15 +612,20 @@ body {
   fill: var(--ember-hi);
 }
 
-/* route-preview panel — the plan-before-commit readout */
+/* route-preview panel — the plan-before-commit readout.
+   T-218 · a control mounted BELOW the glass: steel plate, etched keys, only the
+   values are lit. */
 .route-preview {
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--steel-hi), var(--steel-lo));
+  box-shadow: var(--bevel);
   padding: 8px 10px;
   display: grid;
   gap: 6px;
 }
 .route-preview .rp-head {
-  color: var(--ember);
+  color: var(--etch);
   font-size: 12px;
   letter-spacing: 0.04em;
 }
@@ -493,12 +636,13 @@ body {
   align-items: baseline;
 }
 .route-preview .rp-k {
-  color: var(--amber);
+  color: var(--etch-dim);
   font-size: 10px;
   letter-spacing: 0.06em;
 }
 .route-preview .rp-v {
   color: var(--ember);
+  text-shadow: var(--glow);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -510,18 +654,21 @@ body {
 /* T-1403 · off-lane sweep control — a functional affordance sharing the
    route-preview look, not a redesign. */
 .explore-sweep {
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--steel-hi), var(--steel-lo));
+  box-shadow: var(--bevel);
   padding: 8px 10px;
   display: grid;
   gap: 6px;
 }
 .explore-sweep .es-head {
-  color: var(--ember);
+  color: var(--etch);
   font-size: 12px;
   letter-spacing: 0.04em;
 }
 .explore-sweep .es-cost {
-  color: var(--amber);
+  color: var(--etch-dim);
   font-size: 10px;
   letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
@@ -576,10 +723,9 @@ body {
   width: 100%;
   max-width: 480px;
   margin: 0 auto;
-  border: 1px solid var(--hair);
-  background:
-    radial-gradient(120% 90% at 50% 42%, rgba(255, 176, 0, 0.05), transparent 70%),
-    linear-gradient(180deg, #150e07, #0c0805);
+  /* T-218 · the diagram is INSIDE the glass: no chassis frame, just the hull's
+     own bloom on the well the pane body already provides. */
+  background: radial-gradient(120% 90% at 50% 42%, rgba(255, 176, 0, 0.07), transparent 72%);
 }
 .shipsvg {
   display: block;
@@ -765,13 +911,14 @@ body {
 .ship-region.damaged .rg-v {
   text-shadow: var(--glow-hi);
 }
+/* SANCTIONED REVERSE VIDEO (law §3): a dead system is real urgency. */
 .ship-region.critical {
   background: var(--ember);
 }
 .ship-region.critical .rg-label,
 .ship-region.critical .rg-k,
 .ship-region.critical .rg-v {
-  color: #140e07;
+  color: var(--well);
   text-shadow: none;
 }
 
@@ -781,20 +928,25 @@ body {
    inside one labelled tray is what stops them reading as "the ship's state".
    Nothing is hidden: every row still renders, in full, exactly as before.
    ========================================================================= */
+/* T-218 · the bench is the CONTROLS, so it is metal, outside the glass. */
 .ship-bench {
-  border: 1px solid var(--hair);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
   padding: 8px;
   display: grid;
   gap: 8px;
   align-content: start;
-  background: linear-gradient(180deg, rgba(255, 176, 0, 0.03), transparent 40%);
+  background: linear-gradient(180deg, var(--steel-hi), var(--steel-lo));
+  box-shadow: var(--bevel);
 }
 .ship-bench .bench-head {
-  color: var(--amber);
+  color: var(--etch);
   font-family: var(--font-display);
   font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.14em;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.7);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
   padding-bottom: 4px;
 }
 
@@ -824,16 +976,21 @@ body {
     background: transparent;
   }
 }
+/* Each equipment row is its own little recessed readout sunk into the bench. */
 .comp-row {
-  border: 1px solid var(--hair);
+  border: 1px solid var(--edge);
+  border-radius: 1px;
   padding: 6px 8px;
   display: grid;
   gap: 4px;
-  background: linear-gradient(180deg, #170f07, #0e0a05);
+  background: var(--well);
+  box-shadow: var(--recess);
 }
 .comp-row.damaged {
-  border-color: var(--ember);
-  box-shadow: inset 0 0 0 1px rgba(255, 176, 0, 0.25);
+  border-color: var(--edge);
+  box-shadow:
+    var(--recess),
+    inset 0 0 0 1px rgba(255, 176, 0, 0.5);
 }
 .comp-id {
   display: grid;
@@ -843,6 +1000,7 @@ body {
 }
 .comp-name {
   color: var(--ember);
+  text-shadow: var(--glow);
   letter-spacing: 0.05em;
   font-weight: 500;
 }
@@ -858,15 +1016,18 @@ body {
   display: flex;
   gap: 2px;
 }
+/* Condition pips are LAMPS in a steel socket: dark and inert when out, amber
+   when lit. The socket is neutral — the light is the only hue. */
 .comp-cond i {
   width: 8px;
   height: 8px;
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--steel-hi);
+  background: #0b0b09;
 }
 .comp-cond i.on {
   background: var(--ember);
   border-color: var(--ember);
-  box-shadow: 0 0 4px rgba(255, 176, 0, 0.6);
+  box-shadow: 0 0 5px rgba(255, 176, 0, 0.8);
 }
 .comp-row.damaged .comp-cond i.on {
   background: var(--ember-hi);
@@ -895,26 +1056,29 @@ body {
   text-shadow: var(--glow);
 }
 
-/* the honest "why you can't buy this" line — reverse-video, never hidden */
+/* the honest "why you can't buy this" line — a refusal is real urgency, so it
+   keeps its reverse video under law §3. */
 .ship-reason {
   display: inline-block;
   background: var(--ember);
-  color: #140e07;
+  color: var(--well);
   font-size: 10px;
   letter-spacing: 0.04em;
   padding: 1px 6px;
   font-weight: 600;
 }
 
-/* buttons: a compact yard variant + a ghost (repair) variant */
+/* buttons: a compact yard variant + a ghost (repair) variant.
+   T-218 · a ghost key is a lighter-pressed cap, not a hollow amber outline. */
 .btn.small {
   padding: 4px 8px;
   font-size: 11px;
 }
 .btn.small.ghost {
-  background: transparent;
-  color: var(--amber);
-  border: 1px solid var(--amber-dim);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+  font-weight: 400;
 }
 .btn:disabled {
   opacity: 0.45;
@@ -930,13 +1094,16 @@ body {
 
 /* cargo pods */
 .ship-pods-block {
-  border: 1px solid var(--hair);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--steel-hi), var(--steel-lo));
+  box-shadow: var(--bevel);
   padding: 8px;
   display: grid;
   gap: 6px;
 }
 .pods-head {
-  color: var(--amber);
+  color: var(--etch);
   letter-spacing: 0.05em;
   font-size: 11px;
 }
@@ -950,22 +1117,27 @@ body {
 }
 .pods-controls input {
   width: 64px;
-  background: #0b0906;
-  border: 1px solid var(--amber-dim);
+  background: var(--well);
+  border: 1px solid var(--edge);
+  box-shadow: var(--recess);
   color: var(--ember);
+  text-shadow: var(--glow);
   font-family: var(--font-data);
   padding: 4px 6px;
 }
 
 /* special equipment — all rows always shown, disabled-not-hidden */
 .ship-equip {
-  border: 1px solid var(--hair);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--steel-hi), var(--steel-lo));
+  box-shadow: var(--bevel);
   padding: 8px;
   display: grid;
   gap: 6px;
 }
 .equip-head {
-  color: var(--amber);
+  color: var(--etch);
   letter-spacing: 0.08em;
   font-size: 10px;
 }
@@ -973,10 +1145,12 @@ body {
   display: grid;
   gap: 3px;
   padding-bottom: 5px;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.7);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .equip-row:last-child {
   border-bottom: none;
+  box-shadow: none;
   padding-bottom: 0;
 }
 .equip-main {
@@ -997,31 +1171,35 @@ body {
   font-size: 11px;
   color: var(--ember-hi);
 }
+/* An OWNED tag is inert, not urgent (law §3): an etched steel plate, not a fill. */
 .equip-tag {
   font-size: 10px;
   letter-spacing: 0.06em;
-  color: #140e07;
-  background: var(--amber);
+  color: var(--etch);
+  border: 1px solid var(--etch-dim);
   padding: 1px 6px;
   font-weight: 600;
 }
 
-/* ---- manifest ---- */
+/* ---- manifest ----
+   T-218 · each offer is a strip of stock printed by an amber-ribbon dot-matrix:
+   the TYPE is phosphor-amber, the paper it is printed on is neutral. */
 .contract {
-  border: 1px solid var(--hair);
+  border: 1px solid var(--edge);
   padding: 10px 11px;
   margin-bottom: 10px;
   position: relative;
   transition:
     border-color 0.2s,
     background 0.2s;
-  background: linear-gradient(180deg, #170f07, #0e0a05);
+  background: linear-gradient(180deg, #26271f, #1a1b16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .contract:last-child {
   margin-bottom: 0;
 }
 .contract.pickable:hover {
-  border-color: var(--amber);
+  border-color: var(--ember);
   cursor: pointer;
 }
 .contract .row1 {
@@ -1032,17 +1210,18 @@ body {
 }
 .contract .goods {
   color: var(--ember);
+  text-shadow: var(--glow);
   letter-spacing: 0.03em;
   font-weight: 500;
 }
 .contract .dest {
-  color: var(--amber);
+  color: var(--etch);
   font-size: 12px;
 }
 .contract .pay {
   color: var(--ember-hi);
   font-weight: 600;
-  text-shadow: var(--glow);
+  text-shadow: var(--glow-hi);
   white-space: nowrap;
 }
 .flag {
@@ -1052,14 +1231,17 @@ body {
   padding: 2px 6px;
   margin-left: 8px;
 }
+/* SANCTIONED REVERSE VIDEO (law §3): URGENT is real urgency, by definition. */
 .flag.urgent {
   background: var(--ember);
   color: var(--tube);
   font-weight: 700;
+  box-shadow: 0 0 10px rgba(255, 176, 0, 0.4);
 }
+/* SHADY is a note on the paper, not a warning light — etched, unlit. */
 .flag.shady {
-  border: 1px solid var(--amber);
-  color: var(--amber);
+  border: 1px solid var(--etch-dim);
+  color: var(--etch);
 }
 .flag.storylet {
   border: 1px solid var(--ember);
@@ -1077,12 +1259,15 @@ body {
    paper on it with punched holes at the top and a torn bottom edge. Clicking
    the header STOWS the paper; the board itself stays bolted on.
 
-   PALETTE DISCIPLINE: T-186 (the visual-identity/colour ruling) is still open
-   and the owner owns it, so every value below stays inside the committed
-   CRT-amber system — one phosphor colour, emphasis by REVERSE VIDEO. No second
-   hue is introduced here, and no shared rule (`.pane`, `.pane > header`, `.col`,
-   `.contract`, `.flag`) is touched: everything is additive under
-   `.manifest-board`, so the treatment is revertible in one block.
+   PALETTE DISCIPLINE — UPDATED BY T-218 (2026-08-06). T-186 is now RULED
+   (candidate D: one phosphor, two materials), so the amber-on-amber board stock
+   this block originally shipped has been re-materialised as neutral board and
+   neutral paper. The SHAPE is untouched — 2px rounded stock, the crooked hang,
+   the overhanging clip, the punched holes, the torn edge — because that is what
+   T-190 measures (`e2e/manifest-object.spec.ts`) and what differentiates the
+   object. Only its material moved. Reverse video survives here only where law
+   §3 sanctions it (`.flag.urgent`); the port stamp is now embossed, not
+   inverted.
 
    MOTION: opening/re-posting animates, and every animation is wrapped in
    `@media not (prefers-reduced-motion: reduce)` — the house rule this file keeps
@@ -1095,18 +1280,19 @@ body {
   overflow: visible;
   /* 2px board stock, ROUNDED — every other pane in the cockpit is a square 1px
      hairline, so the silhouette alone separates this one at a glance. */
-  border: 2px solid var(--amber-dim);
+  border: 2px solid var(--edge);
   border-radius: 4px;
   background:
-    /* fibreboard grain */
-    repeating-linear-gradient(0deg, rgba(255, 176, 0, 0.03) 0 2px, rgba(0, 0, 0, 0) 2px 4px),
-    repeating-linear-gradient(90deg, rgba(255, 176, 0, 0.018) 0 3px, rgba(0, 0, 0, 0) 3px 6px),
-    linear-gradient(180deg, #26180a 0, #17100a 55%, #0e0905 100%);
-  /* Thickness: two offset hairlines behind the board, then a cast shadow. */
+    /* fibreboard grain, now read in neutral light */
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.022) 0 2px, rgba(0, 0, 0, 0) 2px 4px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.014) 0 3px, rgba(0, 0, 0, 0) 3px 6px),
+    linear-gradient(180deg, #3c3d36 0, #26271f 40%, #1a1b17 100%);
+  /* Thickness: two offset edges behind the board, then a cast shadow. */
   box-shadow:
-    3px 4px 0 -1px #100b05,
-    4px 5px 0 -1px var(--hair),
-    9px 11px 20px rgba(0, 0, 0, 0.55);
+    var(--bevel),
+    3px 4px 0 -1px #0a0a09,
+    4px 5px 0 -1px #2a2b26,
+    10px 12px 24px rgba(0, 0, 0, 0.7);
   /* A board on a hook hangs crooked. Deliberately under 0.5deg: Playwright
      centre-clicks a rotated box fine, but a large angle degrades the hit areas
      and the `dropDie` drag targets on `.contract`. */
@@ -1121,7 +1307,7 @@ body {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, var(--amber) 0 35%, #241708 60%, #0d0904 100%);
+  background: radial-gradient(circle at 35% 30%, #9a9c93 0 35%, #4a4b44 60%, #0d0e0c 100%);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8);
   pointer-events: none;
 }
@@ -1142,21 +1328,21 @@ body {
   width: 124px;
   height: 19px;
   border-radius: 3px 3px 0 0;
-  /* Brushed metal, read in one phosphor: a hot specular band across the top
-     third, falling away to shadow at the jaw. */
+  /* T-218 · Brushed metal read as METAL: a hot specular band across the top
+     third, falling away to shadow at the jaw. The clip does not emit light. */
   background: linear-gradient(
     180deg,
-    #3a2409 0,
-    var(--ember) 22%,
-    #8a5710 42%,
-    var(--amber-dim) 62%,
-    #221506 100%
+    #4a4b44 0,
+    #c9cbc2 18%,
+    #7d7f76 42%,
+    #3a3b34 66%,
+    #171815 100%
   );
-  border: 1px solid var(--amber);
+  border: 1px solid var(--edge);
   border-bottom: none;
   box-shadow:
-    inset 0 1px 0 rgba(255, 225, 166, 0.55),
-    0 3px 7px rgba(0, 0, 0, 0.7);
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 3px 8px rgba(0, 0, 0, 0.8);
   z-index: 2;
 }
 /* The jaw: the pressure bar the paper is bitten under, plus two pivot rivets. */
@@ -1167,20 +1353,28 @@ body {
   bottom: 3px;
   height: 5px;
   border-radius: 1px;
-  background: linear-gradient(180deg, #100a04, #2a1a07);
+  background: linear-gradient(180deg, #0c0c0a, #2c2d27);
   box-shadow:
-    inset 0 1px 0 rgba(255, 176, 0, 0.3),
-    -42px -7px 0 -1px var(--ember-hi),
-    42px -7px 0 -1px var(--ember-hi);
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    -42px -7px 0 -1px #d6d8cf,
+    42px -7px 0 -1px #d6d8cf;
 }
 /* The header is one big control — the owner's "clickable item". */
 .manifest-board > header {
   padding: 7px 11px;
-  border-bottom: 1px solid var(--amber-dim);
+  background: linear-gradient(180deg, #43443c, #2a2b23);
+  border-bottom: 1px solid var(--edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 .manifest-board > header h2 {
   flex: 1 1 auto;
   min-width: 0;
+}
+/* The board carries its live lamp on `.mb-title` (inside the toggle button),
+   exactly as the ruled reference does — so the generic pane lamp is suppressed
+   here rather than doubled. */
+.manifest-board > header h2::before {
+  content: none;
 }
 .mb-toggle {
   display: flex;
@@ -1201,13 +1395,27 @@ body {
   outline: 1px solid var(--ember);
   outline-offset: 3px;
 }
+/* The board's legend is stencilled on the stock; the lamp beside it is the one
+   lit thing in this header. */
 .mb-title {
-  color: var(--ember);
-  text-shadow: var(--glow);
+  color: var(--etch);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.9);
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.mb-title::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ember);
+  box-shadow: 0 0 7px rgba(255, 176, 0, 0.95);
+  flex: 0 0 auto;
 }
 .mb-toggle:hover .mb-title {
-  color: var(--ember-hi);
+  color: #b6b8b0;
 }
 /* The open/stowed chevron. Purely decorative — `aria-expanded` on the button is
    what actually announces the state. */
@@ -1216,12 +1424,12 @@ body {
   flex: 0 0 auto;
   font-size: 13px;
   line-height: 1;
-  color: var(--ember);
-  text-shadow: var(--glow);
+  color: var(--etch);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.9);
   transition: transform 180ms ease;
 }
 .mb-toggle:hover::after {
-  color: var(--ember-hi);
+  color: #b6b8b0;
 }
 .manifest-board[data-manifest-open='0'] .mb-toggle::after {
   transform: rotate(-90deg);
@@ -1231,8 +1439,10 @@ body {
     transition: none;
   }
 }
-/* The port stamp: reverse video, counter-rotated against the board's hang so it
-   reads as ink pressed onto the board rather than a label typeset on it. */
+/* The port stamp: counter-rotated against the board's hang so it reads as ink
+   pressed onto the board rather than a label typeset on it. T-218 · it is a
+   rubber stamp on paper, not a warning light — so it is an outlined bone-white
+   impression, not reverse-video amber (law §3). */
 .mb-stamp {
   margin-left: auto;
   font-family: var(--font-display);
@@ -1241,30 +1451,36 @@ body {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   white-space: nowrap;
-  color: var(--tube);
-  background: var(--ember);
+  color: #f0efe6;
+  background: none;
+  border: 1.5px solid rgba(240, 239, 230, 0.55);
+  opacity: 0.75;
   padding: 2px 8px;
   transform: rotate(1.1deg);
-  box-shadow:
-    0 0 0 1px var(--tube),
-    0 0 0 2px var(--amber-dim);
 }
 /* The paper on the board. Padding is kept TIGHT on purpose: the chrome must not
    cost the player a visible offer — the pane's box is ~200px at the suite
    viewport and the baseline showed a contract and a half, which this matches. */
+/* The board is PAPER ON BOARD, not a milled well — so it opts out of `.pane
+   .body`'s glass recess entirely. */
 .manifest-board > .body {
   padding: 7px 9px 10px;
+  margin: 0;
+  background: none;
+  box-shadow: none;
 }
 .mb-sheet {
   position: relative;
   padding: 8px 9px 4px;
   /* Paper, lighter than the board it is clipped to, faintly ruled like a form. */
   background:
-    repeating-linear-gradient(180deg, rgba(255, 176, 0, 0.045) 0 1px, rgba(0, 0, 0, 0) 1px 22px),
-    linear-gradient(180deg, #241809 0, #16100a 100%);
-  border: 1px solid var(--amber-dim);
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.05) 0 1px, rgba(0, 0, 0, 0) 1px 22px),
+    linear-gradient(180deg, #20211c 0, #171814 100%);
+  border: 1px solid var(--edge);
   border-bottom: none;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
+  box-shadow:
+    0 3px 9px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 /* Punched holes along the top of the sheet, where the clip bites it. */
 .mb-punches {
@@ -1272,8 +1488,8 @@ body {
   margin: -3px -1px 5px;
   background-image: radial-gradient(
     circle at 6px 4px,
-    var(--tube) 0 3px,
-    rgba(255, 176, 0, 0.28) 3px 3.9px,
+    #0a0a09 0 3px,
+    rgba(255, 255, 255, 0.14) 3px 3.9px,
     rgba(0, 0, 0, 0) 4.1px
   );
   background-size: 32px 9px;
@@ -1284,7 +1500,7 @@ body {
 .mb-tear {
   height: 9px;
   margin: 6px -10px -4px;
-  background: linear-gradient(180deg, #150e07, #100a05);
+  background: linear-gradient(180deg, #1d1e19, #141510);
   clip-path: polygon(
     0 0,
     100% 0,
@@ -1322,8 +1538,8 @@ body {
   font-family: var(--font-display);
   font-size: 11px;
   letter-spacing: 0.16em;
-  color: var(--amber);
-  border: 1px dashed var(--amber-dim);
+  color: var(--etch);
+  border: 1px dashed var(--etch-dim);
   padding: 9px 10px;
   text-align: center;
 }
@@ -1378,10 +1594,9 @@ body {
   font-weight: 600;
 }
 .ledger-block {
-  border: 1px solid var(--hair);
   padding: 9px 11px;
   margin-bottom: 10px;
-  background: linear-gradient(180deg, #170f07, #0e0a05);
+  background: linear-gradient(180deg, #2e2f28, #1a1b16);
 }
 .ledger-block:last-child {
   margin-bottom: 0;
@@ -1390,7 +1605,9 @@ body {
   font-family: var(--font-display);
   letter-spacing: 0.16em;
   font-size: 10px;
-  color: var(--amber);
+  font-weight: 700;
+  color: var(--etch);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.8);
   margin-bottom: 7px;
 }
 .ledger-block .lb-row {
@@ -1399,12 +1616,17 @@ body {
   align-items: baseline;
   gap: 10px;
   font-size: 12px;
+  color: var(--etch);
+}
+.ledger-block .lb-row b {
+  color: var(--ember);
+  text-shadow: var(--glow);
 }
 .ledger-block .lb-empty,
 .ledger-block .lb-note,
 .ledger-block .lb-cleared {
   font-size: 12px;
-  color: var(--amber);
+  color: var(--etch);
 }
 .ledger-block .lb-note {
   margin-top: 6px;
@@ -1415,10 +1637,12 @@ body {
   text-shadow: var(--glow);
   font-weight: 600;
 }
+/* SANCTIONED REVERSE VIDEO (law §3): a marker about to come due is real urgency. */
 .ledger-block .due-soon b {
   color: var(--tube);
   background: var(--ember);
   padding: 0 5px;
+  text-shadow: none;
 }
 .lb-controls {
   display: flex;
@@ -1428,9 +1652,11 @@ body {
 .lb-controls input {
   flex: 1;
   min-width: 0;
-  background: var(--tube);
-  border: 1px solid var(--amber-dim);
+  background: var(--well);
+  border: 1px solid var(--edge);
+  box-shadow: var(--recess);
   color: var(--ember);
+  text-shadow: var(--glow);
   font-family: var(--font-data);
   font-size: 13px;
   padding: 6px 8px;
@@ -1456,21 +1682,19 @@ body {
    edge, bolted onto a riveted rail that runs the height of the rack. A
    chamfered plate on a rail is none of the other three.
 
-   PALETTE DISCIPLINE — T-186 IS STILL OPEN AND OWNS THE COLOUR RULING. Every
-   value below stays inside the committed CRT-amber system (--ember / --ember-hi
-   / --amber / --amber-dim / --hair / --panel / --tube / --glow), one phosphor,
-   emphasis by reverse video. NO second hue is introduced. Differentiation here
-   is carried entirely by SHAPE (chamfer + rail + rivets), ICON (five stencil
-   glyphs) and MOTION (three keyed animations) — which is exactly the accept
-   clause's own minimum bar. Giving this quadrant its own HUE would be T-186's
-   territory and was deliberately not reached for.
+   PALETTE DISCIPLINE — UPDATED BY T-218 (2026-08-06). T-186 has RULED
+   (candidate D), so the rack is now built out of the material it was always
+   describing: the rail is real extruded steel and the plates are machined steel,
+   instead of the amber-tinted stand-ins this block shipped while the ruling was
+   open. Differentiation is still carried entirely by SHAPE (chamfer + rail +
+   rivets), ICON (five stencil glyphs) and MOTION (three keyed animations) — none
+   of which moved. The ONLY amber left in the rack is in the readouts themselves
+   and on `.ledger-block.due`'s mounting edge, which is a lit state, not a frame.
 
-   NO SHARED RULE IS TOUCHED. `.pane`, `.pane > header`, `.col`, `.flag`,
-   `.ship-reason` (shared with ShipPane) and the bare `.notice` (also
-   `.notice.recovery` / `.notice.demo-banner` / the hangout notice) are all left
-   alone; everything below is additive under `.pane.trade` / `.ledger-block` /
-   the new `.lb-*` classes, all of which are exclusive to `TradePane`. The whole
-   treatment is revertible in one block if T-186 rules a different direction.
+   SHARED RULES ARE NOW TOUCHED, DELIBERATELY. `.pane`, `.pane > header` and the
+   rest were frozen only "while a palette ruling is still open"
+   (docs/UI-PRESENTATION-DECISIONS.md UI-2); T-218 IS that ruling, and it
+   re-materialises them by design. The freeze is re-imposed after this pass.
 
    MOTION: three animations, all keyed off engine state via a React `key`
    (`ledgerFascia` in format.ts) — zero component state, zero effect, zero
@@ -1490,6 +1714,10 @@ body {
   grid-template-columns: 9px minmax(0, 1fr);
   column-gap: 9px;
   align-content: start;
+  /* T-218 · a rack interior is METAL, not glass — it is the one pane body that
+     is not a phosphor well, because nothing is projected onto it. */
+  background: linear-gradient(180deg, var(--steel), var(--steel-lo));
+  box-shadow: var(--bevel);
 }
 .pane.trade > .body > * {
   grid-column: 2;
@@ -1502,27 +1730,20 @@ body {
   grid-row: 1 / span 30;
   border-radius: 2px;
   background:
-    /* mounting rivets down the spine */
+    /* mounting rivets down the spine — struck steel, catching the room light */
     radial-gradient(
         circle at 50% 8px,
-        var(--ember-hi) 0 1.1px,
-        var(--ember) 1.1px 2px,
-        #160e05 2.4px 3.4px,
+        #cfd1c8 0 1.1px,
+        #8b8d84 1.1px 2px,
+        #0d0e0c 2.4px 3.4px,
         rgba(0, 0, 0, 0) 3.6px
       )
       0 0 / 9px 22px repeat-y,
-    /* the lit spine, continuous behind the rivets */
-    linear-gradient(
-        90deg,
-        rgba(0, 0, 0, 0) 0 3.5px,
-        var(--amber-dim) 3.5px 5.5px,
-        rgba(0, 0, 0, 0) 5.5px
-      ),
     /* extruded metal: a specular edge at the left, falling to shadow at the right */
-    linear-gradient(90deg, #1a1006 0, #3a2409 22%, #241708 48%, #120c06 76%, #080503 100%);
+    linear-gradient(90deg, #111210 0, #4b4c44 24%, #2b2c26 52%, #141511 78%, #0a0a09 100%);
   box-shadow:
-    inset 0 0 0 1px rgba(0, 0, 0, 0.6),
-    1px 0 4px rgba(0, 0, 0, 0.65);
+    inset 0 0 0 1px rgba(0, 0, 0, 0.7),
+    1px 0 4px rgba(0, 0, 0, 0.7);
 }
 
 /* A machined service plate: chamfered top-left and bottom-right, a lit mounting
@@ -1534,11 +1755,20 @@ body {
   position: relative;
   clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
   background:
-    linear-gradient(135deg, var(--amber) 0 8px, rgba(0, 0, 0, 0) 8px) top left / 20px 20px no-repeat,
-    linear-gradient(315deg, var(--amber-dim) 0 8px, rgba(0, 0, 0, 0) 8px) bottom right / 20px 20px
-      no-repeat,
-    linear-gradient(180deg, #1b1209, #0e0a05);
-  box-shadow: inset 2px 0 0 0 var(--amber);
+    linear-gradient(135deg, #6e7067 0 8px, rgba(0, 0, 0, 0) 8px) top left / 20px 20px no-repeat,
+    linear-gradient(315deg, #101110 0 8px, rgba(0, 0, 0, 0) 8px) bottom right / 20px 20px no-repeat,
+    linear-gradient(180deg, #2e2f28, #1a1b16);
+  box-shadow:
+    inset 2px 0 0 0 #7e8077,
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+/* The one plate that is LIT: a marker coming due is the rack's live state, so
+   its mounting edge burns amber instead of reading as struck steel. */
+.ledger-block.debt-ledger {
+  box-shadow:
+    inset 2px 0 0 0 var(--ember),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 16px rgba(255, 176, 0, 0.14);
 }
 /* Two bolt heads down the mounting edge, so each plate reads as FIXED to the
    rail rather than merely adjacent to it. Absolutely positioned chrome — it
@@ -1552,12 +1782,7 @@ body {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: radial-gradient(
-    circle at 34% 28%,
-    var(--ember-hi) 0 30%,
-    var(--ember) 42%,
-    #1a1006 100%
-  );
+  background: radial-gradient(circle at 34% 28%, #cfd1c8 0 30%, #8b8d84 42%, #101110 100%);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
   pointer-events: none;
   z-index: 2;
@@ -1661,7 +1886,7 @@ body {
   align-items: center;
   flex-wrap: wrap;
   font-size: 12px;
-  border-top: 1px dashed var(--hair);
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
   padding-top: 8px;
   margin-top: 8px;
 }
@@ -1669,76 +1894,91 @@ body {
   font-family: var(--font-display);
   letter-spacing: 0.16em;
   font-size: 10px;
-  color: var(--amber);
+  color: var(--etch-dim);
   margin-right: 10px;
 }
+/* An empty slot is a printed box on the paper — inert. */
 .slot {
   min-width: 34px;
   height: 26px;
-  border: 1px dashed var(--amber-dim);
+  border: 1px dashed var(--etch-dim);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--amber-dim);
+  color: var(--etch-dim);
   margin-right: 7px;
   font-weight: 600;
 }
+/* ==== T-218 RULED EDIT 1 of 2 — DO NOT REVERT WITHOUT A NEW RULING ==========
+   "Which die clears this check" was a SOLID `--ember` fill with dark text, i.e.
+   reverse video. Under law §3 reverse video is reserved to real urgency, and a
+   ready badge is not urgent — it is READY. It now reads as LIT: an ember outline
+   and ember numerals on the well's own black glass, with an inset bloom.
+   (Owner-approved 2026-08-05 as a two-selector diff against candidate D:
+   docs/design/T218-reference/chassis-rvrule.html:239.) */
 .slot.ready {
+  border: 1px solid var(--ember);
   border-style: solid;
-  border-color: var(--ember);
-  color: var(--tube);
-  background: var(--ember);
-  box-shadow: var(--glow);
+  color: var(--ember);
+  background: var(--well);
+  box-shadow: inset 0 0 6px rgba(255, 176, 0, 0.25);
+  text-shadow: var(--glow);
 }
 .mono {
-  color: var(--amber);
+  color: var(--etch);
 }
 .mono b {
   color: var(--ember);
+  text-shadow: var(--glow);
 }
 .arrow {
   margin: 0 8px;
-  color: var(--amber);
+  color: var(--etch-dim);
 }
 .result.clear {
   color: var(--ember-hi);
   text-shadow: var(--glow);
   font-weight: 600;
 }
+/* SANCTIONED REVERSE VIDEO (law §3): a failed check is a consequence landing. */
 .result.fail {
   background: var(--ember);
   color: var(--tube);
   padding: 1px 7px;
   font-weight: 600;
+  text-shadow: none;
 }
 
-/* ---- haggle affordance + drag/drop assignment ---- */
+/* ---- haggle affordance + drag/drop assignment ----
+   T-218 · HAGGLE is a physical key pinned to the paper, not a lit outline. */
 .haggle {
   margin-left: auto;
   font-family: var(--font-display);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   font-size: 10px;
-  background: transparent;
-  color: var(--ember);
-  border: 1px solid var(--amber);
+  background: linear-gradient(180deg, #3d3e37, #212219);
+  color: var(--etch);
+  border: 1px solid var(--edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   padding: 3px 9px;
   cursor: pointer;
 }
 .haggle:hover:not(:disabled) {
-  border-color: var(--ember);
-  box-shadow: var(--glow);
+  color: var(--ember);
+  text-shadow: var(--glow);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 12px rgba(255, 176, 0, 0.18);
 }
 .haggle:disabled {
-  color: var(--amber-dim);
-  border-color: var(--amber-dim);
+  color: var(--etch-dim);
   cursor: not-allowed;
 }
 /* Already haggled: still clickable (a second attempt is an honest, die-free
    refusal surfaced as a notice), but dimmed so its state reads at a glance. */
 .haggle.done {
-  color: var(--amber-dim);
-  border-color: var(--amber-dim);
+  color: var(--etch-dim);
 }
 .die[draggable='true'] {
   cursor: grab;
@@ -1748,8 +1988,10 @@ body {
 }
 .contract.dropready {
   border-color: var(--ember);
-  box-shadow: var(--glow);
-  background: linear-gradient(180deg, #1f1408, #120c06);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 0 14px rgba(255, 176, 0, 0.16);
+  background: linear-gradient(180deg, #33342d, #212219);
 }
 
 /* ---- honest check breakdown (reusable readout) ---- */
@@ -1760,7 +2002,7 @@ body {
   gap: 8px 12px;
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px dashed var(--hair);
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
   font-family: var(--font-data);
   font-size: 12.5px;
   color: var(--amber);
@@ -1769,7 +2011,7 @@ body {
   font-family: var(--font-display);
   letter-spacing: 0.16em;
   font-size: 10px;
-  color: var(--amber);
+  color: var(--etch-dim);
 }
 .check-breakdown .cb-expr b {
   color: var(--ember);
@@ -1840,28 +2082,55 @@ body {
   box-shadow: var(--glow);
 }
 
-/* ---- wire ---- */
+/* ---- wire ----
+   T-218 · a slot milled in the console, with an amber ticker running behind it.
+
+   T-217 (fixed here, same pass) · `.cap` used to be `position: absolute` and
+   `.ticker` reserved room for it with a hardcoded `padding-left: 138px`. That
+   number was sized to the ORIGINAL cap contents and was never updated when T-306
+   added the LOG button or when T-1406 added BULLETIN storylet chips — so the
+   ticker text scrolled UNDERNEATH them. It is structurally unfixable as a
+   magic number, because the cap's width is data-dependent (a bulletin appears
+   only when the wire is carrying a storylet).
+
+   THE FIX IS FLOW, NOT MEASUREMENT: `.wire` is a flex row, `.cap` is a normal
+   -flow item that reserves exactly its own width whatever it contains, and
+   `.wire-track` takes the remainder and clips the scroll. No pixel constant can
+   drift again because there is no longer a pixel constant. */
 .wire {
-  border: 1px solid var(--hair);
-  background: #0c0805;
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  background: var(--well);
+  box-shadow:
+    var(--recess),
+    0 0 24px rgba(255, 176, 0, 0.05);
   overflow: hidden;
   position: relative;
+  display: flex;
+  align-items: center;
 }
 .wire .cap {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
+  flex: 0 0 auto;
+  align-self: stretch;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 0 12px;
   z-index: 3;
-  background: linear-gradient(90deg, #12100a 70%, transparent);
+  background: linear-gradient(90deg, #33342d 0, #25261f 72%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   font-family: var(--font-display);
   letter-spacing: 0.18em;
   font-size: 11px;
-  color: var(--ember);
+  color: var(--etch);
+}
+/* The window the ticker scrolls behind. `min-width: 0` is load-bearing: without
+   it the nowrap ticker would set the flex item's min-content width and push the
+   cap back off the left edge. */
+.wire-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 .wire .cap .dot {
   width: 7px;
@@ -1880,12 +2149,14 @@ body {
     opacity: 0.28;
   }
 }
+/* T-217 · the 138px magic number is GONE. The cap reserves its own space. */
 .ticker {
   white-space: nowrap;
-  padding: 9px 0 9px 138px;
+  padding: 9px 0 9px 6px;
   animation: tick 40s linear infinite;
   font-size: 13px;
-  color: var(--amber);
+  color: var(--ember);
+  text-shadow: var(--glow);
 }
 .ticker:hover {
   animation-play-state: paused;
@@ -1894,10 +2165,11 @@ body {
   margin-right: 44px;
 }
 .ticker .it b {
-  color: var(--ember);
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
 }
 .ticker .sep {
-  color: var(--amber-dim);
+  color: var(--amber);
   margin: 0 6px;
 }
 @keyframes tick {
@@ -1910,12 +2182,14 @@ body {
 }
 
 /* ---- wire log (T-306) ---- */
+/* T-218 · LOG is a key on the console, not a lit outline. */
 .wire-log-btn {
   margin-left: 6px;
   padding: 2px 8px;
-  background: transparent;
-  border: 1px solid var(--amber-dim);
-  color: var(--ember);
+  background: linear-gradient(180deg, #3d3e37, #212219);
+  border: 1px solid var(--edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  color: var(--etch);
   font-family: var(--font-display);
   letter-spacing: 0.14em;
   font-size: 10px;
@@ -1923,8 +2197,11 @@ body {
 }
 .wire-log-btn:hover,
 .wire-log-btn[aria-expanded='true'] {
-  border-color: var(--ember);
-  box-shadow: var(--glow);
+  color: var(--ember);
+  text-shadow: var(--glow);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 12px rgba(255, 176, 0, 0.18);
 }
 /* A fixed overlay drawer: the wire itself clips its ticker with overflow:hidden,
    so the log is anchored to the viewport (like .fx) to escape that clip and to
@@ -1936,16 +2213,19 @@ body {
   transform: translateX(-50%);
   width: min(920px, 92vw);
   z-index: 80;
-  background: #0c0805;
-  border: 1px solid var(--ember);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.72);
+  background: linear-gradient(180deg, var(--steel), var(--steel-deep));
+  border: 1px solid var(--edge);
+  box-shadow:
+    var(--bevel),
+    0 8px 30px rgba(0, 0, 0, 0.72);
 }
 .wire-log-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid var(--edge);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
   font-family: var(--font-display);
   letter-spacing: 0.16em;
   font-size: 11px;
@@ -1956,21 +2236,22 @@ body {
 }
 .wire-log-close {
   padding: 3px 10px;
-  background: transparent;
-  border: 1px solid var(--amber-dim);
-  color: var(--amber);
+  background: linear-gradient(180deg, #3d3e37, #212219);
+  border: 1px solid var(--edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  color: var(--etch);
   font-family: var(--font-display);
   letter-spacing: 0.14em;
   font-size: 10px;
   cursor: pointer;
 }
 .wire-log-close:hover {
-  border-color: var(--ember);
   color: var(--ember);
+  text-shadow: var(--glow);
 }
 .wire-log-empty {
   padding: 20px 12px;
-  color: var(--amber);
+  color: var(--etch);
   font-size: 13px;
 }
 .wire-log-view {
@@ -1993,9 +2274,11 @@ body {
   font-size: 12px;
   line-height: 1.2;
 }
+/* A day divider is chassis, not a lit readout: a stamped steel strip. */
 .wire-day {
-  background: var(--amber-dim);
-  color: var(--ember-hi);
+  background: linear-gradient(180deg, var(--steel-hi), var(--steel-lo));
+  box-shadow: var(--bevel);
+  color: var(--etch);
   font-family: var(--font-display);
   letter-spacing: 0.16em;
   font-size: 10px;
@@ -2020,12 +2303,12 @@ body {
    video (per the T-302 one-hue rule: emphasis via inversion, no second colour). */
 .wire-entry[data-wire-kind='flaw-override'] {
   background: var(--ember);
-  color: #120c02;
+  color: var(--well);
   font-weight: 600;
 }
 .wire-entry[data-wire-kind='flaw-override'] .npc-link {
-  color: #120c02;
-  border-color: #120c02;
+  color: var(--well);
+  border-color: var(--well);
 }
 .npc-link {
   background: transparent;
@@ -2048,16 +2331,19 @@ body {
   bottom: 12px;
   width: 260px;
   z-index: 7;
-  background: var(--panel);
-  border: 1px solid var(--ember);
-  box-shadow: var(--glow);
+  background: linear-gradient(180deg, var(--steel-hi), var(--steel-lo));
+  border: 1px solid var(--edge);
+  box-shadow:
+    var(--bevel),
+    0 8px 22px rgba(0, 0, 0, 0.75);
   padding: 10px 12px;
 }
 .npc-dossier .nd-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.7);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
   padding-bottom: 6px;
   margin-bottom: 6px;
 }
@@ -2068,9 +2354,12 @@ body {
   font-size: 14px;
 }
 .npc-dossier .nd-close {
-  background: transparent;
+  /* T-218 · an overlay control is a KEY: steel cap, etched legend, lit only
+     when it is pressed or armed. */
+  background: linear-gradient(180deg, #3d3e37, #212219);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   border: none;
-  color: var(--amber);
+  color: var(--etch);
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
@@ -2092,10 +2381,15 @@ body {
   margin-top: 6px;
 }
 
-/* ---- hand dock ---- */
+/* ---- hand dock ----
+   T-218 · the dawn hand: lit dice seated in a machined tray. */
 .dock {
-  border: 1px solid var(--hair);
-  background: linear-gradient(180deg, #17100a, #0b0805);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  background: linear-gradient(180deg, #34352e 0, #232420 30%, #171814 100%);
+  box-shadow:
+    var(--bevel),
+    0 -6px 18px rgba(0, 0, 0, 0.6);
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
@@ -2106,20 +2400,34 @@ body {
   font-family: var(--font-display);
   letter-spacing: 0.2em;
   font-size: 12px;
-  color: var(--amber);
+  color: var(--etch);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.8);
   text-transform: uppercase;
 }
 .dlabel b {
   display: block;
   color: var(--ember);
+  text-shadow: var(--glow);
   font-size: 11px;
   letter-spacing: 0.14em;
   margin-top: 3px;
 }
+/* The tray the dice are seated in — the mockup's `.tray`, kept under the app's
+   own class name (`.hand`) because 68 App.tsx call sites and the e2e suite
+   depend on it. */
 .hand {
   display: flex;
   gap: 14px;
   justify-content: center;
+  /* The tray HUGS the dice (the reference build's `.tray`): a machined seat the
+     hand sits in, not a full-width band across the dock. */
+  justify-self: center;
+  padding: 4px 14px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #111210, #1d1e19);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.9),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
 }
 .die {
   width: 56px;
@@ -2133,24 +2441,41 @@ body {
   font-weight: 600;
   font-size: 21px;
   color: var(--ember);
-  background: radial-gradient(120% 120% at 50% 35%, #221607, #0e0a05);
-  border: 1px solid var(--amber-dim);
+  /* the die BODY is dark steel; the pip value is the only lit thing on it */
+  background: linear-gradient(180deg, #2e2f28, #141510);
+  border: none;
   clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
   transition:
     transform 0.18s,
     color 0.18s,
-    border-color 0.18s,
     box-shadow 0.18s;
   text-shadow: var(--glow);
 }
 .die:hover {
   transform: translateY(-4px);
 }
+/* ==== T-218 RULED EDIT 2 of 2 — DO NOT REVERT WITHOUT A NEW RULING ==========
+   An armed die was a solid light-amber gradient with dark numerals, i.e. reverse
+   video. Under law §3 that is reserved to real urgency, and "I have picked this
+   die" is not urgent — it is ARMED. The die keeps its own dark steel body and
+   gains an `--ember` inset ring, an outward bloom and `--ember` numerals:
+   selected now reads as LIT, not INVERTED. The `translateY(-8px)` lift is the
+   app's own pre-existing affordance and is deliberately kept — it is not part of
+   the reverse-video question, and `e2e/dawn-hand.spec.ts` hangs off selection.
+   (Owner-approved 2026-08-05: docs/design/T218-reference/chassis-rvrule.html:270.) */
 .die.sel {
-  border-color: var(--ember);
-  color: var(--ember-hi);
-  box-shadow: var(--glow-hi);
+  background: linear-gradient(180deg, #2e2f28, #141510);
+  color: var(--ember);
+  text-shadow: var(--glow-hi);
+  box-shadow:
+    inset 0 0 0 2px var(--ember),
+    0 0 14px rgba(255, 176, 0, 0.45);
+  filter: none;
   transform: translateY(-8px);
+}
+.die.sel .dl {
+  color: var(--ember);
+  opacity: 1;
 }
 .die .dl {
   position: absolute;
@@ -2158,20 +2483,25 @@ body {
   font-family: var(--font-display);
   font-size: 7px;
   letter-spacing: 0.12em;
-  color: var(--amber);
-  opacity: 0.7;
+  color: var(--etch-dim);
+  opacity: 1;
 }
 .die.spent {
-  color: var(--amber-dim);
-  border-color: #241708;
+  color: var(--ember);
   cursor: default;
-  background: radial-gradient(120% 120% at 50% 35%, #120c06, #0a0704);
+  opacity: 0.34;
 }
 .die.spent:hover {
   transform: none;
 }
+/* A natural is a brighter filament in the same lamp, never a second colour. */
 .die.nat {
-  border-color: var(--ember-hi);
+  box-shadow: inset 0 0 0 2px var(--ember-hi);
+}
+.die.sel.nat {
+  box-shadow:
+    inset 0 0 0 2px var(--ember-hi),
+    0 0 14px rgba(255, 225, 166, 0.5);
 }
 .die.bloom {
   animation: bloom 0.7s ease-out 1;
@@ -2191,7 +2521,7 @@ body {
 }
 .hint {
   font-size: 11.5px;
-  color: var(--amber);
+  color: var(--etch-dim);
   letter-spacing: 0.05em;
   justify-self: end;
   text-align: right;
@@ -2199,30 +2529,67 @@ body {
 }
 .hint b {
   color: var(--ember);
+  text-shadow: var(--glow);
 }
+/* T-218 · BUTTONS ARE PHYSICAL KEYS: a metal cap with an etched legend. Amber
+   appears on a key only when the key is ARMED — the commit keys (the starmap's
+   CONFIRM JUMP, END DAY) carry a lit legend and an inner amber wash; every
+   other key is inert steel until pressed. This is candidate D's own button
+   treatment, shipped as built: the T-186 ruling explicitly excluded the
+   legibility reviewer's alternative button body from scope. */
 .btn {
   font-family: var(--font-display);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  background: transparent;
-  color: var(--ember);
-  border: 1px solid var(--amber);
+  font-weight: 700;
+  background: linear-gradient(180deg, #3d3e37, #212219);
+  color: var(--etch);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.6),
+    0 2px 3px rgba(0, 0, 0, 0.7);
   padding: 8px 14px;
   cursor: pointer;
   font-size: 12px;
 }
+/* the armed keys: the two that commit the day */
+.starmap .btn,
+.btn.end {
+  color: var(--ember);
+  text-shadow: var(--glow);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 0 12px rgba(255, 176, 0, 0.18),
+    0 2px 3px rgba(0, 0, 0, 0.7);
+}
 .btn:hover {
-  background: var(--ember);
-  color: var(--tube);
+  color: var(--ember);
+  text-shadow: var(--glow);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 0 14px rgba(255, 176, 0, 0.24),
+    0 2px 3px rgba(0, 0, 0, 0.7);
+}
+/* Pressed: the cap goes DOWN. A key that cannot be pressed does not light. */
+.btn:active:not(:disabled) {
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.8),
+    inset 0 0 10px rgba(255, 176, 0, 0.14);
 }
 .btn:disabled {
-  color: var(--amber-dim);
-  border-color: var(--hair);
+  color: var(--etch-dim);
+  text-shadow: none;
   cursor: default;
 }
 .btn:disabled:hover {
-  background: transparent;
-  color: var(--amber-dim);
+  color: var(--etch-dim);
+  text-shadow: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.6),
+    0 2px 3px rgba(0, 0, 0, 0.7);
 }
 
 /* ---- diegetic console switches (T-1406: relocated into the bezel frame) ---- */
@@ -2238,19 +2605,26 @@ body {
   justify-content: flex-end;
   font-size: 10.5px;
 }
+/* T-218 · console switches are rocker caps milled into the bezel: unlit steel
+   with an etched legend; only the pressed one lights. */
 .ctrls button {
   font-family: var(--font-display);
   letter-spacing: 0.14em;
-  background: transparent;
-  color: var(--amber);
-  border: 1px solid var(--hair);
+  background: linear-gradient(180deg, var(--steel-hi), var(--steel-lo));
+  color: var(--etch);
+  border: 1px solid var(--edge);
+  box-shadow: var(--bevel);
   padding: 4px 9px;
   cursor: pointer;
   text-transform: uppercase;
 }
-.ctrls button:hover {
+.ctrls button:hover,
+.ctrls button[aria-expanded='true'] {
   color: var(--ember);
-  border-color: var(--amber);
+  text-shadow: var(--glow);
+  box-shadow:
+    var(--bevel),
+    inset 0 0 10px rgba(255, 176, 0, 0.16);
 }
 
 /* new-game seed dialog */
@@ -2261,9 +2635,11 @@ body {
 }
 .seedbar input {
   font-family: var(--font-data);
-  background: #0a0704;
-  border: 1px solid var(--amber-dim);
+  background: var(--well);
+  border: 1px solid var(--edge);
+  box-shadow: var(--recess);
   color: var(--ember);
+  text-shadow: var(--glow);
   padding: 6px 8px;
   width: 90px;
 }
@@ -2282,14 +2658,16 @@ body {
   font-size: 9.5px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--amber);
+  color: var(--etch);
 }
+/* the slider TRACK is milled metal; the thumb is the lit part */
 .audio-mixer input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
   height: 3px;
-  background: var(--amber-dim);
+  background: var(--steel-deep);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.9);
   outline: none;
   cursor: pointer;
 }
@@ -2314,22 +2692,26 @@ body {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   font-size: 10px;
-  background: transparent;
-  color: var(--amber);
-  border: 1px solid var(--amber-dim);
+  background: linear-gradient(180deg, var(--steel-hi), var(--steel-lo));
+  color: var(--etch);
+  border: 1px solid var(--edge);
+  box-shadow: var(--bevel);
   padding: 5px 9px;
   cursor: pointer;
 }
 .audio-mute:hover {
-  border-color: var(--amber);
   color: var(--ember);
+  text-shadow: var(--glow);
 }
-/* Reverse-video emphasis for the engaged (muted) state — single-hue, no 2nd colour. */
+/* Engaged (muted) reads as LIT, not inverted — law §3: a mute switch is a state,
+   not an urgency. */
 .audio-mute.on {
-  background: var(--ember);
-  color: var(--tube);
-  border-color: var(--ember);
-  font-weight: 600;
+  color: var(--ember);
+  text-shadow: var(--glow);
+  box-shadow:
+    var(--bevel),
+    inset 0 0 0 1px var(--ember);
+  font-weight: 700;
 }
 
 /* ---- T-312 settings + saves popover ---- */
@@ -2344,9 +2726,12 @@ body {
   display: grid;
   gap: 14px;
   padding: 14px 16px;
-  background: linear-gradient(180deg, #1a1007, #0c0805);
-  border: 1px solid var(--amber);
-  box-shadow: var(--glow);
+  /* T-218 · a popover is a hatch in the console face, not a lit card. */
+  background: linear-gradient(180deg, var(--steel-hi) 0, var(--steel) 34%, var(--steel-lo) 100%);
+  border: 1px solid var(--edge);
+  box-shadow:
+    var(--bevel),
+    0 10px 26px rgba(0, 0, 0, 0.75);
 }
 .set-section,
 .saves-panel {
@@ -2358,8 +2743,10 @@ body {
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ember);
-  border-bottom: 1px solid var(--hair);
+  color: var(--etch);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.8);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.7);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
   padding-bottom: 5px;
 }
 .set-row {
@@ -2371,7 +2758,7 @@ body {
 .set-label {
   font-family: var(--font-data);
   font-size: 12px;
-  color: var(--amber);
+  color: var(--etch);
 }
 /* T-1701a · The Settings "Storage → Saves" value (the app-data path on the
    Electron shell, "Browser storage" on the web build). A save directory is a
@@ -2402,41 +2789,47 @@ body {
   overflow-wrap: anywhere;
   user-select: text;
 }
+/* Settings switches are keys, and an engaged key reads as LIT, not inverted
+   (law §3 — a preference is a state, never an urgency). */
 .set-toggle {
   font-family: var(--font-display);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   font-size: 10px;
-  background: transparent;
-  color: var(--amber);
-  border: 1px solid var(--amber-dim);
+  background: linear-gradient(180deg, var(--steel-hi), var(--steel-lo));
+  color: var(--etch);
+  border: 1px solid var(--edge);
+  box-shadow: var(--bevel);
   padding: 5px 11px;
   cursor: pointer;
 }
 .set-toggle:hover {
-  border-color: var(--amber);
   color: var(--ember);
+  text-shadow: var(--glow);
 }
 .set-toggle.on {
-  background: var(--ember);
-  color: var(--tube);
-  border-color: var(--ember);
-  font-weight: 600;
+  color: var(--ember);
+  text-shadow: var(--glow);
+  box-shadow:
+    var(--bevel),
+    inset 0 0 10px rgba(255, 176, 0, 0.18);
+  font-weight: 700;
 }
 .set-seg {
   display: inline-flex;
   gap: 0;
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
+  box-shadow: var(--bevel);
 }
 .set-seg-btn {
   font-family: var(--font-display);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   font-size: 9.5px;
-  background: transparent;
-  color: var(--amber);
+  background: linear-gradient(180deg, var(--steel-hi), var(--steel-lo));
+  color: var(--etch);
   border: none;
-  border-right: 1px solid var(--amber-dim);
+  border-right: 1px solid var(--edge);
   padding: 5px 9px;
   cursor: pointer;
 }
@@ -2445,11 +2838,13 @@ body {
 }
 .set-seg-btn:hover {
   color: var(--ember);
+  text-shadow: var(--glow);
 }
 .set-seg-btn.on {
-  background: var(--amber);
-  color: var(--tube);
-  font-weight: 600;
+  color: var(--ember);
+  text-shadow: var(--glow);
+  box-shadow: inset 0 0 10px rgba(255, 176, 0, 0.2);
+  font-weight: 700;
 }
 /* T-141 · The Settings "Playtest" section. Three additions, all of them
    presentation for controls the rest of the panel already has vocabulary for:
@@ -2480,14 +2875,15 @@ body {
   min-width: 0;
   font-family: var(--font-data);
   font-size: 11px;
-  background: rgba(20, 12, 5, 0.6);
-  color: var(--amber);
-  border: 1px solid var(--amber-dim);
+  background: var(--well);
+  color: var(--ember);
+  border: 1px solid var(--edge);
+  box-shadow: var(--recess);
   padding: 5px 8px;
 }
 .set-input::placeholder {
-  color: var(--amber);
-  opacity: 0.45;
+  color: var(--etch-dim);
+  opacity: 1;
 }
 .set-input:focus {
   outline: none;
@@ -2501,8 +2897,9 @@ body {
   display: grid;
   gap: 6px;
   padding: 8px 10px;
-  border: 1px solid var(--hair);
-  background: rgba(20, 12, 5, 0.5);
+  border: 1px solid var(--edge);
+  background: rgba(13, 14, 12, 0.5);
+  box-shadow: var(--bevel);
 }
 .save-slot.empty {
   opacity: 0.75;
@@ -2549,13 +2946,20 @@ body {
   display: inline-flex;
   gap: 6px;
 }
+/* A destructive key is ARMED: it lights, but it does not invert until the
+   pointer is actually on it and the deletion is one press away (law §3 — the
+   moment of consequence is the urgency, not the button's mere existence). */
 .btn.small.danger {
-  border-color: var(--ember);
   color: var(--ember);
+  text-shadow: var(--glow);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px var(--ember);
 }
 .btn.small.danger:hover {
   background: var(--ember);
   color: var(--tube);
+  text-shadow: none;
 }
 
 @media (max-width: 900px) {
@@ -2652,15 +3056,15 @@ body {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: radial-gradient(120% 120% at 50% 40%, rgba(24, 8, 4, 0.94), rgba(6, 4, 3, 0.98));
+  background: radial-gradient(120% 120% at 50% 40%, rgba(16, 17, 15, 0.94), rgba(5, 5, 5, 0.98));
   backdrop-filter: blur(2px);
 }
 .co-frame {
   width: min(760px, 100%);
   max-height: 100%;
   overflow-y: auto;
-  border: 1px solid var(--amber);
-  background: linear-gradient(180deg, #1a1007, #0c0805);
+  border: 1px solid var(--edge);
+  background: linear-gradient(180deg, #191a16, #0d0e0c);
   box-shadow: var(--glow);
   padding: 20px 22px;
 }
@@ -2673,7 +3077,7 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 12px;
 }
 .co-enemy-id {
@@ -2720,7 +3124,7 @@ body {
   font-size: 11px;
   letter-spacing: 0.16em;
   color: var(--ember);
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
   padding: 2px 8px;
 }
 .co-hull {
@@ -2747,7 +3151,7 @@ body {
   justify-content: space-between;
   align-items: baseline;
   gap: 14px;
-  border: 1px solid var(--amber);
+  border: 1px solid var(--edge);
   padding: 10px 14px;
   background: #120c06;
 }
@@ -2824,7 +3228,7 @@ body {
   display: grid;
   gap: 10px;
   justify-items: center;
-  border: 1px dashed var(--amber-dim);
+  border: 1px dashed var(--edge);
   padding: 14px;
 }
 .co-aftermath {
@@ -2899,17 +3303,20 @@ body {
   max-height: 56vh;
   overflow-y: auto;
   z-index: 78;
-  background: linear-gradient(180deg, #1a1007, #0c0805);
-  border: 1px solid var(--amber);
+  background: linear-gradient(180deg, #191a16, #0d0e0c);
+  border: 1px solid var(--edge);
   box-shadow: var(--glow);
   padding: 16px 18px;
   display: grid;
   gap: 12px;
 }
 .sl-close {
-  background: transparent;
-  border: 1px solid var(--amber-dim);
-  color: var(--amber);
+  /* T-218 · an overlay control is a KEY: steel cap, etched legend, lit only
+     when it is pressed or armed. */
+  background: linear-gradient(180deg, #3d3e37, #212219);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--edge);
+  color: var(--etch);
   font-size: 15px;
   line-height: 1;
   padding: 2px 9px;
@@ -2942,7 +3349,7 @@ body {
 .storylet-open:hover {
   color: var(--ember-hi);
   text-shadow: var(--glow-hi);
-  background: rgba(40, 20, 6, 0.35);
+  background: rgba(255, 176, 0, 0.09);
 }
 .dispatch-head {
   font-family: var(--font-display);
@@ -2956,7 +3363,7 @@ body {
   display: grid;
   gap: 3px;
   margin-top: 8px;
-  border-top: 1px solid var(--hair);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   padding-top: 6px;
 }
 .port-dispatches {
@@ -2988,7 +3395,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 10px;
 }
 .sl-title {
@@ -3010,7 +3417,7 @@ body {
   gap: 8px;
 }
 .sl-choice {
-  border: 1px solid var(--hair);
+  border: 1px solid var(--edge);
   padding: 9px 11px;
   display: grid;
   gap: 5px;
@@ -3029,7 +3436,7 @@ body {
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--ember);
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--etch-dim);
   padding: 1px 7px;
 }
 /* The locked reason must be READ (accept criterion), so full amber, not dim. */
@@ -3057,15 +3464,15 @@ body {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: radial-gradient(120% 120% at 50% 40%, rgba(20, 10, 4, 0.94), rgba(6, 4, 3, 0.98));
+  background: radial-gradient(120% 120% at 50% 40%, rgba(16, 17, 15, 0.94), rgba(5, 5, 5, 0.98));
   backdrop-filter: blur(2px);
 }
 .ro-frame {
   width: min(760px, 100%);
   max-height: 100%;
   overflow-y: auto;
-  border: 1px solid var(--amber);
-  background: linear-gradient(180deg, #1a1007, #0c0805);
+  border: 1px solid var(--edge);
+  background: linear-gradient(180deg, #191a16, #0d0e0c);
   box-shadow: var(--glow);
   padding: 18px 20px;
   display: grid;
@@ -3076,7 +3483,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 10px;
 }
 .ro-tabs {
@@ -3084,9 +3491,12 @@ body {
   gap: 8px;
 }
 .ro-tab {
-  background: transparent;
-  border: 1px solid var(--amber-dim);
-  color: var(--amber);
+  /* T-218 · an overlay control is a KEY: steel cap, etched legend, lit only
+     when it is pressed or armed. */
+  background: linear-gradient(180deg, #3d3e37, #212219);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--edge);
+  color: var(--etch);
   font-family: var(--font-display);
   letter-spacing: 0.12em;
   font-size: 11px;
@@ -3098,16 +3508,22 @@ body {
   border-color: var(--amber);
   color: var(--ember);
 }
+/* T-218 law §3 · the open tab is SELECTED, not urgent: it lights, it does not
+   invert. */
 .ro-tab.on {
-  background: var(--amber);
-  color: var(--tube);
-  border-color: var(--amber);
-  font-weight: 600;
+  color: var(--ember);
+  text-shadow: var(--glow);
+  border-color: var(--ember);
+  box-shadow: inset 0 0 10px rgba(255, 176, 0, 0.2);
+  font-weight: 700;
 }
 .ro-close {
-  background: transparent;
-  border: 1px solid var(--amber-dim);
-  color: var(--amber);
+  /* T-218 · an overlay control is a KEY: steel cap, etched legend, lit only
+     when it is pressed or armed. */
+  background: linear-gradient(180deg, #3d3e37, #212219);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--edge);
+  color: var(--etch);
   font-size: 15px;
   line-height: 1;
   padding: 2px 9px;
@@ -3124,7 +3540,7 @@ body {
   align-items: baseline;
   gap: 12px;
   flex-wrap: wrap;
-  border: 1px solid var(--amber);
+  border: 1px solid var(--edge);
   padding: 10px 14px;
   background: #120c06;
 }
@@ -3165,7 +3581,7 @@ body {
 /* T-1503 · Alliance standing readout (Records → Registry tab). */
 .alliance-standing {
   margin-top: 10px;
-  border: 1px solid var(--amber);
+  border: 1px solid var(--edge);
   padding: 8px 12px 10px;
   background: #120c06;
 }
@@ -3206,15 +3622,44 @@ body {
   font-size: 14px;
   letter-spacing: 0.04em;
 }
+/* T-216 · THE ATTITUDE TONES, ON THREE SEPARABLE CHANNELS.
+
+   `.as-hostile` used to be a hardcoded `#e0562a` — an orange-red that bypassed
+   the token system entirely, and (the finding's severity amendment) a real
+   accessibility defect: simulated through Viénot matrices, `#e0562a` and
+   `--amber` `#c0781a` collapse to within 3 units on every channel under both
+   deuteranopia and protanopia, so a colour-blind player could not tell a hostile
+   captain from a neutral one AT ALL.
+
+   Giving hostile an amber-family value alone would NOT have discharged that —
+   it would have moved the bug from "wrong hue" to "right hue, still
+   indistinguishable". So the three tones are now separated on channels that
+   survive greyscale AND full colour-blindness:
+     friendly — brightest (`--ember-hi`) + bloom, lightweight;
+     neutral  — mid, unlit, no glyph;
+     hostile  — REVERSE VIDEO plus a `!` glyph, i.e. a luminance INVERSION and a
+                shape, neither of which depends on hue at all.
+   Reverse video is the right answer here and is permitted by law §3 rather than
+   in tension with it: a hostile captain is real urgency, which is exactly the
+   category the rule reserves inversion for. */
 .as-friendly .as-value {
   color: var(--ember-hi);
   text-shadow: var(--glow-hi);
 }
 .as-neutral .as-value {
   color: var(--amber);
+  text-shadow: none;
 }
 .as-hostile .as-value {
-  color: #e0562a;
+  background: var(--ember);
+  color: var(--well);
+  text-shadow: none;
+  font-weight: 700;
+  padding: 0 6px;
+}
+.as-hostile .as-value::before {
+  content: '! ';
+  font-weight: 700;
 }
 
 .registry-empty,
@@ -3233,8 +3678,8 @@ body {
 }
 .registry-deed,
 .nemesis-fragment {
-  border: 1px solid var(--hair);
-  border-left: 2px solid var(--amber);
+  border: 1px solid var(--edge);
+  border-left: 2px solid var(--edge);
   padding: 9px 12px;
 }
 .rd-head,
@@ -3271,7 +3716,7 @@ body {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
   padding: 8px 12px;
 }
 .nh-label {
@@ -3291,7 +3736,7 @@ body {
   letter-spacing: 0.12em;
   font-size: 9.5px;
   color: var(--amber);
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--etch-dim);
   padding: 1px 6px;
   flex: none;
 }
@@ -3308,7 +3753,7 @@ body {
 
 /* ---- T-1505b · The crossing block (Records → Nemesis) ---- */
 .crossing {
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
   border-left-width: 3px;
   padding: 8px 12px;
 }
@@ -3369,7 +3814,7 @@ body {
   z-index: 82; /* above the storylet panel (78); inside co-frame it rides local */
   width: min(340px, 80vw);
   border: 1px solid var(--amber);
-  background: linear-gradient(180deg, #1c1208, #0e0a05);
+  background: linear-gradient(180deg, #191a16, #0f100e);
   box-shadow: var(--glow);
   padding: 12px 14px;
   display: grid;
@@ -3415,8 +3860,11 @@ body {
 .ob-dismiss {
   justify-self: end;
   margin-top: 2px;
-  background: transparent;
-  border: 1px solid var(--amber-dim);
+  /* T-218 · an overlay control is a KEY: steel cap, etched legend, lit only
+     when it is pressed or armed. */
+  background: linear-gradient(180deg, #3d3e37, #212219);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--edge);
   color: var(--ember);
   font-family: var(--font-display);
   font-size: 10.5px;
@@ -3513,8 +3961,8 @@ body {
      stands (`railsSuspended`). */
   z-index: 86;
   width: min(400px, 86vw);
-  border: 2px solid var(--amber);
-  background: linear-gradient(180deg, #241706, #0e0a05);
+  border: 2px solid var(--edge);
+  background: linear-gradient(180deg, #1f201a, #0f100e);
   box-shadow: var(--glow);
   padding: 13px 15px;
   display: grid;
@@ -3561,8 +4009,11 @@ body {
 }
 .wt-skip,
 .wt-next {
-  background: transparent;
-  border: 1px solid var(--amber-dim);
+  /* T-218 · an overlay control is a KEY: steel cap, etched legend, lit only
+     when it is pressed or armed. */
+  background: linear-gradient(180deg, #3d3e37, #212219);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--edge);
   color: var(--ember);
   font-family: var(--font-display);
   font-size: 10.5px;
@@ -3687,15 +4138,15 @@ body {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: radial-gradient(120% 120% at 50% 38%, rgba(24, 14, 4, 0.95), rgba(6, 4, 3, 0.985));
+  background: radial-gradient(120% 120% at 50% 38%, rgba(16, 17, 15, 0.95), rgba(5, 5, 5, 0.985));
   backdrop-filter: blur(2px);
 }
 .rc-frame {
   width: min(680px, 100%);
   max-height: 100%;
   overflow-y: auto;
-  border: 1px solid var(--amber);
-  background: linear-gradient(180deg, #1c1308, #0c0805);
+  border: 1px solid var(--edge);
+  background: linear-gradient(180deg, #191a16, #0d0e0c);
   box-shadow: var(--glow);
   padding: 24px 26px;
   display: grid;
@@ -3710,7 +4161,7 @@ body {
   gap: 4px;
   justify-items: center;
   text-align: center;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 14px;
 }
 .rc-kicker {
@@ -3732,7 +4183,7 @@ body {
   font-size: 11px;
   letter-spacing: 0.12em;
   color: var(--amber);
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
   padding: 2px 10px;
 }
 .rc-prose {
@@ -3768,7 +4219,7 @@ body {
 .rc-consequence {
   font-size: 12.5px;
   color: var(--amber);
-  border: 1px dashed var(--amber-dim);
+  border: 1px dashed var(--edge);
   padding: 10px 14px;
   text-align: center;
 }
@@ -3779,7 +4230,7 @@ body {
 .rc-choice {
   display: grid;
   gap: 4px;
-  border-top: 1px solid var(--hair);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   padding-top: 12px;
 }
 .rc-choice-prose {
@@ -3815,7 +4266,7 @@ body {
   max-height: 100%;
   overflow-y: auto;
   border: 1px solid var(--ember);
-  background: linear-gradient(180deg, #1d0d08, #0b0605);
+  background: linear-gradient(180deg, #191a16, #0b0c0a);
   box-shadow: var(--glow-hi);
   padding: 24px 26px;
   display: grid;
@@ -3827,7 +4278,7 @@ body {
   display: grid;
   gap: 5px;
   justify-items: center;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 14px;
   width: 100%;
 }
@@ -3850,7 +4301,7 @@ body {
   font-size: 11px;
   letter-spacing: 0.12em;
   color: var(--amber);
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
   padding: 2px 10px;
 }
 .sn-obituary {
@@ -3871,7 +4322,7 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  border-top: 1px solid var(--hair);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   padding-top: 6px;
 }
 .sn-row dt {
@@ -3891,14 +4342,14 @@ body {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: radial-gradient(120% 120% at 50% 42%, rgba(10, 6, 14, 0.96), rgba(3, 2, 4, 0.99));
+  background: radial-gradient(120% 120% at 50% 42%, rgba(10, 11, 10, 0.96), rgba(3, 3, 3, 0.99));
 }
 .es-frame {
   width: min(720px, 100%);
   max-height: 100%;
   overflow-y: auto;
-  border: 1px solid var(--amber);
-  background: linear-gradient(180deg, #150e07, #070505);
+  border: 1px solid var(--edge);
+  background: linear-gradient(180deg, #141511, #070604);
   box-shadow: var(--glow);
   padding: 26px 28px;
   display: grid;
@@ -3909,7 +4360,7 @@ body {
   gap: 6px;
   justify-items: center;
   text-align: center;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 16px;
 }
 .es-kicker {
@@ -3951,8 +4402,8 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px 18px;
-  border-top: 1px solid var(--hair);
-  border-bottom: 1px solid var(--hair);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding: 14px 0;
 }
 .es-stat {
@@ -4011,8 +4462,8 @@ body {
   max-height: 62vh;
   overflow-y: auto;
   z-index: 78;
-  background: linear-gradient(180deg, #1a1007, #0c0805);
-  border: 1px solid var(--amber);
+  background: linear-gradient(180deg, #191a16, #0d0e0c);
+  border: 1px solid var(--edge);
   box-shadow: var(--glow);
   padding: 16px 18px;
   display: grid;
@@ -4023,7 +4474,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 10px;
 }
 .hp-title {
@@ -4035,7 +4486,7 @@ body {
 .hp-section {
   display: grid;
   gap: 7px;
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
   padding: 9px 11px;
 }
 .hp-shead {
@@ -4057,18 +4508,24 @@ body {
   padding: 0;
 }
 .hp-npc {
-  background: transparent;
-  border: 1px solid var(--amber-dim);
-  color: var(--amber);
+  /* T-218 · an overlay control is a KEY: steel cap, etched legend, lit only
+     when it is pressed or armed. */
+  background: linear-gradient(180deg, #3d3e37, #212219);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--edge);
+  color: var(--etch);
   padding: 4px 10px;
   cursor: pointer;
   font-size: 11.5px;
   letter-spacing: 0.03em;
 }
+/* T-218 law §3 · "this is the seat I picked" is SELECTED, not urgent — so it
+   reads as lit, the same rule the armed die now follows. */
 .hp-npc.on {
   border-color: var(--ember);
-  color: var(--tube);
-  background: var(--ember);
+  color: var(--ember);
+  text-shadow: var(--glow);
+  box-shadow: inset 0 0 10px rgba(255, 176, 0, 0.2);
 }
 /* T-145 · a roster seat that is broke will not take a wager; the row is dead. */
 .hp-npc:disabled {
@@ -4100,8 +4557,8 @@ body {
 }
 .hangout-panel input {
   width: 96px;
-  background: #0c0805;
-  border: 1px solid var(--amber-dim);
+  background: #0d0e0c;
+  border: 1px solid var(--edge);
   color: var(--ember);
   padding: 5px 7px;
   font-family: var(--font-data);
@@ -4202,9 +4659,10 @@ body {
   /* the felt: a lit oval on a dark table, vignetted at the rim */
   background:
     radial-gradient(72% 88% at 50% 46%, rgba(255, 176, 0, 0.09), rgba(0, 0, 0, 0) 68%),
-    linear-gradient(180deg, #150e06, #0a0704);
-  border: 1px solid var(--amber-dim);
+    linear-gradient(180deg, #141511, #0a0b09);
+  border: 1px solid var(--edge);
   --ld-dim: 0;
+  box-shadow: var(--bevel);
 }
 /* SCENE FOCUS (tabletop-ui §2): during the reveal the table dims and the house's
    cups + the verdict stay lit above the veil. Driven by `--ld-dim`, which the
@@ -4330,8 +4788,8 @@ body {
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
   padding: 4px;
-  background: radial-gradient(125% 125% at 30% 24%, #2c1c09, #100a04 72%);
-  border: 1px solid var(--amber);
+  background: radial-gradient(125% 125% at 30% 24%, #26271f, #101110 72%);
+  border: 1px solid var(--edge);
   box-shadow:
     inset 0 0 9px rgba(255, 176, 0, 0.2),
     inset 0 0 2px rgba(255, 225, 166, 0.35);
@@ -4399,7 +4857,7 @@ body {
   position: absolute;
   inset: 0;
   clip-path: polygon(16% 0, 84% 0, 100% 100%, 0 100%);
-  background: linear-gradient(180deg, #241704 0%, #150d05 62%, #0a0603 100%);
+  background: linear-gradient(180deg, #1f201a 0%, #131410 62%, #0a0b09 100%);
   box-shadow:
     inset 0 7px 11px rgba(0, 0, 0, 0.8),
     0 0 9px rgba(255, 176, 0, 0.16);
@@ -4424,8 +4882,8 @@ body {
   display: grid;
   gap: 4px;
   justify-items: center;
-  border-top: 1px solid var(--hair);
-  border-bottom: 1px solid var(--hair);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding: 8px 0;
 }
 .ld-bid {
@@ -4476,7 +4934,7 @@ body {
   justify-content: center;
 }
 .ld-cell {
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
   padding: 2px 7px;
   font-size: 10px;
   letter-spacing: 0.07em;
@@ -4561,7 +5019,7 @@ body {
 .ld-moves .btn.ghost {
   background: transparent;
   color: var(--amber);
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
 }
 
 /* ---- the settled frame ---- */
@@ -4614,12 +5072,12 @@ body {
   font-family: var(--font-data);
   font-size: 9px;
   letter-spacing: 0.06em;
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--etch-dim);
   color: var(--amber);
   vertical-align: middle;
 }
 .dawn-badge.reroll {
-  color: #140e07;
+  color: #111210;
   background: var(--amber);
   border-color: var(--amber);
 }
@@ -4644,7 +5102,7 @@ body {
   padding: 0;
   font-size: 12px;
   line-height: 1;
-  color: #140e07;
+  color: #111210;
   background: var(--amber);
   border: 1px solid var(--ember);
   border-radius: 50%;
@@ -4657,10 +5115,11 @@ body {
 
 /* ---- crew roster ---- */
 .ship-crew {
-  border: 1px solid var(--hair);
+  border: 1px solid var(--edge);
   padding: 8px;
   display: grid;
   gap: 6px;
+  box-shadow: var(--bevel);
 }
 .crew-head {
   color: var(--amber);
@@ -4674,7 +5133,7 @@ body {
   display: grid;
   gap: 3px;
   padding-bottom: 5px;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 .crew-row:last-child {
   border-bottom: none;
@@ -4716,7 +5175,7 @@ body {
 .port-ledger {
   margin-top: 6px;
   padding-top: 6px;
-  border-top: 1px solid var(--hair);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   display: grid;
   gap: 3px;
 }
@@ -4742,7 +5201,7 @@ body {
 .patrol-scan {
   display: grid;
   gap: 6px;
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
   padding: 8px;
   margin-bottom: 4px;
 }
@@ -4754,10 +5213,10 @@ body {
 }
 .ps-result.clear {
   color: var(--amber);
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--edge);
 }
 .ps-result.rev {
-  color: #140e07;
+  color: #111210;
   background: var(--amber);
   font-weight: 600;
 }
@@ -4833,7 +5292,7 @@ body {
   gap: 12px;
   flex-wrap: wrap;
   margin-top: 8px;
-  border: 1px dashed var(--amber);
+  border: 1px dashed var(--edge);
   padding: 8px 14px;
 }
 .registry-capstone[data-demo-locked] {
@@ -4857,8 +5316,9 @@ body {
   gap: 14px;
   max-width: 620px;
   padding: 22px 26px;
-  border: 1px solid var(--amber);
+  border: 1px solid var(--edge);
   background: var(--panel);
+  box-shadow: var(--bevel);
 }
 .crash-title {
   font-family: var(--font-display);
@@ -4880,7 +5340,7 @@ body {
 .crash-detail {
   margin: 0;
   padding: 9px 11px;
-  border: 1px solid var(--hair);
+  border: 1px solid var(--edge);
   font-family: var(--font-data);
   font-size: 12px;
   color: var(--amber);
@@ -4888,6 +5348,7 @@ body {
   overflow-wrap: anywhere;
   max-height: 30vh;
   overflow-y: auto;
+  box-shadow: var(--bevel);
 }
 .crash-acts {
   display: flex;
@@ -4896,16 +5357,29 @@ body {
 }
 
 /* T-1406 / N6 · Top Gun Honor List — the 1991 board, as a 31-way contest.
-   `Title : holder / holder   #rank`, the shape `sp.top.s` printed. */
+   `Title : holder / holder   #rank`, the shape `sp.top.s` printed.
+
+   T-216 (fixed in the T-218 pass) · This block referenced TWO custom properties
+   that are declared NOWHERE in the repo — `var(--line, #2b3a44)` (blue-grey) and
+   `var(--accent, #4fd1c5)` (teal). Because the variables do not exist, the
+   FALLBACKS are what actually rendered, so the honor list has been shipping two
+   off-system hues in production while the file's own header asserted there were
+   none. The fallbacks are gone, not redefined: the frame is chassis
+   (law §2 — this box is structure) and the "you"/held-rank markers are LIT
+   (law §1 — they are the readout's live values). `visual-identity.test.ts`
+   now fails the build on any `var(--x)` with no declaration, so this exact class
+   of leak cannot come back through another undefined-variable fallback. */
 .ship-honor {
   margin: 0.6rem 0;
   padding: 0.5rem 0.6rem;
-  border: 1px solid var(--line, #2b3a44);
+  border: 1px solid var(--edge);
+  box-shadow: var(--bevel);
   background: rgba(0, 0, 0, 0.18);
 }
 .ship-honor .honor-head {
   font-size: 0.7rem;
   letter-spacing: 0.14em;
+  color: var(--etch);
   opacity: 0.75;
   margin-bottom: 0.4rem;
 }
@@ -4920,7 +5394,8 @@ body {
 .ship-honor .honor-row.all-around {
   margin-top: 0.35rem;
   padding-top: 0.35rem;
-  border-top: 1px solid var(--line, #2b3a44);
+  border-top: 1px solid rgba(0, 0, 0, 0.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   font-weight: 600;
 }
 .ship-honor .honor-holders {
@@ -4938,7 +5413,8 @@ body {
 /* The player is marked, never ranked differently — `playerRank` counts captains
    scoring strictly higher and is blind to this class. */
 .ship-honor .honor-holder.you {
-  color: var(--accent, #4fd1c5);
+  color: var(--ember-hi);
+  text-shadow: var(--glow);
   font-weight: 600;
 }
 .ship-honor .honor-rank {
@@ -4947,7 +5423,8 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .ship-honor .honor-rank.held {
-  color: var(--accent, #4fd1c5);
+  color: var(--ember-hi);
+  text-shadow: var(--glow);
   opacity: 1;
 }
 /* T-1406 · the component's mechanical effect, shown beside its price. */
@@ -4955,8 +5432,11 @@ body {
   font-size: 0.68rem;
   opacity: 0.8;
 }
+/* T-216 · was the same undefined `--accent` teal; the "what you'd get" preview
+   is a live value, so it is lit. */
 .comp-effect-next {
-  color: var(--accent, #4fd1c5);
+  color: var(--ember-hi);
+  text-shadow: var(--glow);
 }
 
 /* =========================================================================
@@ -5009,7 +5489,7 @@ body {
   overflow-y: auto;
   /* Heavier than `.es-frame`'s 1px amber: a called marker is not a receipt. */
   border: 2px solid var(--ember);
-  background: linear-gradient(180deg, #1c1207, #070505);
+  background: linear-gradient(180deg, #191a16, #070604);
   box-shadow: var(--glow-hi);
   padding: 0 0 26px;
   display: grid;
