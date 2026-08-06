@@ -2965,7 +2965,7 @@ file touched anywhere is a test.**
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
 
-### T-223 · F-220-1: the ROSTER pool is a net credit SINK, and nothing names or bounds the price — `status: TODO` · `coder: opus` · `after: T-220`
+### T-223 · F-220-1: the ROSTER pool is a net credit SINK, and nothing names or bounds the price — `status: DONE` · `coder: opus` · `after: T-220`
 
 **Filed at T-220 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §20.7 / `docs/LIARS-DICE-DECISIONS.md`
 LD-28.** T-220 cut the shipped table by pool for the first time (`dareCells`, 1,600 gambler careers
@@ -3006,6 +3006,122 @@ re-scored alongside; whichever branch is taken, the UI question is answered expl
 player know the roster seat is the expensive one? — `docs/HANGOUT_REDESIGN.md` §7); if any rule
 moves the task takes its own capstone with the moved rows predicted first; §20.7 gains the outcome;
 gate green.
+
+**Delivered (T-223, 2026-08-06):** F-220-1 is **measured, decomposed, priced on the instrument that
+actually buys what the roster sells, and RULED**. The ruling is **LD-30** in
+`docs/LIARS-DICE-DECISIONS.md`; the working is `docs/LIARS-DICE_REDESIGN.md` **§22**.
+
+- **THE FINDING'S ARITHMETIC IS EXACT AND ITS PREMISE IS FALSE — corrected in writing before
+  anything ran** (§22.0, five corrections). **A roster seat pays NO disposition at all**
+  (`packages/engine/src/actions/dare.ts:168-181`, §7.6's hard null, with a shipped test), so the sink
+  cannot be the price of the disposition channel — that channel is fed by the **roaming** pool, the
+  one at **+495.8 cr/hand**. LD-28's closing paragraph inherits the same error and now carries a
+  **dated note** correcting it, with **none of its numbers or ruling text edited**. Two further
+  corrections: "roster (the named captains)" mislabels the pool (the roster is LD-11's authored
+  42-row house table; the named captains are the roaming pool), and the plan's UI premise is wrong —
+  **the purse is projected but NOT rendered**, so the pre-tier-3 player has no cue at all.
+- **WHAT −200.8 ACTUALLY MEASURES: the SEAT ELECTION, not the table.** `planDare` elects the
+  **richest** candidate (§12.9 F-148-2 — **RULED, not overlooked**, and not this task's to move) and
+  content prices difficulty in purse (`3× / 5× / 8×`), so the gambler sits opposite `optimal` on
+  **77.82%** of its roster hands (**34.15%** of every hand played). **Re-weighted with every cell's
+  own EV held FIXED:** measured **−200.8** → LD-11's **authored seat census +172.8** → **flat
+  +391.3**. Weights computed from `LIARS_DICE_OPPONENTS`, mixes distributed by their own `mix`,
+  never restated as literals.
+- **THE FEEDBACK LOOP, MEASURED RATHER THAN ASSERTED** (`.scratch/t223-meter.mjs`, the same 1,600
+  careers driven through a spy that returns its policy's actions unchanged): Σ seat-3 purses run
+  **140,400 → 162,433 (+15.7%)** while seats 1 and 2 fall **−6.8%** / **−3.7%**; **5.72 of 42 seats
+  are broke at the horizon**; seat 3 takes **64.28% → 52.87%** of roster hands per 30-day window and
+  **never less than half**.
+- **THE SECOND INSTRUMENT IS THE ANSWER TO THE ACCEPT QUESTION.** `deed-hunter.ts`'s roster tour (a
+  **shipped instrument, unmodified**) over **152 careers × 300 days** — the coverage arm's 76 seeds
+  **doubled so the roster pool clears n ≥ 10,000 on its own count**, the sample widened rather than a
+  rate published under-powered — measures the same table at **+21.5 cr/hand (n = 11,021)**, ends the
+  median career **+1,885 cr up** on the gauntlet (**−0.52%** of the median purse, a *gain*), closes
+  **2,099 port sets**, banks `liars_dice_grand_slam` in **141 of 152 careers**, and leaves **0.00 of
+  42 seats broke** — §7.5's no-lockout theorem is not approached, let alone violated. **A2 passes on
+  the strongest form of the test.**
+- **THE ZERO-SUM PRICE METER, and the asymmetry no document named.** Σ bankroll recomputed from
+  content = **280,800 cr** (header **confirmed**, not quoted). `Σ (bankroll − purse) === roster
+  marginal of dareCells.netCredits` on **1,600 / 1,600** careers, and the spy's hand counts match
+  `dareCells.hands` on **1,600 / 1,600**. The player's **upside is capped at 280,800 and never
+  regenerates** (best career took **163,442 — 58.21% of the cap**); the **downside has no bound** (worst
+  career fed **102,742** in). Named in LD-30 rather than shipped as an invariant, with the reason
+  written down.
+- **THE RULING (LD-30): INTENDED.** The roster price is the price of the **SEAT**, denominated in
+  **progression** (set closure, the port deeds, the grand slam), not in disposition. **One bounded
+  standing invariant is added — the CENSUS BOUND:** the roster pool re-weighted to LD-11's own
+  authored seat census must stay **EV-POSITIVE**; weights from `LIARS_DICE_OPPONENTS`, **bar ZERO**,
+  no literal in the mechanism, **not fitted to −200.8**. **B1 and B3 are argued against in writing**
+  (§22.5): B1 (mix headroom) is *algebraically LD-28's own invariant* and is therefore shipped as a
+  **reported** quantity (**43.89% roster share against a 71.18% break-even — 27.29 pp of headroom**,
+  so **A3 passes**) rather than as a second bar; B3 (shape (a)'s −314.9) would bar the *instrument's*
+  number, which is precisely what the ruling says is not the game's.
+- **THE ALTERNATIVES DECLINED IN WRITING, per lever** (§22.5's table): **ALT-1** (re-author the seat
+  census / bankroll ladder) declined **on the measurement** — content's own census already reads
+  +172.8 and the policy that plays it is *paid*; **ALT-2** (LD-29's stake-referenced ante) measured
+  and declined one task ago on identical seeds, and moves the table **against** the player; **ALT-3**
+  (remove §7.6's null so a roster seat pays disposition) costed — a save-shape change owing a
+  migration that **calls** a rule plus a round-trip test, a `rulesFingerprint` move and a capstone —
+  and declined because correction 1 removes the reason to want it. `planDare`'s picker,
+  `optimal`'s valuation, both challenge margins and `minOpeningQuantity` all named with reasons.
+- **THE REPRODUCTION ARM** (`--label t223-roster --seeds 1600 --days 120 --policies gambler
+  --milestone-days 21,29,30,41,60,120 --shard i/4`, **1-indexed**, scored by `.scratch/t223-roster.mjs`)
+  reproduces §20.3 to **every published decimal**: **1,600 rows · 279,857 dares · 52.90% · +190.1
+  cr/hand · roaming +495.8 (n = 157,037) · roster −200.8 (n = 122,820) · `roster|optimal` −482.3
+  (n = 95,580) · `bad − optimal` +15.79 pp SE 0.44 z 35.93 · 0 tier and 0 challenge disagreements ·
+  `invariants: 0 violations`** on all four shards, joins exact on all three sums. **Shards-only and
+  deliberately so** — the 8,000-row constraint governs the *capstone*, owed when `rulesFingerprint`
+  moves, which it does not (§20.0 correction 3's precedent, restated). The `combat-win-share` FAIL is
+  the known gambler-only-arm artefact. **Every published EV cell now also carries a career-cluster
+  bootstrap SE and 95% CI** (`dareCells` holds no sum of squares, and careers are the level the
+  dependence lives at).
+- **C6 AND BOTH LD-28 INVARIANTS RE-SCORED as Accept requires:** `bad − optimal` **+15.79 pp, SE 0.44,
+  z 35.93 — no re-inversion**; pooled EV **+190.1 > 0** ✅ and **≪ +558** ✅.
+- **TWO OF SIX PRE-COMMITTED PREDICTIONS WERE WRONG AND ARE RECORDED AS WRONG** (§22.7, written to
+  `.scratch/t223-predictions.md` before the sweep ran). **Prediction 4** ("the gambler pays and buys
+  nothing") is **half wrong on its load-bearing half**: 0 grand slams ✅, but **2,861 port sets closed
+  across 1,600 careers**, in **1,254 of them**, at a mean of **20.51 / 42** seats beaten.
+  **Prediction 6** is **wrong on the sign**: the deed hunter's per-hand EV was predicted negative and
+  measures **+21.5**. Prediction 6 is the useful one — it is the measurement that turns correction 1
+  from a debating point into a ruling.
+- **TESTS.** `packages/sim/src/__tests__/campaign-dare-cells.test.ts` gains describe **`T-223 · LD-30
+  — the roster seat's price`**: the **census bound** (weights computed from content, **no literal
+  threshold in the mechanism**), the **mix headroom** (both sides derived from the live rollups, plus
+  an assertion that it and LD-28's pooled reading cannot disagree), and the **archetype rollup
+  lossless and non-empty at all three concrete arms**, so a later roster figure published without the
+  archetype cut goes red. Run on the **same memoised 48-career pass** the T-220 describe uses —
+  hoisted to module scope, **no fourth walk over 48 careers**, and T-220's own assertions are
+  byte-identical. Measured there: census EV **+209.0** at a career-cluster bootstrap **SE 73.9**
+  (**reported as a ~2.8 SE detector rather than presented as comfortable**), headroom **27.12 pp**.
+  `packages/engine/src/__tests__/liarsDice.test.ts` gains describe **`T-223 · what a roster seat pays,
+  and what it does not`**: the §7.6 null on the **WIN** arm with a **vacuity guard** proving both
+  terminal challenge arms are reached (the one thing the existing `T-145 · roster hands apply NO
+  disposition (§7.6)` never asserted — **extended, not duplicated**); `seedLiarsDicePurses()` **is**
+  the authored bankroll row-wise with the key sets compared; and **bankroll STRICTLY increasing in
+  `seat` at every one of the 14 ports** with seat 3 `optimal` and seat 2 `mixed` everywhere — the pin
+  that makes the seat-election derivation durable.
+- **ONE FINDING FILED THE MOMENT IT WAS CONFIRMED: F-223-1 → `T-227`** — the player is told
+  **nothing** about which of the three house seats is the hard one. The purse is projected but not
+  rendered, `seat` is not projected at all, `liarsDiceDealerReadout` hard-nulls on a `ld-` id, and the
+  only cue that ever arrives (tier ≥ 3) describes **style**, calling the hardest and richest seat
+  *"This one plays it safe."* Written into `docs/HANGOUT_REDESIGN.md` §7 in that section's finding
+  format. Answered **independently of the sign** on LD-26 / T-221's precedent, and **filed rather than
+  patched** because the missing disclosure is a **difficulty** one and that is a design call.
+- **FINGERPRINTS, CAPSTONE AND SAVE SHAPE, measured rather than asserted.** `git diff` touches
+  `docs/**`, `packages/engine/src/__tests__/**`, `packages/sim/src/__tests__/**`, `.scratch/**` and
+  `TASKS.md` **only** — nothing under `packages/engine/src` outside `__tests__`, nothing under
+  `packages/content/src`, nothing under `packages/ui/src`. Read live before and after with
+  `.scratch/t219-fp.mjs`: **`rulesFingerprint cabd2112ccf4cefb`**, **`instrumentFingerprint
+  2d6d1990eaf13031`**, **`docsFingerprint 265aea1d09f0d485`** — **all three UNMOVED**. **No capstone,
+  no re-extract, no baseline re-pin owed.** **`CURRENT_SAVE_VERSION` UNMOVED at 17**, **re-read live**
+  at `packages/engine/src/save.ts:627` — a derived per-pool report is not a save shape, so no
+  migration and no round-trip test is owed.
+- **No band, threshold, fingerprint or golden edited in either direction.** When a cell came in
+  under-powered (the hunter arm at n = 5,620 on 76 careers) **the sample was doubled to 152**, not the
+  bar.
+- **Gate green**: `npm run format`, `npm test`, `npx tsc -b`, `npm run lint`, `npm run format:check`.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
 
 ### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: TODO` · `coder: opus` · `after: T-222`
 
@@ -3128,6 +3244,45 @@ rather than at one point, computed from `probAtLeast` and the accessors with no 
 least one named alternative on identical seeds and LD-28's invariants are re-scored alongside;
 either way `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` gains an assertion that goes
 RED if the range moves; §21.7 gains the outcome; if any rule moves the task takes its own capstone
+with the moved rows predicted first; gate green.
+
+### T-227 · F-223-1: the player is never told which of the house's three seats is the hard one — `status: TODO` · `coder: opus` · `after: T-223`
+
+**Filed at T-223 (2026-08-06), `docs/HANGOUT_REDESIGN.md` §7 Finding F-223-1 /
+`docs/LIARS-DICE_REDESIGN.md` §22.6 / `docs/LIARS-DICE-DECISIONS.md` LD-30.** Content authors a
+**strict difficulty ladder** at every one of the fourteen Liar's Dice ports — seat 1 the journeyman
+(`bad`/`random`, `3 × wager.max`), seat 2 the regular (`mixed`, `5 ×`), seat 3 the house
+(`optimal`, `8 ×`), with the table's own header saying *"difficulty rises monotonically with the
+purse"* — and T-223 **pinned that ladder with a test**, so it is now a guaranteed property rather
+than an authoring convention. **The UI surfaces none of it.** `hangoutRosterOpponents`
+(`packages/ui/src/format.ts:571`) projects name / beaten / **purse** / broke plus a tier-≥-3 `read`,
+and the pane (`packages/ui/src/App.tsx:2470-2510`) renders **four of those five — not the purse**
+(`grep -n purse packages/ui/src/App.tsx` returns one comment). The row's own `seat`, and content's
+`journeyman / regular / house` role table, are **not in `HangoutRosterOpponent` at all**.
+`liarsDiceDealerReadout` hard-nulls on any `ld-` id (correctly — §7.6). So **before tier 3 the three
+seats are distinguished by their authored NAMES alone**, and **after tier 3 the one cue that arrives
+describes STYLE, not difficulty**, with its connotation running the wrong way: `optimal` — the
+hardest and richest seat — reads **"This one plays it safe."**
+(`packages/engine/src/liarsDiceRules.ts:335`).
+
+**This is a disclosure finding, not a pricing one, and that is deliberate.** LD-30 measures the
+roster at **+21.5 cr/hand (n = 11,021)** for the set-seeking instrument that buys what it sells, so
+the seat is **not** a trap in credits — which is exactly why the obvious "this seat is expensive" cue
+must not be shipped: it would print a claim the measurement contradicts. T-223 pre-committed
+(§22.2, criterion A4) to answering the disclosure question **independently of the sign**, on LD-26 /
+T-221's standing rule that *"a purchase whose price the buyer cannot see is not a design, it is a
+trap"*. A ladder the game guarantees and never mentions fails that test whether the rungs are cheap
+or dear. [filed: T-223/F-223-1]
+
+**Accept:** the owner rules what the player should be told about the seat ladder and when, and the
+ruling is written into `docs/HANGOUT_REDESIGN.md` §7 beside F-223-1 (accept-as-is counts as a
+ruling, in writing, with its reason); if a disclosure ships it is **UI-only** so `rulesFingerprint`
+stays unmoved, it reads the engine's or content's own value rather than a copied string (T-221's
+precedent), it is pinned in `packages/ui/src/__tests__/hangout-pane.test.ts` or
+`liars-dice-pane.test.ts` against that value, and it does **not** surface a `'mixed'` seat's resolved
+arm before the hand exists (§4.5 ruling 1), does **not** move `readTheTableLine`'s tier-3 unlock or
+its three authored strings (T-146's), and does **not** import a content constant into the pane;
+§22.6 and the F-223-1 finding gain the outcome; if any rule moves the task takes its own capstone
 with the moved rows predicted first; gate green.
 
 ---

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { LIARS_DICE_UNLOCK_GAMES } from '@spacerquest/content';
+import { LIARS_DICE_OPPONENTS, LIARS_DICE_UNLOCK_GAMES } from '@spacerquest/content';
 import { DARE_MAX_FACE, dicePerSideForTier, probAtLeast } from '@spacerquest/engine';
 
 import {
@@ -240,58 +240,83 @@ describe('T-175 · the archetype ordering, as a LIVE assertion (F-160-1)', () =>
  *  is an observed pathology rather than a picked figure. NOT A TUNABLE. */
 const T148_MONEY_PRINTER_EV_PER_HAND = 558;
 
-describe('T-220 · LD-28 — the table`s standing invariants', () => {
-  /** One pass over the widened seed set; every assertion below reads this.
-   *  Memoised because `runCampaign` is deterministic in `(seed, days, policy)` —
-   *  three `it`s re-running 48 careers each would be the same 144 campaigns for
-   *  the same three numbers. */
-  let cached: ReturnType<typeof computePooled> | null = null;
-  const pooled = () => (cached ??= computePooled());
+/** The three CONCRETE archetypes a roster seat can play. `'mixed'` is resolved to
+ *  one of these at OPEN (§4.5 ruling 1), so it is never a cell key. */
+const CONCRETE_ARCHETYPES = ['optimal', 'bad', 'random'] as const;
+type ConcreteArchetype = (typeof CONCRETE_ARCHETYPES)[number];
 
-  function computePooled() {
-    let hands = 0;
-    let playerWon = 0;
-    let netCredits = 0;
-    let sumSquaredNet = 0;
-    const byPool: Record<'roaming' | 'roster', { hands: number; netCredits: number }> = {
-      roaming: { hands: 0, netCredits: 0 },
-      roster: { hands: 0, netCredits: 0 },
-    };
-    let reportedDares = 0;
-    let reportedDaresWon = 0;
-    for (const seed of WIDE_GAMBLER_SEEDS) {
-      const { hangoutPlay } = runCampaign(seed, DAYS, 'gambler');
-      reportedDares += hangoutPlay.dares;
-      reportedDaresWon += hangoutPlay.daresWon;
-      for (const [key, cell] of Object.entries(hangoutPlay.dareCells) as [
-        DareCellKey,
-        DareCellStats,
-      ][]) {
-        hands += cell.hands;
-        playerWon += cell.playerWon;
-        netCredits += cell.netCredits;
-        // A per-cell mean-square, the coarsest dispersion the raw counters admit.
-        // Used ONLY to print an SE in a failure message, never to gate anything.
-        if (cell.hands > 0) sumSquaredNet += (cell.netCredits / cell.hands) ** 2 * cell.hands;
-        const pool = key.startsWith('roaming|') ? 'roaming' : 'roster';
-        byPool[pool].hands += cell.hands;
-        byPool[pool].netCredits += cell.netCredits;
+/** T-223 · HOISTED TO MODULE SCOPE so the LD-30 describe below reads the SAME
+ *  memo rather than taking a fourth full pass over 48 careers. Nothing about the
+ *  computation moved; only its scope did, and the T-220 assertions below are
+ *  byte-identical. */
+let cachedPooled: ReturnType<typeof computePooled> | null = null;
+const pooled = () => (cachedPooled ??= computePooled());
+
+function computePooled() {
+  let hands = 0;
+  let playerWon = 0;
+  let netCredits = 0;
+  let sumSquaredNet = 0;
+  const byPool: Record<'roaming' | 'roster', { hands: number; netCredits: number }> = {
+    roaming: { hands: 0, netCredits: 0 },
+    roster: { hands: 0, netCredits: 0 },
+  };
+  // T-223 · the ROSTER pool cut by archetype — the axis LD-30 rests on. Keyed by
+  // every concrete archetype up front so a MISSING key and a ZERO are not the same
+  // reading (T-173's `movesByReason` rule, which this file's header already cites).
+  const rosterByArchetype: Record<ConcreteArchetype, { hands: number; netCredits: number }> = {
+    optimal: { hands: 0, netCredits: 0 },
+    bad: { hands: 0, netCredits: 0 },
+    random: { hands: 0, netCredits: 0 },
+  };
+  let reportedDares = 0;
+  let reportedDaresWon = 0;
+  for (const seed of WIDE_GAMBLER_SEEDS) {
+    const { hangoutPlay } = runCampaign(seed, DAYS, 'gambler');
+    reportedDares += hangoutPlay.dares;
+    reportedDaresWon += hangoutPlay.daresWon;
+    for (const [key, cell] of Object.entries(hangoutPlay.dareCells) as [
+      DareCellKey,
+      DareCellStats,
+    ][]) {
+      hands += cell.hands;
+      playerWon += cell.playerWon;
+      netCredits += cell.netCredits;
+      // A per-cell mean-square, the coarsest dispersion the raw counters admit.
+      // Used ONLY to print an SE in a failure message, never to gate anything.
+      if (cell.hands > 0) sumSquaredNet += (cell.netCredits / cell.hands) ** 2 * cell.hands;
+      const pool = key.startsWith('roaming|') ? 'roaming' : 'roster';
+      byPool[pool].hands += cell.hands;
+      byPool[pool].netCredits += cell.netCredits;
+      if (pool === 'roster') {
+        const archetype = key.split('|')[1] as ConcreteArchetype;
+        const bucket = rosterByArchetype[archetype];
+        // An unknown archetype must NOT be dropped silently — the lossless check
+        // in the LD-30 describe is what would catch it, and it can only catch it
+        // if the sum here excludes it rather than mis-filing it.
+        if (bucket) {
+          bucket.hands += cell.hands;
+          bucket.netCredits += cell.netCredits;
+        }
       }
     }
-    const evPerHand = hands ? netCredits / hands : 0;
-    const variance = hands ? Math.max(0, sumSquaredNet / hands - evPerHand ** 2) : 0;
-    return {
-      hands,
-      playerWon,
-      netCredits,
-      evPerHand,
-      se: hands ? Math.sqrt(variance / hands) : 0,
-      byPool,
-      reportedDares,
-      reportedDaresWon,
-    };
   }
+  const evPerHand = hands ? netCredits / hands : 0;
+  const variance = hands ? Math.max(0, sumSquaredNet / hands - evPerHand ** 2) : 0;
+  return {
+    hands,
+    playerWon,
+    netCredits,
+    evPerHand,
+    se: hands ? Math.sqrt(variance / hands) : 0,
+    byPool,
+    rosterByArchetype,
+    reportedDares,
+    reportedDaresWon,
+  };
+}
 
+describe('T-220 · LD-28 — the table`s standing invariants', () => {
   it('the Dare is not a tax on a voluntary action: pooled EV/hand stays POSITIVE', () => {
     const p = pooled();
     // Vacuity guard, in the shape C3'(c) uses: an empty pool would pass anything.
@@ -371,4 +396,161 @@ describe('T-220 · LD-28 — the table`s standing invariants', () => {
     expect(probAtLeast(1, Math.min(...widths))).toBeGreaterThan(0.5);
     expect(1 - probAtLeast(1, Math.min(...widths))).toBeLessThan(0.5);
   });
+});
+
+// ---------------------------------------------------------------------------
+// T-223 · LD-30 — THE ROSTER SEAT'S PRICE.
+//
+// `docs/LIARS-DICE_REDESIGN.md` §22 / `docs/LIARS-DICE-DECISIONS.md` LD-30 ruled on
+// F-220-1: the roster pool measures -200.8 cr/hand (n = 122,820) while the roaming
+// pool measures +495.8 (n = 157,037), and nothing named or bounded the difference.
+//
+// THE RULING, in one line: the -200.8 is a property of the SEAT ELECTION, not a
+// price the game charges. `planDare` elects the RICHEST candidate (§12.9 F-148-2,
+// RULED and not this task's to move) and content authors the purse monotone in
+// difficulty, so a bankroll-chasing policy sits opposite `optimal` on 77.82% of its
+// roster hands. Re-weighted to the AUTHORED SEAT CENSUS — content's own weighting,
+// with every cell's measured EV held fixed — the same pool reads +172.8 cr/hand.
+//
+// WHAT THIS FILE PINS, and why each is not a fitted bar:
+//
+//   1. THE CENSUS BOUND — the roster pool, weighted as CONTENT authors it, must not
+//      be a credit sink. The weights come from `LIARS_DICE_OPPONENTS` itself (a
+//      `'mixed'` row distributed across the concrete archetypes by its own `mix`,
+//      which is what the engine does at open), so THERE IS NO LITERAL THRESHOLD IN
+//      THE MECHANISM — the bar is zero, and zero is not -200.8 minus slack. This is
+//      the standing invariant LD-30 adds.
+//   2. THE MIX HEADROOM — LD-28's pooled `EV > 0` survives exactly while
+//      `roster share < EV_roaming / (EV_roaming - EV_roster)`. Algebraically that
+//      IS LD-28's invariant, restated in mix space; it is asserted here because the
+//      HEADROOM is the quantity that says how much composition drift the promoted
+//      invariant tolerates, and nothing reported it before.
+//   3. THE ARCHETYPE ROLLUP IS LOSSLESS and non-empty at all three concrete
+//      archetypes — so a later pooled roster figure published WITHOUT the archetype
+//      cut goes red rather than repeating F-220-1's mistake.
+//
+// Sized as detectors, not knife edges, on the same memoised pass the T-220 describe
+// uses (no fourth walk over 48 careers). IF ONE GOES RED, WIDEN THE SAMPLE — NEVER
+// MOVE THE BAR (N4/N10, `docs/VERSIONING.md`).
+// ---------------------------------------------------------------------------
+
+/** LD-11's authored seat census, COMPUTED from the shipped table rather than
+ *  restated: one unit of weight per row, and a `'mixed'` row split across the three
+ *  concrete archetypes by its own `mix` — the same resolution the engine performs
+ *  at open (§4.5 ruling 1). A content pass that re-authors the census moves these
+ *  weights, which is the point: the bound is content's own, not this file's. */
+function authoredSeatCensus(): Record<ConcreteArchetype, number> {
+  const census: Record<ConcreteArchetype, number> = { optimal: 0, bad: 0, random: 0 };
+  for (const rows of Object.values(LIARS_DICE_OPPONENTS)) {
+    for (const row of rows) {
+      if (row.archetype === 'mixed') {
+        for (const archetype of CONCRETE_ARCHETYPES) {
+          census[archetype] += (row.mix?.[archetype] ?? 0) / 100;
+        }
+      } else {
+        census[row.archetype] += 1;
+      }
+    }
+  }
+  return census;
+}
+
+describe("T-223 · LD-30 — the roster seat's price", () => {
+  it('the roster pool is NOT a sink under content`s OWN seat census', () => {
+    const p = pooled();
+    // Vacuity guard, in the shape the T-220 `it`s use.
+    expect(p.hands, 'the widened seed set played no settled hands at all').toBeGreaterThan(2_000);
+    expect(p.byPool.roster.hands, 'the roster pool is empty').toBeGreaterThan(500);
+
+    const census = authoredSeatCensus();
+    const weightTotal = CONCRETE_ARCHETYPES.reduce((total, a) => total + census[a], 0);
+    expect(
+      weightTotal,
+      'the authored census is empty — content has no roster rows',
+    ).toBeGreaterThan(0);
+
+    let censusEv = 0;
+    const detail: string[] = [];
+    for (const archetype of CONCRETE_ARCHETYPES) {
+      const cell = p.rosterByArchetype[archetype];
+      // Every archetype must be REACHED, or the re-weighting would be silently
+      // extrapolating a cell it never measured.
+      expect(
+        cell.hands,
+        `roster|${archetype} was never played across ${WIDE_GAMBLER_SEEDS.length} careers — ` +
+          `the census re-weighting cannot be computed without it`,
+      ).toBeGreaterThan(0);
+      const cellEv = cell.netCredits / cell.hands;
+      censusEv += (census[archetype] / weightTotal) * cellEv;
+      detail.push(
+        `${archetype}: n=${cell.hands} EV=${cellEv.toFixed(1)} w=${(census[archetype] / weightTotal).toFixed(3)}`,
+      );
+    }
+    const measuredEv = p.byPool.roster.netCredits / p.byPool.roster.hands;
+
+    expect(
+      censusEv,
+      `the roster pool re-weighted to LD-11's AUTHORED seat census reads ` +
+        `${censusEv.toFixed(1)} cr/hand over n = ${p.byPool.roster.hands} roster hands ` +
+        `(as MEASURED, under the seat-picker's own mix, it reads ${measuredEv.toFixed(1)}). ` +
+        `Cells: ${detail.join('; ')}. LD-30 requires the roster table, weighted as CONTENT ` +
+        `AUTHORS IT, not to be a credit sink — the measured sink is the richest-candidate seat ` +
+        `election (docs/LIARS-DICE-PROGRESSION_SPEC.md §12.9 F-148-2), not the table. The bar ` +
+        `is ZERO and the weights are computed from LIARS_DICE_OPPONENTS, so there is no literal ` +
+        `to move here. IF THIS IS RED, WIDEN THE SAMPLE — NEVER MOVE THE BAR ` +
+        `(N4/N10, docs/VERSIONING.md).`,
+    ).toBeGreaterThan(0);
+  }, 480_000);
+
+  it('LD-28`s pooled EV invariant keeps HEADROOM against composition drift', () => {
+    const p = pooled();
+    expect(p.hands).toBeGreaterThan(2_000);
+    const evRoaming = p.byPool.roaming.netCredits / p.byPool.roaming.hands;
+    const evRoster = p.byPool.roster.netCredits / p.byPool.roster.hands;
+    // The formula is only meaningful while the pools point in opposite directions
+    // with roaming ahead; assert the premise rather than dividing blind.
+    expect(
+      evRoaming,
+      `the pools no longer separate (roaming ${evRoaming.toFixed(1)}, roster ` +
+        `${evRoster.toFixed(1)}) — LD-30's headroom reading has no referent and §22 must be ` +
+        `re-derived rather than this bar relaxed`,
+    ).toBeGreaterThan(evRoster);
+    const breakEvenShare = evRoaming / (evRoaming - evRoster);
+    const measuredShare = p.byPool.roster.hands / p.hands;
+    expect(
+      measuredShare,
+      `roster share of all hands = ${(100 * measuredShare).toFixed(2)}% against a BREAK-EVEN ` +
+        `share of ${(100 * breakEvenShare).toFixed(2)}% (roaming ${evRoaming.toFixed(1)} cr/hand ` +
+        `over n = ${p.byPool.roaming.hands}, roster ${evRoster.toFixed(1)} over n = ` +
+        `${p.byPool.roster.hands}). Past the break-even share the POOLED EV that LD-28 promoted ` +
+        `goes negative. Both sides are DERIVED from the live rollups — there is no threshold ` +
+        `here to move. IF THIS IS RED, WIDEN THE SAMPLE — NEVER MOVE THE BAR ` +
+        `(N4/N10, docs/VERSIONING.md).`,
+    ).toBeLessThan(breakEvenShare);
+    // The two readings are the same statement; assert they cannot disagree, so a
+    // future edit to either side is caught rather than absorbed.
+    expect(p.netCredits / p.hands > 0).toBe(measuredShare < breakEvenShare);
+  }, 480_000);
+
+  it('the archetype rollup is LOSSLESS against the roster pool and reaches all three arms', () => {
+    // F-220-1 was published as a POOLED roster figure and the pooled figure hid the
+    // spread (`optimal` -482.3 against `random` +1,354.3 at the capstone). A later
+    // roster number quoted without this cut reddens here.
+    const p = pooled();
+    const hands = CONCRETE_ARCHETYPES.reduce((t, a) => t + p.rosterByArchetype[a].hands, 0);
+    const net = CONCRETE_ARCHETYPES.reduce((t, a) => t + p.rosterByArchetype[a].netCredits, 0);
+    expect(hands).toBe(p.byPool.roster.hands);
+    expect(net).toBeCloseTo(p.byPool.roster.netCredits, 6);
+    for (const archetype of CONCRETE_ARCHETYPES) {
+      expect(
+        p.rosterByArchetype[archetype].hands,
+        `roster|${archetype} is empty — the pool cut cannot be published without it`,
+      ).toBeGreaterThan(0);
+    }
+    // …and `optimal` really is the MAJORITY seat under the shipped seat election,
+    // which is the whole of §22.0 correction 3. Stated as "more than any other
+    // single arm", never as a fitted percentage.
+    expect(p.rosterByArchetype.optimal.hands).toBeGreaterThan(p.rosterByArchetype.bad.hands);
+    expect(p.rosterByArchetype.optimal.hands).toBeGreaterThan(p.rosterByArchetype.random.hands);
+  }, 480_000);
 });

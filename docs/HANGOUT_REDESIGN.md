@@ -1329,6 +1329,63 @@ satisfy**, now enforced.
 
 ---
 
+### Finding F-223-1 · The player is never told which of the house's three seats is the hard one — **FILED, NOT FIXED**
+
+**Found at T-223** while answering the UI clause of F-220-1's Accept
+(`docs/LIARS-DICE_REDESIGN.md` §22.6, ruled at **LD-30**). Every claim below is read off the
+shipped code, not off intent.
+
+**Content authors a strict difficulty ladder at every one of the fourteen Liar's Dice ports.**
+`packages/content/src/liarsDice.ts` fixes seat 1 as the journeyman (`bad` at ports 1–7, `random`
+at 8–14, bankroll `3 × wager.max`), seat 2 as the regular (`mixed`, `5 ×`) and seat 3 as the house
+(`optimal`, `8 ×`), with the file's own header saying *"difficulty rises monotonically with the
+purse."* T-223 pins that ladder with a test — `packages/engine/src/__tests__/liarsDice.test.ts`,
+`T-223 · what a roster seat pays, and what it does not` — so it is now a guaranteed property of the
+table rather than an authoring convention.
+
+**The UI surfaces none of it.**
+
+- `hangoutRosterOpponents` (`packages/ui/src/format.ts:571`) projects **name / beaten / purse /
+  broke**, plus `read` at unlock tier ≥ 3 only and never on a `mixed` row (§4.5 ruling 1).
+- The roster section of the pane (`packages/ui/src/App.tsx:2470-2510`) renders **four** of those
+  five: the name, `· beaten`, `· cleaned out`, and the read. **It does not render the purse** —
+  `grep -n purse packages/ui/src/App.tsx` returns one comment and nothing else.
+- The row's own `seat` field, and content's `journeyman / regular / house` role table, are **not in
+  `HangoutRosterOpponent` at all** and are therefore not renderable today.
+- `liarsDiceDealerReadout` (`packages/ui/src/format.ts:670`) **hard-nulls on any `ld-` id**, so a
+  roster seat prints no standing line either (correctly — there is no standing to print, §7.6).
+
+**So before unlock tier 3 the three seats are distinguished by their authored NAMES alone**, and a
+player has no way to learn that "Quiet Odom" is the house and "Hob Trellis" is the soft seat except
+by sitting down against both. **After tier 3 the one cue that arrives describes STYLE, not
+difficulty**, and its connotation runs the wrong way: `optimal` — the hardest and richest seat —
+reads **"This one plays it safe."** (`packages/engine/src/liarsDiceRules.ts:335`), which a player has
+every reason to hear as *harmless*; the `mixed` seat reads nothing by ruling; only `bad` reads
+*"This one's reckless."*
+
+**Why this is a finding even though LD-30 ruled the roster is NOT the expensive table.** LD-30
+measures the roster at **+21.5 cr/hand (n = 11,021)** for the set-seeking instrument that buys what
+it sells, so the seat is not a trap in credits. The trap is in **information**: LD-26 / T-221 already
+established the standing rule that *"a purchase whose price the buyer cannot see is not a design, it
+is a trap"*, and T-223 pre-committed to answering the disclosure question **independently of the
+sign** (§22.2, criterion A4). A ladder the game guarantees and never mentions fails that test whether
+the rungs are cheap or dear.
+
+**Why it is FILED rather than fixed here.** The obvious patch — a "this seat is expensive" cue — would
+print a claim T-223's own measurement contradicts. What is actually missing is a **difficulty**
+disclosure on a ladder that content already authors and the projection already has the field for: an
+inert, zero-content-cost change (`seat`, or the role name, or the read arriving earlier), but a
+**design** call about what the player is told and when. That is the owner's, not a
+measurement-and-ruling task's. **`TASKS.md` T-227.**
+
+**What a fix must NOT do**, so the next task does not have to re-derive it: it must not surface the
+`mixed` seat's resolved arm before the hand exists (§4.5 ruling 1 — the read does not exist yet), it
+must not move `readTheTableLine`'s tier-3 unlock or its three authored strings (T-146's), and it must
+not import a content constant into the pane — the T-221 precedent is that the UI reads the engine's
+or content's own value, never a copied one.
+
+---
+
 ## §8 · What this spec deliberately does not settle, and the T-102 crossover
 
 **Not settled here:**
