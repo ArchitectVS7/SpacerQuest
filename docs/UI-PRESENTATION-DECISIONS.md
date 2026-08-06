@@ -219,6 +219,32 @@ re-roll charges alongside.** (T-201; `packages/engine/src/day.ts:170–187`.) An
 ceremony renders N dice and lays out N positions — hard-coding five is a defect, not a
 simplification.
 
+**UI-28 — A DC shown BEFORE a die is armed is a PLANNING read; a DC shown WITH one armed is a
+LIVE read, and the two must not look alike.** (T-194.) The planning read is dim etch with no
+verdict and says out loud that arming a die is what turns it into a roll; the live read is ember
+with the armed face, its total and a pass/fail badge. One component,
+`packages/ui/src/CheckPreviewRow.tsx`, discriminated by `data-kind="plan"|"live"|"opposed"`, and
+the discrimination is decided in `format.ts` (`CheckPreview`), never in JSX. Both arms open with
+the SAME `{STAT} DC {n}` phrase, deliberately: that is what keeps one machine-checkable home for
+the DC (`route-dc`, `explore-cost`) across the transition, and what makes the row read as one
+line gaining detail rather than two lines swapping places. The owner's finding this closes: "I
+have no feedback if the die does anything."
+
+**UI-29 — A live check read is the ENGINE's own `check()` output, never a UI-recomputed
+comparison.** (T-194.) `format.ts`'s `dcPreview` calls the same `check(die, modifier, dc)` every
+resolver calls, so nat-20 auto-success, nat-1 auto-fail and `margin` are INHERITED rather than
+re-implemented — a `total >= dc` in the UI passes the ordinary cases and is wrong on exactly the
+two the player remembers. Where a resolver keeps its DC as an un-exported literal (exporting it
+would move `rulesFingerprint` and owe an 8,000-run capstone for a readout change), the mirror
+lives in `format.ts` under a source-reading drift alarm —
+`packages/ui/src/__tests__/engine-dc-pins.test.ts` — and the promotion is FILED, not assumed.
+
+**UI-30 — An OPPOSED roll gets no pass/fail read, because the number it would be judged against
+does not exist yet.** (T-194.) Combat RUN is `check(die, playerPilot, enemyPursuitDie +
+enemyPilot)` with the enemy d20 drawn at resolve time, so its row prints the player's total and
+states that the other side still rolls. Inventing a DC there would be T-193's bug — a cockpit
+advertising a check the resolver never runs — reproduced in a new pane.
+
 **UI-22 — Ordering for the dawn-roll work: T-194 (dawn-hand illegibility) lands FIRST.** (T-201.)
 T-194 teaches what a die BUYS at the action; T-201 teaches what a die IS at the deal, and they do
 not overlap in pixels, so the ceremony needs somewhere to point. The beat does NOT inherit a

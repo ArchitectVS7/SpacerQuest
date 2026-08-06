@@ -63,10 +63,25 @@ test('sweep off-lane through the UI: fragment gained, sealed pod taken, Nemesis 
   await page.goto('/');
   await newGameSeed(page, SEED);
 
+  // T-194 · With no die armed the sweep's DC is a PLANNING read — a number to
+  //    weigh, with no claim about how it will go.
+  const sweepCheck = page.locator('[data-testid="check-preview"][data-surface="explore"]');
+  await expect(sweepCheck).toHaveAttribute('data-kind', 'plan');
+  await expect(page.getByTestId('check-preview-result')).toHaveCount(0);
+
   // 1) Arm a die from the hand, then read the sweep's cost off the engine preview.
   await page.getByTestId('die').nth(HIGH_DIE).click();
   await expect(page.getByTestId('explore-cost')).toContainText(`PILOT DC ${EXPLORATION_NAV_DC}`);
   await expect(page.getByTestId('explore-cost')).toContainText(`FUEL ${EXPLORATION_FUEL_COST}`);
+  // T-194 · …and now it is a LIVE read: this face, against that DC, with a verdict
+  //    the player can see BEFORE burning the fuel. The face is read off the armed
+  //    die rather than typed, so a re-seed moves both together.
+  const label = await page.getByTestId('die').nth(HIGH_DIE).getAttribute('aria-label');
+  const armedFace = /value (\d+)/.exec(label ?? '')?.[1];
+  expect(armedFace).toBeTruthy();
+  await expect(sweepCheck).toHaveAttribute('data-kind', 'live');
+  await expect(sweepCheck.getByTestId('check-preview-die')).toHaveText(String(armedFace));
+  await expect(sweepCheck).toHaveAttribute('data-outcome', 'pass');
 
   // 2) Commit the off-lane sweep — the missing Explore verb, reached via the UI.
   await page.getByTestId('explore-sweep').click();

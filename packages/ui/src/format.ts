@@ -30,6 +30,9 @@ import {
   isPurchasablePort,
   FACTION_IDS,
   FACTION_LABELS,
+  // T-194 · the TALK stance's standing term, read from content so the live check
+  // read shifts with the interceptor's grudge exactly as `resolveTalk` does.
+  TALK_DC_PER_DISPOSITION,
   NEMESIS_SYSTEM_ID,
   // T-215 · the T-188 sphere geometry the live Starmap now projects.
   coordinates3D,
@@ -116,6 +119,10 @@ import {
   crewCapacity,
   isCarryingContraband,
   isCarryingIllicit,
+  // T-194 · THE resolver's own check. Every live per-die read below is produced
+  // by calling this, never by a UI-side `total >= dc` — so nat-20 auto-success,
+  // nat-1 auto-fail and `margin` are inherited rather than reimplemented (UI-29).
+  check,
   type CheckResult,
   type DareBid,
   type DareBidEntry,
@@ -399,21 +406,208 @@ export function routeCheckReadout(
     return { kind: 'dc', dc: travelPreview(game, dest).dc };
   }
   // 2) Ordinary jump: no check exists to report. Is a real die armed?
-  const hand = game.player.dawnHand;
-  if (!hand || armedDieIndex === null) return { kind: 'no-check' };
-  if (armedDieIndex < 0 || armedDieIndex >= hand.dice.length) return { kind: 'no-check' };
-  if (hand.spent[armedDieIndex]) return { kind: 'no-check' };
+  //    T-194 · the four guards T-193 wrote inline here are now `armedDieFace`,
+  //    shared verbatim with every other per-die read. Behaviour-preserving: the
+  //    helper returns null in exactly the four cases this branch used to test.
+  const die = armedDieFace(game, armedDieIndex);
+  if (die === null) return { kind: 'no-check' };
   // 3) It is — report what that die will really do. `resolveTravel` applies the
   //    discount to non-crossing jumps only (~L676-678) and passes the same die
   //    into `generateEncounter`, where `navDieEvasionFactor` multiplies the
   //    encounter chance (~L547). A nat 1 honestly reads 0% / 0%: that IS its
   //    live effect, and showing it is the teaching.
-  const die = hand.dice[armedDieIndex];
   return {
     kind: 'die-effect',
     die,
     fuelPct: Math.round(navDieFuelDiscount(die) * 100),
     evasionPct: Math.round((1 - navDieEvasionFactor(die)) * 100),
+  };
+}
+
+// ---- T-194 · THE LIVE PER-DIE CHECK READ ---------------------------------
+//
+// THE FINDING. Owner, live session: "it was not at all apparent why I was adding
+// a d20 to any of my tasks… I have no feedback if the die does anything." After
+// M17 (docs/DAWN-HAND-REDESIGN.md §3) every remaining Main Action READS its die —
+// Jump (fuel discount + evasion, T-193/T-195 above), Explore, Haggle, Combat,
+// Peek and the Nemesis crossing all roll it against a DC. But the cockpit printed
+// a bare DC sitting next to an unrelated hand of dice, so the arithmetic that
+// connects the two was left entirely in the player's head.
+//
+// WHAT THIS BLOCK IS. One discriminated union, `CheckPreview`, decided HERE so no
+// JSX owns a rule, plus one selector per surface. Two states matter and must look
+// different (UI-28):
+//   · `plan` — a DC with no die armed yet. A PLANNING number.
+//   · `live` — a die IS armed: the engine's own `CheckResult` for that face.
+// `opposed` is the honest third state for combat's RUN, which has no DC at all
+// (UI-30), and `none` is "nothing to say here right now".
+//
+// WHY `live` CARRIES A REAL `CheckResult` (UI-29). It is produced by calling the
+// ENGINE's own `check(die, modifier, dc)` — the same function every resolver
+// calls. Nat-20 auto-success, nat-1 auto-fail and `margin` are therefore
+// inherited, not reimplemented, and cannot drift from the roll the player is
+// about to make.
+//
+// FINGERPRINT DISCIPLINE. `packages/sim`'s `rulesFingerprint` hashes
+// `packages/engine/src/**` + `packages/content/src` WHOLESALE — T-193 measured
+// that appending ONE line to `travel.ts` flips `balance-smoke.test.ts`'s "fixture
+// is not stale" red, which would owe a full 8,000-run capstone for a readout
+// change. So T-194 touches no engine and no content file: every DC below is READ
+// through an existing export, except the two the resolvers keep as un-exported
+// literals (see `HAGGLE_DC` / `combatStanceDc`), which are mirrored here under a
+// source-reading drift alarm and filed for promotion (TASKS.md T-260).
+
+/** MIRROR of `packages/engine/src/actions/trade.ts` (`const haggleDc = 12;`).
+ *  NOT imported: that literal is not exported, and exporting it would move
+ *  `rulesFingerprint`. Pinned by `__tests__/engine-dc-pins.test.ts`, which reads
+ *  the resolver's source and fails the instant the literal changes. Promotion to
+ *  a real content constant is filed as T-260, to ride the next milestone's single
+ *  batched content capstone. */
+const HAGGLE_DC = 12;
+
+/** MIRROR of `packages/engine/src/actions/combat.ts`
+ *  (`const dc = 10 + encounter.interceptor.tier;`) — the FIGHT/TALK stance DC.
+ *  Same reason, same alarm, same promotion task as {@link HAGGLE_DC}. */
+function combatStanceDc(interceptorTier: number): number {
+  return 10 + interceptorTier;
+}
+
+/** The stances a combat check preview can be asked for — the engine's own
+ *  `PlayerAction` stance union, restated structurally rather than imported so
+ *  this module keeps no new engine type dependency. */
+export type CombatStance = 'fight' | 'talk' | 'run';
+
+/** What the cockpit may honestly say about a die-read check, right now. */
+export type CheckPreview =
+  /** A DC exists but no die is armed yet — the PLANNING read (dim, no verdict). */
+  | { kind: 'plan'; stat: Stat; dc: number; modifier: number }
+  /** A die IS armed: the engine's OWN `check()` result for that exact face. */
+  | { kind: 'live'; stat: Stat; result: CheckResult }
+  /** No fixed DC exists because the other side rolls too (combat RUN). `die` is
+   *  the armed face, or null when nothing is armed. */
+  | { kind: 'opposed'; stat: Stat; modifier: number; die: number | null }
+  /** Nothing to read: no encounter, no live hand, no such surface right now. */
+  | { kind: 'none' };
+
+/**
+ * The FACE of the armed die, or null when nothing is really armed.
+ *
+ * `armedDieIndex` is the HAND INDEX the cockpit has tentatively selected
+ * (`state.selectedDie`), never a face — resolved against `player.dawnHand`
+ * exactly as the engine's `spendDie` would. The four ways "armed" can be a lie
+ * are all folded in here, once, so no call site can forget one: no hand at all, a
+ * null index, an out-of-range index, and a slot that is already spent.
+ */
+export function armedDieFace(game: GameState, armedDieIndex: number | null): number | null {
+  const hand = game.player.dawnHand;
+  if (!hand || armedDieIndex === null) return null;
+  if (armedDieIndex < 0 || armedDieIndex >= hand.dice.length) return null;
+  if (hand.spent[armedDieIndex]) return null;
+  return hand.dice[armedDieIndex];
+}
+
+/** The shared shape of every DC-based preview below: plan until a die is armed,
+ *  then the engine's own check for that face. One place decides which. */
+function dcPreview(
+  game: GameState,
+  armedDieIndex: number | null,
+  stat: Stat,
+  modifier: number,
+  dc: number,
+): CheckPreview {
+  const die = armedDieFace(game, armedDieIndex);
+  if (die === null) return { kind: 'plan', stat, dc, modifier };
+  return { kind: 'live', stat, result: check(die, modifier, dc) };
+}
+
+/**
+ * OFF-LANE SWEEP · PILOT vs the nav DC. Mirrors `actions/exploration.ts`, which
+ * calls `check(die, stats[PILOT] + navBonus(ship), EXPLORATION_NAV_DC)` — both
+ * terms read straight out of `explorationPreview`, so the number previewed is the
+ * number rolled.
+ */
+export function exploreCheckPreview(game: GameState, armedDieIndex: number | null): CheckPreview {
+  const sweep = explorationPreview(game);
+  return dcPreview(game, armedDieIndex, Stat.PILOT, sweep.effectiveModifier, sweep.dc);
+}
+
+/**
+ * HAGGLE · TRADE vs the broker's DC. Mirrors `actions/trade.ts`'s
+ * `check(die, stats[TRADE], haggleDc)`. Returns `none` when there is no contract
+ * on the board to haggle at all — the row does not render then.
+ */
+export function haggleCheckPreview(game: GameState, armedDieIndex: number | null): CheckPreview {
+  return dcPreview(game, armedDieIndex, Stat.TRADE, game.player.stats[Stat.TRADE], HAGGLE_DC);
+}
+
+/**
+ * LIAR'S DICE PEEK · GUILE vs the port's authored peek DC. Mirrors
+ * `actions/dare.ts`, which checks against `venueParamsFor(systemId,'dare').dc` —
+ * read here through `dareScene(game).peekDc`, the same projection the button's
+ * label already prints. `none` when no hand stands.
+ */
+export function peekCheckPreview(game: GameState, armedDieIndex: number | null): CheckPreview {
+  const scene = dareScene(game);
+  if (!scene) return { kind: 'none' };
+  return dcPreview(game, armedDieIndex, Stat.GUILE, game.player.stats[Stat.GUILE], scene.peekDc);
+}
+
+/**
+ * THE NEMESIS CROSSING · PILOT vs the crossing DC. Mirrors `actions/travel.ts`'s
+ * surviving `isCrossing` check, `check(die, stats[PILOT] + navBonus(ship), dc)`,
+ * with the DC read out of `travelPreview` exactly as `routeCheckReadout` reads it.
+ */
+export function crossingCheckPreview(game: GameState, armedDieIndex: number | null): CheckPreview {
+  return dcPreview(
+    game,
+    armedDieIndex,
+    Stat.PILOT,
+    game.player.stats[Stat.PILOT] + navBonus(game.player.ship),
+    routePreview(game, NEMESIS_SYSTEM_ID).dc,
+  );
+}
+
+/**
+ * COMBAT · one preview per stance, because all three read the SAME armed die
+ * against different rules — which is precisely the comparison a player is trying
+ * to make when they hover the three buttons.
+ *
+ *  · FIGHT — GUNS vs `10 + tier` (`resolveCombat`'s `dc`).
+ *  · TALK  — TRADE vs that same DC shifted by the interceptor's standing
+ *            (`resolveTalk`: `dc - TALK_DC_PER_DISPOSITION * disposition`, named
+ *            interceptors only; anonymous raiders carry no standing).
+ *  · RUN   — OPPOSED (UI-30). `resolveRun` rolls the interceptor's own pursuit
+ *            d20 at resolve time and checks against `enemyDie + enemyPilot`;
+ *            there is no DC yet, so this returns `opposed` and the row shows the
+ *            player's total with no verdict. Inventing a DC here would be T-193's
+ *            bug — an advertised check the resolver never runs — in a new pane.
+ */
+export function combatCheckPreview(
+  game: GameState,
+  stance: CombatStance,
+  armedDieIndex: number | null,
+): CheckPreview {
+  const encounter = game.encounter;
+  if (!encounter) return { kind: 'none' };
+  const dc = combatStanceDc(encounter.interceptor.tier);
+  if (stance === 'fight') {
+    return dcPreview(game, armedDieIndex, Stat.GUNS, game.player.stats[Stat.GUNS], dc);
+  }
+  if (stance === 'talk') {
+    // The same disposition read `resolveTalk` performs: the live NPC row for a
+    // NAMED interceptor, zero for an anonymous one.
+    const disposition =
+      encounter.interceptor.source === 'named'
+        ? (game.npcs.find((npc) => npc.id === encounter.interceptor.id)?.disposition ?? 0)
+        : 0;
+    const talkDc = dc - TALK_DC_PER_DISPOSITION * disposition;
+    return dcPreview(game, armedDieIndex, Stat.TRADE, game.player.stats[Stat.TRADE], talkDc);
+  }
+  return {
+    kind: 'opposed',
+    stat: Stat.PILOT,
+    modifier: game.player.stats[Stat.PILOT],
+    die: armedDieFace(game, armedDieIndex),
   };
 }
 
@@ -1534,8 +1728,12 @@ export function explorationFailExplanation(reason: ExplorationFailReason): strin
     // T-131 · the two that used to be silence, and the one this task adds.
     case 'recovery-in-progress':
       return 'The crew is holding station on a salvage op — no hands free for a sweep.';
+    // T-194 · the toll named for what it is. `apCost` on the richest outcome bands
+    // charges extra dice AT THE CLAIM, out of the same hand — they are a price
+    // paid to lift the find, never a second roll — and the old line let a player
+    // who has just been taught "a die IS your roll" read this as a failed check.
     case 'insufficient-dice':
-      return 'Charted it, but the hand was too thin to lift it — the find was left behind.';
+      return 'Charted it, but lifting it costs extra dice as a toll — not a roll — and the hand was too thin. The find was left behind.';
   }
 }
 
@@ -3366,6 +3564,15 @@ export function storyletChoiceNeedsDie(
  * stat check (STAT DC n), and a `die` token when a die is spent, joined by ` · `.
  * An unconditional choice returns '' (no badge). This shows the requirement whether
  * or not it is currently met; the LOCK (below) adds the disabled-state reason.
+ *
+ * T-194 · THE `die` TOKEN NOW DISCRIMINATES, because the cockpit has started
+ * teaching that a die IS the roll. Storylet choices authored with `spendDie` and
+ * NO `statCheck` are one of the two residual die-blind corners M17 left in scope
+ * for content authoring rather than engine rules (docs/DAWN-HAND-REDESIGN.md §3's
+ * last two rows), and beside the new teaching a bare `die` on such a choice reads
+ * as a promise of a roll that never happens. With a check the token stays `die`
+ * (the check beside it already says what the die does); without one it says out
+ * loud that the die is spent and not rolled.
  */
 export function storyletChoiceCostLabel(
   game: GameState,
@@ -3376,7 +3583,7 @@ export function storyletChoiceCostLabel(
   const parts: string[] = [];
   if (quote.requiredCredits !== null) parts.push(`${quote.requiredCredits.toLocaleString()}cr`);
   if (quote.statCheck) parts.push(`${statName(quote.statCheck.stat)} DC ${quote.statCheck.dc}`);
-  if (quote.needsDie) parts.push('die');
+  if (quote.needsDie) parts.push(quote.statCheck ? 'die' : 'die (spent, not rolled)');
   return parts.join(' · ');
 }
 
@@ -3896,19 +4103,28 @@ export interface OnboardingPrompt {
  * existing engine surface (`encounter`, `day`, `dawnHand`, `activeContract`,
  * `market.manifestBoard`).
  *
- * T-196c · STALE COPY BELOW, LEFT DELIBERATELY AND OWNED BY T-194. `first-sign`
- * still says "assign a die to a manifest offer", and `dawn-roll` still frames a
- * die as the price of every action. M17 (docs/DAWN-HAND-REDESIGN.md §3) made
- * signing free, so that instruction is now false. T-196c changes UI BEHAVIOUR
- * only; the teaching copy belongs to T-194, which is gated behind T-198 for the
- * express reason that the new economy must settle before the tutorial bakes it
- * in. Marked here rather than silently half-fixed.
+ * T-194 · THE REGISTRY IS FROZEN, AND THE COPY TEACHES THE TWO-CLASS ECONOMY.
+ *
+ * The `id` sequence below is a CONTRACT, not an implementation detail:
+ * `e2e/onboarding.spec.ts` pins the order a first career meets them in and
+ * carries an `ALL_ONBOARDING_SEEN` map keyed by these ids. Rewrite a `body`
+ * freely; never add, remove, rename or reorder an `id` for a copy pass.
+ *
+ * What the bodies now say (M17, docs/DAWN-HAND-REDESIGN.md §3): a die buys a MAIN
+ * ACTION and the face IS the roll; the administrative verbs are FREE and work
+ * with an empty hand. `first-sign` in particular used to instruct the player to
+ * "assign a die to a manifest offer", which has been false since T-196a.
+ *
+ * The ONE bounded exception — the daily social plays, free but capped — is taught
+ * in `first-hangout` and NOWHERE ELSE, on purpose: the player meets the pool when
+ * they walk into a Cantina, and front-loading it at dawn would teach a rule
+ * against nothing they can see.
  */
 export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   {
     id: 'first-encounter',
     title: 'Intercepted',
-    body: 'A ship has you. Pick a die and a stance — the fuel budget shows if you can afford to fire.',
+    body: 'A ship has you. Arm a die and pick a stance — each one shows what that die makes of its check, and the fuel budget shows if you can afford to fire.',
     anchor: 'combat',
     active: (game) => game.encounter != null,
   },
@@ -3917,7 +4133,7 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
     title: 'The Dawn Hand',
     // T-1405 · Hand-size-neutral copy: crew (a First Officer) can grow the dawn
     // hand to 6–7 dice, so the count is no longer a fixed "five".
-    body: 'Your dawn hand — one roll each day. Pick a die, then assign it to an action.',
+    body: 'Your dawn hand — one roll each day. A die buys a MAIN ACTION (jump, sweep, haggle, a combat stance, a peek) and the face you spend IS the roll. Signing, fuel, the yard and the crew are FREE — they never touch the hand.',
     anchor: 'hand',
     active: (game) => {
       const hand = game.player.dawnHand;
@@ -3927,14 +4143,14 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   {
     id: 'first-sign',
     title: 'Sign a Job',
-    body: 'Your hold is empty — assign a die to a manifest offer to take a job.',
+    body: 'Your hold is empty — click a manifest offer to take the job. Signing is free: it costs no die, and any die you have armed stays armed.',
     anchor: 'manifest',
     active: (game) => game.player.activeContract == null && game.market.manifestBoard.length > 0,
   },
   {
     id: 'first-jump',
     title: 'Plot the Jump',
-    body: 'Cargo aboard. Pick a die, plot the destination on the map, then confirm the jump.',
+    body: 'Cargo aboard. A jump is a Main Action, so arm a die, plot the destination, then confirm. That die is your edge on the run: a higher face shaves credits off the bill and odds off an interception.',
     anchor: 'starmap',
     active: (game) => game.player.activeContract != null,
   },
@@ -3949,7 +4165,11 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   {
     id: 'first-hangout',
     title: 'The Spacers Cantina',
-    body: 'This port keeps a Cantina — open it to wager at the tables or borrow from Penny Wise.',
+    // T-194 · THE ONE BOUNDED EXCEPTION TO "free means unlimited", taught exactly
+    // where the player first meets it (§4a). `SOCIAL_PLAYS_PER_DAY` is
+    // INTERPOLATED from content, on the same discipline the `social-plays-left`
+    // readout keeps, so a retune moves this sentence with no UI edit.
+    body: `This port keeps a Cantina — open it to wager at the tables or borrow from Penny Wise. Working the room costs no die either, but it is the one free thing that runs out: ${SOCIAL_PLAYS_PER_DAY} social plays a day, shared across meeting, buying a round and picking a fight with your mouth.`,
     // Ranked ABOVE first-loan: at a hangout system both are active, but the
     // player must be told to OPEN the panel before the in-panel loan nudge (which
     // renders inside that panel) can be reached.
@@ -4000,7 +4220,10 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   {
     id: 'first-explore',
     title: 'Off-Lane Sweep',
-    body: 'Burn fuel to sweep off-lane for a discovery — salvage, a Signal Fragment, a sealed pod.',
+    // T-194 · the extra-dice toll, named honestly (Accept part 3): those dice are
+    // PAID at the claim, out of the same hand, and are never rolled against
+    // anything. The band is drawn at resolution, so no number can be promised.
+    body: 'Burn fuel to sweep off-lane for a discovery — salvage, a Signal Fragment, a sealed pod. The armed die rolls PILOT against the dark; a rich find can then cost extra dice to lift out, and those are paid, not rolled.',
     anchor: 'starmap',
     // The tank can afford the sweep — the same fuel gate `explorationPreview`
     // reports and the sweep button disables on.

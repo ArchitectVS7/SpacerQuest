@@ -180,9 +180,30 @@ test('scripted-seed encounter: fought, survives reload, then fled through the UI
   await expect(page.getByTestId('combat-enemy-name')).toHaveText(A_ENEMY_NAME);
   await expect(page.getByTestId('combat-round')).toHaveText('ROUND 1');
 
+  // T-194 · Before any die is armed, each stance shows a PLANNING read — a DC and
+  //    no claim about the outcome. RUN never shows a DC at all: it is an opposed
+  //    roll and the interceptor's pursuit d20 does not exist yet (UI-30).
+  const stanceRow = (surface: string) =>
+    overlay.locator(`[data-testid="check-preview"][data-surface="${surface}"]`);
+  for (const surface of ['fight', 'talk']) {
+    await expect(stanceRow(surface)).toHaveAttribute('data-kind', 'plan');
+  }
+  await expect(stanceRow('run')).toHaveAttribute('data-kind', 'opposed');
+  await expect(overlay.getByTestId('check-preview-result')).toHaveCount(0);
+
   // 3) Fight one round with the value-14 die. The round advances (enemy pressed)
   //    and the honest PLAYER roll — not the enemy counter-attack — is surfaced.
   await page.locator('[data-testid="combat-die"][data-die-value="14"]').first().click();
+  // T-194 · …and arming it turns those planning reads LIVE, on that exact face,
+  //    BEFORE the stance is committed. This is the owner's finding closed: the
+  //    die is no longer a number sitting next to an unrelated DC.
+  await expect(stanceRow('fight')).toHaveAttribute('data-kind', 'live');
+  await expect(stanceRow('fight')).toHaveAttribute('data-outcome', 'pass');
+  await expect(stanceRow('fight').getByTestId('check-preview-die')).toHaveText('14');
+  await expect(stanceRow('talk')).toHaveAttribute('data-kind', 'live');
+  // RUN is still opposed, still verdict-free, and still shows no DC.
+  await expect(stanceRow('run')).toHaveAttribute('data-kind', 'opposed');
+  await expect(stanceRow('run')).not.toHaveAttribute('data-outcome', /.*/);
   await page.getByTestId('combat-fight').click();
   await expect(page.getByTestId('combat-round')).toHaveText('ROUND 2');
   // Scope the check readout to the overlay: the covered Manifest pane also mounts

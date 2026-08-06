@@ -2164,6 +2164,88 @@ body {
   background: var(--ember);
   border: 1px solid var(--ember-hi);
 }
+/* ---- T-194 · the LIVE per-die check read (UI-28 / UI-29 / UI-30) ----
+   The one component that answers "what does the die I just armed DO here?", in
+   two deliberately different treatments. PLAN is a DC nobody has rolled at yet:
+   dim etch, no glow, no verdict — the same weight as any other planning figure
+   on the panel. LIVE is that DC with the armed face against it: ember, lit, and
+   carrying a pass/fail badge. The difference has to be legible at a glance or the
+   player cannot tell a number they are reading from a number they are about to
+   stake a die on. Sibling to `.check-breakdown` above (the RESOLVED readout) and
+   deliberately lighter than it — this one is a hint, not a result. No new hue
+   (T-186/T-218's one-phosphor pillar): etch-dim, ember, amber, and the existing
+   `.result` / `.nat-juice` treatments, all of them already on this page. */
+.check-preview {
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.check-preview .cp-k {
+  font-family: var(--font-display);
+  letter-spacing: 0.1em;
+  font-size: 10px;
+  color: var(--etch-dim);
+}
+.check-preview .cp-hint {
+  color: var(--etch-dim);
+  font-size: 10px;
+}
+.check-preview.plan,
+.check-preview.plan .cp-v {
+  color: var(--etch-dim);
+  text-shadow: none;
+  font-weight: 400;
+}
+.check-preview.live .cp-expr,
+.check-preview.opposed .cp-expr {
+  color: var(--amber);
+}
+.check-preview.live .cp-v,
+.check-preview.live .cp-expr b,
+.check-preview.opposed .cp-expr b {
+  color: var(--ember);
+  text-shadow: var(--glow);
+  font-weight: 600;
+}
+.check-preview.live.crit .cp-v,
+.check-preview.live.crit .cp-expr b {
+  color: var(--ember-hi);
+}
+.check-preview .result {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+.check-preview .nat-juice {
+  font-size: 9.5px;
+  padding: 1px 6px;
+  margin-left: 5px;
+}
+/* T-194 · one stance button and its own check read, stacked, so the three DCs
+   can be compared against the same armed die at a glance. Still three children
+   of the `.co-stances` grid, so its columns are unchanged. */
+.co-stances .co-stance-slot {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  justify-items: center;
+}
+.co-stances .co-stance-slot .btn {
+  width: 100%;
+}
+.co-stances .co-stance-slot .check-preview {
+  text-align: center;
+  line-height: 1.3;
+}
+/* T-194 · the Peek control and its GUILE read, stacked inside the move strip. */
+.ld-moves .dare-peek {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+.ld-moves .dare-peek .check-preview {
+  text-align: center;
+}
+
 @media not (prefers-reduced-motion: reduce) {
   .check-breakdown {
     animation: cb-reveal 0.32s ease-out 1;

@@ -50,8 +50,14 @@ test('a locked choice shows its requirement and unlocks when a die is assigned',
   await expect(argue.getByTestId('storylet-choice-cost')).toHaveText('GUILE DC 12 · die');
   await expect(argue.getByTestId('storylet-choice-lock')).toHaveText('Assign a die');
 
-  // The credit+die "pay" choice always shows its full cost, too.
-  await expect(choice(page, 'pay').getByTestId('storylet-choice-cost')).toHaveText('75cr · die');
+  // The credit+die "pay" choice always shows its full cost, too. T-194 · and it
+  // says WHICH KIND of die cost it is: `pay` carries `spendDie` with no
+  // `statCheck`, so the die is consumed and never rolled — one of the two
+  // residual die-blind corners M17 left standing (DAWN-HAND-REDESIGN §3). Beside
+  // "a die IS your roll", a bare `die` token here would be a lie.
+  await expect(choice(page, 'pay').getByTestId('storylet-choice-cost')).toHaveText(
+    '75cr · die (spent, not rolled)',
+  );
 
   // Assign a die → the requirement is met and the lock clears (button enabled),
   // proving the gate is real, not decorative.

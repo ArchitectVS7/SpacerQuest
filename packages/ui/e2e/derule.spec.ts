@@ -102,12 +102,22 @@ test('the manifest sign flow renders a FREE signature, not a TRADE check', async
   // stopped being true when M17 (docs/DAWN-HAND-REDESIGN.md §3) freed signing;
   // the die slot and the "assign a die" prompt went with the cost. The contrast
   // this test exists for — signature vs. honest check — is untouched.
+  //
+  // T-194 · Scoped to `sign-terms` rather than the whole `sign-row`. The row has
+  // always held two different things — the FREE signature and the OPTIONAL TRADE
+  // haggle beside it — and T-194 put the haggle's live check read in there too,
+  // so the row now legitimately says "TRADE". The claim under test is about the
+  // SIGNATURE, and it is now aimed at exactly that: narrower, not weaker. The
+  // haggle half is asserted immediately below, as it always was.
   const signRow = page.getByTestId('sign-row').first();
+  const signTerms = signRow.getByTestId('sign-terms');
   await expect(signRow).toBeVisible();
-  await expect(signRow).toContainText('FREE');
-  await expect(signRow).not.toContainText('costs 1 die');
-  await expect(signRow).not.toContainText('TRADE');
-  await expect(signRow.getByTestId('check-stat')).toHaveCount(0);
+  await expect(signTerms).toContainText('FREE');
+  await expect(signTerms).not.toContainText('costs 1 die');
+  await expect(signTerms).not.toContainText('TRADE');
+  await expect(signTerms).not.toContainText('die');
+  await expect(signTerms.getByTestId('check-stat')).toHaveCount(0);
+  await expect(signTerms.getByTestId('check-preview')).toHaveCount(0);
   // No check breakdown is open at rest — signing is not a check surface.
   await expect(page.getByTestId('check-stat')).toHaveCount(0);
 

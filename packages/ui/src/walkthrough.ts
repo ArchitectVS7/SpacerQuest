@@ -154,14 +154,27 @@ export interface WalkthroughStep {
  * `lastPayment` for the card's body); it just does not gate.
  */
 /**
- * T-196c · STALE COPY IN w1–w4, LEFT DELIBERATELY AND OWNED BY T-194. M17
- * (docs/DAWN-HAND-REDESIGN.md §3) freed the administrative actions, so "sign a
- * job, buy fuel" are no longer die-priced (w1), "nothing in the cockpit will
- * take an action until a die is armed" is no longer true (w2), "the armed die
- * pays for the signature" is false (w3), and "buy some at the depot first — that
- * costs a die too" is false (w4). T-196c changes UI BEHAVIOUR only; the teaching
- * copy belongs to T-194, gated behind T-198 precisely so the new economy settles
- * before the tutorial bakes it in. Marked here rather than silently half-fixed.
+ * T-194 · THE TWO-CLASS ECONOMY IS WHAT w1–w4 NOW TEACH, and it is taught by
+ * DEMONSTRATION rather than assertion.
+ *
+ * The owner's finding: "it was not at all apparent why I was adding a d20 to any
+ * of my tasks… it feels like I have [a] number of action points, I have no
+ * feedback if the die does anything." M17 (docs/DAWN-HAND-REDESIGN.md §3) settled
+ * what the answer is — every remaining MAIN ACTION reads its die (the face IS the
+ * roll, or for a jump the edge), and everything administrative is a FREE ACTION
+ * costing no die at all — and T-196c made the cockpit behave that way. This copy
+ * is what says so, and it replaces the four stale lines that block used to carry.
+ *
+ * WHY THE ORDER DOES THE WORK. w3 (sign a contract — FREE) and w4 (make the jump
+ * — MAIN) are already back to back, so the contrast is FELT: the player arms a
+ * die in w2, spends none of it signing in w3, and is still holding that same
+ * armed die when w4 asks them to jump with it. The copy's whole job is to name
+ * what the player is about to see happen, not to front-load a taxonomy.
+ *
+ * The one bounded exception — the daily social plays, which are free but capped
+ * (§4a) — is deliberately NOT taught here. It belongs where the player first
+ * meets it, which is the Cantina; see `first-hangout` in `format.ts`'s
+ * `ONBOARDING_PROMPTS`.
  */
 export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
   {
@@ -169,7 +182,7 @@ export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
     index: 1,
     title: 'Your Dawn Hand',
     what: 'These are the dice you rolled at dawn. You get one roll a day — no more.',
-    why: 'Each die is one action: sign a job, buy fuel, make a jump, sweep off-lane, sit at a table. When the hand is spent the day is over, so a die is the real currency of Rimward.',
+    why: 'A die buys a MAIN ACTION — a jump, an off-lane sweep, a haggle, a combat stance, a peek at the table — and the face you spend IS the roll it makes. Everything administrative is a FREE ACTION: signing a job, buying fuel, the shipyard, hiring crew. Those cost nothing and work with an empty hand.',
     anchor: 'hand',
     ack: true,
     allow: [],
@@ -179,7 +192,7 @@ export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
     index: 2,
     title: 'Arm a Die',
     what: 'Click any die in the hand to arm it. It lights up when it is ready to spend.',
-    why: 'Nothing in the cockpit will take an action until a die is armed — that is the game telling you what a turn costs before you pay it.',
+    why: 'Arming a die is choosing which Main Action to stake it on. Watch the cockpit as you do it: wherever that die would be rolled, the panel now shows the face against the DC and whether it clears. Free Actions never ask for one.',
     anchor: 'hand',
     ack: false,
     flag: 'dieAssigned',
@@ -189,8 +202,8 @@ export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
     id: 'w3-take-contract',
     index: 3,
     title: 'Sign a Job',
-    what: 'Click an offer on the Manifest Board to sign it. The armed die pays for the signature.',
-    why: 'Your hold is empty and the Guild marker is running. A contract is where every credit in this game starts — the cargo rides with you until you deliver it.',
+    what: 'Click an offer on the Manifest Board to sign it. Signing is a FREE ACTION — it costs no die, and the one you just armed is still armed.',
+    why: 'Your hold is empty and the Guild marker is running. A contract is where every credit in this game starts — the cargo rides with you until you deliver it. Paperwork should not cost you a turn.',
     anchor: 'manifest',
     ack: false,
     flag: 'signed',
@@ -200,11 +213,11 @@ export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
     id: 'w4-make-the-jump',
     index: 4,
     title: 'Make the Jump',
-    what: 'Arm another die, click your destination on the starmap, then Confirm jump. Short on fuel? Buy some at the depot first — that costs a die too.',
+    what: 'Click your destination on the starmap, then Confirm jump — the die you armed in step 2 is still there and this is what it is for. Short on fuel? The depot is free; top off and come back.',
     // T-193 · this line used to promise a PILOT DC. T-1605 removed the pilot
     // check from ordinary jumps, so the preview no longer shows one; what it
     // does show is the bill and what the armed die takes off it.
-    why: 'Fuel is the plot. The route preview shows the bill, and what the die you armed takes off it, before you commit — so a jump is a decision you make with the numbers in front of you.',
+    why: 'Fuel is the plot. A jump is a Main Action, so it takes the die. On an ordinary jump that die is your EDGE rather than a roll to pass — a higher face is strictly better, shaving fuel off the bill and odds off an interception, and the route preview shows both before you commit.',
     anchor: 'starmap',
     ack: false,
     flag: 'jumped',
@@ -224,8 +237,12 @@ export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
     id: 'w6-explore',
     index: 6,
     title: 'Sweep Off-Lane',
-    what: 'Arm a die and press Off-lane sweep. It burns fuel on a PILOT check against the dark.',
-    why: 'The lanes are not the whole map. A sweep is how you find salvage, Signal Fragments and sealed pods — the things contracts alone will never pay for.',
+    what: 'Arm a die and press Off-lane sweep. It burns fuel on a PILOT check against the dark — the panel shows your armed face against the DC before you commit.',
+    // T-194 · the toll named honestly (Accept part 3). `apCost` on the two richest
+    // outcome bands charges 2–3 EXTRA dice at CLAIM, out of the same hand, and the
+    // band is drawn at resolution — so no number can be promised here. What can be
+    // said, and must be, is that those dice are PAID and not rolled.
+    why: 'The lanes are not the whole map. A sweep is how you find salvage, Signal Fragments and sealed pods — the things contracts alone will never pay for. A big find can cost extra dice to lift out; those are a toll you pay, not dice you roll.',
     anchor: 'starmap',
     ack: false,
     flag: 'explored',
@@ -235,8 +252,12 @@ export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
     id: 'w7-liars-dice',
     index: 7,
     title: "A Hand of Liar's Dice",
-    what: 'Open the Cantina, pick someone at the tables, set a wager and commit a die. Then bid, raise, or call them a liar.',
-    why: 'The tables are where the Rim keeps its reputations. One die buys a whole hand — and the house never shows its cups until somebody challenges.',
+    // T-194 · both lines used to say a die buys the hand. T-197 made dealing a
+    // Dare a Free Action (capped per day instead), and the wager has always been
+    // credits — so "commit a die" / "one die buys a whole hand" were teaching the
+    // exact confusion this task exists to clear.
+    what: 'Open the Cantina, pick someone at the tables and set a wager in credits. Dealing a hand is free — then bid, raise, or call them a liar.',
+    why: 'The tables are where the Rim keeps its reputations. The stake is credits, not dice: the only die a hand ever asks for is the optional Peek, and that one rolls GUILE against the house. The cups stay down until somebody challenges.',
     anchor: 'hangout',
     ack: false,
     flag: 'dareResolved',
@@ -399,7 +420,9 @@ export function walkthroughCardCopy(
     }
     if (!explorationPreview(game).canAfford) {
       return {
-        what: `A sweep burns ${explorationPreview(game).fuelCost} fuel and the tank is short. Arm a die and top it off at the depot first.`,
+        // T-194 · buying fuel is a FREE ACTION (M17) — this line used to imply the
+        // armed die paid for the top-up. It pays for the sweep, and only that.
+        what: `A sweep burns ${explorationPreview(game).fuelCost} fuel and the tank is short. Top the tank off at the depot, which is free. Then arm a die for the sweep.`,
         why: step.why,
       };
     }

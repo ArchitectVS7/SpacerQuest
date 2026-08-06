@@ -194,6 +194,21 @@ Investigation (T-194's filing) found this was actually two problems wearing one 
    a run. T-194's "teach the split" plan is now moot for every action this document frees: there
    is no split to teach if the action doesn't cost a die in the first place.
 
+**SHIPPED — T-194 (2026-08-06): the teaching side, built on the post-M17 economy.** The split
+this document dissolved is no longer taught; what replaced it is (a) MAIN vs FREE, in the
+walkthrough and the contextual coach — a die buys a Main Action and its face IS the roll (or, for
+a jump, the edge); everything administrative costs nothing and works with an empty hand — with the
+one bounded exception, §4a's social pool, taught at the Cantina rather than front-loaded; and (b)
+a LIVE per-die read on every check-based Main Action (`packages/ui/src/CheckPreviewRow.tsx`,
+`format.ts`'s `CheckPreview`): the armed face against the resolver's own DC, resolved by the
+engine's own `check()`, with a pass/fail badge, BEFORE the click. Explore, Haggle, Combat
+fight/talk, Peek and the Crossing all carry it; combat RUN carries an honest "opposed — they roll
+to pursue" instead of a fabricated DC (docs/UI-PRESENTATION-DECISIONS.md UI-28/29/30). The two
+residual die-blind corners §3's last two rows left out of scope are now named rather than dressed
+up: a storylet `spendDie` choice with no `statCheck` reads `die (spent, not rolled)`, and
+Explore's extra-dice toll is described as a toll paid to lift a find, never a second roll. T-194
+touched no engine and no content file — `rulesFingerprint` is unmoved, so no capstone was owed.
+
 ## 2 · The design principle
 
 Standard board-game/TTRPG split, named so it can be checked against rather than argued from

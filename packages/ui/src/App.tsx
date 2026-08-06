@@ -111,8 +111,11 @@ import {
   type GlobeView,
   type LabelMetrics,
   routePreview,
-  explorationPreview,
-  recoveryReadout,
+  // T-194 · the live per-die check reads. The two the cockpit resolves itself are
+  // the ones whose panes do not hold a `GameState` of their own.
+  haggleCheckPreview,
+  peekCheckPreview,
+  type CheckPreview,
   hangoutOpen,
   hangoutNpcs,
   hangoutRosterOpponents,
@@ -209,6 +212,15 @@ import {
 // be mounted on its own in the package's jsdom pane tests (`__tests__/
 // route-preview-panel.test.tsx`). Props-only and store-free; it decides no rule.
 import { RoutePreviewPanel } from './RoutePreviewPanel';
+// T-194 · The four panes that carry a LIVE per-die check read, extracted from
+// this file on the same terms and for the same reason as `RoutePreviewPanel`
+// above: mounting anything that reaches `./store` runs `init()`, so the DOM half
+// of "show the roll before it is committed" is only testable once the markup
+// lives in props-only files. All four decide no rule; `format.ts` does.
+import { ExploreSweepPanel } from './ExploreSweepPanel';
+import { CombatStancePanel } from './CombatStancePanel';
+import { HaggleRow } from './HaggleRow';
+import { PeekControl } from './PeekControl';
 // T-187 · The first-turn walkthrough's pure rules — the script, the rails
 // predicate and the card copy. All presentation; see the module header for why it
 // coexists with (and never replaces) T-311's contextual coach above.
@@ -1791,7 +1803,8 @@ function CombatInstrument({ state }: { state: CockpitState }) {
   const dice = hand?.dice ?? [];
   const spent = hand?.spent ?? [];
   const remaining = spent.filter((x) => !x).length;
-  const armed = state.selectedDie !== null;
+  // T-194 · `armed` moved WITH the stance markup into `CombatStancePanel.tsx`
+  // (the only thing that read it); nothing here gates on it any more.
   // T-1402 · Forward the interceptor's CLASS so an anonymous Brigand (÷2) /
   // Reptiloid (×2) previews the exact demand the engine charges; named
   // interceptors carry no kind → the unmodified schedule.
@@ -1944,48 +1957,13 @@ function CombatInstrument({ state }: { state: CockpitState }) {
           </button>
         </div>
       ) : (
-        <>
-          <div className="co-stances">
-            <button
-              className="btn stance fight"
-              data-testid="combat-fight"
-              disabled={!armed}
-              title={
-                !armed
-                  ? 'Pick a die first'
-                  : fuel.canFight
-                    ? 'Roll GUNS to hole their hull (−50 fuel)'
-                    : 'Not enough fuel — this will misfire (−50 fuel gated)'
-              }
-              onClick={() => combat('fight')}
-            >
-              FIGHT
-            </button>
-            <button
-              className="btn stance talk"
-              data-testid="combat-talk"
-              disabled={!armed}
-              title={armed ? 'Roll TRADE to buy the lane with tribute' : 'Pick a die first'}
-              onClick={() => combat('talk')}
-            >
-              TALK
-            </button>
-            <button
-              className="btn stance run"
-              data-testid="combat-run"
-              disabled={!armed}
-              title={armed ? 'Roll PILOT to break off (−10 fuel)' : 'Pick a die first'}
-              onClick={() => combat('run')}
-            >
-              RUN
-            </button>
-          </div>
-          <div className="co-tribute" data-testid="combat-tribute">
-            Talk this round likely costs <b>{tributePreview.toLocaleString()}cr</b> tribute — the
-            deal is struck on the wire.
-          </div>
-          {!armed && <p className="co-hint">Pick a die, then commit a stance.</p>}
-        </>
+        /* T-194 · The stance block lives in `CombatStancePanel.tsx`, not inline
+           here, so a jsdom pane test can mount it and assert the live per-die
+           check read under each of the three buttons. Nothing about the
+           rendering changed in the move: the component recomputes `fuel` and
+           `tributePreview` from the same expressions this component used to, and
+           `armed` is `armedDieIndex !== null`, i.e. `state.selectedDie !== null`. */
+        <CombatStancePanel game={game} armedDieIndex={state.selectedDie} onStance={combat} />
       )}
 
       {/* The honest PLAYER roll — the store feeds CheckBreakdown the actor:'Player'
@@ -2225,10 +2203,15 @@ const SOCIAL_LABELS: Record<'meet' | 'befriend' | 'insult', string> = {
   befriend: 'Buy a round',
   insult: 'Say the wrong thing',
 };
+// T-194 · All three used to end "(spends a die)". T-197 made every social play a
+// FREE ACTION drawn from one daily pool (docs/DAWN-HAND-REDESIGN.md §4a), and
+// Befriend's Guile check now rolls the HOUSE's own internal d20 — not a die the
+// player aims. Leaving the old parenthetical would have taught the exact thing
+// this task exists to unteach: that the hand pays for conversation.
 const SOCIAL_TITLES: Record<'meet' | 'befriend' | 'insult', string> = {
-  meet: 'Give your name to the table (spends a die)',
-  befriend: 'Roll GUILE against the house DC to win them over (spends a die)',
-  insult: 'A hard word, no roll, and the room remembers (spends a die)',
+  meet: 'Give your name to the table — free, but it uses one of the day’s social plays',
+  befriend: 'Buy a round: the house rolls GUILE against its own DC — free, one social play',
+  insult: 'A hard word, no roll, and the room remembers — free, one social play',
 };
 
 // The Hangout & lending pane (T-1404). The Spacers Hangout as a visitable place:
@@ -2580,6 +2563,7 @@ function HangoutPanel({
             reveal={state.dareReveal}
             beats={state.dareBeats}
             armed={armed}
+            peekPreview={peekCheckPreview(game, state.selectedDie)}
             reduced={state.reducedMotion || systemPrefersReducedMotion()}
             lastCheck={state.lastCheck}
             lastCheckKey={state.lastCheckKey}
@@ -2724,11 +2708,19 @@ function HangoutPanel({
                         setRepayAmount(Math.max(0, Number.parseInt(e.target.value, 10) || 0))
                       }
                     />
+                    {/* T-194 · Both lending tooltips said "(spends a die)". Neither
+                        has been true since T-197 freed Borrow and Repay
+                        (docs/DAWN-HAND-REDESIGN.md §3 — both are bounded already,
+                        by the one-active-loan slot and by credits). Found while
+                        sweeping the cockpit for the same stale parenthetical the
+                        three SOCIAL_TITLES carried; fixed here rather than filed,
+                        because a tooltip that prices a Free Action in dice is
+                        exactly what this task exists to stop teaching. */}
                     <button
                       className="btn"
                       data-testid="loan-repay"
                       disabled={loanDisabledReason !== null || repayAmount <= 0}
-                      title={loanDisabledReason ?? 'Pay down the loan (spends a die)'}
+                      title={loanDisabledReason ?? 'Pay down the loan — free, no die'}
                       onClick={() => repayLoan(repayAmount)}
                     >
                       {loanDisabledReason ?? 'Repay'}
@@ -2757,7 +2749,7 @@ function HangoutPanel({
                 className="btn"
                 data-testid="loan-borrow"
                 disabled={loanDisabledReason !== null}
-                title={loanDisabledReason ?? 'Take a loan at Penny Wise’s desk (spends a die)'}
+                title={loanDisabledReason ?? 'Take a loan at Penny Wise’s desk — free, no die'}
                 onClick={() => borrowLoan(principal)}
               >
                 {loanDisabledReason ?? 'Borrow'}
@@ -2861,6 +2853,7 @@ function LiarsDiceScene({
   reveal,
   beats,
   armed,
+  peekPreview,
   reduced,
   lastCheck,
   lastCheckKey,
@@ -2871,6 +2864,9 @@ function LiarsDiceScene({
   reveal: DareRevealView | null;
   beats: CockpitState['dareBeats'];
   armed: boolean;
+  /** T-194 · The GUILE-vs-peek-DC read for the armed die, resolved by the panel
+   *  above (which holds `game`) so this scene keeps its store-free shape. */
+  peekPreview: CheckPreview;
   reduced: boolean;
   lastCheck: CockpitState['lastCheck'];
   lastCheckKey: number;
@@ -3265,21 +3261,17 @@ function LiarsDiceScene({
               {DARE_MOVE_LABEL['raise-both']} · {quantity}&times;{bid.face + 1}
             </button>
           )}
+          {/* T-194 · The peek control lives in `PeekControl.tsx` so a jsdom pane
+              test can mount it and assert the live GUILE read under the button.
+              The legality gate stays here, where it was. */}
           {canMove('peek') && (
-            <button
-              className="btn ghost"
-              data-testid="dare-move"
-              data-move="peek"
-              disabled={!armed}
-              title={
-                armed
-                  ? `Spend a second die on a GUILE ${view.peekDc} check to see one of the house’s dice`
-                  : 'Pick a second die to peek'
-              }
-              onClick={() => darePeek()}
-            >
-              {DARE_MOVE_LABEL.peek} · DC {view.peekDc}
-            </button>
+            <PeekControl
+              peekDc={view.peekDc}
+              armed={armed}
+              preview={peekPreview}
+              label={DARE_MOVE_LABEL.peek}
+              onPeek={() => darePeek()}
+            />
           )}
           {canMove('challenge') && (
             <button
@@ -3988,27 +3980,11 @@ function Starmap({ state }: { state: CockpitState }) {
   const visited = new Set(game.player.charts.visitedSystemIds);
   const npcCounts = knownNpcCounts(game);
   const eraSystems = new Set(game.eraEvent?.affectedSystemIds ?? []);
-  const dieArmed = state.selectedDie !== null;
-
-  // T-1403 · off-lane sweep affordances. The button gates on an armed die AND the
-  // engine's own fuel affordability; the label mirrors the confirm-jump pattern,
-  // naming the reason it is disabled (read from the engine preview, never invented).
-  const sweep = explorationPreview(game);
-  // T-111 · An open multi-day recovery is a commitment the player must be able to
-  // SEE, and the verb it blocks must say so rather than fail silently. The
-  // predicate is the engine's own (`player.recovery !== null` — the same one
-  // `resolveExploration` refuses on and `legalActions` withholds on), read
-  // through the pure `recoveryReadout`; no clock is recomputed in JSX.
-  const recovery = recoveryReadout(game);
-  const canSweep = dieArmed && sweep.canAfford && recovery === null;
-  const sweepLabel =
-    recovery !== null
-      ? 'Salvage op under way'
-      : !dieArmed
-        ? 'Pick a die to sweep'
-        : !sweep.canAfford
-          ? `Need ${sweep.fuelCost} fuel`
-          : 'Off-lane sweep';
+  // T-194 · The off-lane sweep's affordances (T-1403's `sweep` / `canSweep` /
+  // `sweepLabel` and T-111's `recovery`) moved WITH the markup into
+  // `ExploreSweepPanel.tsx`, where they are computed from the same expressions.
+  // Keeping a second copy here would be exactly the drift risk the extraction
+  // exists to remove.
 
   const hereNode = proj.here;
   // Paint order: far nodes first, then near ones — and the current system and the
@@ -4290,40 +4266,20 @@ function Starmap({ state }: { state: CockpitState }) {
             Explore action: the DC / fuel cost / effective modifier are read from
             the engine+content (explorationPreview), the sweep routes through the
             store's single `explore()` verb, and the loot / nav-check outcome reads
-            below via `explorationOutcome` + the shared PILOT CheckBreakdown. */}
-        <div
-          className="explore-sweep"
-          data-testid="explore-panel"
-          {...railsProps(state, 'explore')}
-        >
-          <div className="es-head">OFF-LANE SWEEP</div>
-          <div className="es-cost" data-testid="explore-cost">
-            PILOT DC {sweep.dc} · FUEL {sweep.fuelCost} · NAV{' '}
-            {signedMargin(sweep.effectiveModifier)}
-          </div>
-          {recovery && (
-            <div className="es-recovery" data-testid="explore-recovery">
-              SALVAGE OP · {recovery.outcomeName} at {recovery.systemName} ·{' '}
-              {recovery.daysRemaining === 0
-                ? 'lifts at dusk'
-                : `${recovery.daysRemaining} day${recovery.daysRemaining === 1 ? '' : 's'} to go`}{' '}
-              · hold station or lose it
-            </div>
-          )}
-          <button
-            className="btn"
-            data-testid="explore-sweep"
-            disabled={!canSweep}
-            onClick={() => explore()}
-          >
-            {sweepLabel}
-          </button>
-          {state.explorationOutcome && (
-            <div className="es-outcome" data-testid="exploration-outcome">
-              {state.explorationOutcome}
-            </div>
-          )}
-        </div>
+            below via `explorationOutcome` + the shared PILOT CheckBreakdown.
+            T-194 · The markup lives in `ExploreSweepPanel.tsx`, not inline here,
+            so a jsdom pane test can mount it and assert the live per-die check
+            read. Nothing about the rendering changed in the move: the component
+            recomputes `sweep` / `recovery` / `canSweep` / `sweepLabel` from the
+            same expressions this component used to, and `dieArmed` is
+            `armedDieIndex !== null`, i.e. `state.selectedDie !== null`. */}
+        <ExploreSweepPanel
+          game={game}
+          armedDieIndex={state.selectedDie}
+          outcome={state.explorationOutcome}
+          railsAttrs={railsProps(state, 'explore')}
+          onSweep={() => explore()}
+        />
 
         <CheckBreakdown state={state} only={Stat.PILOT} />
       </div>
@@ -5099,6 +5055,10 @@ function Manifest({ state }: { state: CockpitState }) {
   // (docs/DAWN-HAND-REDESIGN.md §3) and no longer reads this at all — hence no
   // `dieVal` either, since the sign row stopped rendering a die slot.
   const armed = state.selectedDie !== null;
+  // T-194 · The TRADE-vs-DC read HAGGLE is about to roll. One preview for the
+  // whole board: every offer's haggle checks the same stat against the same DC,
+  // so a per-row recomputation would be identical work with a drift risk.
+  const haggleCheck = haggleCheckPreview(state.game, state.selectedDie);
   const sheet = manifestSheet(state.game);
   const [stowed, setStowed] = useState(false);
   const open = !stowed || walkthroughActive(state.walkthrough);
@@ -5231,34 +5191,19 @@ function Manifest({ state }: { state: CockpitState }) {
                   and the "assign a die" prompt went with it.) HAGGLE below is the
                   manifest's one real TRADE DC-12 roll, and the one control here
                   that still demands an armed die. */}
-                  <div className="check" data-testid="sign-row">
-                    <span className="lbl">SIGN</span>
-                    <span className="mono">FREE</span>
-                    <span className="arrow">&rarr;</span>
-                    <span className="mono">click to sign</span>
-                    {/* Kept ENABLED even once haggled: a second haggle is an engine
-                    refusal that spends no die, and the store surfaces it as a
-                    visible notice. Disabling it here would make that failure a
-                    silent dead click — the exact silence the accept criterion
-                    (UGT Finding 4's lesson) forbids. */}
-                    <button
-                      className={c.haggled ? 'haggle done' : 'haggle'}
-                      data-testid="haggle"
-                      title={
-                        c.haggled
-                          ? 'The broker will not renegotiate this contract again.'
-                          : armed
-                            ? 'Roll TRADE vs DC 12 to bump the payment'
-                            : 'Pick a die first, then haggle'
-                      }
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        haggleContract(i);
-                      }}
-                    >
-                      HAGGLE
-                    </button>
-                  </div>
+                  {/* T-194 · The strip lives in `HaggleRow.tsx` so a jsdom pane
+                  test can mount it and assert the live TRADE read beside the
+                  button. The DC in the hover title is no longer a typed literal:
+                  it comes off the same preview the row renders. */}
+                  <HaggleRow
+                    haggled={c.haggled === true}
+                    armed={armed}
+                    preview={haggleCheck}
+                    onHaggle={(e) => {
+                      e.stopPropagation();
+                      haggleContract(i);
+                    }}
+                  />
                 </div>
               );
             })}
@@ -5668,8 +5613,11 @@ function TradePane({
         </div>
 
         {/* Port authority (T-1405) — buy the stake you stand in, then watch its
-            launch-fee income tick at dusk. Buy costs a die (die-costed like the
-            shipyard); the income ledger below is the "watch income tick" surface. */}
+            launch-fee income tick at dusk. T-194 · this comment used to say "Buy
+            costs a die (die-costed like the shipyard)"; M17 freed BOTH (T-196a,
+            docs/DAWN-HAND-REDESIGN.md §3) and the note was never updated. The
+            stake is bounded by credits and one-purchase-per-port, not by the
+            hand. The income ledger below is the "watch income tick" surface. */}
         <div
           className="ledger-block port-authority"
           data-testid="port-authority"

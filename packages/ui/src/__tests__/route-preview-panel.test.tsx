@@ -2,13 +2,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import {
+  check,
   createInitialState,
+  navBonus,
   startDay,
   navDieFuelDiscount,
   navDieEvasionFactor,
   type GameState,
 } from '@spacerquest/engine';
-import { NEMESIS_SYSTEM_ID, NEMESIS_CROSSING_DC, STAR_SYSTEMS } from '@spacerquest/content';
+import { NEMESIS_SYSTEM_ID, NEMESIS_CROSSING_DC, STAR_SYSTEMS, Stat } from '@spacerquest/content';
 import { RoutePreviewPanel } from '../RoutePreviewPanel';
 import { routePreview, starmapGlobe, type GlobeView, type LabelMetrics } from '../format';
 
@@ -47,10 +49,10 @@ function career(seed = 1): GameState {
 
 /** Replace the dealt hand with an exact one, so a test can name the face it
  *  expects instead of hunting a seed that deals it. */
-function withHand(game: GameState, dice: number[]): GameState {
+function withHand(game: GameState, dice: number[], spent?: boolean[]): GameState {
   return {
     ...game,
-    player: { ...game.player, dawnHand: { dice, spent: dice.map(() => false) } },
+    player: { ...game.player, dawnHand: { dice, spent: spent ?? dice.map(() => false) } },
   };
 }
 
@@ -186,6 +188,44 @@ describe('T-193 · the unlocked Nemesis crossing keeps its real DC', () => {
     renderPanel(game, NEMESIS_SYSTEM_ID, 0);
     expect(screen.getByTestId('route-dc').textContent).toBe(String(NEMESIS_CROSSING_DC));
     expect(screen.queryAllByTestId('route-die-effect')).toHaveLength(0);
+  });
+
+  // ---- T-194 · the crossing's DC is now a LIVE read once a die is armed ----
+  it('is a PLANNING read with no die armed: the DC, and no pass/fail claim', () => {
+    const game = crossingUnlocked(withHand(career(), [17, 3, 9, 12, 5]));
+    renderPanel(game, NEMESIS_SYSTEM_ID, null);
+    const row = screen.getByTestId('check-preview');
+    expect(row.getAttribute('data-kind')).toBe('plan');
+    expect(row.getAttribute('data-surface')).toBe('crossing');
+    expect(screen.queryAllByTestId('check-preview-result')).toHaveLength(0);
+    // `route-dc` still holds the bare number, which is what
+    // `e2e/nemesis-crossing.spec.ts` and the case above assert.
+    expect(screen.getByTestId('route-dc').textContent).toBe(String(NEMESIS_CROSSING_DC));
+  });
+
+  it('goes LIVE with a die armed: that face, that DC, and whether it clears', () => {
+    const game = crossingUnlocked(withHand(career(), [17, 3, 9, 12, 5]));
+    renderPanel(game, NEMESIS_SYSTEM_ID, 0);
+    const row = screen.getByTestId('check-preview');
+    expect(row.getAttribute('data-kind')).toBe('live');
+    expect(row.getAttribute('data-outcome')).not.toBeNull();
+    // The FACE, not the hand index — and the DC is still the content DC, in the
+    // same testid, so nothing downstream of this row had to change.
+    expect(screen.getByTestId('check-preview-die').textContent).toBe('17');
+    expect(screen.getByTestId('route-dc').textContent).toBe(String(NEMESIS_CROSSING_DC));
+    // The result is the ENGINE's: PILOT + navBonus against the crossing DC.
+    const modifier = game.player.stats[Stat.PILOT] + navBonus(game.player.ship);
+    const expected = check(17, modifier, routePreview(game, NEMESIS_SYSTEM_ID).dc);
+    expect(screen.getByTestId('check-preview-total').textContent).toBe(String(expected.total));
+    expect(row.getAttribute('data-outcome')).toBe(expected.success ? 'pass' : 'fail');
+  });
+
+  it('a spent slot is not "armed": the crossing falls back to the planning read', () => {
+    const game = crossingUnlocked(
+      withHand(career(), [17, 3, 9, 12, 5], [true, false, false, false, false]),
+    );
+    renderPanel(game, NEMESIS_SYSTEM_ID, 0);
+    expect(screen.getByTestId('check-preview').getAttribute('data-kind')).toBe('plan');
   });
 });
 

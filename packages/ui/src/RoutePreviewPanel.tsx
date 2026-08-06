@@ -1,4 +1,5 @@
-import { systemName, routePreview, routeCheckReadout } from './format';
+import { systemName, routePreview, routeCheckReadout, crossingCheckPreview } from './format';
+import { CheckPreviewRow } from './CheckPreviewRow';
 import type { GameState } from '@spacerquest/engine';
 
 // ---------------------------------------------------------------------------
@@ -85,12 +86,23 @@ export function RoutePreviewPanel({
           actually does instead, or states plainly that nothing is
           checked. The row is never empty: the absence of a DC is a
           claim the panel makes, not a field that went missing. */}
+      {/* T-194 · The crossing is the one destination `resolveTravel` still rolls
+          against, so it is the one route row that gains a LIVE per-die read: dim
+          "PILOT DC n · arm a die to roll it" until a die is armed, then that
+          die's face resolved against the same DC by the engine's own `check()`.
+          `routeCheckReadout` is UNCHANGED — it still answers "does this route
+          roll a Pilot check at all", which is a route rule; whether a die is
+          armed is a hand fact, and `crossingCheckPreview` owns that.
+          THE `route-dc` TESTID STAYS ON THE BARE NUMBER IN BOTH STATES, and that
+          is load-bearing: `e2e/nemesis-crossing.spec.ts` arms a die and THEN
+          asserts `route-dc` has exactly the content DC. Do not "clean it up". */}
       {routeCheck.kind === 'dc' && (
         <div className="rp-check" data-testid="route-check">
-          <span className="rp-ck">PILOT DC</span>
-          <span className="rp-cv" data-testid="route-dc">
-            {routeCheck.dc}
-          </span>
+          <CheckPreviewRow
+            preview={crossingCheckPreview(game, armedDieIndex)}
+            surface="crossing"
+            dcTestId="route-dc"
+          />
         </div>
       )}
       {routeCheck.kind === 'die-effect' && (

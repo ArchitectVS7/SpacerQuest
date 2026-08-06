@@ -1567,7 +1567,7 @@ change) — both left `packages/engine` and `packages/content` untouched; this t
 end to end.
 Orchestration: attempts=2/4.
 
-### T-194 · The dawn hand's die-value mechanic is illegible — teach it, and make success visible — `status: TODO` · `coder: opus` · `after: T-198`
+### T-194 · The dawn hand's die-value mechanic is illegible — teach it, and make success visible — `status: DONE` · `coder: opus` · `after: T-198`
 
 Owner's read, after a live session: "it was not at all apparent why I was adding a d20 to any of my
 tasks. Taking a contract? Making a jump to deliver the contract? Entering the hangout? ... In its
@@ -1614,6 +1614,158 @@ economy, not numbers the owner may still re-tune.
    this one.
 
 Gate green.
+
+**SHIPPED, 2026-08-06. UI-ONLY: no file under `packages/engine/src`, `packages/content/src` or
+`packages/sim/src` was touched, so `rulesFingerprint` is unmoved and `balance-smoke.test.ts`'s
+"is not stale" stayed green — no capstone was owed for a readout change.**
+
+*Part 2, the live per-die read.* One discriminated union, `CheckPreview`, decided in
+`packages/ui/src/format.ts` (`plan` / `live` / `opposed` / `none`) plus one selector per surface —
+`exploreCheckPreview`, `haggleCheckPreview`, `peekCheckPreview`, `crossingCheckPreview`,
+`combatCheckPreview(stance)` — and one component, `packages/ui/src/CheckPreviewRow.tsx`. The
+`live` arm is produced by calling the ENGINE's own `check(die, modifier, dc)`, so nat-20
+auto-success, nat-1 auto-fail and `margin` are inherited rather than reimplemented
+(docs/UI-PRESENTATION-DECISIONS.md **UI-29**). Plan and live are visually distinct and
+`data-kind`-discriminated (**UI-28**). Combat RUN is `opposed` and gets no verdict, because
+`resolveRun` draws the interceptor's pursuit d20 at resolve time and there is no DC to clear
+(**UI-30**) — the one place this task deliberately shows less. The four-guard armed-die
+resolution T-193 wrote inline is now the shared `armedDieFace`, reused by `routeCheckReadout`
+behaviour-preservingly.
+
+*The extractions, so the DOM could be tested at all (TT-13a).* `ExploreSweepPanel.tsx`,
+`CombatStancePanel.tsx`, `HaggleRow.tsx` and `PeekControl.tsx` were lifted verbatim out of
+`App.tsx` as props-only, store-free files on `RoutePreviewPanel.tsx`'s terms, and the move is
+PROVED inert by `__tests__/check-preview-panels.test.tsx` (pre-existing testids, labels, disabled
+gates and click wiring all asserted) rather than asserted to be.
+
+*Part 1, the teaching.* Both "STALE COPY … OWNED BY T-194" markers are gone, and with them the
+four false lines: w1–w4 and w6–w7 of `walkthrough.ts`, `dawn-roll` / `first-sign` / `first-jump` /
+`first-explore` / `first-encounter` in `ONBOARDING_PROMPTS`, the w6 dry-tank fallback, and
+`App.tsx`'s three `SOCIAL_TITLES` tooltips (all three still said "(spends a die)" after T-197 made
+them free). **Two more of the same, found by sweeping the cockpit rather than the registries, and
+fixed here rather than filed:** the Borrow and Repay buttons' hover titles also still said
+"(spends a die)" — both have been Free Actions since T-197 — and a `TradePane` comment still
+claimed the port stake was "die-costed like the shipyard", which M17 freed too. A tooltip that
+prices a Free Action in dice is precisely what this task exists to stop teaching, so
+`tutorial-economy.test.ts` now also scans `App.tsx`'s title/label literals as SOURCE, with a live
+control proving the scan catches the deleted strings. The social pool is taught in
+`first-hangout` and NOWHERE else, with
+`SOCIAL_PLAYS_PER_DAY` interpolated from content. Pinned by `__tests__/tutorial-economy.test.ts`,
+whose negative control fails on any of the four deleted strings (mutation-checked in the file).
+
+*Part 3, the die-blind corners, made honest here rather than deferred.*
+`storyletChoiceCostLabel` now emits `die (spent, not rolled)` for a `spendDie` choice with no
+`statCheck` (`e2e/storylet-registry.spec.ts` updated to the honest label), and
+`explorationFailExplanation('insufficient-dice')` plus the w6/`first-explore` copy name the extra
+dice as a TOLL paid to lift a find, never a roll. What was NOT done here is filed as **T-261**
+(surfacing the band's `apCost` before the claim is an engine/content read).
+
+*The two mirrored DCs, and why that is safe.* `trade.ts`'s `const haggleDc = 12` and
+`combat.ts`'s `const dc = 10 + encounter.interceptor.tier` are un-exported literals; exporting
+either would move `rulesFingerprint`. They are mirrored in `format.ts` under a source-reading
+drift alarm, `__tests__/engine-dc-pins.test.ts`, which reads the resolvers' own source and fails
+the instant either literal changes. Promotion filed as **T-260**.
+
+*Evidence.* `npm test` 6/6 workspaces green (UI 36 files / 579 tests, up from 31/520);
+`npx tsc -b`, `npm run lint`, `npm run format:check` clean; Playwright 174 passed (the whole suite
+bar `long-haul`/`flake-rate`), including the extended `exploration.spec.ts` and `combat.spec.ts`
+check-preview assertions and an unchanged `nemesis-crossing.spec.ts` (confirmed, not assumed —
+`route-dc` still carries the bare DC in BOTH the planning and the live state, and
+`CheckPreviewRow`'s `dcTestId` exists to keep it that way). Mutation-checked: forcing the `live`
+branch to `plan` reddens 8 tests across 3 files; reverted. One pre-existing flake found and filed
+as **T-262** (proved pre-existing by reproducing it with this task's CSS removed).
+
+**Delivered (2026-08-06):** shipped the two-class economy (Main Actions read the die, Free
+Actions cost nothing) into T-187's hand-held tutorial, added a live per-die success/fail read
+(`CheckPreviewRow` + `CheckPreview` union in `format.ts`) for every check-based Main Action —
+Explore, Haggle, Combat, Peek, Crossing — driven by the engine's own `check()` so nat-20/nat-1/
+margin are inherited rather than reimplemented, and made both die-blind corners (storylet
+`spendDie`-only choices, Explore's extra-dice toll) honest in their copy without inventing numbers
+the engine can't yet quote. UI-only by design: no `packages/engine/src`, `packages/content/src`
+or `packages/sim/src` file was touched, so `rulesFingerprint` stayed unmoved and no capstone sweep
+was owed. Deliberate scope boundary: promoting the two mirrored DC literals to exported constants
+(filed as T-260) and surfacing Explore's toll before the claim (filed as T-261) both require an
+engine/content change that would move the fingerprint, so both were filed rather than folded in;
+one pre-existing e2e flake found at the gate was proved pre-existing and filed as T-262 rather than
+fixed inside this task's unrelated scope.
+Orchestration: attempts=1/4.
+
+### T-260 · Promote the haggle and combat-stance DCs to exported content constants — `status: TODO` · `coder: opus` · `after: —`
+
+**Deferred extraction, filed by T-194 with its measured evidence, and BATCHED — never a
+standalone sweep.** Two DCs the cockpit now previews live as un-exported literals inside their
+resolvers: `const haggleDc = 12;` (`packages/engine/src/actions/trade.ts`) and
+`const dc = 10 + encounter.interceptor.tier;` (`packages/engine/src/actions/combat.ts`). T-194
+needed both to render "[14] + TRADE 2 = 16 vs DC 12 → CLEARS IT" and could not import either, so
+it MIRRORS them in `packages/ui/src/format.ts` (`HAGGLE_DC`, `combatStanceDc`).
+
+**Why it was not done inside T-194 (measured, not assumed):** `packages/sim/src/balance/
+rules-fingerprint.ts` hashes the semantic source of `packages/engine/src/**` plus
+`packages/content/src` wholesale, and T-193 probed it — appending one line of *code* to a resolver
+flips `balance-smoke.test.ts`'s "is not stale" assertion red. Exporting a constant for a READOUT
+would therefore owe a full 8,000-run capstone sweep on its own. **Does not compound:**
+`packages/ui/src/__tests__/engine-dc-pins.test.ts` reads both resolvers' SOURCE and fails the
+build the moment either literal drifts, naming the mirror to update — so the duplication cannot go
+stale silently, and nothing downstream can build on a wrong number.
+
+**Accept:** both DCs live as exported constants in `packages/content/src` (beside
+`TALK_DC_PER_DISPOSITION`, which already models the shape), read by their resolvers AND by
+`format.ts`, with the two mirrors and `engine-dc-pins.test.ts` DELETED rather than weakened; a
+test pins the cockpit's previewed DC to the imported constant; **batched into the next milestone
+capstone together with T-258 and T-259** (one fingerprint move, one sweep) with `npm run format`
+run BEFORE the capstone; gate green.
+
+### T-261 · Explore's extra-dice toll is invisible until the claim fails — `status: TODO` · `coder: opus` · `after: —`
+
+**Filed by T-194 under its own Accept part 3 ("if not, FILE the cleanup rather than widening this
+one").** The two richest exploration outcome bands charge 2–3 EXTRA dice at CLAIM
+(`apCost`, `packages/engine/src/exploreOutcomes.ts`), out of the same hand, AFTER the nav roll has
+already succeeded. A player with a thin hand can pass the check, chart the find, and still lose it.
+
+**What T-194 did do, and why it stopped there.** The copy is now honest — the
+`insufficient-dice` notice, the w6 walkthrough line and the `first-explore` prompt all say those
+dice are a TOLL paid to lift a find rather than a roll — because that much needed no number. What
+it did NOT do is surface the toll BEFORE the claim, because the band is drawn at resolution: any
+number shown at sweep time would be UI fiction, and the honest version needs the engine to quote
+the band (or a bound on it) as part of the discovery.
+
+**Bug Discovery Policy risk analysis, written not asserted.** (a) OUT OF SCOPE for T-194: T-194 is
+UI-only by design and a quote helper is an engine/content read that moves `rulesFingerprint`
+(see T-260). (b) DOES NOT COMPOUND: nothing builds on the toll being hidden; the failure already
+renders as a typed notice rather than silence, and the copy no longer mis-teaches it as a roll.
+
+**Accept:** the cockpit can state, before the claim, what lifting a find may cost — either the
+drawn band's real `apCost` (if the engine can quote it at discovery) or the authored WORST CASE
+named as a worst case, never a fabricated point estimate; a test pins the shown number to the
+engine's own value for at least one band and asserts nothing is shown where nothing is known;
+batched with T-260 into one capstone; gate green.
+
+### T-262 · FLAKE: `e2e/visual-identity.spec.ts` "the wire cap never overlaps the ticker" measures before layout settles — `status: TODO` · `coder: opus` · `after: —`
+
+**Found by T-194 while running the e2e suite at its gate, and PROVED pre-existing rather than
+assumed.** `e2e/visual-identity.spec.ts:285` asserts `capBox.x + capBox.width <= trackBox.x + 1`
+on the FIRST measurement after `page.goto('/')`, with no bulletin chip in the wire. It fails
+intermittently (~1 in 6 runs) with the cap measuring ~9px wider than the settled layout
+(observed: 234.27 vs 225.03), then passes on Playwright's retry.
+
+**Proof it is not T-194's.** Reproduced with T-194's entire `theme.css` block removed
+(`npx playwright test visual-identity --repeat-each=6 --grep "wire cap"` → 1 flaky, 5 passed), and
+T-194 changed no wire markup and no `.wire` rule. The likely cause is the display webfont: the cap
+contains "GALACTIC WIRE" in `--font-display`, so a measurement taken before `document.fonts.ready`
+sizes it against the fallback face. The starmap already handles exactly this class of problem by
+re-measuring on `document.fonts` `loadingdone` (`App.tsx`'s `Starmap`).
+
+**Bug Discovery Policy risk analysis for deferring.** (a) OUT OF SCOPE for T-194: the defect is in
+a T-217/T-218 geometry spec that T-194 neither wrote nor touched, and fixing a flake by editing
+someone else's assertion inside an unrelated task is how a real geometry regression gets hidden.
+(b) DOES NOT COMPOUND: it is a TEST-side race, not a product defect (the settled layout is
+correct); it is confined to one assertion; and it is loud rather than silent — Playwright reports
+it as flaky rather than green. No other work routes around it.
+
+**Accept:** the spec waits for the settled layout before measuring (`await
+page.evaluate(() => document.fonts.ready)`, or the equivalent poll on the cap's own box), the
+assertion itself is UNCHANGED and not widened, and `--repeat-each=20 --grep "wire cap"` reports
+zero flaky; gate green.
 
 ### T-258 · BUG: `travelPreview` discounts the crossing's fuel bill; `resolveTravel` does not — `status: TODO` · `coder: opus` · `after: T-237`
 
