@@ -880,7 +880,9 @@ export const SWEEP_INVARIANT_DISPOSITIONS: readonly SweepInvariantDisposition[] 
     disposition: 'not-observable',
     coveredBy: null,
     why:
-      'OWNED BY T-154/T-155 (the native Tier-2 pilot). The sim policies form actions directly, ' +
+      'DISCHARGED by the native Tier-2 pilot: `npm run pilot` (`packages/sim/src/pilot-cli.ts`) ' +
+      'measures `blockedFromLegal` off the pilot JSONL and exits non-zero if it is nonzero. ' +
+      'Not observable HERE, in the sweep: the sim policies form actions directly, ' +
       'never off the `legal-actions` enumerator, so there is no "blocked from a legal pick" ' +
       'event for a sweep to count. `assertNoIncomeStall` is the nearest sweep-side check and is ' +
       'RELATED, not coverage: "the enumerator never advertises an illegal verb" and "the world ' +
@@ -891,7 +893,9 @@ export const SWEEP_INVARIANT_DISPOSITIONS: readonly SweepInvariantDisposition[] 
     disposition: 'not-observable',
     coveredBy: null,
     why:
-      'OWNED BY T-154/T-155. The sweep never calls `handleMessage`; a campaign run produces no ' +
+      'DISCHARGED by the native Tier-2 pilot: `npm run pilot` (`packages/sim/src/pilot-cli.ts`) ' +
+      'measures `protocolErrors` off the pilot JSONL and exits non-zero if it is nonzero. ' +
+      'Not observable HERE: the sweep never calls `handleMessage`; a campaign run produces no ' +
       'protocol responses at all, so the counter has no denominator here.',
   },
   {
@@ -899,9 +903,11 @@ export const SWEEP_INVARIANT_DISPOSITIONS: readonly SweepInvariantDisposition[] 
     disposition: 'not-observable',
     coveredBy: null,
     why:
-      'OWNED BY T-154/T-155. `diceLeft` is carried on neither `CampaignDayStats` nor ' +
-      '`CampaignStatsReport`, and adding an engine/report field for it is engine scope this ' +
-      'task does not hold. Recorded rather than approximated.',
+      'DISCHARGED by the native Tier-2 pilot: `npm run pilot` (`packages/sim/src/pilot-cli.ts`) ' +
+      'measures `diceBoundsViolations` off the pilot JSONL and exits non-zero if it is nonzero. ' +
+      'Not observable HERE: `diceLeft` is carried on neither `CampaignDayStats` nor ' +
+      '`CampaignStatsReport`, and adding an engine/report field for it is engine scope the ' +
+      'sweep does not hold. Recorded rather than approximated.',
   },
 ];
 

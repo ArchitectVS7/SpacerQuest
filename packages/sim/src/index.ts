@@ -2968,7 +2968,7 @@ function planPacifistCombat(state: GameState, ledger: DieLedger): PlayerAction[]
  * "preparation pays off when outgunned" band from 0.5333 to 0.4801 against a bar of
  * 0.50 (the veteran is one of that slice's four policies; the trader is not, which
  * is why the trader could be wired and the veteran could not). Carried as an open
- * residual under F-199-1 in TASKS.md rather than paid for by moving a band.
+ * residual under T-235 (F-199-1) in TASKS.md rather than paid for by moving a band.
  *
  * `refuelCost` is the CREDITS the day has already committed to refuelling; it is
  * converted back to fuel units at the port's price, exactly as the fighter did.
@@ -5612,7 +5612,7 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   // a hull ground to condition 1 (a 60-unit tank), not the credits. With the repair
   // in and this call left alone, seed 74 clears, median credits RISE to 79,494 and
   // the debt-clear rate rises to 0.580 — better than before the task on every one
-  // of the three. The arithmetic hole is real and stays FILED (F-199-2 in TASKS.md)
+  // of the three. The arithmetic hole is real and stays FILED (T-236, F-199-2 in TASKS.md)
   // rather than being paid for by a 93% credit regression.
   //
   // T-196b · STILL NOT APPLIED, and deliberately so. This task threads a running
@@ -6436,7 +6436,7 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   // the fix and the reasoning. It is left alone here because the veteran is exempt
   // from `assertNoIncomeStall` and because widening this change to a fourth policy
   // moved `balance-combat-survival.test.ts`'s preparation band (see TASKS.md,
-  // F-199-1). Closing it belongs to the task that owns that band.
+  // T-235 / F-199-1). Closing it belongs to the task that owns that band.
   const debtPayment = planDebtPayment(state, VETERAN_RESERVE, refuelCost + overhead.cost);
   if (debtPayment) actions.push(debtPayment);
 

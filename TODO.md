@@ -52,7 +52,7 @@ item, put it in the section where comparable work already lives.
   volunteers a certain loss on 90.48% of its decisions and loses 94.68% of them; gambler
   `finalCredits.median` 56,686 → 94,798 (+67.2%). F-137-2 (§16.6): §7.5's interceptor lift GREW
   (gambler wronged-captain share 29.28% → 47.50%) as a symptom of F-137-1, while the lift over
-  *uniform* slipped 2.956× → 2.623×. **Already carried verbatim by the open TODO block T-160**
+  *uniform* slipped 2.956× → 2.623×. **Was carried verbatim by T-160, which is now DONE and pruned (2026-08-06 harvest; see the Completed ledger in `TASKS.md`)** — this entry is now the sole live carrier,
   with the call sites (`planDareMove` branch (b) at `packages/sim/src/index.ts:~3593-3607`,
   `dealerMove`'s fallback at `packages/engine/src/liarsDiceRules.ts:~345-350`) — this entry is a
   provenance anchor, not a second filing. [harvested: T-137/F-137-1-F-137-2]
@@ -62,8 +62,9 @@ item, put it in the section where comparable work already lives.
   (replicated in Arm 1 at z = −12.88); `optimal` (84.69%) is softer than the *undesigned* roaming
   dealer (76.91%). REPORTED, NOT FIXED (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.2/§12.9).
   Mechanism traced to F-137-1's guaranteed-true opener, not to `archetypeMove`. Partially owned:
-  **T-160** carries the post-fix archetype-ordering re-check in its Accept clause and says a
-  surviving inversion is a distinct finding — but F-148-1 itself is closed by no task.
+  T-160 carried the post-fix archetype-ordering re-check in its Accept clause and said a
+  surviving inversion is a distinct finding; T-160 is now DONE and pruned, and its re-check was
+  discharged by T-175 (ruling LD-25). F-148-1 itself is still closed by no task.
   [harvested: T-148/F-148-1]
 
 - **F-148-3 · the roster is the softer AND richer pool, which is backwards for a gauntlet.**
@@ -244,8 +245,9 @@ item, put it in the section where comparable work already lives.
   open block** (`docs/LIARS-DICE_REDESIGN.md` §16.8 items 3 and 4): the Peek
   (`DARE_PEEK_DC = 12`) has never been exercised by any arm, so whoever gives the baseline
   planner a Peek owes the measurement; and the **player-side** RAISE BOTH is 0 by construction
-  (§12.5), measured only dealer-side at 23.18% of dealer raises. §16.8 items 2, 5 and 6 are
-  already carried by T-160; 3 and 4 are not.
+  (§12.5), measured only dealer-side at 23.18% of dealer raises. §16.8 items 2, 5 and 6 were carried by T-160,
+  now DONE and pruned — they are discharged; items 3 and 4 (the Peek `DARE_PEEK_DC = 12` and the
+  player-side RAISE BOTH channels) remain open and are carried by this entry.
   [harvested: T-137/liars-dice-unmeasured-channels]
 
 - **Write the check that enforces the `T-144 §4.6` two-call-site rule for `liarsDiceTier`.**
@@ -870,6 +872,11 @@ item, put it in the section where comparable work already lives.
   player-side RAISE BOTH channels). F-137-1/F-137-2, F-148-1 and §16.8 items 2/5/6 are now
   DISCHARGED (T-160, T-175, T-177); §16.8 items 3 and 4 and F-148-3 are NOT. Re-point or retire
   those four entries when the T-160 block goes.
+  **RESOLVED 2026-08-06:** the T-160 block was pruned by that day's harvest and all four entries
+  were re-pointed in the same pass — each now states that T-160 is DONE and pruned, names what its
+  discharge covered, and names what remains live (§16.8 items 3 and 4, and F-148-3, which is still
+  closed by no task). This entry is kept, not deleted, as the record that the prediction was made
+  before the prune and honoured after it.
   [harvested: T-160/todo-md-t160-anchors-go-stale-on-prune]
 
 - **Write the check that `path:line` references in `TASKS.md` / `TODO.md` still resolve.** T-199's

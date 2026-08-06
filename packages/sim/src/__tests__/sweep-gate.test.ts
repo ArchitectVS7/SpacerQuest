@@ -666,7 +666,16 @@ describe('T-153 · the gate is TOTAL over its own definitions', () => {
       if (row.disposition === 'not-observable') {
         expect(row.coveredBy).toBeNull();
         // A disposition without an owner is an omission with better manners.
-        expect(row.why).toMatch(/T-15[45]/);
+        //
+        // 2026-08-06: this asserted /T-15[45]/ — an OWNER NAMED AS A TASK ID. T-154
+        // shipped the native Tier-2 pilot and discharged all three of these, and the
+        // 2026-08-06 harvest then pruned the T-154/T-155 blocks, so the pointer named
+        // an owner that no longer existed as a task while the work it named was in
+        // fact done. Pinning to the DISCHARGING MECHANISM instead is both current and
+        // strictly stronger: `packages/sim/src/pilot-cli.ts` is a real path that must
+        // keep existing, where a task id decays into a string nothing can resolve.
+        // (Same defect class as docs/LESSONS.md's "reword prose out of pointer shape".)
+        expect(row.why).toMatch(/pilot-cli\.ts/);
       } else {
         expect(row.coveredBy).not.toBeNull();
         expect(exportedAssertNames).toContain(row.coveredBy);

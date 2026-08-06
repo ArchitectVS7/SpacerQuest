@@ -213,8 +213,12 @@ Out of scope for 0.5.2 — recorded so a coder does not re-scope them in:
   PATCH marks the active work track: **0.5.3 is the M7 focusing arc** (T-153…T-162: sweep-gate
   proof, dawn-hand parity, the F-137-1/F-159-1 fixes, the LLM pilot, and the T-158 UAT halt).
   Bumped via the documented one-command procedure (both manifests + regenerated lockfile).
-  **Still no tag** — a tag is a stage marker cut by the ceremony, and the first (`alpha`) waits
-  on T-158's own UAT pass per `docs/VERSIONING.md`'s stage table.
+  **Still no tag** — a tag is a stage marker cut by the ceremony, and the first (`alpha`) waits on
+  a **start-to-finish career UAT pass** per `docs/VERSIONING.md`'s stage table. *(Corrected
+  2026-08-06: this read "waits on T-158's own UAT pass". T-158's UAT closed 2026-08-03 — the owner
+  played two live sessions and recorded both rulings — and its block was pruned by that day's
+  harvest, so the pointer named a deleted block AND a discharged condition. What is actually unmet
+  is the start-to-finish pass; see T-234, and T-233 for this reconciliation.)*
 - **Anything R-owned:** R10's tier-1 hull cliff and the known-red `it.fails` tripwires.
 - **Outer-rim Cantina venues, with pirates as clientele (owner, 2026-08-05).** Raised while
   reviewing the pirate/anonymous-interceptor roster: the rim is smuggling territory by design

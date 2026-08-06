@@ -2604,7 +2604,9 @@ tuned:
    a strong faucet at high tier. That is a *balance* question about the ladder's payoff curve, not
    a bug in this fix, and §12.9's own house discipline applies — *"a bad number is reported, not
    tuned around"*, the same rule that kept `LIARS_DICE_RAISED_CEILING_MULT` untouched at T-148. It
-   is filed as **F-168-1** in `TASKS.md`.
+   is filed as **F-168-1** in `TODO.md` ("Defects — filed, not fixed"); its block in `TASKS.md` was
+   pruned by the 2026-08-06 harvest. NOTE: the figures in this item predate T-175's close of
+   F-160-1, so re-read them before acting.
 2. **`renownRanks.GIGA_HERO` appears for the first time on the gambler row.** A new terminal rank
    reached by one policy is a pacing observation for the same owner call, and §6.6's "report, do
    not retune" governs it.

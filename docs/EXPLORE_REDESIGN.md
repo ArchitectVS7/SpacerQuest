@@ -1736,8 +1736,8 @@ threshold:
   leaves the **compounding** marker open longer, and this policy withholds special equipment while
   `debt > 0`. The strand it was aimed at is closed by the crippled repair instead.
 
-Both are filed as **F-199-1** and **F-199-2** in `TASKS.md`, with the measurements above, for a task
-that owns the bands they move.
+Both are filed in `TASKS.md` as **T-235** (F-199-1) and **T-236** (F-199-2), with the measurements
+above, for a task that owns the bands they move.
 
 ### 10.4 The Explore PARITY LEDGER row, RE-ASKED — **still UNRULED**
 

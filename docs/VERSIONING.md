@@ -133,11 +133,19 @@ at whatever version the tree happens to be on.
 
 | stage | tag | means | entry criteria |
 | --- | --- | --- | --- |
-| **pre-alpha** | *(no tag)* | nobody has played this build end to end | — **we are here** |
+| **pre-alpha** | *(no tag)* | no start-to-finish career pass has been played | — **we are here** (see note below) |
 | **alpha** | `v<version>-alpha.N` | internal only; systems still in flux | **the owner's own UAT passes** — played start to finish, holds together |
 | **beta** | `v<version>-beta.N` | feature-complete for the release scope; external testers | no known-red tests; balance graded against a CURRENT baseline; N-series complete |
 | **rc** | `v<version>-rc.N` | we would ship this if nothing new appears | beta feedback triaged; only blocker fixes since; `RELEASE-CHECKLIST.md` fully green incl. §G sign-off |
 | **release** | `v1.0.0` | public | the above, plus the decision to ship |
+
+> **Note on the pre-alpha row (corrected 2026-08-06).** This row read "nobody has played this build
+> end to end" until today. That stopped being true on 2026-08-03, when T-158's UAT closed with the
+> owner playing **two live sessions** and recording both required rulings. The row now states the
+> criterion that is actually unmet: **no start-to-finish career pass**, which is exactly what the
+> alpha row's entry criterion asks for. **The stage itself is unchanged and still correct.**
+> Whether the two sessions discharge the criterion is an owner ruling, not a doc edit — see
+> `TASKS.md` T-234, with T-233 covering this reconciliation.
 
 **WHY THIS SECTION EXISTS.** `scripts/tag-rc.mjs` derives `v${version}-rc1` and
 `RELEASE-CHECKLIST.md` is titled for that tag, which reads as though an RC were the next

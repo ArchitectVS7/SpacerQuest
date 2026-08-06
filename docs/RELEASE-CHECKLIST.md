@@ -5,12 +5,22 @@
 > This is the **release-candidate ceremony**. It is correct, and it is several stages
 > away. An RC asserts *"we would ship this if nothing new appears"*. The Rimward redesign
 > has the 30-NPC field eight passes from player parity, two known-red balance targets,
-> and — the plain one — **nobody has played this build end to end yet**. The next
+> and — the plain one — **no start-to-finish career pass has been played yet**. The next
 > milestone is not a tag; it is the owner's own UAT.
 >
-> **That UAT now has a brief: `docs/playtests/T-158-pre-uat-brief.md`** (T-158, 2026-08-02) — the
-> runbook, what is known-uncovered going in, and the two rulings the pass has to record before
-> `TASKS.md` T-158 can close.
+> **Corrected 2026-08-06.** This paragraph read "nobody has played this build end to end yet"
+> until today, which stopped being true on 2026-08-03: T-158's UAT closed with the owner playing
+> **two live sessions** and recording both required rulings (R1 — Combat's chosen `executeCombat`
+> branch; R2 — F-150-1), filed as M14/M15 feedback. What has *not* happened is a **start-to-finish
+> career** pass, which is the specific thing `docs/VERSIONING.md` names as the entry criterion for
+> alpha. **The stage is unchanged and still correct — only the stated reason was wrong.** Advancing
+> it is not a documentation change: see `TASKS.md` T-234 (schedule the start-to-finish pass, or
+> record an explicit ruling that the two sessions discharge the criterion) and T-233.
+>
+> **That UAT had a brief: `docs/playtests/T-158-pre-uat-brief.md`** (T-158, 2026-08-02) — the
+> runbook, what was known-uncovered going in, and the two rulings the pass had to record. T-158 is
+> now DONE and its block was pruned by the 2026-08-06 harvest; see the Completed ledger in
+> `TASKS.md`.
 >
 > **Do not run `npm run release:rc`.** See `docs/VERSIONING.md` for the stage ladder and
 > the criteria for leaving pre-alpha.
