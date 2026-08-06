@@ -36,8 +36,8 @@ export interface StarSystem {
   allowsContraband?: boolean;
   /**
    * T-1303 · Whether this port hosts a Spacers Hangout the player can visit.
-   * The Hangout is a core PRD verb ("Visit the Hangout", §7) and the site of the
-   * §7.3 / §7.5 sample turns ("The Spacers Hangout, Sol-3"). This flag is the
+   * The Hangout is a core PRD verb ("Visit the Cantina", §7) and the site of the
+   * §7.3 / §7.5 sample turns ("The Cantina, Sol-3"). This flag is the
    * extensible GATE: only systems flagged here surface the die-costed
    * `VisitHangout` player action (Spacer's Dare + social beats + rumor slot).
    *

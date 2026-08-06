@@ -76,7 +76,7 @@ describe('Galactic Wire nat-20/nat-1 stories (T-1202, PRD §6)', () => {
 
   it('reproduces the PRD §6 sample wire line from a seeded gamble nat-20', () => {
     // The exact §6 sample: Lucky Seven wins Cargo King's ship (Fat Profit) at the
-    // Hangout. A Socialize (GUILE) nat-20 by Lucky Seven, with Cargo King the only
+    // Cantina. A Socialize (GUILE) nat-20 by Lucky Seven, with Cargo King the only
     // co-located rival, must produce the verbatim line at the pinned seed.
     const npcs: NpcState[] = [
       {

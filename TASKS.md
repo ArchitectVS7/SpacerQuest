@@ -1994,7 +1994,7 @@ new vocabulary and the stale `App.tsx:934` pin.
 
 Orchestration: attempts=1/4.
 
-### T-253 · F-204-1: `wireStories.ts`'s "VERBATIM PRD §6 sample" no longer matches the PRD — `status: TODO` · `coder: opus` · `after: —`
+### T-253 · F-204-1: `wireStories.ts`'s "VERBATIM PRD §6 sample" no longer matches the PRD — `status: DONE` · `coder: opus` · `after: —`
 
 **F-204-1 (OPEN, carried forward from T-204).** `wireStories.ts`'s "VERBATIM PRD §6 sample — do not
 reword" contract now diverges from the PRD. `wireStories.ts:49` declares index 0 is the verbatim PRD §6
@@ -2013,6 +2013,25 @@ pin is re-shaped, with the reason recorded either way; the two knowingly-stale c
 (`wireStories.ts:16-17` and `hangout.test.ts:373-374`) are corrected in the same change; the "VERBATIM
 PRD §6 sample — do not reword" contract is left either genuinely true or explicitly retired, never
 half-true; content/doc-only change, so no rule fingerprint moves — state that explicitly; gate green.
+
+**Delivered (2026-08-06):** Ruled the PRD as the lagging site (HO-25, `docs/HANGOUT-DECISIONS.md`
+§8) and moved nine of its ten "Hangout" occurrences to "Cantina" (`docs/PRD-REIMAGINED.md` lines 58,
+113, 129, 145, 163, 167, 177, 195, 217), keeping the one deliberate exception at §9 which now reads
+"the Spacers Hangout (shipping as the **Cantina**)" since that line names the 1991 artefact, not a
+shipped surface. `wireStories.ts:49`'s "VERBATIM PRD §6 sample" designation is kept rather than
+retired, and made enforceable rather than merely asserted: new test
+`packages/content/src/__tests__/prdWireSample.test.ts` fills the template and requires the result in
+PRD §6, verified RED against the pre-fix PRD and GREEN on restore. The two comments the finding
+flagged as knowingly stale (`wireStories.ts:16-17`, `hangout.test.ts:373-374`) were corrected, plus
+three more the PRD edit would otherwise have newly staled (`hangout.ts:3,91`, `systems.ts:39-40`) and
+one found at the pin itself (`wire.test.ts:78-79`); a narrow "quoting comments track the PRD, using
+comments don't" rule was recorded to draw the line without pre-empting T-254's broader internal-vs-PRD
+vocabulary split. Deliberate scope boundary: no identifier, file name, `describe` string, or save
+literal was touched — those stay "Hangout" under HO-23 and are T-254's concern, not this task's.
+`rulesFingerprint` and `instrumentFingerprint` do not move (comment-only edits under the semantic hash,
+nothing under `packages/sim/src` touched); only the informational `docsFingerprint` moved, by design.
+
+Orchestration: attempts=1/4.
 
 ---
 

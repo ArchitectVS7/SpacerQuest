@@ -55,7 +55,7 @@ The game launches as a premium title ($15–20, no microtransactions, ever) with
 
 ## 4. Differentiators
 
-1. **A d20 society, not an AI backdrop.** No competitor in the trading genre runs its entire NPC population on transparent tabletop-RPG logic — sheets, rolls, and flaws the player can learn and exploit. Watching Wild Card blow a fortune at the Spacers Hangout because he failed a Flaw check isn't scripted flavor; it's the simulation, and it was equally likely to happen to *you*.
+1. **A d20 society, not an AI backdrop.** No competitor in the trading genre runs its entire NPC population on transparent tabletop-RPG logic — sheets, rolls, and flaws the player can learn and exploit. Watching Wild Card blow a fortune at the Cantina because he failed a Flaw check isn't scripted flavor; it's the simulation, and it was equally likely to happen to *you*.
 2. **The dice are honest and visible.** The morning roll shows you your luck before you spend it. The game never fudges. Tension comes from allocation, not from hidden odds — the player always knows what they risked and why they lost.
 3. **Fuel is the plot.** One resource gates travel, combat, and escape. "Can I afford to fire my guns this far from a depot?" is a question no other trading game makes you ask on every encounter. (This mechanic was discovered, not invented — our own automated playtesting revealed it as the most interesting tension in the original's restored rules.)
 4. **Terminal aesthetic as instrument, not wallpaper.** One screen — a diegetic ship's computer: starmap, manifest, fuel gauge, news wire — rendered in committed amber-phosphor CRT style with modern typography, animation, and sound (relay clicks, drive hum, the radio crackle of an incoming contract). Duskers-grade commitment, not scanline shader on a menu. One phosphor, two materials: amber is the only hue and the only thing that emits light — every structural surface (chassis, bezels, frames, dividers) is unlit, near-achromatic metal, so the screen reads as amber CRT readouts set into machined metal rather than as a single monochrome tube. "One screen" means one instrument, not one static layout: high-stakes moments — a combat encounter, a resolution debrief — take the computer over full-screen, as a battle console or an after-action report booting up on the same terminal. These are diegetic mode-takeovers of the one machine, never a second UI bolted on.
@@ -110,7 +110,7 @@ Every named spacer in the galaxy — launch target: **~30 at start, drawn from t
 - **Bond** — who they're for. Creates obligations the simulation honors. *(Doc Salvage: "I never leave a mayday unanswered — I was left once.")*
 - **Flaw** — the crack in the armor. **Flaws override optimal play.** When a decision touches an NPC's flaw, they roll against it; on a failure, the flaw chooses. *(Rattlesnake: "I never let an insult go. Never." — which is how a Tier-2 pirate ends up attacking a Warlord convoy, and making headlines.)*
 
-**How they decide.** On each simulation tick, every NPC picks among the same verbs the player has — trade, travel, fight, gamble, socialize, lay low — weighted by Ideal and situation, then rolls d20 + stat to execute. The margin decides how well it goes. A natural 20 or natural 1 always generates a story, and stories go out on the **Galactic News Wire**: the scrolling feed on your ship's terminal that doubles as the game's heartbeat. *"WIRE: Lucky Seven wins the Fat Profit off Cargo King in a Spacer's Dare at the Hangout. Cargo King unavailable for comment."*
+**How they decide.** On each simulation tick, every NPC picks among the same verbs the player has — trade, travel, fight, gamble, socialize, lay low — weighted by Ideal and situation, then rolls d20 + stat to execute. The margin decides how well it goes. A natural 20 or natural 1 always generates a story, and stories go out on the **Galactic News Wire**: the scrolling feed on your ship's terminal that doubles as the game's heartbeat. *"WIRE: Lucky Seven wins the Fat Profit off Cargo King in a Spacer's Dare at the Cantina. Cargo King unavailable for comment."*
 
 **Power tiers.** NPCs span five tiers, from Tier-1 mudlarks flying patched freighters to Tier-5 legends (the Admiral Sterns of the galaxy). Encounter matchmaking respects tiers — but flaws don't, which is how low-tier spacers punch up, die famously, or get very lucky. The original's 65-entry combat roster (pirates, patrols, brigands, Reptiloids) is redistributed across these tiers as the anonymous rank-and-file beneath the named cast.
 
@@ -126,7 +126,7 @@ A career is made of **days**. A day is a complete, satisfying unit of play — f
 
 **2. THE WIRE — read the galaxy.** The news feed tells you what the cast did overnight: prices shifting, feuds escalating, a bounty posted, a friend in jail. This is both flavor and intelligence — the wire is where opportunities surface.
 
-**3. THE DAY — spend your dice.** Every meaningful action consumes one die of your choice, its value + your stat vs. a visible difficulty. Jump to another system. Sign a manifest contract. Haggle. Explore a beacon. Visit the Hangout. Fight — combat consumes dice *and* fuel. When the hand is empty, the day ends.
+**3. THE DAY — spend your dice.** Every meaningful action consumes one die of your choice, its value + your stat vs. a visible difficulty. Jump to another system. Sign a manifest contract. Haggle. Explore a beacon. Visit the Cantina. Fight — combat consumes dice *and* fuel. When the hand is empty, the day ends.
 
 **4. DUSK — the world moves.** Every NPC takes their day. Markets tick. Consequences land. The next morning's wire is written by what everyone — including you — just did.
 
@@ -142,7 +142,7 @@ The manifest board posts four contracts. Two are plain freight. The third pays t
 
 You take the Medicinals. The haggle is a TRADE check against the broker — you spend the **[12]**, add your TRADE +2, clear the DC, and squeeze out a hazard bonus. The **[17]** you're saving: Fomalhaut-2 is two jumps out and the wire mentioned Rim pirates working the Deneb lane. Fuel math: two jumps costs 240 units; you're carrying 300. Enough to get there — not enough to get there *and* fight. You spend the **[4]** topping off at Vega's depot while prices are decent.
 
-*One die left. The Hangout is loud tonight, and Lucky Seven is dealing Spacer's Dare...*
+*One die left. The Cantina is loud tonight, and Lucky Seven is dealing Spacer's Dare...*
 
 **What just happened invisibly:** the plague event re-priced a region; a rival (Black Tide) surfaced through the economy rather than a cutscene; the player made a values choice (aid vs. dirty money) that both pay in credits but differently in reputation; and fuel turned a route decision into a combat decision.
 
@@ -160,11 +160,11 @@ You burn the **[3]** on a shipwide sweep before you leave — a low roll, and it
 
 ### 7.3 Sample Turn — ALLIES
 
-*Day 23. The Spacers Hangout, Sol-3. Hand: [18] [13] [8] [6] [5].*
+*Day 23. The Cantina, Sol-3. Hand: [18] [13] [8] [6] [5].*
 
 The wire, this morning: *"Doc Salvage impounded at Regulus-6 — unpaid landing fees, ship seized."* Doc is Tier-2, harmless, beloved, and the only spacer with the parts network to fix an Astraxial hull. You've never worked together. That's the point.
 
-Bail is 4,000 credits — payable remotely via a broker, no roll required, just money you were saving for a shield tier. Or, tonight, Admiral Stern (Tier 5, Astro League, Ideal: *"Order is worth any price"*) is holding court in the Hangout's back room, and a GUILE check could persuade the Admiral that impounding rescue pilots is bad for League recruitment — making the *League* pay Doc's bail, and putting you on Stern's radar in both good ways and bad.
+Bail is 4,000 credits — payable remotely via a broker, no roll required, just money you were saving for a shield tier. Or, tonight, Admiral Stern (Tier 5, Astro League, Ideal: *"Order is worth any price"*) is holding court in the Cantina's back room, and a GUILE check could persuade the Admiral that impounding rescue pilots is bad for League recruitment — making the *League* pay Doc's bail, and putting you on Stern's radar in both good ways and bad.
 
 You spend the **[18]** + GUILE +1 on the Admiral. Clear it. The wire tomorrow: *"Astro League intervenes in Regulus-6 impound; Doc Salvage released, credits League goodwill fund."* Doc's Bond — *"I never leave a mayday unanswered"* — is now pointed at **you**. Permanently. The simulation will honor it: someday, when your hull is venting and your dice are garbage, Patchwork will answer.
 
@@ -174,7 +174,7 @@ You spend the **[18]** + GUILE +1 on the Admiral. Clear it. The wire tomorrow: *
 
 *Day 27. Two jumps from Fomalhaut-2, the Medicinals still in the hold. Hand: [16] [14] [9] [5] [2]. Fuel: 210.*
 
-Contact. **Rattlesnake** — Tier 3, GUNS +3, and his sheet, which you've learned the hard way, reads: *Flaw — "I never let an insult go."* Three weeks ago, at the Hangout, you laughed at his hand of Spacer's Dare.
+Contact. **Rattlesnake** — Tier 3, GUNS +3, and his sheet, which you've learned the hard way, reads: *Flaw — "I never let an insult go."* Three weeks ago, at the Cantina, you laughed at his hand of Spacer's Dare.
 
 Combat is rounds; each round you commit a die and a stance:
 
@@ -192,7 +192,7 @@ You dock at Fomalhaut-2 on fumes, deliver the Medicinals into the outbreak, and 
 
 The dice are a disaster and you can see it at dawn — which means you can *plan* it. No checks today that a smart route can avoid: no combat lanes, no haggling with sharps. The one sure thing on the board is a short, dull freight run, Sol-3 to Spica-3, DC so low even a **[5]** clears it. It pays 2,100. Not enough.
 
-The gap is 500. Options: the Hangout (Spacer's Dare, GUILE, terrible dice — a mug's game tonight); a quiet word with Penny Wise, who lends at rates that become their own quest line; or the sealed Contraband pod still bolted in your hold from Day 19, which Smuggler Ray would buy tonight, no roll needed — for a price that solves everything and a reputation flag that never fully washes out.
+The gap is 500. Options: the Cantina (Spacer's Dare, GUILE, terrible dice — a mug's game tonight); a quiet word with Penny Wise, who lends at rates that become their own quest line; or the sealed Contraband pod still bolted in your hold from Day 19, which Smuggler Ray would buy tonight, no roll needed — for a price that solves everything and a reputation flag that never fully washes out.
 
 There is no correct answer. That's the design.
 
@@ -214,13 +214,13 @@ No gamerscore popups. Achievements are **Deeds** — in-world entries in the Spa
 
 ### 8.3 Side stories — storylets everywhere
 
-Short, authored micro-fictions (a screen or two, one decision) attached to the fabric of play: to cargo (the crate that ticks), to passengers (the woman with the false name), to ports (Algol-2 has no repair shop, and there's a reason), to the Hangout's rumor table, and to the Wise One and Sage — the original's trivia hermits reborn as the mystery's knowledge brokers. Launch target: **60–80 storylets**, each written so the *economy* delivers it (a contract, a price spike, a wire item) rather than a quest marker. Seasons add more in batches.
+Short, authored micro-fictions (a screen or two, one decision) attached to the fabric of play: to cargo (the crate that ticks), to passengers (the woman with the false name), to ports (Algol-2 has no repair shop, and there's a reason), to the Cantina's rumor table, and to the Wise One and Sage — the original's trivia hermits reborn as the mystery's knowledge brokers. Launch target: **60–80 storylets**, each written so the *economy* delivers it (a contract, a price spike, a wire item) rather than a quest marker. Seasons add more in batches.
 
 ---
 
 ## 9. What We Keep From 1991
 
-The redesign is a transformation, not an erasure. Surviving intact: the map (14 core systems, 6 Rim, Andromeda beyond), the four alliances, the cargo economy and its manifest-contract structure, fuel arbitrage, tribute, salvage, the Spacers Hangout, the Wise One and the Sage, ports as purchasable property, the nine ranks and the Conqueror capstone, the Reptiloids, the black hole at Nemesis — and the balance mathematics, which have already survived a modern automated playtest campaign. The twenty bot personalities become the founding cast. The original's soul — *scarce turns, a fragile ship, one more run to the rim* — is not just kept; it is finally the whole point.
+The redesign is a transformation, not an erasure. Surviving intact: the map (14 core systems, 6 Rim, Andromeda beyond), the four alliances, the cargo economy and its manifest-contract structure, fuel arbitrage, tribute, salvage, the Spacers Hangout (shipping as the **Cantina**), the Wise One and the Sage, ports as purchasable property, the nine ranks and the Conqueror capstone, the Reptiloids, the black hole at Nemesis — and the balance mathematics, which have already survived a modern automated playtest campaign. The twenty bot personalities become the founding cast. The original's soul — *scarce turns, a fragile ship, one more run to the rim* — is not just kept; it is finally the whole point.
 
 What does not survive: the 54-screen menu labyrinth, the session/trip click tax, the point-grind win condition, and every place where 1991's hardware — not its designer — made the rules.
 

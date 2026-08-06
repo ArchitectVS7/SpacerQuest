@@ -206,3 +206,59 @@ matching stops guarding, and it does so green.
 own "authored STRING VALUES … not field/type names", the AST-accurate remainder is exactly 14
 hits, none player-facing: 12 test-name/`describe` strings plus `liarsDiceValidation.ts:133,138`
 (developer-facing validation errors naming the `hasHangout` identifier).
+
+---
+
+## 8. The PRD follows the rename (T-253)
+
+**HO-25 — The PRD is the LAGGING site, so the PRD moves; `wireStories.ts:49`'s "VERBATIM PRD §6
+sample" designation is KEPT and made enforceable.** (T-253, F-204-1.) HO-23 already ruled the
+player-facing venue name is **Cantina**, and the shipped template plus its exact pin
+(`packages/engine/src/__tests__/wire.test.ts`) had followed it — but `docs/PRD-REIMAGINED.md` still
+said "Hangout", so the file that *declares itself* the verbatim quote of §6 no longer quoted it.
+Ruled: the PRD is design intent, not a frozen artefact, and the intent doc trailing a deliberate
+owner rename is the divergence to fix. **Nine** of the PRD's ten occurrences become "Cantina" —
+lines 58, 113, 129, 145, 163, 167, 177, 195, 217 (the task block named seven and missed 58 and 129;
+work the grep, not the list). The code side is untouched: under this ruling `wire.test.ts`'s pin was
+already correct.
+
+**The one exception, made deliberately rather than swept.** §9 "What We Keep From 1991" names the
+**1991 artefact**, not a shipped surface, so it reads *"the Spacers Hangout (shipping as the
+**Cantina**)"*. A blind find-and-replace there would have made the PRD claim 1991 shipped a Cantina.
+`rg -ci hangout docs/PRD-REIMAGINED.md` is therefore **1**, and that one hit is historical.
+
+**The comment rule this task adds, because otherwise there is no principled stopping point** (there
+are ~40 "Hangout" comment hits across `packages/`): **a comment that QUOTES PRD text tracks the PRD;
+a comment that merely USES the internal noun does not.** HO-23's "comments do NOT change" is narrowed
+only for the quoting kind and otherwise stands in full — identifiers, `hasHangout` / `PORT_HANGOUTS`,
+`HangoutTone` / `HangoutProse`, file names, `describe` strings and the save literal
+`z.literal('VisitHangout')` are all still out, and the internal-vocabulary split remains **T-254**'s
+scope; this task does not pre-empt it. Six sites qualified and were corrected: the two the finding
+named as knowingly stale (`packages/content/src/wireStories.ts:15-18`,
+`packages/engine/src/__tests__/hangout.test.ts:373`), one found at the pin itself
+(`packages/engine/src/__tests__/wire.test.ts:78-79` — a comment contradicting the assertion directly
+below it), and three the PRD edit would otherwise have NEWLY staled
+(`packages/content/src/hangout.ts:3` and `:91`, `packages/content/src/systems.ts:39-40`).
+
+**The contract is now genuinely true rather than half-true, and it is enforced.** New test
+`packages/content/src/__tests__/prdWireSample.test.ts` fills `NAT_WIRE_TEMPLATES.gamble.nat20[0]`
+with the sample's three names and requires the result to appear in `docs/PRD-REIMAGINED.md` §6, with
+a second assertion that no sibling nat-20 line also appears (index 0 is load-bearing — both the
+header comment and the seeded pin name it). The expected string is derived FROM THE TEMPLATE, so the
+test fails whichever side drifts, and it was verified RED by reverting PRD:113 to "Hangout" and GREEN
+on restore. This exists because the whole defect was L-020's class: prose asserting a contract nothing
+enforced. It sits under `src/__tests__/`, the one directory `rules-fingerprint.ts`
+(`HASHED_ROOT_IGNORED_DIRECTORIES`) declares inert, and imports no engine
+(`contentPackageBoundary.test.ts`).
+
+**Fingerprints: `rulesFingerprint` does NOT move, and that is measured, not asserted.** `docs/` is in
+no hashed root, and the three touched content sources took COMMENT-ONLY edits — since N7-FP the rules
+hash is semantic (`packages/sim/src/balance/rules-fingerprint.ts` `hashSemantic` strips comments via a
+TypeScript printer), so "content is hashed wholesale" means wholesale in FILES, not in BYTES.
+`instrumentFingerprint` does not move (nothing under `packages/sim/src` touched) and
+`CURRENT_SAVE_VERSION` does not move — no persisted shape or literal changed, so no migration and no
+round-trip test is owed. The one hash that DOES move is `docsFingerprint`, the demoted raw-byte hash,
+which is informational and never a failure by design (`checkpoints.ts` `fixtureDocsDrift`); it was
+not re-stamped and the note was not silenced. No capstone sweep, no re-extraction, no baseline
+re-pin. Proof: the smoke suite's "is not stale" assertion stayed green against the committed fixture
+(`rulesFingerprint cabd2112ccf4cefb`, `instrumentFingerprint 2d6d1990eaf13031`).

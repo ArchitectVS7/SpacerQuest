@@ -370,7 +370,7 @@ describe('day loop: a Dare nat makes the wire (via T-1202) naming the in-system 
     const check = events.find((e) => e.type === 'StatCheck');
     expect(check).toMatchObject({ actor: 'Player', stat: Stat.GUILE, actionContext: 'gamble' });
     const wire = events.filter((e) => e.type === 'WireEntry');
-    // The gamble templates all name the Hangout, and the player's nat names the
+    // The gamble templates all name the Cantina, and the player's nat names the
     // co-located dealer (Iron Vex) as the loser — "an NPC actually present".
     expect(wire.some((w) => w.message.includes('Cantina'))).toBe(true);
     expect(wire.some((w) => w.message.includes('Iron Vex'))).toBe(true);

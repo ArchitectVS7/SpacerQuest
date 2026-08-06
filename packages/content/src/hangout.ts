@@ -1,6 +1,6 @@
 /**
  * Spacers Hangout tuning — DATA, consumed by the engine (T-1303 "Spacers Hangout:
- * the place + Spacer's Dare", PRD §7 "Visit the Hangout", §7.3 / §7.5 sample
+ * the place + Spacer's Dare", PRD §7 "Visit the Cantina", §7.3 / §7.5 sample
  * turns, §8.3 rumor table).
  *
  * The Hangout is a core PRD verb the player could never reach — only NPCs
@@ -88,7 +88,7 @@ export const BEFRIEND_DISPOSITION = 3;
 export const BEFRIEND_DC = 12;
 
 /** An `insult` always lands — no check — and sours the NPC hard (negative). This
- *  is the literal PRD §7.4 seed ("Three weeks ago, at the Hangout, you laughed at
+ *  is the literal PRD §7.4 seed ("Three weeks ago, at the Cantina, you laughed at
  *  his hand … Flaw — 'I never let an insult go'"). Sized to MATTER against the
  *  rebalanced T-1204 decay (DISPOSITION_DECAY_INTERVAL_DAYS): −4 survives several
  *  dusks, long enough to reach the interception grudge-weighting and the raised

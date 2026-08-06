@@ -14,8 +14,11 @@
 //
 // The `gamble` nat-20[0] line is the verbatim PRD §6 sample and MUST stay exact:
 //   "Lucky Seven wins the Fat Profit off Cargo King in a Spacer's Dare at the
-//    Hangout. Cargo King unavailable for comment."
+//    Cantina. Cargo King unavailable for comment."
 // (produced with actor=Lucky Seven, loserShip=Fat Profit, loser=Cargo King).
+// T-253/HO-25: "verbatim" is ENFORCED, not asserted here — `__tests__/prdWireSample.test.ts`
+// fills this template and requires the result to appear in `docs/PRD-REIMAGINED.md` §6, so a
+// drift on EITHER side goes red. Per L-020 this comment is documentation, never the guard.
 // ---------------------------------------------------------------------------
 
 /** Which flavor bucket a natted check draws its story from. The engine scanner
