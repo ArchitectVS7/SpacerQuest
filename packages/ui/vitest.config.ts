@@ -13,12 +13,24 @@ import { defineConfig } from 'vitest/config';
 // the same separation `playwright.config.ts` gets from its `testDir: './e2e'`.
 export default defineConfig({
   test: {
-    include: ['src/**/*.test.ts'],
+    // T-193 · `.tsx` joins `.ts` here so a PANE TEST can render a component and
+    // assert over the DOM it produces (`__tests__/route-preview-panel.test.tsx`
+    // mounts `RoutePreviewPanel` and checks that `data-testid="route-dc"` is
+    // absent for a destination the resolver never rolls against). The e2e
+    // separation this `include` exists to keep is untouched: the Playwright
+    // specs live in `e2e/`, and this pattern is rooted at `src/`.
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     // `storage.ts` is deliberately total over a missing `window` (its in-memory
     // fallback), and the test drives `selectStorage`/`migrateInto` with plain
     // fake objects — so no DOM is needed and none is provided. If a UI test ever
     // needs one it should say so with a per-file `@vitest-environment` comment
     // rather than slowing every suite down.
+    //
+    // That escape hatch is now USED rather than hypothetical: the route-preview
+    // pane test opens with `@vitest-environment jsdom` and pays for jsdom on
+    // that one file only. jsdom + `@testing-library/react` are devDependencies
+    // of this package for exactly that purpose. This is NOT the browser tier
+    // T-162 still owes — that one is a real browser driven by Playwright.
     environment: 'node',
   },
 });

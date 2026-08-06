@@ -205,6 +205,10 @@ import {
   type WireLogEntry,
   type StoryletChoice,
 } from './format';
+// T-193 · The starmap's route/commit readout, extracted from this file so it can
+// be mounted on its own in the package's jsdom pane tests (`__tests__/
+// route-preview-panel.test.tsx`). Props-only and store-free; it decides no rule.
+import { RoutePreviewPanel } from './RoutePreviewPanel';
 // T-187 · The first-turn walkthrough's pure rules — the script, the rails
 // predicate and the card copy. All presentation; see the module header for why it
 // coexists with (and never replaces) T-311's contextual coach above.
@@ -4265,38 +4269,20 @@ function Starmap({ state }: { state: CockpitState }) {
             </button>
           </div>
 
+          {/* T-193 · The panel's markup lives in `RoutePreviewPanel.tsx`, not
+              inline here, so a jsdom pane test can mount it and assert that
+              `route-dc` is ABSENT for a destination `resolveTravel` never rolls
+              against. Nothing about the rendering changed in the move: the
+              component computes `routePreview` / `routeCheckReadout` from the
+              same arguments this component used to pass them, and `dieArmed`
+              is `armedDieIndex !== null`, i.e. `state.selectedDie !== null`. */}
           {showPreview && (
-            <div className="route-preview" data-testid="route-preview">
-              <div className="rp-head">
-                PLOT &#9656; <b>{systemName(target!)}</b>
-              </div>
-              <div className="rp-grid">
-                <span className="rp-k">DISTANCE</span>
-                <span className="rp-v" data-testid="route-distance">
-                  {preview.distance}
-                </span>
-                <span className="rp-k">FUEL</span>
-                <span className="rp-v" data-testid="route-fuel">
-                  {preview.fuelCost}
-                </span>
-                <span className="rp-k">PILOT DC</span>
-                <span className="rp-v" data-testid="route-dc">
-                  {preview.dc}
-                </span>
-                <span className="rp-k">DANGER</span>
-                <span className="rp-v" data-testid="route-danger">
-                  {preview.dangerLevel}
-                </span>
-              </div>
-              <button
-                className="btn"
-                data-testid="confirm-jump"
-                disabled={!dieArmed || !preview.reachable}
-                onClick={commit}
-              >
-                {dieArmed ? 'Confirm jump' : 'Pick a die to jump'}
-              </button>
-            </div>
+            <RoutePreviewPanel
+              game={game}
+              dest={target!}
+              armedDieIndex={state.selectedDie}
+              onConfirm={commit}
+            />
           )}
         </div>
 

@@ -135,8 +135,12 @@ so the diagram is sized by `max-width` on the wrapper and NEVER by `max-height`
 **TT-12 — UI unit tests target the PURE SELECTOR in `packages/ui/src/format.ts`, never
 `../store`.** (T-190.) Importing the store runs `init()` at module load and reaches for storage
 and sound. Component-state behaviour (a stow, a toggle) is proved by REAL CLICKS in e2e instead,
-because this repo has no `@testing-library/react`; that reasoning is written into the spec beside
-the assertions rather than left implicit. Selector fixtures call
+because this repo has no `@testing-library/react` — **stale as of T-193 fix round 1 (2026-08-06):
+`packages/ui` now carries `@testing-library/react` + `jsdom` as devDependencies; see the TT-13
+amendment below for the narrow use they are for. The `never ../store` half of TT-12 is UNCHANGED
+and permanent, and the extracted component a pane test mounts must itself be store-free.** That
+reasoning is written into the spec beside the assertions rather than left implicit. Selector
+fixtures call
 `startDay(createInitialState(...))`, not `createInitialState` alone, since the board is generated
 at dawn and a bare initial state makes count assertions vacuous.
 
@@ -145,6 +149,24 @@ discharged at the STORE level plus Playwright, not by adding a rendered-DOM envi
 (T-196c.) `packages/ui/vitest.config.ts` pins `environment: 'node'` deliberately; a per-file
 `@vitest-environment` comment is the only sanctioned exception, and the rendered-DOM seam stays in
 `packages/ui/e2e`.
+
+**TT-13a — AMENDED at T-193's review pass (2026-08-06): "discharged by Playwright" does NOT hold
+when the defect IS the markup, and jsdom-in-vitest is not the browser tier.** T-193's bug was a
+dead `PILOT DC` rendered for every destination; a selector test over the predicate cannot see a
+regression that re-adds an unconditional DC to the JSX, and Playwright is not part of the mandatory
+per-task gate (root `npm test` runs `vitest run` per workspace; `test:e2e` is a separate script).
+So when an acceptance clause names the DOM, the discharge is TT-13's own sanctioned exception —
+a per-file `// @vitest-environment jsdom` docblock plus `@testing-library/react` — and NOT an
+argument that e2e counts. The bounds that keep TT-13's intent intact: (1) `environment` stays
+`'node'` package-wide, so jsdom is paid for only by the files that open with the docblock;
+(2) the component under test must be EXTRACTED to its own props-only, store-free file first, as a
+behaviour-preserving move (`packages/ui/src/RoutePreviewPanel.tsx`), because mounting anything that
+reaches `../store` runs `init()` — TT-12's permanent half; (3) the e2e spec is not deleted or
+weakened, it becomes the belt to the pane test's braces; (4) the pane test is mutation-checked —
+re-introduce the original defect, watch it go red, revert — so it is proved able to fail rather
+than asserted to be. This is still NOT the real-browser tier T-162/T-237 owes; that one is
+Playwright, and it remains open. Canonical example:
+`packages/ui/src/__tests__/route-preview-panel.test.tsx`.
 
 **TT-14 — A claim about what a player can SEE is proved through the real DOM, never on a
 formatter.** (T-221.) Unit tests bind the VALUES to the engine

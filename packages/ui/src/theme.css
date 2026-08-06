@@ -750,6 +750,27 @@ body {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+/* T-193 · the check row. A full-width line UNDER the 4-column .rp-grid, because
+   its value is a sentence ("FUEL -9% · ENCOUNTER -13%"), not a figure that would
+   sit in a numeric column. Same etch/ember pairing as .rp-k / .rp-v — no new
+   hue (T-186's amber pillar). */
+.route-preview .rp-check {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.route-preview .rp-ck {
+  color: var(--etch-dim);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.route-preview .rp-cv {
+  color: var(--ember);
+  text-shadow: var(--glow);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
 .route-preview .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;

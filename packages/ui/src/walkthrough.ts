@@ -201,7 +201,10 @@ export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
     index: 4,
     title: 'Make the Jump',
     what: 'Arm another die, click your destination on the starmap, then Confirm jump. Short on fuel? Buy some at the depot first — that costs a die too.',
-    why: 'Fuel is the plot. The route preview shows the bill and the PILOT DC before you commit, so a jump is a decision you make with the numbers in front of you.',
+    // T-193 · this line used to promise a PILOT DC. T-1605 removed the pilot
+    // check from ordinary jumps, so the preview no longer shows one; what it
+    // does show is the bill and what the armed die takes off it.
+    why: 'Fuel is the plot. The route preview shows the bill, and what the die you armed takes off it, before you commit — so a jump is a decision you make with the numbers in front of you.',
     anchor: 'starmap',
     ack: false,
     flag: 'jumped',

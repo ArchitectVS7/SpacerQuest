@@ -76,6 +76,12 @@ import {
   nextRankFor,
   quoteStoryletChoice,
   travelPreview,
+  // T-193 · the two engine helpers that give an ORDINARY jump's die its real,
+  // monotonic effect (T-195). The route readout prints what THEY return — the
+  // 15% / 20% ceilings live in the engine (`NAV_DIE_FUEL_DISCOUNT_MAX` /
+  // `NAV_DIE_EVASION_MAX`) and are never restated as literals in this package.
+  navDieFuelDiscount,
+  navDieEvasionFactor,
   quoteFuelPurchase,
   hangoutRumors,
   loanBandFor,
@@ -326,6 +332,89 @@ export type RoutePreview = TravelPreview;
  *  fabricated `jumpsBetween` round) it used to; it consumes the engine truth. */
 export function routePreview(game: GameState, dest: number): RoutePreview {
   return travelPreview(game, dest);
+}
+
+// ---- T-193 · the route check readout -------------------------------------
+//
+// THE BUG THIS FIXES. `travelPreview` computes `dc: travelDc(...)` for every
+// destination, and the starmap's route panel rendered it as "PILOT DC n" for
+// every destination — but T-1605 ("AN ORDINARY JUMP ALWAYS ARRIVES", engine
+// `actions/travel.ts` ~L697) DELETED the pilot check from ordinary travel: only
+// the Nemesis crossing's `isCrossing` branch still calls `check(...)`. Nobody
+// removed the readout when the check was removed, so for every ordinary jump the
+// cockpit advertised a stat check that cannot fail. That is worse than silence:
+// a player reads "PILOT DC 12" and concludes their die and their Pilot stat
+// decide this jump, when neither touches it.
+//
+// WHAT REPLACES IT. The die is not inert on an ordinary jump — T-195 gave it a
+// real effect: a fuel discount (`navDieFuelDiscount`, 0-15%) and an
+// encounter-evasion factor (`navDieEvasionFactor`, 0-20%), both monotonic in the
+// face. So the honest readout is the armed die's LIVE effect, with a stated
+// "no check" line covering the no-die-armed state. Either way the absence of a
+// DC reads as a fact the panel asserts, not as a missing field.
+//
+// WHY THE PREDICATE IS NOT EXTRACTED INTO THE ENGINE. The clean shape would be a
+// `travelRollsPilotCheck(destination)` in `actions/travel.ts`, read by both
+// `resolveTravel` and this selector. But `packages/sim`'s `rulesFingerprint`
+// hashes the semantic source of `packages/engine/src/**` + `packages/content/src`
+// wholesale — measured here: appending ONE line of code to `travel.ts` flips
+// `balance-smoke.test.ts`'s "fixture is not stale" assertion red, so a provably
+// inert extraction would owe a full 8,000-run capstone sweep. T-193 is therefore
+// UI-only, and the extraction is filed in TASKS.md (T-238) to be folded into the
+// next milestone capstone. In the meantime this selector branches on the SAME
+// CONTENT CONSTANT the resolver branches on (`NEMESIS_SYSTEM_ID`) and reads the
+// DC itself out of `travelPreview`, so the two cannot quietly disagree.
+
+/** What the route panel should say about a check on this route — one variant, in
+ *  the engine's own numbers. `dc` is the crossing's REAL check; `die-effect` is
+ *  what an armed die actually does to an ordinary jump; `no-check` is the honest
+ *  statement for an ordinary jump with no die armed yet. */
+export type RouteCheckReadout =
+  /** `resolveTravel` WILL roll a Pilot check against this DC (the crossing). */
+  | { kind: 'dc'; dc: number }
+  /** No check; the armed die instead shaves this much fuel and this much off the
+   *  encounter odds. Both are whole percents, rounded from the engine helpers. */
+  | { kind: 'die-effect'; die: number; fuelPct: number; evasionPct: number }
+  /** No check, and no die armed yet to have an effect either. */
+  | { kind: 'no-check' };
+
+/**
+ * T-193 · The route panel's check row, decided here so the JSX owns no rule.
+ *
+ * @param armedDieIndex the HAND INDEX of the armed die (`state.selectedDie`), not
+ * a face — resolved against `player.dawnHand` exactly as `spendDie` would. A null
+ * hand, a null/out-of-range index, or an already-spent slot all mean "no die is
+ * really armed", which is `no-check`.
+ */
+export function routeCheckReadout(
+  game: GameState,
+  dest: number,
+  armedDieIndex: number | null,
+): RouteCheckReadout {
+  // 1) The crossing keeps its check — engine `actions/travel.ts`: `isCrossing`
+  //    (~L662) gates the only surviving `check(...)` + `StatCheck` event
+  //    (~L702-715). The DC is READ from the preview, never recomputed, so the
+  //    number shown is the number rolled.
+  if (dest === NEMESIS_SYSTEM_ID) {
+    return { kind: 'dc', dc: travelPreview(game, dest).dc };
+  }
+  // 2) Ordinary jump: no check exists to report. Is a real die armed?
+  const hand = game.player.dawnHand;
+  if (!hand || armedDieIndex === null) return { kind: 'no-check' };
+  if (armedDieIndex < 0 || armedDieIndex >= hand.dice.length) return { kind: 'no-check' };
+  if (hand.spent[armedDieIndex]) return { kind: 'no-check' };
+  // 3) It is — report what that die will really do. `resolveTravel` applies the
+  //    discount to non-crossing jumps only (~L676-678) and passes the same die
+  //    into `generateEncounter`, where `navDieEvasionFactor` multiplies the
+  //    encounter chance (~L547). A nat 1 honestly reads 0% / 0%: that IS its
+  //    live effect, and showing it is the teaching.
+  const die = hand.dice[armedDieIndex];
+  return {
+    kind: 'die-effect',
+    die,
+    fuelPct: Math.round(navDieFuelDiscount(die) * 100),
+    evasionPct: Math.round((1 - navDieEvasionFactor(die)) * 100),
+  };
 }
 
 // ---- T-1403 off-lane exploration (display-only) --------------------------

@@ -1403,7 +1403,7 @@ and `starmap-globe-touch.spec.ts`'s viewport comment re-pointed at that ruling. 
 
 ## M16 — Owner UAT pass 3: the dawn-hand die is illegible (2026-08-04)
 
-### T-193 · BUG: the starmap shows a "PILOT DC" for every jump, but ordinary jumps never roll against it — `status: TODO` · `coder: opus` · `after: T-198`
+### T-193 · BUG: the starmap shows a "PILOT DC" for every jump, but ordinary jumps never roll against it — `status: DONE` · `coder: opus` · `after: T-198`
 
 Found while explaining the dawn-hand mechanic to the owner (they could not tell what assigning a
 die to a jump does — see T-194 for the full finding). Root cause, verified in code:
@@ -1435,6 +1435,137 @@ means these; do NOT stand up a browser tier for this task, that is T-162's still
 route preview to a non-crossing destination renders no Pilot-DC readout (the die-effect or
 "no check" copy instead); a preview to the (unlocked) Nemesis crossing still renders the real
 DC. Gate green.
+
+**Delivered (2026-08-06). UI-ONLY, deliberately — no engine or content file was touched.** The
+tempting fix (extract `travelRollsPilotCheck()` into `travel.ts`, add fields to `TravelPreview`) was
+measured first and rejected: `packages/sim`'s `rulesFingerprint` hashes the semantic source of
+`packages/engine/src/**` + `packages/content/src` wholesale, and appending a single line of *code*
+to `travel.ts` flips `balance-smoke.test.ts`'s "the fixture describes the ruleset in the working
+tree · is not stale" from pass to fail — so a provably inert extraction would have owed an 8,000-run
+capstone sweep for a readout bug. The extraction is filed instead as **T-259**, to be batched into
+the next milestone capstone. Confirmed after the change: `rulesFingerprint` did NOT move
+(`balance-smoke.test.ts` 72/72 green, "is not stale" included) — the UI package is not hashed.
+
+- **`packages/ui/src/format.ts`** — new `routeCheckReadout(game, dest, armedDieIndex)` returning a
+  discriminated `RouteCheckReadout`: `{kind:'dc'}` **only** for `NEMESIS_SYSTEM_ID` (the one branch
+  `resolveTravel` still rolls, `travel.ts:662` / `:702-715`), with the DC read *through*
+  `travelPreview` rather than recomputed so panel and resolver cannot drift; otherwise
+  `{kind:'die-effect'}` carrying the armed die's face plus `fuelPct`/`evasionPct` computed from the
+  engine's own `navDieFuelDiscount`/`navDieEvasionFactor` (no 15/20 literal anywhere in the UI); or
+  `{kind:'no-check'}` when the hand is missing, the index is null/out-of-range, or the slot is
+  already spent. The header comment states the T-1605 cause, the T-195 replacement, and the
+  fingerprint reason the predicate stayed in the UI.
+- **`packages/ui/src/App.tsx`** — the `PILOT DC` key/value pair is DELETED from `.rp-grid` (which
+  keeps DISTANCE | FUEL on row 1, DANGER on row 2 under its 4-column template). One full-width check
+  row now renders below the grid, exactly one variant: `route-dc` (bare number, so
+  `nemesis-crossing.spec.ts:181` still reads it), `route-die-effect`
+  ("FUEL −13% · ENCOUNTER −17%"), or `route-no-check` ("NONE — every jump with fuel arrives").
+  `data-testid="route-dc"` is now unreachable for any non-crossing destination. A nat 1 correctly
+  reads −0% / −0% — that IS its live effect and is not special-cased back to "no check".
+- **`packages/ui/src/theme.css`** — `.rp-check` / `.rp-ck` / `.rp-cv`, reusing `--etch-dim` /
+  `--ember` / `--glow`; no new hue (T-186's amber pillar).
+- **`packages/ui/src/walkthrough.ts:204`** — the tutorial repeated the lie ("shows the bill and the
+  PILOT DC"); it now promises the bill and what the armed die takes off it. Nothing pinned the old
+  string.
+- **Coverage.** New `packages/ui/src/__tests__/route-preview.test.ts` (8 tests): no-die →
+  `no-check`; armed die → `die-effect` with the face (not the index) and percentages matching the
+  engine helpers **for all 20 faces**, endpoints pinned explicitly (1 → 0%/0%, 20 → 15%/20%) so a
+  helper retune is visible rather than tautological; spent slot / out-of-range / absent hand →
+  `no-check`; crossing → `dc === NEMESIS_CROSSING_DC === routePreview(...).dc`, and still `dc` with
+  a die armed; plus an L-018 negative control looping every charted ordinary system in both armed
+  and unarmed states, so a stub returning only `no-check` or only `dc` fails one side. ~~No jsdom
+  and no testing-library were added~~ — **this claim was the review finding; see FIX ROUND 1 below,
+  which stands the jsdom pane test up and makes the Accept's DOM half real.**
+- **e2e updated, not weakened** (the F-112-D / F-162-3 failure mode): `starmap.spec.ts:82` and
+  `:134` now assert `route-dc` **count 0** plus the `route-die-effect` text (percentages computed
+  in-spec from the imported engine helpers, per the file's house rule) and `route-no-check`
+  visibility respectively; the now-unused `travelDc` import was dropped and the header rewritten.
+  `nemesis-crossing.spec.ts:181` is UNCHANGED and is now the positive control for the surviving
+  real DC.
+- **Two adjacent bugs filed, not fixed** (Bug Discovery Policy, with the risk analysis written into
+  each block): **T-258** — `travelPreview` applies the die fuel discount to the crossing while
+  `resolveTravel` excludes it (latent: no caller passes a die today, and this task deliberately did
+  not start; named as a prerequisite inside T-237's Accept) — and **T-259**, the deferred
+  `travelRollsPilotCheck` extraction above.
+- **Gate.** `npm run format` run BEFORE the gate. `npm test` 2,736 passed / 0 failed across all six
+  workspaces; `npx tsc -b`, `npm run lint`, `npm run format:check` all exit 0; e2e
+  `starmap nemesis-crossing walkthrough` 25/25 passed.
+
+**FIX ROUND 1 (2026-08-06) — the Accept's DOM clause, honoured rather than argued around.**
+
+_Review finding, accepted in full:_ the Accept says coverage lands in the DOM pane-test harness
+(`packages/ui/src/__tests__/`, **vitest + testing-library** — "coverage here means these"), and the
+first pass shipped only a pure selector test plus Playwright specs the clause explicitly excludes.
+Root cause was a category error in the first pass's own reasoning, not a missing harness: it read
+"do NOT stand up a browser tier (that is T-162's thread)" as forbidding **jsdom inside vitest**. It
+does not. T-162/T-237's open thread is the REAL-BROWSER tier (Playwright); jsdom-in-vitest is the
+escape hatch `packages/ui/vitest.config.ts` has documented since T-1701a ("if a UI test ever needs
+[a DOM] it should say so with a per-file `@vitest-environment` comment"). Net effect of the gap: the
+always-run gate (`npm test` → `vitest run` per workspace; `test:e2e` is NOT part of it) pinned only
+the predicate, so JSX that re-added an unconditional `PILOT DC` would have shipped green.
+
+- **`packages/ui/package.json`** — `jsdom`, `@testing-library/react`, `@testing-library/dom` added
+  as devDependencies of THIS workspace only. No engine, content or sim file touched;
+  `rulesFingerprint` cannot move (the UI package is not hashed) and no sweep is owed.
+- **`packages/ui/vitest.config.ts`** — `include` gains `src/**/*.test.tsx` (the e2e separation the
+  `include` exists to keep is untouched: Playwright lives in `e2e/`, this pattern is rooted at
+  `src/`). `environment` stays `'node'`; jsdom is paid for by one file's docblock.
+- **`packages/ui/src/RoutePreviewPanel.tsx` (new) — a BEHAVIOUR-PRESERVING EXTRACTION, done before
+  the new coverage, per standing constraint.** The panel could not be mounted while it was inline in
+  the 6,000-line `App` component, which imports `./store` — and `store` runs `init()` (storage,
+  sound) at module load. The JSX moved verbatim: same element order, class names, `data-testid`s,
+  copy and HTML entities. The three values `App` computed beside it are now computed inside it from
+  the same expressions — `routePreview(game, dest)`, `routeCheckReadout(game, dest, armedDieIndex)`,
+  and `dieArmed = armedDieIndex !== null` (`App` passes `state.selectedDie`, so this is the same
+  boolean). Props-only, store-free, decides no rule: the variant choice stays `routeCheckReadout`'s
+  in `format.ts`.
+- **`packages/ui/src/App.tsx`** — the inline panel is replaced by `<RoutePreviewPanel …/>`; the local
+  `routeCheck` const and the now-unused `routeCheckReadout` import are deleted. `preview` stays
+  (`showPreview` still reads it).
+- **Coverage, where the Accept says it goes.** New
+  `packages/ui/src/__tests__/route-preview-panel.test.tsx`
+  (7 tests, `// @vitest-environment jsdom` + `@testing-library/react`, `cleanup` wired
+  explicitly because this package runs without `globals`): ordinary destination renders **zero**
+  `route-dc` elements AND no `/PILOT DC/` text (so dropping the testid while keeping the misleading
+  words still fails) plus the `route-no-check` copy; armed die renders `route-die-effect` with
+  percentages recomputed in-test from `navDieFuelDiscount`/`navDieEvasionFactor`; an L-018 DOM-level
+  negative control loops **every** charted ordinary system in both armed and unarmed states; the
+  **unlocked** crossing (`nemesis.crossing.unlocked` set — asserted plottable via `starmapGlobe`,
+  not assumed) renders `route-dc` equal to `NEMESIS_CROSSING_DC` and to `routePreview(...).dc`, with
+  and without a die armed; and two extraction-inertness tests (distance/fuel/danger match the
+  engine preview; confirm button label + `disabled` gate, and its click calls `onConfirm` once).
+- **The stale ruling that caused the miss is amended, not left to trap the next coder.**
+  `docs/TEST-TIER-DECISIONS.md` **TT-12** asserted "this repo has no `@testing-library/react`" and
+  **TT-13** read "a UI acceptance clause asking for DOM pane tests is discharged at the STORE level
+  plus Playwright". New **TT-13a** records the boundary: when the defect IS the markup, and the
+  gate that always runs is `npm test` (never `test:e2e`), the discharge is TT-13's own sanctioned
+  exception — a per-file `@vitest-environment jsdom` docblock — under four bounds (package
+  `environment` stays `node`; the component is extracted store-free first; the e2e spec is kept,
+  not weakened; the pane test is mutation-checked). TT-12's permanent half ("never `../store`") is
+  restated as unchanged.
+- **Mutation-checked, not assumed.** With `{routeCheck.kind === 'dc' &&` forced to `{true &&` and
+  the DC re-sourced from `preview.dc` — i.e. the exact original bug re-introduced — 3 of the 7 tests
+  fail. Reverted; 7/7 green.
+- **Gate (fix round 1).** `npm run format` run BEFORE the gate. `npm test` 2,743 passed / 0 failed
+  across all six workspaces; `npx tsc -b`, `npm run lint`, `npm run format:check` exit 0; e2e
+  `starmap nemesis-crossing walkthrough` 25/25 passed (the extraction is inert in a real browser).
+
+**Delivered (2026-08-06):** the dead "PILOT DC" readout is gone from every ordinary jump —
+`routeCheckReadout` (`packages/ui/src/format.ts`) now returns `{kind:'dc'}` only for the Nemesis
+crossing (the one branch `resolveTravel` still rolls a Pilot check against), `{kind:'die-effect'}`
+showing the armed die's live fuel/evasion effect for ordinary jumps, or `{kind:'no-check'}` when no
+die is armed; `App.tsx`'s `.rp-grid` no longer renders `PILOT DC` at all, and the walkthrough copy
+was corrected to match. The first pass landed the selector and updated e2e coverage; a review pass
+(FIX ROUND 1) found the Accept's DOM pane-test clause had not actually been discharged and stood up
+a jsdom + testing-library tier (`RoutePreviewPanel.tsx` extracted store-free, the new
+`route-preview-panel.test.tsx`, `docs/TEST-TIER-DECISIONS.md` TT-13a) to close it, mutation-checked
+against the original bug. Deliberately out of scope: two adjacent findings were filed rather than
+fixed — T-258 (a latent `travelPreview`/`resolveTravel` fuel-discount mismatch on the crossing,
+unreachable until T-237 lands) and T-259 (the `travelRollsPilotCheck` predicate extraction, deferred
+to avoid owing a standalone `rulesFingerprint` capstone sweep for an otherwise-inert engine-source
+change) — both left `packages/engine` and `packages/content` untouched; this task stayed UI-only
+end to end.
+Orchestration: attempts=2/4.
 
 ### T-194 · The dawn hand's die-value mechanic is illegible — teach it, and make success visible — `status: TODO` · `coder: opus` · `after: T-198`
 
@@ -1483,6 +1614,65 @@ economy, not numbers the owner may still re-tune.
    this one.
 
 Gate green.
+
+### T-258 · BUG: `travelPreview` discounts the crossing's fuel bill; `resolveTravel` does not — `status: TODO` · `coder: opus` · `after: T-237`
+
+**Found by T-193 while reading the two functions side by side. LATENT, NOT LIVE — see the risk
+analysis.** `travelPreview` (`packages/engine/src/actions/travel.ts:253-255`) applies
+`navDieFuelDiscount(die)` to `fuelCost` whenever a `die` argument is passed, with no crossing
+exclusion. `resolveTravel` (same file, `:676-678`) deliberately excludes it —
+`isCrossing ? baseFuelRequired : discounted` — because the Nemesis crossing has its own quoted burn
+(`quoteCrossingStake`) that must not drift out from under the quote. So
+`travelPreview(state, NEMESIS_SYSTEM_ID, die)` **understates** the crossing's bill, breaking
+`travelPreview`'s own stated contract ("reads only existing engine functions, so it invents no rule
+and can never disagree with `resolveTravel`").
+
+**Bug Discovery Policy risk analysis, written not asserted.** (a) OUT OF SCOPE for T-193: the fix is
+a code edit to `packages/engine/src/**`, which `packages/sim`'s `rulesFingerprint` hashes wholesale
+— T-193 measured that appending a single line of code to `travel.ts` flips `balance-smoke.test.ts`'s
+"the fixture describes the ruleset in the working tree · is not stale" assertion red, so even this
+one-line guard owes a full 8,000-run capstone sweep and must be batched into one. (b) DOES NOT
+COMPOUND: **no caller passes a die today.** Every `routePreview`/`travelPreview` call site in the UI
+uses the two-argument form (`App.tsx`'s starmap preview, the manifest rows, the contract cards), and
+T-193 deliberately did not start passing one — it reads the die's effect through
+`navDieFuelDiscount`/`navDieEvasionFactor` directly and never asks the preview to apply it. The bug
+becomes reachable **only** if T-237 rules "pass the armed die", which is why it is gated
+`after: T-237` and named as a prerequisite inside T-237's Accept rather than left free-floating.
+
+**Accept:** `travelPreview` excludes the crossing from the die discount by the same predicate
+`resolveTravel` uses (ideally the one T-259 extracts, so the exclusion is stated once, not twice); a
+test pins `travelPreview(state, NEMESIS_SYSTEM_ID, 20).fuelCost === travelPreview(state,
+NEMESIS_SYSTEM_ID).fuelCost` **and** that an ordinary destination still discounts, so a fix that
+disabled the discount everywhere fails; the fingerprint move is predicted up front and folded into
+the milestone capstone (never a standalone sweep); gate green.
+
+### T-259 · Extract `travelRollsPilotCheck(destination)` so the resolver and the UI stop restating the same predicate — `status: TODO` · `coder: opus` · `after: —`
+
+**Deferred extraction, filed by T-193 with its measured evidence.** Since T-1605, "does this jump
+roll a Pilot check?" is `destination === NEMESIS_SYSTEM_ID`, and that predicate is now written in
+two places: `resolveTravel`'s `isCrossing` (`packages/engine/src/actions/travel.ts:662`) and
+`routeCheckReadout` in `packages/ui/src/format.ts`, which T-193 added so the starmap would stop
+advertising a dead DC. The clean shape is a single exported `travelRollsPilotCheck(destination)` in
+`travel.ts`, read by `resolveTravel`, by `travelPreview`, and by the UI selector.
+
+**Why it was not done inside T-193 (measured, not assumed):** `packages/sim/src/balance/
+rules-fingerprint.ts` hashes the semantic source of `packages/engine/src/**` plus
+`packages/content/src` wholesale. T-193 probed it — appending one line of *code* (not comment) to
+`travel.ts` flips `balance-smoke.test.ts`'s "is not stale" assertion from pass to fail — so a
+provably inert extraction would owe an 8,000-run capstone sweep on its own. T-193 therefore stayed
+UI-only and had the selector branch on the same **content** constant (`NEMESIS_SYSTEM_ID`) the
+resolver branches on, reading the DC itself out of `travelPreview` so the two cannot quietly
+disagree. Does not compound: the duplication is one comparison against a content id, both sides name
+each other in comments, and any future change to which routes roll a check would fail T-193's
+`packages/ui/src/__tests__/route-preview.test.ts` negative-control loop.
+
+**Accept:** `travelRollsPilotCheck(destination)` lives in `packages/engine/src/actions/travel.ts`,
+exported through the engine barrel, and is the ONLY place the predicate is written — `resolveTravel`
+consumes it in place of the inline `isCrossing` comparison, and `packages/ui/src/format.ts`'s
+`routeCheckReadout` consumes it in place of its own `NEMESIS_SYSTEM_ID` comparison; the move is
+proved behaviour-preserving in its own commit; **batched into the next milestone capstone together
+with T-258 and any other engine-source work** (never a standalone sweep) with `npm run format` run
+BEFORE the capstone; gate green.
 
 ---
 
@@ -2664,7 +2854,11 @@ ruling at every call site (`packages/ui/src/App.tsx:3731`, `:3799`, `:4774`, `:5
 their then-current lines), with no site left silently disagreeing with another; a test pins
 preview-vs-charge agreement (or, if the ceiling is ruled, pins that the preview is never an
 understatement) so the divergence cannot re-open unnoticed; if the discount is shown, T-195's
-feature is verified visible in the cockpit rather than only asserted; gate green.
+feature is verified visible in the cockpit rather than only asserted; **and, if and only if the
+ruling is "pass the armed die", T-258 is fixed FIRST or in the same pass** — `travelPreview` applies
+the die discount to the Nemesis crossing while `resolveTravel` does not, so passing a die would make
+the crossing quote an understated bill the moment this ruling lands (T-258 carries the full
+analysis); gate green.
 
 ### T-254 · F-204-2: the internal vocabulary is split — Hangout in code, Cantina on screen — `status: TODO` · `coder: opus` · `after: —`
 

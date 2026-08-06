@@ -1,12 +1,27 @@
 import { test, expect, type Page } from '@playwright/test';
 import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
-import { jumpFuelCost, travelDc, maxJumpDistance } from '@spacerquest/engine';
+import {
+  jumpFuelCost,
+  maxJumpDistance,
+  navDieFuelDiscount,
+  navDieEvasionFactor,
+} from '@spacerquest/engine';
 import { distance, STAR_SYSTEMS } from '@spacerquest/content';
 
 // T-304 acceptance: plan and execute a jump entirely via the starmap; the
 // fuel-range ring and route preview match the engine's own math (asserted
 // against the imported engine functions — nothing is recomputed by hand here);
 // unreachable systems are visibly gated, never clickable-then-error.
+//
+// T-193 · the route preview's PILOT DC readout is GONE for ordinary jumps, and
+// this spec is the DOM half of that acceptance. T-1605 deleted the pilot check
+// from ordinary travel (only the Nemesis crossing still rolls), but the panel
+// went on printing `travelDc(...)` for every destination — a stat check that
+// could not fail. The assertions below now pin its ABSENCE (`route-dc` count 0)
+// plus the honest replacement: the armed die's real T-195 effect, or a stated
+// "no check" when no die is armed. `travelDc` is deliberately no longer imported
+// here; `nemesis-crossing.spec.ts` is the positive control for the DC that
+// survives.
 //
 // The starter ship is deterministic (state.ts): drives {strength:10,condition:9}
 // and 300 fuel. Every rule number the test expects flows from an engine call.
@@ -41,9 +56,11 @@ function sysNode(page: Page, id: number) {
 test('plan and execute a jump entirely via the map', async ({ page }) => {
   await page.goto('/');
   // Seed 1 deals the dawn hand [17,15,15,7,4] on Sol (system 1). The Sol->
-  // Aldebaran-1 (1->2) jump spans distance 5, so travelDc(5)=10; Die 0 (value 17)
-  // + PILOT 1 = 18 clears that DC-10 pilot check, and the seeded jump to the
+  // Aldebaran-1 (1->2) jump spans distance 5, and the seeded jump to the
   // adjacent system triggers no encounter — a stable seed, not a retry.
+  // T-193: die 0 (value 17) no longer clears a check (there is none on an
+  // ordinary jump); it buys a fuel discount and encounter evasion instead, and
+  // that is what the preview must say.
   await newGameSeed(page, 1);
 
   // 1) Assign a die from the hand.
@@ -61,7 +78,16 @@ test('plan and execute a jump entirely via the map', async ({ page }) => {
   await expect(page.getByTestId('route-fuel')).toHaveText(
     String(jumpFuelCost(STARTER_DRIVES, d, false)),
   );
-  await expect(page.getByTestId('route-dc')).toHaveText(String(travelDc(d)));
+  // T-193 · NO Pilot DC is offered for an ordinary jump, because none is rolled.
+  await expect(page.getByTestId('route-dc')).toHaveCount(0);
+  // What IS offered: what the armed die (17) really does — both percentages
+  // computed here from the engine helpers, never typed in by hand.
+  const armed = 17;
+  await expect(page.getByTestId('route-die-effect')).toHaveText(
+    `FUEL −${Math.round(navDieFuelDiscount(armed) * 100)}% · ENCOUNTER −${Math.round(
+      (1 - navDieEvasionFactor(armed)) * 100,
+    )}%`,
+  );
 
   // 3) Commit the jump.
   await page.getByTestId('confirm-jump').click();
@@ -103,7 +129,10 @@ test('fuel ring and route preview match engine math', async ({ page }) => {
   await expect(page.getByTestId('route-fuel')).toHaveText(
     String(jumpFuelCost(STARTER_DRIVES, d, false)),
   );
-  await expect(page.getByTestId('route-dc')).toHaveText(String(travelDc(d)));
+  // T-193 · no die is armed in this test, so the check row states the fact
+  // plainly rather than showing a DC nothing will roll against.
+  await expect(page.getByTestId('route-dc')).toHaveCount(0);
+  await expect(page.getByTestId('route-no-check')).toBeVisible();
 
   // The fuel-range ring is drawn at exactly maxJumpDistance for the starter ship.
   const units = await page.getByTestId('fuel-ring').getAttribute('data-radius-units');
