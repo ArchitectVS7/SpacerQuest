@@ -973,7 +973,7 @@ with the cap at its widest — the data-dependent case the original bug needed. 
 Orchestration: bundled into T-218's pass, per T-218's own Accept clause; rode T-218's ladder rather
 than a separate one of its own — attempts=4/4 (T-218's).
 
-### T-250 · F-185-4: the playtest-logging default is still the interim ON — `status: TODO` · `coder: opus` · `after: —`
+### T-250 · F-185-4: the playtest-logging default is still the interim ON — `status: DONE` · `coder: opus` · `after: —`
 
 F-185-4 left the playtest-logging default at the interim ON that HEAD `5b430136` flipped it to "for
 the internal UAT build", and nothing else in `TASKS.md` or `TODO.md` tracks restoring it. VERIFIED
@@ -993,6 +993,93 @@ reason recorded and dated — the two are never left disagreeing; whichever way 
 first, so the restore cannot pass silently; the interim-ON provenance (HEAD `5b430136`, "for the
 internal UAT build") is recorded beside the outcome; the desktop shell's session JSONL behaviour under
 the chosen default is stated; gate green.
+
+**Delivered (2026-08-06) — RESTORED to spec §3's OFF; the spec was NOT amended to ON.** One line of
+behaviour moved: `packages/ui/src/playtestLog.ts`'s `isPlaytestLoggingEnabled` is back to
+`storage.getItem(PLAYTEST_LOGGING_KEY) === 'on'`, byte-for-byte the pre-`5b430136` form. Everything
+else in this change is comments, provenance and the three pins that make the default unforgettable.
+
+**Why restore rather than amend.** The flip was self-labelled temporary in three places at once
+(`playtestLog.ts`'s header, `store.ts`'s `CockpitState.playtestLogging` doc, and the spec preamble's
+"**must be reverted to OFF before any public/Steam release**"), so restoring is the documented exit,
+not a fresh decision. It also costs internal UAT nothing: both tester runbooks —
+`docs/playtests/T-158-pre-uat-brief.md` §2 and `docs/playtests/T-198-pacing-brief.md` §2, the latter
+written *after* the flip — already say "**turn logging ON — it is OFF by default and it is not in your
+save**" and already tell the tester to switch it on once per browser profile / install. The interim ON
+had been silently contradicting the instructions the owner actually reads.
+
+**Provenance, recorded beside the outcome** (in the spec preamble, the `playtestLog.ts` header, and
+here): HEAD `5b430136`, 2026-08-03, "Playtest logging defaults on for internal UAT; file T-185/186/187
+from owner's first playtest pass" — an owner directive to default logging ON "for the pre-public
+internal build so a UAT session isn't lost to a forgotten toggle". Consent, disclosure copy and opt-out
+were unchanged throughout; only the virgin-profile default ever moved. The spec's `INTERIM DEVIATION`
+block is now `INTERIM DEVIATION, CLOSED (T-250, 2026-08-06)` — a dated record of the whole episode
+rather than a deletion — and §3 line 56's "**OFF by default.**" was never touched, so the two are
+agreeing again rather than one having been bent to the other.
+
+**Fail-first evidence — all three suites shown red against the OLD default before the one-line change
+landed** (test and doc edits made first, `playtestLog.ts` left at `!== 'off'`):
+
+- `npm test -w @spacerquest/ui -- playtest-log` → `1 failed | 21 passed (22)`;
+  `src/__tests__/playtest-log.test.ts > … > defaults OFF on a virgin profile (spec §3)` —
+  `AssertionError: expected true to be false // Object.is equality` at line 76.
+- `npm run test:e2e -w @spacerquest/ui -- playtest-logging` → `1 failed / 2 passed`;
+  `defaults OFF (spec §3), with the disclosure at the toggle and no controls until opt-in` —
+  `expect(locator).toHaveAttribute` `Expected: "false" / Received: "true"`, the locator resolving to
+  `<button aria-pressed="true" class="set-toggle on" …>On</button>`, at spec line 108.
+- `npm run test:e2e -w @spacerquest/desktop -- shell.spec.ts -g "playtest"` → `1 failed`;
+  `writes nothing until the player opts in, then appends the real action stream` — same
+  `Expected: "false" / Received: "true"` on the same button, at `shell.spec.ts:662`.
+
+After the one-line restore, all three are green: `22 passed (22)`, `3 passed (7.4s)`, `1 passed (9.3s)`.
+One honest note on the third web test ("the toggle survives a reload"): its persistence direction was
+INVERTED by this change, and inverted it passes vacuously under the old default rather than failing —
+while the default was ON, "still ON after a reload" could be true with nothing stored, which is exactly
+why the test previously stored OFF; under the restored OFF the meaningful direction is the other one,
+so it now stores ON and the reload assertion can only pass if the preference really was written. The
+fail-first pins are the two literal `aria-pressed` assertions and the unit test, not that one.
+
+**What the pins are, and why they are literal.** The e2e suites are not in the gate, so the durable
+guard is `packages/ui/src/__tests__/playtest-log.test.ts`'s "defaults OFF on a virgin profile (spec
+§3)"; `packages/ui/e2e/playtest-logging.spec.ts` and `packages/desktop/e2e/shell.spec.ts` are the
+UI-level guard the task asked for. All three assert the default LITERALLY rather than reading it
+through the `setLogging(page, on)` helper. The helper stays (establishing a known state is still right
+discipline) but is deliberately not used for the default itself — a default-agnostic assertion is
+precisely the "passes silently" failure this task exists to prevent, and it is what let the desktop
+test go quiet in the first place.
+
+**Desktop session JSONL under the restored OFF default** (added to spec §4, echoed in `shell.spec.ts`'s
+comment): a session in which the player never opts in writes **nothing at all** — no `logs/` directory
+and no session file. `packages/desktop/src/playtestLog.ts` calls `mkdirSync` *inside* `append`, so both
+the log directory (`main.ts`'s `resolveLogDir`: `SQ_LOG_DIR ?? app.getPath('userData')/logs`) and
+`playtest-<sessionId>.jsonl` are created lazily by the first line the renderer sends. After opt-in the
+file is appended line-by-line and unbuffered, one file per session, so the last line before a crash is
+already on disk. Pinned by that spec's `expect(existsSync(logDir)).toBe(false)` after a real `payDebt`
+taken before the toggle is pressed.
+
+**Drift the restore closed.** `packages/ui/src/App.tsx`'s Playtest-section header ("OFF BY DEFAULT AND
+VISIBLY SO") and `store.ts`'s `setPlaytestLogging` comment ("OFF by default, spec §3") were never
+updated by `5b430136` and had been false for three days; they are true again with no edit. The two
+comments `5b430136` *did* change — `store.ts`'s `playtest` import header and the
+`CockpitState.playtestLogging` doc — are restored to their pre-flip wording. A repo-wide grep for
+`INTERIM DEVIATION` / `pre-public` / `revert before public` now returns only the closed record in the
+spec and the provenance paragraph in `playtestLog.ts`.
+
+**No save-shape change and no migration owed.** The toggle is a client preference under
+`sq.playtest.logging` in `storage.ts`'s `KeyValueStore`, never `GameState`; `CURRENT_SAVE_VERSION`
+stays at its live value and its pin in `playtest-log.test.ts` was not touched. No `packages/content`
+surface is involved, so no `rulesFingerprint`, capstone or sweep is implicated.
+
+**No `CHANGELOG.md` entry, deliberately.** The shipped/public design never changed — spec §3 has said
+OFF by default since the document was written, and the flip only ever reached the pre-public internal
+build. This is an internal default returning to spec, not a player-visible change, so a changelog line
+would be describing a behaviour no released build ever had. The omission is a decision, recorded here.
+
+**Gate:** `npm test` (exit 0 — 2,699 passed across the six workspaces: 74 / 110 / 61 / 1,391 / 587 /
+476, zero failed), `npx tsc -b` (exit 0), `npm run lint` (exit 0), `npm run format:check` ("All matched
+files use Prettier code style!", exit 0). `npm run format` was run before the gate, not after.
+
+Orchestration: attempts=1/4.
 
 ---
 

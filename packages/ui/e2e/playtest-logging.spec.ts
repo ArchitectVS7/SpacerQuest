@@ -39,13 +39,16 @@ async function openSettings(page: Page): Promise<void> {
 /**
  * Put the logging toggle into a known state, through the real control.
  *
- * WHY THIS EXISTS (found at T-185). These tests used to CLICK the toggle and
- * assume the click turned it on, which silently encoded the build default into
- * every one of them. The owner's 2026-08-03 directive flipped that default to ON
- * for the pre-public internal build (`playtestLog.ts`'s header; spec §3's OFF is
- * to be restored before public release) — the unit suite was updated with it and
- * these three were not, so the whole file went red. Reading the control's state
- * before deciding whether to press it is what makes them survive the revert too.
+ * WHY THIS EXISTS (found at T-185, kept at T-250). These tests used to CLICK the
+ * toggle and assume the click turned it on, which silently encoded the build
+ * default into every one of them; `5b430136` (2026-08-03, "Playtest logging
+ * defaults on for internal UAT") flipped that default and the whole file went
+ * red. T-250 restored spec §3's OFF, and this helper stays: a test that wants a
+ * KNOWN state should establish it, not assume it.
+ *
+ * It is deliberately NOT used for the default itself. The first test below
+ * asserts `aria-pressed` literally, because a default-agnostic assertion is
+ * exactly how a future flip would land unnoticed.
  */
 async function setLogging(page: Page, on: boolean): Promise<void> {
   const toggle = page.getByTestId('set-playtest-logging');
@@ -88,28 +91,37 @@ test.describe('T-141 opt-in playtest logging', () => {
     await newGameSeed(page, 424242);
   });
 
-  test('carries the build default, with the disclosure at the toggle and no controls when off', async ({
+  test('defaults OFF (spec §3), with the disclosure at the toggle and no controls until opt-in', async ({
     page,
   }) => {
     await openSettings(page);
 
     const toggle = page.getByTestId('set-playtest-logging');
-    // THE INTERIM DEFAULT IS ON (owner directive, 2026-08-03 — see
-    // `playtestLog.ts`'s header and `docs/PLAYTEST-TELEMETRY_SPEC.md` §3's noted
-    // deviation): a UAT session must not be lost to a forgotten toggle. Spec §3's
-    // SHIPPED design is OFF by default and MUST be restored before public
-    // release; asserting the live default here — rather than assuming it — is
-    // what makes that revert impossible to forget, because this line has to
-    // change with it.
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    await expect(toggle).toHaveText('On');
+    // SPEC §3: "OFF by default." Asserted LITERALLY on a virgin profile — the
+    // `beforeEach` clears `localStorage`, so no `sq.playtest.logging` key exists
+    // and this is the build's own default, not a stored preference. Between
+    // `5b430136` (2026-08-03, "Playtest logging defaults on for internal UAT")
+    // and T-250 (2026-08-06) this read `'true'` / `'On'`; the restore had to
+    // change these two lines, which is the whole point of pinning the default
+    // here rather than reading it through `setLogging`. A default-agnostic
+    // assertion would let the next flip land silently.
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(toggle).toHaveText('Off');
     // The disclosure copy sits AT the toggle in either state, which is the part
     // spec §3 actually requires of the UI.
     await expect(page.getByTestId('playtest-disclosure')).toHaveText(PLAYTEST_DISCLOSURE);
     await expect(page.getByTestId('playtest-panel')).toContainText(PLAYTEST_TOGGLE_LABEL);
 
-    // Turned OFF, there is nothing to flag and nothing to export — a control that
-    // would refuse is worse than a control that is not there.
+    // In that default state there is nothing to flag and nothing to export — a
+    // control that would refuse is worse than a control that is not there. Under
+    // OFF-by-default this is a claim about the VIRGIN profile, which is stronger
+    // than the old version's claim about a profile that had been toggled off.
+    await expect(page.getByTestId('playtest-flag')).toHaveCount(0);
+    await expect(page.getByTestId('playtest-export-json')).toHaveCount(0);
+
+    // Opting in reveals them, and opting back out retracts them again.
+    await setLogging(page, true);
+    await expect(page.getByTestId('playtest-export-json')).toBeVisible();
     await setLogging(page, false);
     await expect(page.getByTestId('playtest-flag')).toHaveCount(0);
     await expect(page.getByTestId('playtest-export-json')).toHaveCount(0);
@@ -118,8 +130,10 @@ test.describe('T-141 opt-in playtest logging', () => {
   test('captures real actions, flags a moment and exports a file', async ({ page }) => {
     await openSettings(page);
     // OFF and then ON, rather than one click: the claim under test is that a
-    // tester who opts in captures FROM THAT POINT, so the buffer has to be
-    // empty at a known moment regardless of what the build defaults to.
+    // tester who opts in captures FROM THAT POINT, so the buffer has to be empty
+    // at a known moment regardless of what the build defaults to. (The default
+    // itself is pinned by the test above; this one is deliberately agnostic so
+    // it keeps testing capture rather than re-testing the default.)
     await setLogging(page, false);
     await setLogging(page, true);
     await expect(page.getByTestId('playtest-entry-count')).toHaveText('0 captured');
@@ -160,18 +174,19 @@ test.describe('T-141 opt-in playtest logging', () => {
     // without ever having ridden the envelope.
     await openSettings(page);
     // Persistence is asserted in the direction that is NOT the build's default,
-    // deliberately: "still on after a reload" would pass without anything having
-    // been written at all while the interim default is ON. "Still OFF after a
+    // deliberately — and T-250's restore INVERTED which direction that is. While
+    // the interim default was ON, "still on after a reload" would have passed
+    // with nothing written at all, so the test stored OFF. Now the default is
+    // OFF (spec §3), so the vacuous direction is the other one: "still ON after a
     // reload" can only be true if the preference really was stored.
-    await setLogging(page, false);
+    await setLogging(page, true);
     await closeSettings(page);
 
     await page.reload();
     await openSettings(page);
-    await expect(page.getByTestId('set-playtest-logging')).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('set-playtest-logging')).toHaveAttribute('aria-pressed', 'true');
 
-    // Turn it on: the controls appear.
-    await setLogging(page, true);
+    // …and the controls the opt-in unlocks came back with it.
     await expect(page.getByTestId('playtest-export-json')).toBeVisible();
 
     // Turn it back off: the controls retract and nothing further is captured.

@@ -641,18 +641,24 @@ test.describe('T-141 · opt-in playtest logging', () => {
     const { app, page } = await launch({ saveDir, userDataDir, logDir });
     await startCareer(page, 141);
 
-    // --- OFF means NOTHING ON DISK ------------------------------------------
-    // The OFF state is now ESTABLISHED through the real toggle rather than
-    // assumed from the build default. Found at T-185: the owner's 2026-08-03
-    // directive flipped the default to ON for the pre-public internal build
-    // (`packages/ui/src/playtestLog.ts`'s header; spec §3's OFF is to be
-    // restored before public release) and this test still asserted the old
-    // default, so it was red on a clean tree. Driving the control instead of
-    // trusting the default makes the claim — "off writes nothing" — true under
-    // either default, and it survives the revert unchanged.
+    // --- OFF BY DEFAULT MEANS NOTHING ON DISK -------------------------------
+    // Spec §3: "OFF by default." `launch({ userDataDir })` gets a fresh temp
+    // profile per run, so there is no `sq.playtest.logging` key at all and the
+    // shell must open with capture off — asserted literally, not established by
+    // pressing the control first. Between `5b430136` (2026-08-03, "Playtest
+    // logging defaults on for internal UAT") and T-250 (2026-08-06) the internal
+    // build defaulted ON and this test defensively clicked the toggle off; that
+    // made the claim default-agnostic, which is precisely how the next flip
+    // would land silently. It now fails if the default moves.
+    //
+    // What "nothing on disk" means here: `packages/desktop/src/playtestLog.ts`
+    // does its `mkdirSync` INSIDE `append`, so `logDir`
+    // (`SQ_LOG_DIR ?? userData/logs`, `main.ts`'s `resolveLogDir`) and
+    // `playtest-<sessionId>.jsonl` are both created lazily by the first line the
+    // renderer sends. A session where the player never opts in therefore leaves
+    // no directory and no file — which is what the `existsSync` below pins.
     await openSettings(page);
     const toggle = page.getByTestId('set-playtest-logging');
-    if ((await toggle.getAttribute('aria-pressed')) === 'true') await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
     await closeSettings(page);
 

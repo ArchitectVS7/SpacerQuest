@@ -62,15 +62,18 @@ describe('T-141 · the toggle is a client preference, never save state', () => {
     resetPlaytestLogForTests();
   });
 
-  it('defaults ON on a virgin profile (interim pre-public setting)', () => {
-    // Spec §3's shipped design is OFF by default; the pre-public internal build
-    // deviates to ON (spec header, "INTERIM DEVIATION", 2026-08-03) so a UAT
-    // session isn't lost to a forgotten toggle. Discharged by the READ (an
-    // absent key is not `'off'`), not by a constant someone could forget to
-    // apply. Revert this assertion to `false`/`toBeNull` when reverting the
-    // default for public release.
+  it('defaults OFF on a virgin profile (spec §3)', () => {
+    // Spec §3: "OFF by default." Discharged by the READ (an absent key is not
+    // `'on'`), not by a constant someone could forget to apply — which is why
+    // this assertion survives a refactor of the storage layer but not a change
+    // of the default. Between `5b430136` (2026-08-03, "Playtest logging defaults
+    // on for internal UAT") and T-250 (2026-08-06) the read was `!== 'off'` and
+    // this pin asserted `true`; that interim flip is reverted and the spec's
+    // deviation block is closed. THIS is the durable guard — the e2e pins in
+    // `e2e/playtest-logging.spec.ts` and `packages/desktop/e2e/shell.spec.ts`
+    // are the UI-level ones, but they are not in the gate.
     expect(storage.getItem(PLAYTEST_LOGGING_KEY)).toBeNull();
-    expect(isPlaytestLoggingEnabled()).toBe(true);
+    expect(isPlaytestLoggingEnabled()).toBe(false);
   });
 
   it('persists through storage.ts’s KeyValueStore, under the sq. prefix', () => {

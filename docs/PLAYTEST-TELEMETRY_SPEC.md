@@ -10,13 +10,20 @@ two share a trace-entry shape (§6) so one analysis pipeline can read both.
 opt-in only, with explicit disclosure copy: **gameplay actions only — no personally
 identifying information, no location.**
 
-**INTERIM DEVIATION (owner directive, 2026-08-03):** the pre-public internal build ships
-with the toggle defaulting **ON** instead, so an internal UAT session isn't lost to a
-forgotten toggle — implemented in `packages/ui/src/playtestLog.ts`'s
-`isPlaytestLoggingEnabled`. Consent, disclosure copy, and opt-out all still work exactly as
-specified below; only the virgin-profile default changed. **This must be reverted to OFF
-before any public/Steam release** — the shipped-design sections below are unchanged and
-remain the source of truth for that release.
+**INTERIM DEVIATION, CLOSED (T-250, 2026-08-06).** From `5b430136` (2026-08-03, "Playtest
+logging defaults on for internal UAT" — an owner directive, so an internal UAT session
+wasn't lost to a forgotten toggle) until T-250, the pre-public internal build shipped the
+toggle defaulting **ON**, implemented as `!== 'off'` in `packages/ui/src/playtestLog.ts`'s
+`isPlaytestLoggingEnabled`. **§3's OFF-by-default is live again as of 2026-08-06**: consent,
+disclosure copy and opt-out were unchanged throughout, and only the virgin-profile default
+ever moved. Internal UAT is unaffected — both tester briefs
+(`docs/playtests/T-158-pre-uat-brief.md` §2 and `docs/playtests/T-198-pacing-brief.md` §2)
+always instructed "turn logging ON — it is OFF by default", which the interim flip had been
+silently contradicting. The restore is pinned by
+`packages/ui/src/__tests__/playtest-log.test.ts` ("defaults OFF on a virgin profile"),
+`packages/ui/e2e/playtest-logging.spec.ts` and `packages/desktop/e2e/shell.spec.ts`, each
+asserting the default literally rather than reading it, so a future flip cannot land
+silently.
 
 ## 0. Platform context
 
@@ -73,6 +80,16 @@ absence drives §5 below: this spec does not stand one up.
 - **Browser (dev/playtest loop only):** no filesystem access, so the log accumulates
   in-memory or `IndexedDB` for the session's duration and is only ever materialized as a file
   at export time (§5).
+
+**Desktop session JSONL under §3's OFF default (stated at T-250):** a session in which the
+player never opts in writes **nothing at all** — no `logs/` directory and no session file.
+`packages/desktop/src/playtestLog.ts` calls `mkdirSync` *inside* `append`, so both the log
+directory (`main.ts`'s `resolveLogDir`: `SQ_LOG_DIR ?? app.getPath('userData')/logs`) and
+`playtest-<sessionId>.jsonl` are created lazily by the first line the renderer sends. After
+opt-in the file is appended line-by-line and unbuffered, one file per session, so the last
+line before a crash is already on disk. Pinned by `packages/desktop/e2e/shell.spec.ts`'s
+`expect(existsSync(logDir)).toBe(false)` after a real action taken before the toggle is
+pressed.
 
 ## 5. Submission is explicit, never silent
 
