@@ -1958,6 +1958,14 @@ fired **576 times (7.25%)**, up from 248 (1.80%) — the fold rate rose from 0.0
 
 ### 12.7 CONQUEROR — the crossing day, reported and not retuned (§6.6)
 
+> **CLOSED AT T-170 (2026-08-05).** The 300-day arm this section said the rig does not run has now
+> been run — `docs/balance/baseline-t170-conqueror-300d.json`, 8,000 rows, same fleet and same
+> seeds, `--days` the only variable. `38` is **confirmed as correctly sized**: the gambler's median
+> career lands exactly on 38 and 57.9% cross, at a median crossing day of **249**; all seven
+> non-dice policies stay at **zero** across 7,000 careers. F-148-5 closes as MEASURED AND
+> CONFIRMED, no retune. **See §12.12.** The 120-day reading below stands unchanged and was
+> reproduced field-for-field by that arm's day-120 milestone.
+
 **No policy reaches `RENOWN_DEED_THRESHOLDS.CONQUEROR = 38` inside 120 days — dice-playing or
 not.** Arm 1, seeds 1..120 × 120 days, all eight policies:
 
@@ -2160,7 +2168,15 @@ explicit §4.6 amendment or a rule that hands the effective band out without a t
 improvised here. Left for an owner call**, and it is the natural companion to T-150's parity row.
 
 **F-148-5 · CONQUEROR = 38 is unreached at 120 days by every policy, dice or not.** Status:
-REPORTED, NOT FIXED, exactly as §6.6 instructs. The gambler's median moved 25 → 28; the controls sit
+**MEASURED AND CONFIRMED AT T-170 (2026-08-05) — CLOSED, no retune.** The 300-day arm this
+filing asked for is `docs/balance/baseline-t170-conqueror-300d.json` (8,000 rows, same fleet, same
+seeds, `--days` the only variable, both fingerprints equal to the baseline of record's). Against
+the 59-deed slate the `gambler`'s deedCount median is **38** with 57.9% reaching CONQUEROR at a
+median crossing day of 249, and all seven non-dice policies return **0 of 7,000** — so the
+threshold is a 300-day capstone that behaves at 300 days exactly as T-1603b sized it to, and
+`RENOWN_DEED_THRESHOLDS` was again not touched. **§12.12.** The original filing follows verbatim.
+
+Status at filing: REPORTED, NOT FIXED, exactly as §6.6 instructs. The gambler's median moved 25 → 28; the controls sit
 at 20; nobody reaches 38. The threshold was sized off a **300-day** measurement against a **44**-deed
 slate and is now being read against a 120-day horizon and a **59**-deed slate. Recommendation: the
 number that would settle it is a 300-day arm, which this rig does not run. **Do not rescale the
@@ -2181,7 +2197,7 @@ point: a capstone that reports a bad number and quietly moves a constant has fai
 | `BAD_CREDULITY` = 1 and `archetypeMove` | `engine/liarsDiceRules.ts:761` | The inverted ordering, z = −30.76 | The policies do what they are specified to do. Retuning them would paper over F-137-1. |
 | The four tone mixes | `content/liarsDice.ts:97-100` | `random` is only 6.45% of hands and `bad` 8.88% | Reweighting toward the *harder* seat means reweighting toward `bad`, which is only harder *because* of F-137-1. Circular. |
 | The 42-row bankroll table (280,800 cr) | `content/liarsDice.ts:107+` | Only 20.24% of the cap is drawn in 120 days | The cap is doing its job — it is a ceiling, not a target, and it is nowhere near binding. |
-| `RENOWN_DEED_THRESHOLDS.CONQUEROR` = 38 | `content/deeds.ts:289` | Unreached by every policy at 120 days | §6.6: report, do not retune. It was sized off a 300-day arm; a 120-day arm cannot overrule it. |
+| `RENOWN_DEED_THRESHOLDS.CONQUEROR` = 38 | `content/deeds.ts:300` (was `:289`; T-170's provenance comment shifted it) | Unreached by every policy at 120 days | §6.6: report, do not retune. It was sized off a 300-day arm; a 120-day arm cannot overrule it. **MEASURED AT T-170:** the 300-day arm ran — gambler median **38**, 57.9% CONQUEROR, median crossing day 249, all seven controls 0 of 7,000. **The lever stays unpulled, now with the number behind it:** 38 is confirmed correctly sized, not merely undecided. |
 | `GAMBLER_MAX_DARES_PER_DAY` = 2 | `sim/index.ts` | Sets the 1.415 hands/day that decides all of §12.1 | It is the instrument's throttle. Changing it would move the pacing answer by fiat. |
 
 ---
@@ -2216,7 +2232,13 @@ point: a capstone that reports a bad number and quietly moves a constant has fai
 5. **The Peek and the player-side RAISE BOTH remain unmeasured**, unchanged from §16.0's
    limitations 1 and 2 — `planDareMove` still never peeks (0 `DarePeeked` in 122,381 hands across
    both arms) and still has no raise-both branch.
-6. **CONQUEROR needs a 300-day arm**, not a 120-day one, before anyone may rescale it.
+6. ~~**CONQUEROR needs a 300-day arm**, not a 120-day one, before anyone may rescale it.~~
+   **RESOLVED AT T-170.** The arm ran: `docs/balance/baseline-t170-conqueror-300d.json`, 8,000 rows,
+   the baseline of record's fleet and seeds with `--days` the only variable (both fingerprints
+   equal, and the day-120 milestone reproduces the 120-day arm field-for-field). Nobody rescaled
+   anything, because the measurement **confirmed** the number rather than challenging it: the
+   gambler's median career lands exactly on 38 (57.9% CONQUEROR, median crossing day 249) and the
+   seven non-dice policies return 0 of 7,000. §12.12.
 7. **§10's item 4 — whether the 42 get `VisitHangout` cast parity — is still D2's deferred row and
    is T-150's to re-ask** against the finished system, now with §12.3's numbers underneath it.
 
@@ -2314,3 +2336,172 @@ tuned:
 2. **`renownRanks.GIGA_HERO` appears for the first time on the gambler row.** A new terminal rank
    reached by one policy is a pacing observation for the same owner call, and §6.6's "report, do
    not retune" governs it.
+
+---
+
+## §12.12 · T-170 — CONQUEROR at the horizon it was sized against (2026-08-05)
+
+**What this section closes.** F-148-5, and §12.10 item 6 with it. §12.7 reported that no policy
+reaches `RENOWN_DEED_THRESHOLDS.CONQUEROR = 38` inside 120 days and refused to retune off that
+number, on the ground that the threshold was sized off a **300-day** arm this rig did not run.
+This section runs it.
+
+### 12.12.0 Method — one variable, and the proof that it is one variable
+
+**The arm.** `--label t170-conqueror-300d --seeds 1000 --days 300 --policies
+trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy --milestone-days
+21,29,30,41,60,120,150,180,210,240,270,300`, eight **1-indexed** shards then `--merge`
+(the merge run under `NODE_OPTIONS=--max-old-space-size=16384`, which is process memory and not a
+band). **8,000 rows verified at merge** — the log prints eight `merged 1000 rows` lines and
+`wrote aggregate for 8000 rows to …/docs/balance/baseline-t170-conqueror-300d.json`. Gate **PASS**
+on all eight shards and on the merged set, **0 invariant violations**, every rate inside its band
+at the long horizon. Committed as `docs/balance/baseline-t170-conqueror-300d.json`.
+
+**The fleet, the seeds and the first six milestone days are the baseline of record's**, so the two
+arms differ in exactly one variable — `--days`. That claim is stamped, not asserted:
+
+| | `baseline-t168-effective-band.json` | this arm |
+| --- | --- | --- |
+| `rulesFingerprint` | `f264d7f4a2d56fde` | **`f264d7f4a2d56fde`** |
+| `instrumentFingerprint` | `b8894cb6c678fce6` | **`b8894cb6c678fce6`** |
+| seeds × policies | 1,000 × 8 = 8,000 rows | 1,000 × 8 = 8,000 rows |
+| `--days` | 120 | **300** |
+
+Both fingerprints were also recomputed from the tree at this commit and match. **And the arm
+reproduces the 120-day arm exactly where they overlap**: for all eight policies the
+`milestones[day=120]` sample — `playerDeedCount`, `playerCredits`, `playerDebt`, `playerFuel`,
+`playerTier` — is **field-for-field identical** to the baseline of record's. Careers are
+horizon-independent; a 300-day run is a strict *extension* of the 120-day career on the same seed,
+not a different sample. So 100% of the difference below is the horizon, and nothing else.
+
+**The slate is 59 deeds** (`DEEDS.length`, `packages/content/src/deeds.ts`), read from content at
+this commit. §0's ground-truth table still says 44; that table is an explicitly dated 2026-07-31
+snapshot and is left alone rather than back-edited.
+
+**§12.0's limitation 1 still binds and still bounds the headline.** Seven of the eight policies
+play zero hands, so the `gambler` row is the *maximal dice playstyle* — an upper bound with nothing
+to interpolate against. What that limitation does **not** weaken is the negative result: the seven
+non-dice controls are a genuine measurement of what a non-dice career banks in 300 days.
+
+### 12.12.1 The measurement — 8 policies × 1,000 careers × 300 days
+
+`deedCount` at the horizon, with the 120-day column beside it (read from
+`baseline-t168-effective-band.json`), and CONQUEROR attainment out of 1,000:
+
+| policy | 300d median | p90 | max | mean | **CONQUEROR / 1,000** | 120d median | 120d p90 | 120d max | 120d CONQUEROR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| **`gambler`** (the dice career) | **38** | 41 | 44 | 37.858 | **579 (57.9%)** | 28 | 31 | 36 | 0 |
+| `smuggler` | 33 | 34 | 35 | 32.443 | **0** | 29 | 31 | 34 | 0 |
+| `explorer` | 30 | 31 | 33 | 30.096 | **0** | 27 | 29 | 32 | 0 |
+| **`veteran`** (control) | 26 | 26 | 27 | 25.007 | **0** | 21 | 22 | 25 | 0 |
+| `trader-degraded` | 23 | 25 | 28 | 23.039 | **0** | 20 | 22 | 25 | 0 |
+| **`trader`** (control) | 22 | 25 | 27 | 22.473 | **0** | 20 | 22 | 25 | 0 |
+| `fighter` | 17 | 20 | 22 | 14.729 | **0** | 17 | 19 | 21 | 0 |
+| `greedy` | 9 | 12 | 15 | 9.123 | **0** | 9 | 12 | 15 | 0 |
+| `fleet` (pooled, n = 8,000) | 25 | 36 | 44 | 24.346 | 579 (7.24%) | 21 | 29 | 36 | 0 |
+
+The gambler's full `renownRanks` at 300 days: **CONQUEROR 579**, GIGA_HERO 418, MEGA_HERO 3 — and
+nothing below. At 120 days the same 1,000 careers read MEGA_HERO 679, GRAND_MUFTI 184,
+GIGA_HERO 134, TOP_DOG 3, **CONQUEROR 0**. The next-best policy's *maximum* career, `smuggler` at
+35, is still **three deeds short** of 38 after 300 days.
+
+**The milestone bracket — median `playerDeedCount` by day**, which is where the crossing sits:
+
+| day | gambler | smuggler | explorer | veteran | trader-degraded | trader | fighter | greedy |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 21 | 15 | 19 | 19 | 10 | 13 | 12 | 11 | 6 |
+| 60 | 20 | 25 | 23 | 17 | 18 | 16 | 14 | 8 |
+| 120 | 28 | 29 | 27 | 21 | 20 | 19 | 17 | 9 |
+| 150 | 30 | 30 | 28 | 22 | 21 | 20 | 17 | 9 |
+| 180 | 32 | 31 | 29 | 23 | 22 | 21 | 17 | 9 |
+| 210 | 34 | 32 | 30 | 24 | 22 | 22 | 17 | 9 |
+| 240 | 36 | 32 | 30 | 25 | 23 | 22 | 17 | 9 |
+| 270 | 37 | 32 | 30 | 26 | 23 | 22 | 17 | 9 |
+| 300 | **38** | 33 | 30 | 26 | 23 | 22 | 17 | 9 |
+
+First milestone day at which the **median** career reaches 38: **`gambler` day 300; every other
+policy never, inside 300.** For the gambler the `max` career crosses by day 150 and the `p90`
+career by day 210. Every non-dice policy has flattened by day 210 — `fighter` and `greedy` are
+static from day 150 — so extending the horizon further would not move them.
+
+**The exact crossing day, from a separate out-of-tree probe.** The aggregate cannot report it
+(`MAX_TRACKED_DEED = 5` in `packages/sim/src/balance/aggregate.ts`, and `SeedRow` carries no
+`daily[]`), and raising either would move `instrumentFingerprint` for a number the accept does not
+require. So it was measured beside the arm, not inside it: driver
+`runCampaign(seed, 300, 'gambler')`, seeds 1..120, horizon 300, reading `daily[].deedsEarned` and
+`daily[].renownRank`. **73 of 120 careers (60.8%) reach CONQUEROR** — consistent with the arm's
+57.9% at n = 1,000 — and the crossing day is **min 146, p25 220, median 249, p75 270, max 300**.
+The running deed count and the `renownRank` flip agree on the same day in all 73. That is the
+sentence §12.7 said this rig could not produce: **a dice-playing career crosses 38 around day
+249.**
+
+### 12.12.2 The verdict — MEASURED AND CONFIRMED, no retune
+
+**`RENOWN_DEED_THRESHOLDS.CONQUEROR = 38` is correctly sized, and F-148-5 closes as measured.**
+
+The threshold is a **horizon** property, not a difficulty problem, and that is exactly how T-1603b
+sized it. Read against the 300-day horizon it was derived for:
+
+- The deliberate dice career reaches it — median career lands **exactly on 38**, 57.9% cross, the
+  best career banks 44 of the 59 authored deeds. **Six deeds of headroom below what the top career
+  actually banks** — numerically the same headroom T-1603b's derivation asked for, arrived at from
+  a completely different direction (a fleet sweep instead of two pinned deed-hunter seeds).
+- Nobody else comes close — seven policies, 7,000 careers, **zero** CONQUEROR, the best of them
+  three deeds short at its maximum. The capstone is not the default state.
+- It sits **7 above `GIGA_HERO = 31`**, and the arm shows that gap is real work: the gambler spends
+  from ~day 150 to ~day 249 crossing it, and 418 of 1,000 careers stop inside it.
+- It remains **≤ `DEEDS.length` = 59**, which `deeds.test.ts` asserts from content.
+
+**This also answers §6.6's original question, in full.** §12.7 could only say the fifteen dice
+deeds bought the gambler a **+8-deed lead** over a trader at 120 days and that the lead was not
+enough at that horizon. At 300 days the lead is **+16** (38 vs 22) and it is precisely what carries
+the dice career over 38 while the controls flatten out. The ladder does become materially easier
+for a dice-playing captain, and the capstone is what it buys.
+
+**The fleet arm and the deliberate-play rig now agree from opposite directions.** 38 is
+independently pinned through play by `packages/sim/src/__tests__/deed-coverage.test.ts`, which
+drives `deedHunterPolicy` over seeds 1..76 at a **300-day** horizon and asserts that some career
+reaches CONQUEROR with a real `RenownRankUp` on the wire. A set-seeking deliberate player and a
+bankroll-seeking fleet policy both land on the far side of 38 inside 300 days; neither lands there
+inside 120. Two instruments, one answer.
+
+**What this does NOT license.** The 57.9% is the maximal dice playstyle. A casual-dice policy would
+sit between the gambler's 38 and the smuggler's 33, and §12.10 item 4 still owns that gap. Nothing
+here says a *player* reaches 38 in 300 days of their own play; it says the rank is reachable by a
+committed career at the horizon it was designed for, which is the property that was in doubt.
+
+### 12.12.3 Nothing was tuned
+
+`git diff --stat` for this commit, restricted to hashed rule and instrument sources, is one
+comment-only hunk:
+
+```
+$ git diff --stat -- packages/engine/src packages/content/src \
+    packages/sim/src/index.ts packages/sim/src/protocol.ts \
+    packages/sim/src/balance packages/ui/src
+ packages/content/src/deeds.ts | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+```
+
+That hunk adds a T-170 provenance paragraph above `CONQUEROR: 38`. **The value on that line did not
+change**, and comments are stripped before hashing (`hashSemantic`,
+`packages/sim/src/balance/rules-fingerprint.ts`), so `computeRulesFingerprint` still reads
+`f264d7f4a2d56fde` after the edit — recomputed and confirmed, not assumed. `instrumentFingerprint`
+is untouched at `b8894cb6c678fce6`. **No capstone is owed and no smoke re-extract is owed.**
+
+Left alone, deliberately, and named so the omission is auditable:
+
+- **`RENOWN_DEED_THRESHOLDS` in full** — `LIEUTENANT 0`, `COMMANDER 1`, `CAPTAIN 5`, `COMMODORE 9`,
+  `ADMIRAL 13`, `TOP_DOG 17`, `GRAND_MUFTI 21`, `MEGA_HERO 26`, `GIGA_HERO 31`, `CONQUEROR 38`. Not
+  one rung moved. BR-51 makes these owner-gated; this task measures and reports, which is what it
+  was asked for, and the measurement happens to confirm the number rather than challenge it.
+- `LIARS_DICE_UNLOCK_GAMES` `[5,10,20,40,80]` and `LIARS_DICE_RAISED_CEILING_MULT = 3` — §12.9's
+  levers table, still unpulled.
+- `MAX_TRACKED_DEED = 5` and the `SeedRow` shape — raising either would have given the crossing day
+  from the aggregate at the cost of moving `instrumentFingerprint` and staling every smoke fixture.
+  The out-of-tree probe in §12.12.1 buys the same number for nothing.
+- **The baseline of record was NOT re-pinned.** This is a diagnostic arm at a non-standard horizon,
+  exactly as T-148's Arms 1 and 2 were; `balance-targets.test.ts` and the other BR-14 pointers still
+  point at `baseline-t168-effective-band.json`, and `baseline-pointers.test.ts` still passes.
+- **`balance:extract` was NOT run against this arm.** Re-cutting the smoke fixtures off a 300-day
+  arm is the F-146-0 class of error.

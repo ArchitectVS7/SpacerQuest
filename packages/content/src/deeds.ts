@@ -286,6 +286,17 @@ export const RENOWN_DEED_THRESHOLDS = {
   // near-perfect checklist, while sitting 7 above GIGA_HERO so the last rung is
   // the longest. It remains ≤ `DEEDS.length`, which `deeds.test.ts` asserts from
   // content so growing or shrinking the slate cannot strand the capstone.
+  //
+  // RE-MEASURED AT THE SIZING HORIZON (T-170, 2026-08-05), because T-148 read
+  // this number against a 120-day sweep and a 59-deed slate and could not tell
+  // whether it was mis-sized or merely being read early. The 300-day arm —
+  // `docs/balance/baseline-t170-conqueror-300d.json`, 8 policies x 1,000 seeds x
+  // 300 days = 8,000 rows, the baseline of record's fleet and seeds with `--days`
+  // the only variable — says it was being read early. Against the 59-deed slate
+  // the dice career's deedCount median is 38 EXACTLY, 579 of 1,000 reach this
+  // rank (median crossing day 249), the best career banks 44, and all seven
+  // non-dice policies return 0 of 7,000. CONFIRMED, NOT RETUNED: this value is
+  // unchanged. See `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.12.
   CONQUEROR: 38,
 } as const satisfies Record<RenownRankId, number>;
 

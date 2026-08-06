@@ -1760,7 +1760,7 @@ every baseline in the same commit that measured it.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
-### T-170 · F-148-5: `CONQUEROR = 38` is unreached at 120 days by every policy — run the 300-day arm — `status: TODO` · `coder: opus` · `after: T-198`
+### T-170 · F-148-5: `CONQUEROR = 38` is unreached at 120 days by every policy — run the 300-day arm — `status: DONE` · `coder: opus` · `after: T-198`
 
 `RENOWN_DEED_THRESHOLDS.CONQUEROR` = 38 (`packages/content/src/deeds.ts:289`) is unreached at 120
 days by every policy, dice or not. `gambler` deedCount median 25 → 28 (max 34 at n=1,000, GIGA_HERO
@@ -1773,6 +1773,69 @@ The number that would settle it is a 300-day arm this rig does not run — so th
 per policy against the 59-deed slate; the threshold is then either confirmed as correctly sized or
 re-derived with the new number stated; `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12 updated; no retune
 lands without the measurement behind it; gate green.
+
+**Delivered (2026-08-05). VERDICT: MEASURED AND CONFIRMED — `CONQUEROR = 38` is correctly sized;
+NO RETUNE.** This was a measurement task: no engine rule, no content *value* and no instrument
+changed. The one source edit is a provenance comment above `CONQUEROR: 38`, which the comment
+itself shifts from `packages/content/src/deeds.ts:289` to `:300` — §12.9's levers-table pin was
+re-read and updated with it rather than left to rot.
+
+**The arm, verbatim** (eight **1-indexed** shards concurrently, then `--merge`; the merge under
+`NODE_OPTIONS=--max-old-space-size=16384`, which is process memory, not a band):
+
+```
+npm run balance:sweep -- --label t170-conqueror-300d --seeds 1000 --days 300 \
+  --policies trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy \
+  --milestone-days 21,29,30,41,60,120,150,180,210,240,270,300 --shard $i/8      # i = 1..8
+NODE_OPTIONS=--max-old-space-size=16384 npm run balance:sweep -- --label t170-conqueror-300d --merge
+```
+
+Merge log: eight `merged 1000 rows from rows-t170-conqueror-300d-shard<i>of8.json` lines and
+`wrote aggregate for 8000 rows to …/docs/balance/baseline-t170-conqueror-300d.json` — **8,000 rows
+confirmed**. Gate **PASS** on all eight shards *and* on the merged set, **0 invariant violations**,
+every rate inside its band at the 300-day horizon (no long-horizon gate finding to file). Committed
+as `docs/balance/baseline-t170-conqueror-300d.json`.
+
+**Stamps.** The arm is stamped `rulesFingerprint f264d7f4a2d56fde` / `instrumentFingerprint
+b8894cb6c678fce6` — **identical to `baseline-t168-effective-band.json`'s**, and to the tree's,
+recomputed at this commit. That is what licenses attributing 100% of the difference to `--days`.
+**And the "first 120 days byte-identical" check passed**: for all eight policies the arm's
+`milestones[day=120]` sample (`playerDeedCount`, `playerCredits`, `playerDebt`, `playerFuel`,
+`playerTier`) is field-for-field equal to the baseline of record's. `DEEDS.length` read from
+content at this commit: **59**.
+
+**Headline, per policy, 1,000 careers each × 300 days.** `gambler` deedCount median **38** (p90 41,
+max 44, mean 37.858), **CONQUEROR 579 / 1,000 (57.9%)**, `renownRanks` CONQUEROR 579 / GIGA_HERO
+418 / MEGA_HERO 3. The two controls: `veteran` median **26**, CONQUEROR **0 / 1,000**; `trader`
+median **22**, CONQUEROR **0 / 1,000**. All seven non-dice policies: **0 CONQUEROR in 7,000
+careers**, the best of them (`smuggler`) three short at its maximum of 35. Median crossing day
+**249** (min 146, p75 270), from a separate out-of-tree probe — driver
+`runCampaign(seed, 300, 'gambler')`, seeds 1..120, horizon 300, reading `daily[].deedsEarned` and
+`daily[].renownRank`, which agree on the same day in all 73 of 120 careers that cross.
+
+**Branch A** of the two the plan allowed: confirmed as correctly sized, as a *horizon* property.
+38 keeps six deeds of headroom below the 44 the top career banks, sits 7 above `GIGA_HERO = 31`
+with 418 of 1,000 careers stopping inside that gap, and stays ≤ `DEEDS.length = 59` — T-1603b's
+own derivation, reproduced from a fleet sweep instead of two pinned deed-hunter seeds. It also
+answers §6.6: the fifteen dice deeds bought a +8-deed lead at 120 days and a **+16**-deed lead at
+300, and that lead is what carries the dice career over 38 while the controls flatten by day 210.
+`packages/sim/src/__tests__/deed-coverage.test.ts` (deed-hunter, 300-day horizon) pins the same
+rank from the opposite direction, so the two rigs agree. **F-148-5 closes as MEASURED AND
+CONFIRMED.**
+
+Docs: `docs/LIARS-DICE-PROGRESSION_SPEC.md` **new §12.12** (12.12.0 method / 12.12.1 measurement /
+12.12.2 verdict / 12.12.3 nothing was tuned), plus §12.7 closing pointer, §12.9's F-148-5 paragraph
+flipped to CLOSED, §12.9's levers-table CONQUEROR row, and §12.10 item 6 struck through as
+RESOLVED. `docs/BALANCE-RIG-DECISIONS.md` BR-51 carries the dated MEASURED clause with the
+derivation. §0's dated 2026-07-31 ground-truth table was deliberately left alone.
+
+**No `rulesFingerprint` or `instrumentFingerprint` move; no capstone owed; baseline of record NOT
+re-pinned; no smoke re-extract.** Both hashes recomputed after the `deeds.ts` comment edit and
+still read `f264d7f4a2d56fde` / `b8894cb6c678fce6` (comments are stripped by `hashSemantic`).
+`baseline-pointers.test.ts` green. Gate: `npm run format`, `npx tsc -b`, `npm run lint`,
+`npm run format:check`, `npm test` — all clean.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
 ### T-175 · F-160-1: the archetype ordering SURVIVES the F-137-1 fix — `optimal` is still the softest seat — `status: TODO` · `coder: opus` · `after: T-160, T-198`
 

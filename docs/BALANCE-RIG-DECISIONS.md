@@ -422,7 +422,22 @@ neither time.
 **BR-51 — `RENOWN_DEED_THRESHOLDS.CONQUEROR = 38` must not be rescaled off a 120-day
 capstone.** (T-148) It was sized off a 300-day measurement against a 44-deed slate and is
 being read against a 120-day horizon and a 59-deed slate; only a 300-day arm may overrule
-it. Report, do not retune.
+it. Report, do not retune. **MEASURED AT T-170 (2026-08-05) — CONFIRMED, NOT RETUNED, and
+no owner ruling is needed because nothing is being asked to change.** The 300-day arm ran:
+`docs/balance/baseline-t170-conqueror-300d.json`, 8 policies × 1,000 seeds × 300 days =
+8,000 rows, the baseline of record's own fleet and seeds with `--days` the only variable
+(`rulesFingerprint` `f264d7f4a2d56fde` and `instrumentFingerprint` `b8894cb6c678fce6` equal
+on both arms, and the arm's day-120 milestone reproduces `baseline-t168-effective-band.json`
+field-for-field on all eight policies). Against the 59-deed slate the `gambler` deedCount
+median is **38** (p90 41, max 44, mean 37.858) with **579 of 1,000 reaching CONQUEROR** at a
+median crossing day of **249** (out-of-tree probe, `runCampaign(seed, 300, 'gambler')`, seeds
+1..120); all seven non-dice policies return **0 of 7,000**, the best of them (`smuggler`)
+three deeds short at its maximum of 35. So 38 keeps six deeds of headroom below what the top
+career banks, sits 7 above `GIGA_HERO = 31` with 418 of 1,000 careers stopping inside that
+gap, and stays ≤ `DEEDS.length = 59` — T-1603b's derivation, reproduced from a fleet sweep
+instead of two pinned deed-hunter seeds. `RENOWN_DEED_THRESHOLDS` was not touched; the only
+source edit at T-170 is a provenance comment above `CONQUEROR: 38`. Full write-up:
+`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.12.
 
 **BR-52 — `LIARS_DICE_UNLOCK_GAMES` `[5,10,20,40,80]` stays as authored.** (T-148) Rung 5
 opens at median day 55 and carries 53.04% of all hands, but widening the ladder would be
