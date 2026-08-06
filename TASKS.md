@@ -167,6 +167,14 @@ Out of scope for 0.5.2 — recorded so a coder does not re-scope them in:
   MADE.** Both systems are functional and capstoned, and T-150 restated each row against them
   with current numbers (`docs/HANGOUT_REDESIGN.md` §11.4, `docs/EXPLORE_REDESIGN.md` §10.4).
   **Both rows remain UNRULED — N8 un-gates on the owner's ruling, not on T-150.**
+  **RULED (owner, 2026-08-05): YES — NPCs get both verbs.** Both PARITY LEDGER rows (Explore,
+  VisitHangout) close as "cast included," against the fresh T-150 numbers already on record. This
+  un-gates **N8** (T-180) and the rest of the deferred N-series bullet below (N12, N5, N13) for
+  scheduling — none of their `status:` fields are flipped by this bullet alone; each still needs
+  its own task pass to close, including re-measuring the three VisitHangout-deferred defects
+  (faucet mint, off-Hangout Socialize share, 150cr ante lockout) now that the cast is in. Record
+  this ruling in `docs/HANGOUT_REDESIGN.md` §11.4, `docs/EXPLORE_REDESIGN.md` §10.4 and the two
+  PARITY LEDGER rows in `docs/NPC_REDESIGN.md` the next time either doc is touched.
 - **The three Hangout defects — status updated at the T-130 gate (2026-07-31):** the missing
   `hasHangout` check is now SCHEDULED (T-149, the fiction fix only); the faucet's mint stays
   deferred by D3's ruling (<0.3% of NPC wealth, not worth breaking `resolveNpcDay`'s
@@ -1930,7 +1938,7 @@ discipline stated; gate green.
 
 ## M13 — Harvested: owner rulings and unscheduled builds
 
-### T-179 · Record the three unruled `docs/PLAYER-TRINKETS_SPEC.md` §12 questions — `status: TODO` · `coder: sonnet` · `after: T-198` · `[BLOCKED BY = Owner ruling]`
+### T-179 · Record the three unruled `docs/PLAYER-TRINKETS_SPEC.md` §12 questions — `status: DONE` · `coder: sonnet` · `after: T-198`
 
 `docs/PLAYER-TRINKETS_SPEC.md` §12 hands back THREE questions UNRULED and no ruling has been
 recorded since 2026-08-01: **(12.1)** the go/no-go — C "do nothing" recommended 4/4, A costs one
@@ -1947,6 +1955,10 @@ Prepare the ask (the three questions restated with their costs), then halt for t
 the consequence of each ruling stated (notably whether W2 opens `player.stats`, which would make
 F-151-5's missing `StatBlockSchema` bounds and F-151-6's missing stats pin immediately due); the
 task halts `BLOCKED` for the owner and is never self-approved.
+
+**RULED (owner, 2026-08-05):** 12.1 = C (do nothing), 12.2 = NO confirmed / +1 ceiling accepted,
+12.3 = W1 (keep write-once). Recorded in full in `docs/PLAYER-TRINKETS_SPEC.md` §12. No build
+scheduled; `player.stats` stays write-once; F-151-5/F-151-6 stay parked.
 
 ### T-180 · N8 — the actor-parameterised `resolveVisitHangout`, un-gated but unscheduled — `status: TODO` · `coder: opus` · `after: T-198`
 
@@ -1995,7 +2007,7 @@ verbal notes, captured per the Bug Discovery Policy rather than left in conversa
 UX/design, not correctness defects — filed as tasks, not as `F-` findings, because each is
 substantial enough to need its own implementation pass.
 
-### T-185 · Zero audio feedback in play — investigate before rebuilding, then add music — `status: BLOCKED(awaiting owner playtest — feel finding, not auto-verifiable)` · `coder: opus` · `after: —`
+### T-185 · Zero audio feedback in play — investigate before rebuilding, then add music — `status: DONE` · `coder: opus` · `after: —`
 
 Owner's read after a live session: "music and sound FX is going to be a must. There is just zero
 feedback, and it is hard to feel like we are playing anything." **This is surprising given what's
@@ -2128,7 +2140,12 @@ assertion; `packages/desktop/e2e/shell.spec.ts` extended with one Electron test,
 names the desktop build. Gate: `npm test` 2,217 green across the five workspaces (286 in `@spacerquest/ui`, +29 from this task), `npx tsc -b`, `npm run lint`,
 `npm run format:check` clean; UI e2e 118/118, desktop shell e2e 8/8.
 
-**WHY THIS IS BLOCKED AND NOT DONE.** The Accept's last clause is a second owner playtest confirming
+**RULED (owner, 2026-08-05): DONE.** Confirmed on a subsequent playthrough, between the original
+complaint and this check-in, that the audio reads correctly — the drive-hum bed, cue levels, and
+the mood-driven score all land. Closing condition satisfied via live play, not a re-run of the
+scripted 6-step pass below (kept for the record, not re-executed).
+
+**WHY THIS WAS BLOCKED AND NOT DONE UNTIL NOW.** The Accept's last clause is a second owner playtest confirming
 the game "feels like something" — a feel finding no test can discharge, on the T-157/T-158
 escalate-and-halt precedent. **The scripted pass for the owner (system volume up, please):**
 (1) launch and boot the EXISTING career — the drive bed should be there immediately, before you
@@ -2227,7 +2244,7 @@ demo e2e, all green.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root; oriented directly from `TASKS.md`, `packages/ui/src/{App.tsx,format.ts,store.ts}` and the T-311 e2e. · attempts=1/4.
 
-### T-186 · Visual identity reads as monochrome sameness — resolve the tension with the PRD's committed CRT-amber pillar — `status: TODO` · `coder: opus` · `after: T-198` · `[BLOCKED BY = Owner ruling]`
+### T-186 · Visual identity reads as monochrome sameness — resolve the tension with the PRD's committed CRT-amber pillar — `status: DONE` · `coder: opus` · `after: T-198`
 
 Owner's read: "the monochrome amber is cool, but everything blends together... even here in an IDE
 there is variety of format and color. We need to do something color-wise, I am not quite sure just
@@ -2247,6 +2264,46 @@ PRD-REIMAGINED.md` §4 is updated to match (never silently left to contradict sh
 chosen direction is implemented (`packages/ui/src/theme.css` and call sites), and a screenshot pass
 confirms it reads as a game, not an IDE-neutral palette bolted onto the existing CRT chrome.
 
+**RULED (owner, 2026-08-05) — process, not final direction: run `/bakeoff`.** The owner declined
+to pick a direction from prose/description alone and asked for the Accept criterion's own
+recommended path — independent review plus real mockups compared side by side — before ruling on
+monochrome-vs-accent-hues-vs-harder-break. No longer `BLOCKED`: the next step (`/bakeoff`) needs
+no further owner input to start; the owner ruling this task is still waiting on is which direction
+wins the bakeoff, not whether to run one.
+
+**`/bakeoff` results (2026-08-05).** Three independent reviewers (visual/art director,
+UX-legibility/accessibility, engineering-feasibility), isolated context, each required to build
+and screenshot a real mockup before giving a verdict — not just argue in prose. Strong 3/3
+convergence: all three independently measured the same root defect (panel/background contrast
+1.04:1, pane borders 1.36:1 — both below the 3:1 floor at which a boundary is perceivable at
+all), all three rejected candidate B (a harder break from monochrome — would force rewriting PRD
+§4 *and* invalidating `docs/TECH-STACK.md`'s stated Electron/DOM-over-Tauri/canvas rationale),
+and all three rejected candidate A (per-instrument accent hues) — engineering found it a real
+CSS-architecture trap (custom properties don't cascade the way you'd assume; every derived token
+needs re-declaring at every scope or it silently stays amber), legibility found it a *measured*
+accessibility regression (colorblind simulation: the four instruments collapse to two
+indistinguishable pairs under deuteranopia), visual rejected it as literally the "second
+phosphor colour" the T-302 law and PRD §4 forbid. All three landed on some flavor of "add zero
+hues, fix through structure": engineering and legibility called it **C+** (pure tonal — value
+zoning, reverse-video reserved to exactly one meaning, physical control bodies, wider
+label→value contrast); the visual director called it **D — "one phosphor, two materials"**:
+amber remains the only hue and the only thing that emits light; everything that is not light
+becomes unlit, near-achromatic metal (chassis, bezels, frames). Two real bugs surfaced and
+filed along the way, independent of which direction won: T-216 (the "one phosphor" law is
+already broken in two live UI spots — `--accent`/`--line` never defined, `.as-hostile` hardcoded
+— amended with a measured accessibility-defect finding) and T-217 (the Galactic Wire `LOG`
+button overlapping the ticker text, root-caused to a stale magic-number offset).
+
+**RULED (owner, 2026-08-05): candidate D**, specifically the visual director's own
+`T186-chassis.png` build/palette — not a subsequent synthesis attempt that tried to merge D's
+material framing with C+'s stricter interaction rules (reverse-video-reserved-to-one-meaning,
+flatter achromatic steel), which the owner rejected on sight ("terrible for a lot of reasons").
+**Open scope question for the follow-on build task, not resolved by this ruling:** whether the
+legibility reviewer's specific, measurement-backed interaction rules (reverse video reserved to
+real urgency only instead of used broadly, a physically distinct button body vs. an inert flag,
+a visibly-dead locked-row treatment) get folded into the D implementation, or whether D ships
+as-is with its own original interaction treatment. Not assumed either way — ask before building.
+
 ---
 
 ## M15 — Owner UAT pass 2: board-quadrant feedback (2026-08-03)
@@ -2255,7 +2312,7 @@ Four findings from the owner's second live session, one per board quadrant. Capt
 the Bug Discovery Policy. All four are UX/design, filed as tasks rather than `F-` findings for the
 same reason as M14: each is substantial enough to need its own implementation pass.
 
-### T-188 · Galaxy map: port spacing gives near-zero travel payoff, and a jump is imperceptible — an owner design decision — `status: BLOCKED(Owner pick — 4a/4b/4c)` · `coder: opus` · `after: —`
+### T-188 · Galaxy map: port spacing gives near-zero travel payoff, and a jump is imperceptible — an owner design decision — `status: DONE` · `coder: opus` · `after: —`
 
 Owner's original read: "the galaxy on the top left is too crowded. All the space ports are super
 close together. There is basically zero payoff to travelling between ports... The OG game had a
@@ -2363,8 +2420,23 @@ Gate: `npm test` 118 files / 2,295 tests green across all five workspaces, `npx 
 **NOTE (owner, 2026-08-04): the interactive HTML prototypes (4a/4b, sent as standalone files)
 did not work when opened on the owner's mobile app/device.** Not investigated — the screenshots
 sent alongside them were viewable and are the actual basis for comparison; the live HTML was a
-bonus for drag/zoom feel on desktop. **Still BLOCKED — the owner has not yet picked a direction
-and needs to revisit this later.** Do not treat silence on this as a default pick.
+bonus for drag/zoom feel on desktop.
+
+**RULED (owner, 2026-08-05): 4B — the 3D lat/long globe.** The original 4a/4b/4c standalone
+files no longer existed on disk (never committed, sent as ephemeral attachments only) and were
+regenerated from the real committed data (`coordinates3D`, `orbitalLayout2D`, `distance3D`) for
+re-comparison. Two rounds: the first 4B pass was rejected as not actually reading as a sphere (no
+latitude/longitude graticule); rebuilt with a real dotted lat/long wireframe, current-system hub
+(bright, dim lanes to all reachable systems), and one lit lane for a set course. **A real,
+measured finding surfaced during this pass, and it changes the build's scope:** sampling label
+placement across 90 rotation angles (every 20° yaw × 5 pitches, same bounding-box method as
+`starmap-label-overlap.test.ts`) found **97.8% of rotations have at least one label collision**
+(avg. 4/frame; `Arcturus-6`/`Fomalhaut-2` collided in 22/90 samples). "Rotate to a clean angle"
+is not a real fallback — the 20 charted systems are too tightly clustered near Sol for that to
+reliably work. **Active label-collision suppression (priority: current system → set-course
+target → nearest-to-camera, others hidden until hover/selection) is therefore a required part of
+the build, not a nice-to-have.** Ruling also covers scope: 4B **fully replaces** the flat 2D
+Starmap projection, not a toggle/fallback. Follow-on build task: T-215.
 
 ### T-189 · Ship state panel is an unreadable ledger — replace the number-blur with a real ship diagram — `status: DONE` · `coder: opus` · `after: —`
 
@@ -2883,7 +2955,7 @@ palette and was deliberately not reached into.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent; only `docs/`, `packages/` present) · attempts=1/4.
 
-### T-192 · The manifest's "not docked" state — the half of T-190 that needs a travel duration to exist — `status: TODO` · `coder: opus` · `after: T-188` · `[BLOCKED BY = T-188 ruling]`
+### T-192 · The manifest's "not docked" state — the half of T-190 that needs a travel duration to exist — `status: DONE` · `coder: opus` · `after: T-188`
 
 T-190 shipped the visual-object half of the owner's M15 manifest note: the board is now a clipboard
 bolted to the console, with a clickable header that stows and un-stows the paper. The other half of
@@ -2912,6 +2984,18 @@ board-reading specs (and `e2e/support/career.ts`'s contract picker) must still p
 T-188's ruling produces feedback that
 is NOT an occupiable state (e.g. a stamped ship's-log entry only), say so explicitly and close this
 task as moot rather than manufacturing a state to gate on; gate green.
+
+**RULED MOOT (owner, 2026-08-05).** T-188's actual ruling (2026-08-05, `TASKS.md` T-188) was
+scoped to the map's VISUAL question only — which of 4a/4b/4c to build — and its own accept clause
+explicitly held the live travel formula unchanged: "nothing about Sol-relative distance, fuel cost
+or travel time changes at this step" and "the live travel formula is UNCHANGED by this task."
+`travel.ts` still resolves jumps synchronously; no occupiable in-transit state exists or was ever
+produced. Per this task's own accept clause, that is grounds to close as moot rather than invent a
+docking flag against an instant-jump model. Owner confirmed: jumps stay instant, the manifest
+keeps T-190's shipped behavior (always available at port) as final. No code changes owed; no
+engine state moved; `CURRENT_SAVE_VERSION` unmoved at 15. If a future ruling introduces a real
+transit-duration mechanic, that is a new design decision with its own task, not a reopening of
+this one.
 
 ---
 
@@ -5174,6 +5258,132 @@ stats, ship upgrades, port distances, fuel costs, Liar's Dice payouts, pirate ag
 rewards — eventually most of `packages/content`), run against a **cloned** config that never
 overwrites the committed source, click a test button that runs the real balance sweep, and see
 results — ideally visualized — before deciding whether to actually make the change for real.
+
+### T-215 · Build: the 3D lat/long globe Starmap, replacing the flat 2D projection — `status: TODO` · `coder: opus` · `after: T-188`
+
+T-188's ruling (2026-08-05): build candidate 4B, the rotatable 3D globe, as the live Starmap in
+`App.tsx` — not a prototype, not a toggle-able alternative to the existing flat SVG projection,
+a full replacement of it. Real geometry already exists and is committed: `coordinates3D`,
+`distance3D`, `orbitalLayout2D` in `packages/content/src/systems.ts` (from T-188). This task is
+the drag/zoom interaction, the render (dotted lat/long graticule wireframe, no bright emphasis
+ring), and the lane/label behaviour the ruling specified:
+
+- **Lanes:** dim by default from the player's current (docked) system to every reachable system;
+  the lane to a set course renders bright. Hub is the current system, not always Sol — Sol only
+  looks like the hub today because the sample game state happens to be docked there.
+- **Label collision suppression is required, not optional.** The ruling's own measurement (90
+  sampled rotation angles, same bounding-box method as `starmap-label-overlap.test.ts`) found
+  97.8% of rotations produce at least one label collision among the 20 charted systems — spinning
+  to a "clean" angle is not a reliable fallback. Priority order for which label wins a collision:
+  current system, then the set-course target, then nearest-to-camera (by rotated `z`); losers
+  keep their dot but drop their label until hovered/selected. Use real rendered text metrics for
+  the collision boxes, not a fixed-character-width approximation (the T-188 mockup used one and
+  it visibly under-measured — do not carry that shortcut into the shipped build).
+- **Mobile/cross-platform risk, named and open:** the T-188 interactive HTML prototype failed to
+  open correctly on the owner's mobile device, and this was never root-caused (out of scope at
+  the time — screenshots were the actual basis for that ruling). This task inherits that open
+  risk and must root-cause and resolve it before considering the globe done, since the shipped
+  build (unlike the prototype) is not optional to open correctly.
+- **Retire, don't leave dead:** the existing flat SVG `starmapProjection`/2D rendering path in
+  `App.tsx` is removed once the globe ships, not kept as unreachable code.
+
+**Accept:** the live Starmap renders the rotatable 3D globe (real drag/zoom, not a static frame);
+`starmap-label-overlap.test.ts` (or its 3D-projection successor) passes across a representative
+sample of rotations, not just one; the current-system/course-lane brightness behaviour matches
+the ruling; the mobile-open failure is root-caused and fixed or explicitly re-scoped with a
+reason recorded; the old flat 2D projection code is deleted; gate green.
+
+### T-216 · BUG: `theme.css`'s "one phosphor colour" law is already broken in two live UI spots — `status: TODO` · `coder: opus` · `after: —`
+
+**Found incidentally** during the T-186 visual-identity bake-off (2026-08-05), by the engineering-feasibility reviewer, while establishing the ground truth that "there is currently no second hue anywhere in the shipped UI" — that premise turned out to be false, and this is filed per the Bug Discovery Policy rather than held for later. Confirmed against source directly, not taken on the reviewer's word:
+
+- `packages/ui/src/theme.css:4929,4938,4947` — `color: var(--accent, #4fd1c5)` (teal). `--accent` is **never defined** anywhere in the repo (`grep -n "\-\-accent:" packages/ui/src/theme.css` → no match), so the fallback is what actually renders. Live: `.ship-honor` (the Top Gun Honor List) is rendered at `App.tsx:4381` (`data-testid="honor-list"`) — the player's own row and any held-rank row render teal, not amber.
+- `packages/ui/src/theme.css:4891,4911` — `border: 1px solid var(--line, #2b3a44)` (blue-grey). `--line` is likewise **never defined**; same `.ship-honor` component, so its borders are blue-grey, not amber.
+- `packages/ui/src/theme.css:3217` — `.as-hostile .as-value { color: #e0562a; }` (orange-red), not a broken variable but a hardcoded second hue that bypasses the token system entirely. Live: `App.tsx:3462` builds `` `as-row as-${s.tone}` `` dynamically, so a hostile-attitude row renders orange-red in production right now.
+
+**SEVERITY AMENDMENT (2026-08-05), the T-186 bake-off's legibility/accessibility reviewer,
+independently:** the `.as-hostile` leak is not just a one-phosphor-law consistency violation —
+it is a functional accessibility defect. Simulated via Viénot matrices against the two live
+attitude colors (`#e0562a` hostile vs. `#c0781a` neutral `--amber`): under deuteranopia both
+resolve to hue ≈52° within 3 units on every channel; protanopia is the same collapse. **A
+deuteranope or protanope cannot currently distinguish a hostile captain from a neutral one by
+this color alone.** This raises the Accept bar: closing the leak by giving `.as-hostile` an
+amber-family value does not fully discharge the finding if hostile/neutral then collapse to the
+same *luminance* too — the fix must leave hostile distinguishable from neutral by some
+non-hue-dependent channel (e.g. luminance step, reverse-video, or an icon/glyph), not just move
+the bug from "wrong hue" to "right hue, still indistinguishable."
+
+None of this is dead CSS — both class families are confirmed rendered, not just declared. Whatever T-186 rules (monochrome-only vs. per-instrument accents vs. a harder break), this needs a decision on its own terms: either these three sites get real amber-family values (closing the accidental leak and making "one phosphor" true again), or they get formally adopted as the second/third hue the law already has in production, with `theme.css`'s header law rewritten to say so honestly instead of asserting something the shipped code already contradicts.
+
+**Accept:** `--accent` and `--line` are either defined (as amber-family values, closing the leak) or deliberately promoted to real, documented tokens with `theme.css`'s header comment updated to no longer claim zero second hues; `.as-hostile`'s hardcoded `#e0562a` is resolved the same way — token-ized amber or deliberately kept and documented; a screenshot of `.ship-honor` (Records → ship honors) and an attitude-hostile row confirms the fix; gate green.
+
+### T-217 · BUG: the Galactic Wire ticker scrolls underneath the LOG button — `status: TODO` · `coder: opus` · `after: —`
+
+**Found incidentally** during the T-186 visual-identity bake-off (2026-08-05), by the visual-design
+reviewer, and confirmed independently against a screenshot taken earlier the same session (not
+just the reviewer's word) — visible right now on a live boot: the Galactic Wire band reads
+`GALACTIC WIRE [LOG]uiet. Roll the day and make some news.` instead of `GALACTIC WIRE [LOG]  The
+wire is quiet. Roll the day and make some news.` — the ticker text scrolls in **underneath** the
+LOG button rather than starting clear of it.
+
+**Root cause, confirmed against source.** `packages/ui/src/theme.css:1883-1885` — `.ticker` has a
+hardcoded `padding-left: 138px`, sized to clear the original `.cap` contents (the "GALACTIC WIRE"
+label + pulse dot). `theme.css:1912-1923`'s own comment marks the `.wire-log-btn` as a LATER
+addition ("T-306"), and `App.tsx:5492-5504` confirms it's rendered *inside* the same
+absolutely-positioned `.cap` element, after the label. Adding the button widened `.cap` beyond the
+138px the ticker reserves for it — a magic number that was never updated when T-306 shipped, so
+`.cap`'s real rendered width and the ticker's clearance have silently drifted apart.
+
+**Accept:** the ticker's left clearance tracks `.cap`'s actual rendered width (e.g. measured via
+`ResizeObserver`/`getBoundingClientRect`, or `.cap` reserves its own space via normal flow instead
+of `position: absolute` + a magic-number sibling offset) rather than a hardcoded pixel value that
+can drift again the next time something is added to `.cap`; a screenshot of the Galactic Wire band
+confirms `GALACTIC WIRE [LOG]` and the ticker text no longer overlap; gate green.
+
+### T-218 · Build: ship the "one phosphor, two materials" visual identity — `status: TODO` · `coder: opus` · `after: T-186`
+
+T-186's ruling (2026-08-05): implement candidate D — amber stays the only hue and the only thing
+that emits light; every structural/inert surface (panel chassis, bezels, frames, dividers)
+becomes unlit, near-achromatic steel instead of the current amber-on-amber haze. The owner's
+reference build is the bake-off's visual-director mockup, not the subsequent synthesis attempt
+that layered in the legibility reviewer's stricter interaction rules — that synthesis was
+rejected on sight. Real work: `packages/ui/src/theme.css` (new neutral/steel token family
+alongside the existing five amber tokens, which keep their exact current values per the bake-off
+engineering reviewer's finding — this is additive, not a re-hue), `packages/ui/src/App.tsx` call
+sites for structural chrome, and `docs/PRD-REIMAGINED.md` §4 gets the one added sentence the
+bake-off named (the amber-phosphor commitment survives unchanged in hue-count; the fiction shifts
+from "a monochrome tube" to "amber CRT readouts set into machined metal" — write that sentence,
+don't silently leave §4 undescriptive of what ships).
+
+**RULED (owner, 2026-08-05) — the scope question:** D, plus exactly one interaction rule layered
+in — reverse video reserved to real urgency only. The owner rejected a fuller synthesis attempt
+that also changed D's materials/palette toward the legibility reviewer's flatter, colder steel
+("terrible for a lot of reasons"); the follow-up isolated the single rule from that rejected
+attempt and re-tested it as a minimal diff against D's own unmodified source
+(`chassis-rvrule.html`, built from the bake-off's own `chassis.html` by editing exactly two
+selectors) — approved on sight ("go with this version"). **The two concrete edits, and nothing
+else changes from the ruled D reference build:**
+- `.slot.ready` (the "which die clears this check" badge on Manifest Board rows): was solid
+  `background: var(--ember)` + dark text: now an outlined `var(--well)` fill with an `--ember`
+  border, text and inset glow — no longer a reverse-video fill.
+- `.die.sel` (the armed die in the Dawn Hand tray): was a solid light-amber gradient fill with
+  dark text: now the die's own dark steel gradient stays, with an `--ember` inset ring + glow and
+  `--ember` text — selected reads as "lit," not "inverted."
+- Everything else in the reference build — `.chip.rev` (DEBT), `.flag.urgent`, `.due-soon b`,
+  `.ship-region.damaged .rg-v`, all chassis/steel materials, the manifest "paper," the ledger
+  rail, the wire slot, the dawn-hand tray — is **unchanged** from D as ruled. The button-body and
+  locked-row questions raised when this scope call was first opened are **not** part of this
+  ruling — D's own existing button/lock treatment ships as built, nothing added from the
+  legibility reviewer's build beyond the one rule above.
+
+**Accept:** the live UI renders candidate D's material treatment (steel chassis + amber-only
+light) matching the ruled reference build, with the one reverse-video-discipline edit above
+applied to the die-armed and check-clearing-badge states and nothing else changed from D;
+`docs/PRD-REIMAGINED.md` §4 carries its one added sentence; a live screenshot pass (same
+six-panel board used throughout T-186's bake-off) confirms it reads as the ruled direction, not a
+redrift back toward either the pre-T-186 baseline or the rejected fuller-synthesis attempt; T-216
+and T-217 (both filed during the bake-off) are either fixed in the same pass or explicitly left
+to their own tasks with a reason recorded; gate green.
 
 ### T-209 · CHECKPOINT — do not start M20 until the owner says so — `status: TODO` · `coder: —` · `after: —` · `[BLOCKED BY = Owner priority — resume after visual/core-loop work]`
 

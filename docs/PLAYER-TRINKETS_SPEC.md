@@ -943,6 +943,23 @@ about GUNS.** If the owner wants GUNS in scope, the honest order is: fix the ins
 then rule. This spec does not ask the owner to decide that now; it asks that the ambiguity not be
 laundered into a certainty later.
 
+**RULED (owner, 2026-08-05), all three questions, at T-179:**
+
+- **12.1: C — do nothing.** Matches all 4 reviewers and the rig; zero blast radius. Stat-trinket
+  ambitions stay served by the shipped Class-A ship-element-delta path. Candidates A/B/D are not
+  built this pass.
+- **12.2: NO confirmed, and the hand-set +1 ceiling (§4) is accepted** as the bound that would
+  apply *if* A were ever built — a stat trinket is not the `DiceBenefit`-scoping surface Ruling 2
+  reserved, and no live throttle (the `/10` divisor, the three-module cap) applies to a stat delta
+  by construction, so +1 stands as the deliberately hand-set number, not +2.
+- **12.3: W1 — keep `player.stats` write-once.** Follows automatically from 12.1's C. F-151-5
+  (`StatBlockSchema` has no numeric bounds) and F-151-6 (missing stats pin) stay parked; neither is
+  due, since nothing opens the field.
+
+**Consequence:** §§3–8's candidate-A design stays specified but unbuilt (conditional design, per
+§2.6) — nothing here schedules a build task. If a future owner pass reopens 12.1 to A, the §2.7
+10× re-run of §4/§5 is still owed before any content ships.
+
 ---
 
 ## §13 · Handoff — which future task implements which section
