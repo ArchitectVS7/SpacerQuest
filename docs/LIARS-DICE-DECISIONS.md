@@ -793,6 +793,22 @@ currencies partition, so this may be that same purchase one level up — but the
 named, derived, bounded or tested, and setting a roster-EV floor inside the task that just measured
 it would be fitting a bar to a number.
 
+> **DATED NOTE (T-223, 2026-08-06) — F-220-1 IS CLOSED AS LD-30, AND ONE CLAUSE OF THE PARAGRAPH
+> ABOVE IS CORRECTED.** Nothing in LD-28's numbers or its ruling text is edited; this note records
+> what a later task established. The clause *"LD-26 already ruled that credits buy disposition …
+> so this may be that same purchase one level up"* is **WRONG**, and demonstrably so at a shipped
+> hard null: **a roster seat pays NO disposition at all**
+> (`packages/engine/src/actions/dare.ts:168-181`, §7.6, asserted through the real resolver by
+> `T-145 · roster hands apply NO disposition (§7.6)`). The disposition channel is fed by the
+> **roaming** pool — the pool this very table measures at **+495.8 cr/hand** — so the sink is on the
+> *other side* of LD-26's partition, not one level up it. **LD-30** rules the price **intended** as
+> the price of the SEAT (the richest-candidate seat election meeting content's difficulty-priced
+> purse ladder), re-weights the same cells to content's **own authored census** at **+172.8
+> cr/hand**, and measures the set-seeking instrument that buys what the roster actually sells at
+> **+21.5 cr/hand (n = 11,021)**. **LD-28's two invariants are re-scored and both hold** (pooled EV
+> **+190.1 > 0**, with **27.29 pp** of mix headroom to the break-even roster share; and **≪ +558**).
+> See `docs/LIARS-DICE_REDESIGN.md` §22 and **LD-30**.
+
 **WHAT ENFORCES THIS RULING.** `packages/sim/src/__tests__/campaign-dare-cells.test.ts`, describe
 **`T-220 · LD-28 — the table's standing invariants`**. Four assertions, all sized as detectors
 rather than knife edges, all printing the value, the `n` and the SE on failure, all carrying the
@@ -925,3 +941,151 @@ the **tightest** bar in the hand, so every ante paid only loosens it; a bounded 
 exactly the value `f / (2 + f)` predicts while **tier 5 removes that cap**; and the dead zone at the
 top of every bounded band is exactly one ante wide. T-219's own describe keeps **every** expectation
 it shipped — only its closing comment is redirected here.
+
+---
+
+**LD-30 — THE ROSTER SEAT'S PRICE IS THE PRICE OF THE SEAT, NOT OF A DISPOSITION CHANNEL, AND THE
+MEASURED SINK IS THE SEAT ELECTION RATHER THAN THE TABLE. RULED INTENDED, WITH A BOUNDED STANDING
+INVARIANT SOURCED IN CONTENT'S OWN SEAT CENSUS.** (T-223, ruling on **F-220-1**; filed at T-220 §20.7
+/ LD-28, which measured the pool and was forbidden from pricing it.) **The shape taken is: NOTHING
+CHANGES IN ANY RULE — no band, threshold, fraction, fingerprint or golden is edited in either
+direction.** `packages/engine/src`, `packages/content/src` and `packages/ui/src` are **not touched at
+all** outside `__tests__` (which is in `HASHED_ROOT_IGNORED_DIRECTORIES` and not in
+`SIM_INSTRUMENT_DIRECTORIES`); `rulesFingerprint` was read live before and after at
+**`cabd2112ccf4cefb`**, `instrumentFingerprint` at **`2d6d1990eaf13031`** and `docsFingerprint` at
+**`265aea1d09f0d485`** — **all three unmoved**, so no capstone is owed. `CURRENT_SAVE_VERSION` unmoved
+at **17** (`packages/engine/src/save.ts:627`), re-read live.
+
+**THE FINDING'S ARITHMETIC IS EXACT AND ITS PREMISE IS FALSE.** The pool figures reproduce to every
+published decimal on a fresh 1,600-career arm (`docs/LIARS-DICE_REDESIGN.md` §22.3): roaming
+**+495.8 cr/hand** (n = 157,037), roster **−200.8** (n = 122,820), `roster|optimal` **−482.3**
+(n = 95,580). But F-220-1 reads that as the price of **disposition with a named captain**, and
+**a roster seat pays no disposition at all** — `packages/engine/src/actions/dare.ts:168-181` nulls it
+by construction (§7.6, *"pool A is outside the NPC economy entirely"*), asserted through the real
+resolver at every terminal arm by `T-145 · roster hands apply NO disposition (§7.6)`. The disposition
+channel `docs/HANGOUT_REDESIGN.md` §10.4's interceptor draw depends on is fed by the **roaming**
+pool — **the pool at +495.8**. It is not gated behind the sink; it is on the other side of the
+partition **LD-26 already ruled**, which is cited here rather than restated.
+
+**AND THE LABEL MISLEADS.** "the roster (the named captains)" names the wrong set. The roster is
+LD-11's **authored 42-row house table** (`packages/content/src/liarsDice.ts`, the `ld-` namespace):
+no `NpcState`, no roam, no death, no disposition, no relationship. The **named captains** are the
+roaming pool (LD-12). What a roster seat sells is **`player.liarsDiceBeaten` set closure** (LD-13),
+the fourteen port deeds and the grand slam (LD-14), and the authored `lines`. The price is therefore
+denominated in **progression**, and that is where it is derived below.
+
+**WHAT −200.8 ACTUALLY MEASURES — a derivation, not a preference.** Two shipped facts meet:
+
+- content authors bankroll **monotone in difficulty** — seat 1 (`bad`/`random`) `3 × wager.max`,
+  seat 2 (`mixed`) `5 ×`, seat 3 (`optimal`) `8 ×`, with the table's own header saying *"difficulty
+  rises monotonically with the purse"*; and
+- `planDare` elects **the richest candidate across both pools**, first-wins on a tie — a rule
+  `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.9 F-148-2 already ruled **"RULED, not overlooked"** and
+  forbids re-teaching, *"because changing it re-bases every baseline in the same commit that measures
+  it"*.
+
+So a bankroll-chasing policy sits opposite `optimal` on **77.82%** of its roster hands (seat 3 is
+52.87–64.28% of them in every 30-day window and never less than half; the rest arrives through seat
+2's `mixed` rows resolving to `optimal` at open). And because the pool is **zero-sum** (§7.1) and
+never regenerates (§7.5), every credit lost to seat 3 **grows seat 3's purse and re-elects it
+tomorrow** while the soft seats drain toward the `purse <= 0` skip: measured over 1,600 careers, Σ
+seat-3 purses run **140,400 → 162,433 (+15.7%)** while seats 1 and 2 fall **−6.8%** and **−3.7%**,
+and **5.72 of 42 seats are broke at the horizon**.
+
+**THE DECOMPOSITION, holding every cell's own EV FIXED and changing only the weights** (§22.4; the
+authored census is computed from `LIARS_DICE_OPPONENTS`, each `'mixed'` row distributed by its own
+`mix`, never restated as a literal):
+
+| weighting | `optimal` / `bad` / `random` | **EV / hand** |
+| --- | --- | --- |
+| **as measured** (the seat-picker's mix) | 77.82% / 11.95% / 10.23% | **−200.8** |
+| **LD-11's AUTHORED seat census** | 49.05% / 26.67% / 24.29% | **+172.8** |
+| **flat across the three concrete archetypes** | 33.33% each | **+391.3** |
+
+**AND THE INDEPENDENT CONFIRMATION, on the instrument that actually buys what the roster sells.**
+`deed-hunter.ts`'s roster tour plays unbeaten seats in authored order at **band-minimum** stakes;
+driven over **152 careers × 300 days** (the coverage arm's 76 seeds **doubled so the pool clears
+n ≥ 10,000 on its own count** — the sample was widened, never the bar), it measures the same table at
+**+21.5 cr/hand over n = 11,021**, ends the median career **+1,885 cr up** on the gauntlet
+(**−0.52%** of the median purse, i.e. a gain), closes **2,099 port sets**, banks
+`liars_dice_grand_slam` in **141 of 152 careers**, and leaves **0.00 of 42 seats broke** — §7.5's
+no-lockout theorem is not merely un-violated, it is not approached.
+
+**THE RULING.**
+
+1. **INTENDED — the roster price is the price of the SEAT, denominated in PROGRESSION.** LD-11
+   authors a difficulty ladder and prices it in purse; a policy that always takes the biggest purse
+   always takes the hardest seat and pays for it. The measured −200.8 is that policy's bill, not the
+   table's tariff, and the picker that writes it is ruled elsewhere and not re-opened here.
+2. **ADDED — a bounded standing invariant: the CENSUS BOUND.** The roster pool's EV per hand,
+   re-weighted to LD-11's **own authored seat census** with every cell's measured EV held fixed, must
+   stay **POSITIVE**. The weights are computed from `LIARS_DICE_OPPONENTS` and **the bar is ZERO** —
+   not −200.8 minus slack — so the mechanism holds no literal and a content pass that re-authors the
+   census into a sink goes RED and re-opens LD-30.
+3. **NAMED, NOT BOUNDED — the asymmetry.** The player's **upside** against the gauntlet is capped at
+   **Σ bankroll = 280,800 cr** (recomputed from the table, not quoted) and never regenerates; the
+   most any of 1,600 careers took off was **163,442 — 58.21% of the whole cap**. The **downside has
+   no bound at all**: the worst career fed **102,742 cr** in. No document said this before. It is
+   **not** shipped as an invariant, and the reason is that a cap the rules already enforce bars
+   nothing in the direction that matters (§22.5's B2 discussion).
+4. **FILED, NOT ABSORBED — F-223-1 (`TASKS.md` T-227): the player is told NOTHING about which seat is
+   the hard one.** The purse is projected but **not rendered**; `seat` is not projected at all;
+   `liarsDiceDealerReadout` hard-nulls on a `ld-` id; and the only cue that ever arrives, at unlock
+   tier ≥ 3, describes **style** — calling the hardest, richest seat *"This one plays it safe."*
+   A4 is answered independently of the sign on LD-26 / T-221's own precedent (*"a purchase whose
+   price the buyer cannot see is not a design, it is a trap"*). Not fixed here because what is
+   missing is a **difficulty** disclosure, which is a design call about what the player learns and
+   when.
+
+**THE COUNTER-CASE, ANSWERED.** Ruling a measured −200.8 cr/hand "intended" is the convenient
+outcome, so four checkable answers: **(i)** the premise it overturns is false at a shipped hard null
+with an existing test, not by reinterpretation; **(ii)** an independent instrument measures the same
+table **positive** and closes the set in 141 of 152 careers — if the roster were a sink that arm
+could not exist; **(iii)** the new bar's weights are **content's**, authored many tasks before this
+measurement, and its threshold is **zero**; **(iv) two of six pre-committed predictions were WRONG
+and are recorded as wrong** (§22.7), including the one most convenient to this reading — "the
+gambler buys nothing" is false, it closes **2,861** port sets across 1,600 careers.
+
+**THE ALTERNATIVES, DECLINED IN WRITING RATHER THAN OMITTED.** **ALT-1**, re-authoring the seat
+census or the `3× / 5× / 8×` bankroll ladder, is the on-point lever and the measurement says it is
+not where the effect is: content's own census already reads **+172.8** and the policy that plays it
+is **paid**. **ALT-2**, LD-29's stake-referenced ante, was measured and declined one task ago on
+identical seeds and moves the table **against** the player at every cell — the wrong direction for a
+player-side sink. **ALT-3**, removing §7.6's hard null so a roster seat pays disposition, would make
+the finding's premise true at the cost of a persisted per-opponent disposition for a pool with no
+`NpcState` — a save-shape change owing a migration that **calls** a rule plus a round-trip test, a
+`rulesFingerprint` move and a capstone — and it is declined because correction (i) above removes the
+reason to want it.
+
+**WHAT THIS RULING DOES NOT DO.** It does not move `planDare`'s richest-candidate rule (§12.9
+F-148-2's), the seat census, the bankroll ladder, `DARE_ANTE_BAND_FRACTION`, the ante's reference,
+any wager band, `probClaimTrue`, `BAD_CREDULITY`, `DARE_AI_CHALLENGE_MARGIN`,
+`SIM_DARE_CHALLENGE_MARGIN` or the sim's `planDareMove` — moving the last of those to make an engine
+measurement come out right is §16.2's banned third shape. It does not re-open **LD-11**, **LD-13**,
+**LD-25**, **LD-26** (whose partition it cites, and one clause of whose T-220 restatement it
+corrects by dated note), **LD-27**, **LD-28** (**both** of whose invariants it re-scores and neither
+of which it edits: pooled EV **+190.1 > 0** with **27.29 pp** of mix headroom, and **≪ +558**) or
+**LD-29**. It does not add a stake dimension to `dareCells`, and it takes no view on the disclosure
+F-223-1 files.
+
+**WHAT ENFORCES THIS RULING.** Both files are in `__tests__`, so neither can move a fingerprint.
+
+- `packages/sim/src/__tests__/campaign-dare-cells.test.ts`, describe **`T-223 · LD-30 — the roster
+  seat's price`**: the **census bound**, computed from `LIARS_DICE_OPPONENTS` with **no literal
+  threshold in the mechanism** (measured **+209.0** on the file's 48-career detector sample, at a
+  career-cluster bootstrap **SE 73.9** — reported as a ~2.8 SE detector rather than presented as
+  comfortable); the **mix headroom**, both sides derived from the live rollups, with an assertion
+  that it and LD-28's pooled reading **cannot disagree**; and the **archetype rollup lossless**
+  against the roster marginal, non-empty at all three concrete arms, `optimal` the majority arm — so
+  a later roster figure published *without* the archetype cut goes red rather than repeating
+  F-220-1's mistake. All three print value, `n` and cell detail on failure and carry the standing
+  remedy *"IF THIS IS RED, WIDEN THE SAMPLE — NEVER MOVE THE BAR (N4/N10, `docs/VERSIONING.md`)"*.
+- `packages/engine/src/__tests__/liarsDice.test.ts`, describe **`T-223 · what a roster seat pays, and
+  what it does not`**: the §7.6 null holds on the **WIN** arm too, with a vacuity guard proving the
+  challenge sample reaches **both** terminal arms (the one thing `T-145 · roster hands apply NO
+  disposition (§7.6)` never asserted — that describe is **extended, not duplicated**);
+  `seedLiarsDicePurses()` **is** the authored bankroll row-wise, with the key sets compared;
+  and **bankroll is STRICTLY increasing in `seat` at every one of the 14 ports**, with seat 3
+  `optimal` and seat 2 `mixed` everywhere — the pin that makes the seat-election derivation durable,
+  so a content pass that flattens or inverts the ladder re-opens LD-30 instead of silently re-basing
+  every roster figure in §18–§22.

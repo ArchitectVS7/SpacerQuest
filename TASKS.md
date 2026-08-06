@@ -318,13 +318,13 @@ Owner ruling recorded 2026-07-31 (`NPC_REDESIGN.md` N13 section and STATUS BOARD
 
 **Delivered (2026-08-02):** `packages/engine/src/npcHand.ts` — `npcVirtualHand()` (lazily-dealt so a day that rolls nothing consumes nothing) and `allocateVirtualDie()`, spent at both NPC check sites (`rollNpcCheck`, `rollEncounterCheck` in `npc.ts`), dealt through the player's own `rollDawnHand` and spent through the player's own `spendDie`. `resolveNpcEncounter` and `executeTrade`/`executeCombat`'s stance checks now thread the day's `NpcVirtualHand` instead of drawing a bare `rng.d20()`, and `npc.ts`'s definition-site comment (`THE DIE GAP, CLOSED AT N13`) records what N13 closed and what remains open (`executeCombat`'s branch choice). Calibration lives in `packages/content/src/ideals.ts` as two measured constants, `NPC_ALLOCATION_PIVOT_STAT` (2, the roster's measured median stat) and `NPC_ALLOCATION_SHARPNESS_PER_STAT` (0.1), chosen so a median-stat captain's allocation is distributionally neutral (E[middle of 5 sorted d20s] = 10.5, a plain d20's mean) and the step moves outcome SPREAD without moving the fleet economy. PARITY LEDGER `Crew`/`Reroll` recorded as ruled exclusions in `NPC_REDESIGN.md`, transcribed as `'excluded'` in `packages/sim/src/balance/coverage.ts`, and mirrored in `docs/TESTING-STRATEGY.md` Part C with a drift test enforcing all three in both directions. Sweep capstone: three 8,000-row arms (`docs/balance/baseline-n13-{pre,control,shipped}.json`) show the SHIPPED−CONTROL fleet-wide skillShare gap (+0.0045) inside the 8-shard noise floor — HYPOTHESIS DISPROVED AS STATED — while the gap is positive in 8/8 shards within explorer/fighter/veteran, reported plainly in `NPC_REDESIGN.md`'s N13 Result section; baseline-of-record and the balance smoke fixture (`docs/balance/smoke/tiers.json`, `docs/balance/smoke/README.md`) re-pinned/re-extracted from `baseline-n13-shipped.json`. Test coverage added in `packages/engine/src/__tests__/npc-virtual-hand.test.ts` plus updates to `npc.test.ts`, `recovery.test.ts`, and the affected `packages/sim` suites (`alliance-arcs`, `archetype-coverage`, `balance-report`, `balance-targets`, `campaign-degraded`, `campaign-reach`, `era-storylet-coverage`) and both golden fixtures (`day-loop-golden.ts`, `replay-golden.ts`) regenerated against the shipped hand. **Deliberate scope boundary:** F-156-1, the `spendDie`/`rerollsRemaining` bug found while building this, is filed to T-182 and NOT fixed here — it is a player-side die-spending defect the virtual hand never reads, and folding it in would move `rulesFingerprint` and confound N13's variance decomposition with a second, unrelated rule change (written risk analysis on T-182 itself).
 
-Orchestration: graphify=none — no graphify-out/graph.json in the repo root · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-182 · Fix F-156-1: `spendDie` silently destroys the day's re-roll charges — `status: DONE` · `coder: opus` · `after: —`
 
 **Delivered (2026-08-02):** `packages/engine/src/dice.ts` `spendDie` now returns a complete copy of the input `DawnHand` — `rerollsRemaining` is carried across (preserving true absence rather than coercing to `0`, and spread last to keep key order matching `rollDawnHand` for the serialized-hand golden hashes) instead of the old `{ dice, spent }` rebuild that silently dropped it. A definition-site contract comment documents both call-site families (assign-the-returned-hand vs. mutate-`spent`-in-place) and why the invariant reconciles them without rewriting either. Coverage: `packages/engine/src/__tests__/dice.test.ts` pins the contract directly (charge survives every spend, absence stays absent, the two call-site families produce `toStrictEqual` hands); `packages/engine/src/__tests__/crew.test.ts` adds the end-to-end player path (hire the reroll role → sleep to next dawn → spend a die on a real assign-family action → `Reroll` still succeeds); and the new `packages/engine/src/__tests__/spend-die-rerolls.test.ts` drives every one of the six assign-family call sites through `applyPlayerAction` to guard the site list against drift. Because the fix touches `dice.ts` (inside `ENGINE_RULE_DIRECTORIES['']`), `rulesFingerprint` moved and a full capstone was owed regardless of whether any balance number moved: a fresh 8,000-row sweep (`docs/balance/baseline-t182-reroll-fix.json`, `sweepLabel t182-reroll-fix`) was taken and `balance:diff` against `n13-shipped` reports **NOTHING MOVED** across all 8,000 careers — predicted in advance, not just discovered, because the sim's `withReroll` prepends its `Reroll` to the dawn batch and no sim policy ever reads `rerollsRemaining` after a die is spent, the only window the bug lived in. All five baseline-of-record pointers (BR-14 now names five, not four — this task added the rule's own "current baseline of record" sentence as the fifth after it was found to be a fifth untracked copy) were re-pinned in this commit: `packages/sim/src/__tests__/balance-targets.test.ts`, `docs/BALANCE-RIG-DECISIONS.md` BR-14's own text, `docs/NPC_REDESIGN.md`'s status banner and Result-section pointer, and `docs/balance/smoke/README.md` plus the re-extracted `docs/balance/smoke/tiers.json`. **Deliberate scope boundary:** the six call sites were fixed by correcting `spendDie`'s single rebuild, not individually; the four already-safe mutate-in-place call sites (`crew.ts`, `port.ts`, `hangout.ts`, `dare.ts`) were left untouched by design and proven equivalent by test rather than refactored to match the assign family, per the Accept criteria's "reconciled or documented" clause.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
+Orchestration: attempts=1/4.
 
 **Found at T-156 (2026-08-02) while reading `dice.ts` for the virtual hand's RNG discipline. PLAYER-SIDE bug, not an NPC one.** `spendDie` (`packages/engine/src/dice.ts:188`) rebuilds the hand as `{ dice, spent }` and **drops `rerollsRemaining`**:
 
@@ -380,7 +380,7 @@ described (`randomBrain(seed)` in `packages/sim/src/pilot.ts`, seeded off `Seede
 a naming quibble: `first-legal` reaches **3 verbs at seed 1** and the volume leg T-155 owed would
 have been hollow without a breadth brain. See `docs/playtests/T-155-pilot-validation.md` §2a.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I grounded the plan in `packages/sim/PROTOCOL.md`, `protocol.ts`, `balance/rules-fing · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-160 · Fix F-137-1: the dealer's certain-loss structure — bakeoff the two sanctioned shapes, ship the winner — `status: DONE` · `coder: opus` · `after: T-148`
 
@@ -562,7 +562,7 @@ shape (a) was implemented and measured but not shipped — it is logged as an in
 inversion (F-160-1) were restated post-fix but explicitly not redesigned, per the task's own Accept
 criteria.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only `.scratch/`, `docs/`, `packages/` present), so I grounded the plan directly in `docs/LIARS-D · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-161 · Fix F-159-1: veteranPolicy's un-relaxed contract filter — the last of the class — `status: DONE` · `coder: opus` · `after: T-159`
 
@@ -615,7 +615,7 @@ held: only the veteran row of `campaign-degraded.test.ts` `PINNED_FINGERPRINTS` 
 extract-then-relax step was proven inert first, byte-identical at `8db1029399f20ed8`); all
 other archetypes byte-identical.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked); oriented directly from `packages/sim/src/index.ts`, `balance/gate.ts`, `docs/BALANCE-POLICY.md`  · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-158 · CHECKPOINT — human UAT, plus recorded rulings on Combat's chosen branch and F-150-1 — `status: DONE` · `coder: sonnet` · `after: T-150, T-153, T-157, T-140, T-141, T-160`
 **`after:` gained T-160 (2026-08-02, owner-directed):** UAT must be played against the fixed
@@ -760,7 +760,7 @@ each to `docs/TESTING-STRATEGY.md` Part G and `docs/RELEASE-CHECKLIST.md`, and s
 in `TASKS.md` to `BLOCKED(Human UAT)`. No gameplay constant, fingerprint, or persisted-shape file was
 touched, and no ruling was recorded by this pass. The task now awaits: Human UAT.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked, absent); oriented from `TASKS.md`, `docs/TESTING-STRATEGY.md` Part G, `docs/EXPLORE_REDESIGN.md`  · attempts=1/4 · HUMAN-GATE HALT.
+Orchestration: attempts=1/4 · HUMAN-GATE HALT.
 
 ### T-155 · Validate: run the pilot end-to-end and confirm it's trustworthy — `status: DONE` · `coder: opus` · `after: T-154, T-158`
 **`after:` corrected (2026-08-02):** this field previously read `after: T-154` alone, and the T-158
@@ -834,7 +834,7 @@ NON-INSTRUMENT in `balance/rules-fingerprint.ts`, no new file was added under `p
 | **F-155-3** | T-154's Delivered note claimed a `random` brain that did not exist in `pilot.ts` or `BRAIN_NAMES`. | **FIXED** — dated correction on T-154's note above; the brain now exists and is wired in |
 
 **Delivered (2026-08-04):** T-155's Accept criteria — run the T-154 driver for real across ≥30 days × ≥3 seeds with zero illegal/fabricated actions and zero crashes, plus a same-seed determinism check — is met: 300 simulated days across two deterministic brains (`random`, `first-legal`) × 5 seeds × 30 days each recorded zero `illegalAttempts`, `blockedFromLegal`, `protocolErrors`, `diceBoundsViolations` and `fallbacks`, and zero crashes/hangs on all ten runs; Leg B ran seed 7 through two independent `node` processes to a byte-identical normalised action sequence, and Leg C reproduced that same digest a third time via `--brain recorded` replay, so the determinism requirement is met with the pinned/nondeterministic boundary documented rather than asserted. Along the way this task found and fixed two defects in the T-154 driver rather than routing around them (F-155-2's `--out`/`--replay` path-resolution split, F-155-3's phantom `random`-brain claim in T-154's own Delivered note), shipped `randomBrain`/`actionSequence`/`firstDivergence` plus 8 new tests pinning the volume and determinism floors, and updated `docs/TESTING-STRATEGY.md` Part D and `PILOT.md` with the confirmed cadence and invocation commands. **Deliberate scope boundary:** the live `--brain anthropic` leg (F-155-1) — validating `pilot-anthropic.ts`'s real request shape, its `json_schema` action enum, its prompt-cache claim, and its per-step cost ledger against the actual API — was not run and is not claimed as passing; it needs an `ANTHROPIC_API_KEY` that is not in an agent's gift to supply, so it stays filed as an open, owner-actionable follow-up (table above) rather than being force-run against an unvalidated credential path or quietly dropped. It does not gate this task's own closure — the Accept criteria as written asks for the T-154 driver run at volume with a determinism check, both satisfied by the deterministic brains — but it does gate any future claim that the live-LLM request shape itself has been validated, and M7 stays open regardless per the 2026-08-04 CORRECTION above (T-162 is still `TODO`).
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-199 · F-150-2: `smugglerPolicy`'s unguarded Explore loop, and the shared `planPacifistCombat` stall behind it — `status: DONE` · `coder: opus` · `after: —`
 
@@ -1050,7 +1050,7 @@ to `docs/balance/baseline-t199-pacifist.json`. **Deliberate scope boundary:** tw
 deliberately backed out rather than paid for — both moved balance bands out of range for
 policies/costs outside this task's own gate violations — and are carried forward as OPEN findings
 with their risk-of-deferral analysis recorded above rather than being silently dropped.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only `docs/` and `packages/` are indexed by hand) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-162 · Build: the browser/DOM-level long-horizon check — the bridge blind spot gets an owner — `status: DONE` · `coder: opus` · `after: T-158`
 
@@ -1157,7 +1157,7 @@ hashes `packages/engine` + `packages/content` (rules) and `packages/sim/src` (in
 
 **Gate:** `npm test`, `npx tsc -b`, `npm run lint`, `npm run format:check` and the **full**
 `npm run test:e2e -w @spacerquest/ui` all green.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only `docs/`, `packages/`, and `scripts/`). · attempts=2/4.
+Orchestration: attempts=2/4.
 
 ---
 
@@ -1282,7 +1282,7 @@ tests, all green**) and the **full** `npm run test:e2e -w @spacerquest/ui` (**16
 `gh run view <id> --log | grep -n 'Run e2e'`, and quote it verbatim. Nothing above claims a run
 that has not happened — the acceptance criterion is satisfied *locally* by the parsed-workflow
 assertions plus the negative control, which is exactly what §3 asks for before the push.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the repo has `docs/`, `packages/`, `scripts/` only). · attempts=2/4.
+Orchestration: attempts=2/4.
 
 ### T-164 · `packages/content` has no test runner — stand one up, or record engine-suite hosting as permanent — `status: DONE` · `coder: opus` · `after: —`
 
@@ -1357,7 +1357,7 @@ file move with no behaviour change. Each of the three carries an in-file comment
 **Explicitly NOT on this ledger, so it is not re-litigated:** `hangoutContent.test.ts` and
 `liarsDiceContent.test.ts` assert through `../hangoutRules.js` / `../liarsDiceRules.js` and are
 engine-hosted **permanently**.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent). · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-165 · Baseline-of-record pointer consistency check — fail when the four sites disagree — `status: DONE` · `coder: opus` · `after: —`
 
@@ -1395,7 +1395,7 @@ pointer cannot appear unnoticed the way the fifth did. `BASELINE_OF_RECORD_PATH`
 — a module there is a hashed instrument source, and adding a pointer-consistency step there would
 move `instrumentFingerprint` and owe a capstone for what is a documentation-consistency check, not
 a rules change; `rulesFingerprint` is unmoved by this task.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-166 · An Accept criterion citing a precedent commit is never checked against that commit — `status: DONE` · `coder: opus` · `after: —`
 
@@ -1432,7 +1432,7 @@ very fixture this check verifies, to check re-extractions; `__tests__` is in
 `HASHED_ROOT_IGNORED_DIRECTORIES` so nothing here moves a fingerprint. It also does not grade
 fixture freshness — `fixtureFreshness` (`balance-smoke.test.ts`) still owns that — this file owns
 only "when a re-extraction happens, did anything move that isn't allowed to."
-Orchestration: graphify=none — no graphify-out/graph.json in the repo root · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-167 · Rig sensitivity check — fail when a policy is bit-for-bit flat across variants that should perturb it — `status: DONE` · `coder: opus` · `after: —`
 
@@ -1513,7 +1513,7 @@ boundary:** this task builds the DETECTOR only. The `fighter` defect it detects 
 still belongs to **T-174**, whose Accept now names this predicate returning zero violations over
 its fixed rig's arms as the exit check — so no reader can mistake a shipped detector for a fixed
 instrument.
-Orchestration: graphify=none — no graphify-out/graph.json in the repo root · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ---
 
@@ -1681,7 +1681,7 @@ dist | grep -v __tests__` returns exactly the four licensed non-test sites —
 `engine/actions/hangout.ts:416`, `engine/liarsDiceRules.ts:268` (`liarsDiceRoundsRemaining`),
 `engine/liarsDiceRules.ts:302` (`preHandWagerBand`) and `ui/src/format.ts:568` (`preHandTier`) —
 all four named in §4.6a's closed list.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
+Orchestration: attempts=1/4.
 
 **F-168-1 · The high-tier tables are a strong faucet, and the number is now measurable.** Status:
 REPORTED, NOT FIXED, per §12.9's house discipline. With the effective band reachable, the gambler's
@@ -1758,7 +1758,7 @@ every baseline in the same commit that measured it.
   `docs/LIARS-DICE-DECISIONS.md` carried no open call for F-148-2, so it was not edited.
 - Gate: `npx tsc -b`, `npm run lint`, `npm run format:check` (run after `npm run format`) all clean.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-170 · F-148-5: `CONQUEROR = 38` is unreached at 120 days by every policy — run the 300-day arm — `status: DONE` · `coder: opus` · `after: T-198`
 
@@ -1835,7 +1835,7 @@ still read `f264d7f4a2d56fde` / `b8894cb6c678fce6` (comments are stripped by `ha
 `baseline-pointers.test.ts` green. Gate: `npm run format`, `npx tsc -b`, `npm run lint`,
 `npm run format:check`, `npm test` — all clean.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-175 · F-160-1: the archetype ordering SURVIVES the F-137-1 fix — `optimal` is still the softest seat — `status: DONE` · `coder: opus` · `after: T-160, T-198`
 
@@ -2118,7 +2118,7 @@ the challenger-selectivity gap (F-160-2, filed to T-176) and the FOLD design cal
 newly-filed F-175-2, both left to T-177) — this task closed only the claim-pricing defect it was
 scoped to measure.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-176 · F-160-2: the challenger-won split is still 41.7 pp apart — price the planner's selectivity or re-derive the criterion — `status: DONE` · `coder: opus` · `after: T-160, T-198`
 
@@ -2308,7 +2308,7 @@ out of scope and left untouched: `optimal`'s raise valuation (F-176-1 / T-219), 
 (F-176-2 / T-220), `SIM_DARE_CHALLENGE_MARGIN` and `DARE_AI_CHALLENGE_MARGIN` (tuning either would
 be tuning the instrument to hit a threshold), and FOLD (T-177).
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-177 · F-160-3: FOLD is still never the better credit play — an owner design call — `status: DONE` · `coder: opus` · `after: T-160, T-198`
 
@@ -2440,7 +2440,7 @@ is a **priced trade, not a dead move**.
   `npm run format:check`, plus `npm run balance:smoke` as the belt-and-braces check that the
   fixture's `rulesFingerprint` still matches the tree.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-219 · F-176-1: `optimal`'s RAISE valuation prices a counterparty that does not exist — `status: DONE` · `coder: opus` · `after: T-175, T-176`
 
@@ -2585,7 +2585,7 @@ and both halves are measurements rather than assertions.
 - **Gate green**: `npm run format`, `npm test`, `npx tsc -b`, `npm run lint`, `npm run format:check`,
   plus `npm run balance:smoke`.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-220 · F-176-2: the table's player win rate has fallen through T-160's 55–70% band, unremarked — `status: DONE` · `coder: opus` · `after: T-175, T-176`
 
@@ -2732,7 +2732,7 @@ re-scored alongside; the rate is re-measured at n ≥ 10,000 hands per pool with
 - **Gate green**: `npm run format`, `npm test`, `npx tsc -b`, `npm run lint`, `npm run
   format:check`.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-221 · F-177-1: the FOLD trade is invisible to the player — `status: DONE` · `coder: opus` · `after: T-177`
 
@@ -2820,7 +2820,7 @@ e2e tests, so a later retune of `DARE_FOLD_DISPOSITION` reddens the UI's read to
 *Gate.* `npx tsc -b`, `npm test`, `npm run lint`, `npm run format:check` green; the two Playwright
 specs run explicitly (10 passed).
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root. · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-222 · F-219-1: the house's raise evidence bar is set by the PLAYER's own stake — `status: DONE` · `coder: opus` · `after: T-219`
 
@@ -2963,9 +2963,9 @@ file touched anywhere is a test.**
 - **Gate green**: `npm run format`, `npm test`, `npx tsc -b`, `npm run lint`, `npm run
   format:check`.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; the directory does not exist) · attempts=1/4.
+Orchestration: attempts=1/4.
 
-### T-223 · F-220-1: the ROSTER pool is a net credit SINK, and nothing names or bounds the price — `status: TODO` · `coder: opus` · `after: T-220`
+### T-223 · F-220-1: the ROSTER pool is a net credit SINK, and nothing names or bounds the price — `status: DONE` · `coder: opus` · `after: T-220`
 
 **Filed at T-220 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §20.7 / `docs/LIARS-DICE-DECISIONS.md`
 LD-28.** T-220 cut the shipped table by pool for the first time (`dareCells`, 1,600 gambler careers
@@ -3007,7 +3007,123 @@ player know the roster seat is the expensive one? — `docs/HANGOUT_REDESIGN.md`
 moves the task takes its own capstone with the moved rows predicted first; §20.7 gains the outcome;
 gate green.
 
-### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: TODO` · `coder: opus` · `after: T-222`
+**Delivered (T-223, 2026-08-06):** F-220-1 is **measured, decomposed, priced on the instrument that
+actually buys what the roster sells, and RULED**. The ruling is **LD-30** in
+`docs/LIARS-DICE-DECISIONS.md`; the working is `docs/LIARS-DICE_REDESIGN.md` **§22**.
+
+- **THE FINDING'S ARITHMETIC IS EXACT AND ITS PREMISE IS FALSE — corrected in writing before
+  anything ran** (§22.0, five corrections). **A roster seat pays NO disposition at all**
+  (`packages/engine/src/actions/dare.ts:168-181`, §7.6's hard null, with a shipped test), so the sink
+  cannot be the price of the disposition channel — that channel is fed by the **roaming** pool, the
+  one at **+495.8 cr/hand**. LD-28's closing paragraph inherits the same error and now carries a
+  **dated note** correcting it, with **none of its numbers or ruling text edited**. Two further
+  corrections: "roster (the named captains)" mislabels the pool (the roster is LD-11's authored
+  42-row house table; the named captains are the roaming pool), and the plan's UI premise is wrong —
+  **the purse is projected but NOT rendered**, so the pre-tier-3 player has no cue at all.
+- **WHAT −200.8 ACTUALLY MEASURES: the SEAT ELECTION, not the table.** `planDare` elects the
+  **richest** candidate (§12.9 F-148-2 — **RULED, not overlooked**, and not this task's to move) and
+  content prices difficulty in purse (`3× / 5× / 8×`), so the gambler sits opposite `optimal` on
+  **77.82%** of its roster hands (**34.15%** of every hand played). **Re-weighted with every cell's
+  own EV held FIXED:** measured **−200.8** → LD-11's **authored seat census +172.8** → **flat
+  +391.3**. Weights computed from `LIARS_DICE_OPPONENTS`, mixes distributed by their own `mix`,
+  never restated as literals.
+- **THE FEEDBACK LOOP, MEASURED RATHER THAN ASSERTED** (`.scratch/t223-meter.mjs`, the same 1,600
+  careers driven through a spy that returns its policy's actions unchanged): Σ seat-3 purses run
+  **140,400 → 162,433 (+15.7%)** while seats 1 and 2 fall **−6.8%** / **−3.7%**; **5.72 of 42 seats
+  are broke at the horizon**; seat 3 takes **64.28% → 52.87%** of roster hands per 30-day window and
+  **never less than half**.
+- **THE SECOND INSTRUMENT IS THE ANSWER TO THE ACCEPT QUESTION.** `deed-hunter.ts`'s roster tour (a
+  **shipped instrument, unmodified**) over **152 careers × 300 days** — the coverage arm's 76 seeds
+  **doubled so the roster pool clears n ≥ 10,000 on its own count**, the sample widened rather than a
+  rate published under-powered — measures the same table at **+21.5 cr/hand (n = 11,021)**, ends the
+  median career **+1,885 cr up** on the gauntlet (**−0.52%** of the median purse, a *gain*), closes
+  **2,099 port sets**, banks `liars_dice_grand_slam` in **141 of 152 careers**, and leaves **0.00 of
+  42 seats broke** — §7.5's no-lockout theorem is not approached, let alone violated. **A2 passes on
+  the strongest form of the test.**
+- **THE ZERO-SUM PRICE METER, and the asymmetry no document named.** Σ bankroll recomputed from
+  content = **280,800 cr** (header **confirmed**, not quoted). `Σ (bankroll − purse) === roster
+  marginal of dareCells.netCredits` on **1,600 / 1,600** careers, and the spy's hand counts match
+  `dareCells.hands` on **1,600 / 1,600**. The player's **upside is capped at 280,800 and never
+  regenerates** (best career took **163,442 — 58.21% of the cap**); the **downside has no bound** (worst
+  career fed **102,742** in). Named in LD-30 rather than shipped as an invariant, with the reason
+  written down.
+- **THE RULING (LD-30): INTENDED.** The roster price is the price of the **SEAT**, denominated in
+  **progression** (set closure, the port deeds, the grand slam), not in disposition. **One bounded
+  standing invariant is added — the CENSUS BOUND:** the roster pool re-weighted to LD-11's own
+  authored seat census must stay **EV-POSITIVE**; weights from `LIARS_DICE_OPPONENTS`, **bar ZERO**,
+  no literal in the mechanism, **not fitted to −200.8**. **B1 and B3 are argued against in writing**
+  (§22.5): B1 (mix headroom) is *algebraically LD-28's own invariant* and is therefore shipped as a
+  **reported** quantity (**43.89% roster share against a 71.18% break-even — 27.29 pp of headroom**,
+  so **A3 passes**) rather than as a second bar; B3 (shape (a)'s −314.9) would bar the *instrument's*
+  number, which is precisely what the ruling says is not the game's.
+- **THE ALTERNATIVES DECLINED IN WRITING, per lever** (§22.5's table): **ALT-1** (re-author the seat
+  census / bankroll ladder) declined **on the measurement** — content's own census already reads
+  +172.8 and the policy that plays it is *paid*; **ALT-2** (LD-29's stake-referenced ante) measured
+  and declined one task ago on identical seeds, and moves the table **against** the player; **ALT-3**
+  (remove §7.6's null so a roster seat pays disposition) costed — a save-shape change owing a
+  migration that **calls** a rule plus a round-trip test, a `rulesFingerprint` move and a capstone —
+  and declined because correction 1 removes the reason to want it. `planDare`'s picker,
+  `optimal`'s valuation, both challenge margins and `minOpeningQuantity` all named with reasons.
+- **THE REPRODUCTION ARM** (`--label t223-roster --seeds 1600 --days 120 --policies gambler
+  --milestone-days 21,29,30,41,60,120 --shard i/4`, **1-indexed**, scored by `.scratch/t223-roster.mjs`)
+  reproduces §20.3 to **every published decimal**: **1,600 rows · 279,857 dares · 52.90% · +190.1
+  cr/hand · roaming +495.8 (n = 157,037) · roster −200.8 (n = 122,820) · `roster|optimal` −482.3
+  (n = 95,580) · `bad − optimal` +15.79 pp SE 0.44 z 35.93 · 0 tier and 0 challenge disagreements ·
+  `invariants: 0 violations`** on all four shards, joins exact on all three sums. **Shards-only and
+  deliberately so** — the 8,000-row constraint governs the *capstone*, owed when `rulesFingerprint`
+  moves, which it does not (§20.0 correction 3's precedent, restated). The `combat-win-share` FAIL is
+  the known gambler-only-arm artefact. **Every published EV cell now also carries a career-cluster
+  bootstrap SE and 95% CI** (`dareCells` holds no sum of squares, and careers are the level the
+  dependence lives at).
+- **C6 AND BOTH LD-28 INVARIANTS RE-SCORED as Accept requires:** `bad − optimal` **+15.79 pp, SE 0.44,
+  z 35.93 — no re-inversion**; pooled EV **+190.1 > 0** ✅ and **≪ +558** ✅.
+- **TWO OF SIX PRE-COMMITTED PREDICTIONS WERE WRONG AND ARE RECORDED AS WRONG** (§22.7, written to
+  `.scratch/t223-predictions.md` before the sweep ran). **Prediction 4** ("the gambler pays and buys
+  nothing") is **half wrong on its load-bearing half**: 0 grand slams ✅, but **2,861 port sets closed
+  across 1,600 careers**, in **1,254 of them**, at a mean of **20.51 / 42** seats beaten.
+  **Prediction 6** is **wrong on the sign**: the deed hunter's per-hand EV was predicted negative and
+  measures **+21.5**. Prediction 6 is the useful one — it is the measurement that turns correction 1
+  from a debating point into a ruling.
+- **TESTS.** `packages/sim/src/__tests__/campaign-dare-cells.test.ts` gains describe **`T-223 · LD-30
+  — the roster seat's price`**: the **census bound** (weights computed from content, **no literal
+  threshold in the mechanism**), the **mix headroom** (both sides derived from the live rollups, plus
+  an assertion that it and LD-28's pooled reading cannot disagree), and the **archetype rollup
+  lossless and non-empty at all three concrete arms**, so a later roster figure published without the
+  archetype cut goes red. Run on the **same memoised 48-career pass** the T-220 describe uses —
+  hoisted to module scope, **no fourth walk over 48 careers**, and T-220's own assertions are
+  byte-identical. Measured there: census EV **+209.0** at a career-cluster bootstrap **SE 73.9**
+  (**reported as a ~2.8 SE detector rather than presented as comfortable**), headroom **27.12 pp**.
+  `packages/engine/src/__tests__/liarsDice.test.ts` gains describe **`T-223 · what a roster seat pays,
+  and what it does not`**: the §7.6 null on the **WIN** arm with a **vacuity guard** proving both
+  terminal challenge arms are reached (the one thing the existing `T-145 · roster hands apply NO
+  disposition (§7.6)` never asserted — **extended, not duplicated**); `seedLiarsDicePurses()` **is**
+  the authored bankroll row-wise with the key sets compared; and **bankroll STRICTLY increasing in
+  `seat` at every one of the 14 ports** with seat 3 `optimal` and seat 2 `mixed` everywhere — the pin
+  that makes the seat-election derivation durable.
+- **ONE FINDING FILED THE MOMENT IT WAS CONFIRMED: F-223-1 → `T-227`** — the player is told
+  **nothing** about which of the three house seats is the hard one. The purse is projected but not
+  rendered, `seat` is not projected at all, `liarsDiceDealerReadout` hard-nulls on a `ld-` id, and the
+  only cue that ever arrives (tier ≥ 3) describes **style**, calling the hardest and richest seat
+  *"This one plays it safe."* Written into `docs/HANGOUT_REDESIGN.md` §7 in that section's finding
+  format. Answered **independently of the sign** on LD-26 / T-221's precedent, and **filed rather than
+  patched** because the missing disclosure is a **difficulty** one and that is a design call.
+- **FINGERPRINTS, CAPSTONE AND SAVE SHAPE, measured rather than asserted.** `git diff` touches
+  `docs/**`, `packages/engine/src/__tests__/**`, `packages/sim/src/__tests__/**`, `.scratch/**` and
+  `TASKS.md` **only** — nothing under `packages/engine/src` outside `__tests__`, nothing under
+  `packages/content/src`, nothing under `packages/ui/src`. Read live before and after with
+  `.scratch/t219-fp.mjs`: **`rulesFingerprint cabd2112ccf4cefb`**, **`instrumentFingerprint
+  2d6d1990eaf13031`**, **`docsFingerprint 265aea1d09f0d485`** — **all three UNMOVED**. **No capstone,
+  no re-extract, no baseline re-pin owed.** **`CURRENT_SAVE_VERSION` UNMOVED at 17**, **re-read live**
+  at `packages/engine/src/save.ts:627` — a derived per-pool report is not a save shape, so no
+  migration and no round-trip test is owed.
+- **No band, threshold, fingerprint or golden edited in either direction.** When a cell came in
+  under-powered (the hunter arm at n = 5,620 on 76 careers) **the sample was doubled to 152**, not the
+  bar.
+- **Gate green**: `npm run format`, `npm test`, `npx tsc -b`, `npm run lint`, `npm run format:check`.
+
+Orchestration: attempts=1/4.
+
+### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: IN-PROGRESS` · `coder: opus` · `after: T-222`
 
 **Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4b / §21.7,
 `docs/LIARS-DICE-DECISIONS.md` LD-29, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3d.** `headroomFor`
@@ -3130,6 +3246,45 @@ either way `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` gains an 
 RED if the range moves; §21.7 gains the outcome; if any rule moves the task takes its own capstone
 with the moved rows predicted first; gate green.
 
+### T-227 · F-223-1: the player is never told which of the house's three seats is the hard one — `status: TODO` · `coder: opus` · `after: T-223`
+
+**Filed at T-223 (2026-08-06), `docs/HANGOUT_REDESIGN.md` §7 Finding F-223-1 /
+`docs/LIARS-DICE_REDESIGN.md` §22.6 / `docs/LIARS-DICE-DECISIONS.md` LD-30.** Content authors a
+**strict difficulty ladder** at every one of the fourteen Liar's Dice ports — seat 1 the journeyman
+(`bad`/`random`, `3 × wager.max`), seat 2 the regular (`mixed`, `5 ×`), seat 3 the house
+(`optimal`, `8 ×`), with the table's own header saying *"difficulty rises monotonically with the
+purse"* — and T-223 **pinned that ladder with a test**, so it is now a guaranteed property rather
+than an authoring convention. **The UI surfaces none of it.** `hangoutRosterOpponents`
+(`packages/ui/src/format.ts:571`) projects name / beaten / **purse** / broke plus a tier-≥-3 `read`,
+and the pane (`packages/ui/src/App.tsx:2470-2510`) renders **four of those five — not the purse**
+(`grep -n purse packages/ui/src/App.tsx` returns one comment). The row's own `seat`, and content's
+`journeyman / regular / house` role table, are **not in `HangoutRosterOpponent` at all**.
+`liarsDiceDealerReadout` hard-nulls on any `ld-` id (correctly — §7.6). So **before tier 3 the three
+seats are distinguished by their authored NAMES alone**, and **after tier 3 the one cue that arrives
+describes STYLE, not difficulty**, with its connotation running the wrong way: `optimal` — the
+hardest and richest seat — reads **"This one plays it safe."**
+(`packages/engine/src/liarsDiceRules.ts:335`).
+
+**This is a disclosure finding, not a pricing one, and that is deliberate.** LD-30 measures the
+roster at **+21.5 cr/hand (n = 11,021)** for the set-seeking instrument that buys what it sells, so
+the seat is **not** a trap in credits — which is exactly why the obvious "this seat is expensive" cue
+must not be shipped: it would print a claim the measurement contradicts. T-223 pre-committed
+(§22.2, criterion A4) to answering the disclosure question **independently of the sign**, on LD-26 /
+T-221's standing rule that *"a purchase whose price the buyer cannot see is not a design, it is a
+trap"*. A ladder the game guarantees and never mentions fails that test whether the rungs are cheap
+or dear. [filed: T-223/F-223-1]
+
+**Accept:** the owner rules what the player should be told about the seat ladder and when, and the
+ruling is written into `docs/HANGOUT_REDESIGN.md` §7 beside F-223-1 (accept-as-is counts as a
+ruling, in writing, with its reason); if a disclosure ships it is **UI-only** so `rulesFingerprint`
+stays unmoved, it reads the engine's or content's own value rather than a copied string (T-221's
+precedent), it is pinned in `packages/ui/src/__tests__/hangout-pane.test.ts` or
+`liars-dice-pane.test.ts` against that value, and it does **not** surface a `'mixed'` seat's resolved
+arm before the hand exists (§4.5 ruling 1), does **not** move `readTheTableLine`'s tier-3 unlock or
+its three authored strings (T-146's), and does **not** import a content constant into the pane;
+§22.6 and the F-223-1 finding gain the outcome; if any rule moves the task takes its own capstone
+with the moved rows predicted first; gate green.
+
 ---
 
 ## M10 — Harvested: Explore, deeds and the recovery ladder
@@ -3240,7 +3395,7 @@ All 528 one-sided paths are the new fields; not one shared path moved, which is 
 
 **Gate green:** `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run balance:smoke` and the full `npm test` (all workspaces) all pass; both inertness sweeps exited 0 with every gate rate identical across the arms.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only `.scratch/`, `docs/`, `packages/` present) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-174 · F-151-9: the `fighter` sim policy is bit-for-bit flat under every stat change — fix or replace it — `status: TODO` · `coder: opus` · `after: T-198`
 
@@ -3372,7 +3527,7 @@ tests, zero failures, across all six packages. `npm run format` was run BEFORE t
 never after. Everything lands in ONE commit: code, the new suite (11 tests), the re-extracted
 `tiers.json`, docs, `TASKS.md`.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only `.scratch/`, `docs/`, `packages/`, etc.) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-184 · Smuggler contract options are `chosen` more often than they were `offered` — the all-weights-zero corner — `status: TODO` · `coder: opus` · `after: T-198`
 
@@ -3654,9 +3809,8 @@ something' ... on the T-157/T-158 escalate-and-halt precedent" — and, unlike T
 Accept clause with no recorded human confirmation would misrepresent an unverified subjective
 judgment as settled, which is the exact harm CLAUDE.md's Bug Discovery Policy and Never Game Metrics
 rules exist to prevent. The delivered work is real and committed; the status question is left for
-the owner to close via the scripted pass above, the same way T-157 closed. Orchestration:
-graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I planned from
-the real sources: `packages/ui/src/sound.ts`, `store.ts`, `App.tsx`, ` · attempts=1/4.`
+the owner to close via the scripted pass above, the same way T-157 closed.
+Orchestration: attempts=1/4.
 
 ### T-187 · No literal walked-through first turn — the existing onboarding coach is contextual, not sequenced — `status: DONE` · `coder: opus` · `after: —`
 
@@ -3729,7 +3883,7 @@ flow through it — one shared stamp, no copy-paste, no weakened assertions. Gat
 (447 engine + 325 ui), `npx tsc -b`, `npm run lint`, `npm run format:check`, 124/124 e2e and 4/4
 demo e2e, all green.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root; oriented directly from `TASKS.md`, `packages/ui/src/{App.tsx,format.ts,store.ts}` and the T-311 e2e. · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-186 · Visual identity reads as monochrome sameness — resolve the tension with the PRD's committed CRT-amber pillar — `status: DONE` · `coder: opus` · `after: T-198`
 
@@ -4065,7 +4219,7 @@ layer — reaching a damaged component via the UI alone has no deterministic hoo
 `e2e/support/career.ts`, so that branch is covered by the unit test only, with the reasoning
 written into the spec rather than left implicit; no save-shape, engine, or content change of any
 kind shipped alongside it.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified `MISSING`); oriented from `TASKS.md`, `App.tsx`, `format.ts`, `theme.css`, and the e2e suite inst · attempts=2/4.
+Orchestration: attempts=2/4.
 
 ### T-190 · Contract manifest should feel like a discrete, port-bound object, not a permanent fixture — `status: DONE` · `coder: opus` · `after: —`
 
@@ -4230,7 +4384,7 @@ both landed, and the eleven existing contract-reading specs pass untouched. The 
 boundary: the owner's "available only in a port" half was NOT built and no docking flag was invented,
 because T-188 has not been ruled and jumps are still instant — re-filed as **T-192**, blocked on
 T-188, reusing this task's stow render path so it needs no new visual work.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified missing); oriented from `TASKS.md`, `packages/ui/src/App.tsx`, `theme.css`, `format.ts`, `walkthr · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-191 · The lower-right menus read as flat and interchangeable — `status: DONE` · `coder: opus` · `after: —`
 
@@ -4440,7 +4594,7 @@ untouched; the markup move was landed and gated green before any CSS existed), z
 (scrollHeight 574 -> 571, measured against a stashed baseline), and zero colour change — T-186 owns the
 palette and was deliberately not reached into.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent; only `docs/`, `packages/` present) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-192 · The manifest's "not docked" state — the half of T-190 that needs a travel duration to exist — `status: DONE` · `coder: opus` · `after: T-188`
 
@@ -4844,7 +4998,7 @@ advertisement-conformance checker was taught that an OMITTED die on a verb the e
 accept one for is conformant (it still bites everywhere else, `Trade/haggle` included) rather
 than un-advertising the field here.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-196b · Teach the instruments the free actions — sim policy day-budgets + the protocol enumerator — `status: DONE` · `coder: opus` · `after: T-196a`
 
@@ -5128,7 +5282,7 @@ and BALANCE-POLICY Part B forbids retuning a constant with no failing check to a
 (arm 2 of the control-arm pair) re-pinned at all four sites, `instrumentFingerprint`
 `6106da3575355153` → `812d9e87d7307f3c`, gate green at 8,000 rows with 0 invariant violations.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=2/4.
+Orchestration: attempts=2/4.
 
 ### T-196c · Free the administrative actions in the UI — stop demanding a die, stop clearing the armed one — `status: DONE` · `coder: opus` · `after: T-196b`
 
@@ -5150,7 +5304,7 @@ DOM test environment) plus updated Playwright specs at every touched pane.
 untouched — T-197 owns freeing those and closing the milestone capstone; this
 task touches no engine or sim file and stays outside `rulesFingerprint`.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 **Files:** `packages/ui/src/store.ts` — the real gate lives here, not in a per-button
 `dieArmed` prop: each freed action's creator reads `const die = state.selectedDie`, refuses
@@ -5199,7 +5353,7 @@ T-197 actually did was right (ship the mechanism against the suggested table, ma
 three places, refuse to resolve it quietly); only this sentence is wrong. The open question is
 promoted to **R3** at T-198 rather than left to ride inside T-198's ruling (1), where a "pacing is
 fine" answer would silently bless numbers nobody ruled on. See **F-198-3** in T-198's block.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; `NOGRAPH`) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 Per `docs/DAWN-HAND-REDESIGN.md` §3-4 as amended at the 2026-08-04 review pass. ALL SEVEN of
 Hangout's venue sub-actions lose their die cost — Dare-open, Meet, Befriend, Insult, Rumor,
@@ -5499,7 +5653,7 @@ R2 remains open; T-198 stays `BLOCKED(Human ruling)` until R2 is answered and T-
   field names T-198 are eligible from this point; no `after:` field was rewritten, the block
   they name is simply `DONE`.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent). · attempts=1/4 · HUMAN-GATE HALT, released 2026-08-05.
+Orchestration: attempts=1/4 · HUMAN-GATE HALT, released 2026-08-05.
 
 ---
 
@@ -5527,7 +5681,7 @@ here. Added `packages/ui/src/__tests__/opening-marker.test.ts` and
 `packages/ui/e2e/opening-marker.spec.ts` for the new beat, and touched the existing e2e specs/support
 helpers (`career.ts`, `longhaul.ts`, and the per-spec files) to dismiss the new marker so it doesn't
 block flows those tests already covered.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root; oriented directly from `TASKS.md`, `docs/PRD-REIMAGINED.md`, and… · attempts=1/4.
+Orchestration: attempts=1/4.
 
 **CORRECTION (2026-08-05, caught by CI, not the local gate — recorded rather than silently
 patched).** The Delivered note's claim above — "touched the existing e2e specs/support helpers
@@ -5615,7 +5769,7 @@ questions (label copy, sound staging, save-load/import triggering, death-during-
 boundary, deliberately held: no implementation, no engine/UI code — every changed path is `.md`
 under `docs/design/`; the follow-up `code`-type task is explicitly not filed, per this task's own
 Accept clause reserving that for the owner's pick.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-202 · Ship R3: revise `LIARS_DICE_ROUNDS_PER_DAY` to `[1, 2, 3, 4, 5, 6]` and pay its capstone — `status: DONE` · `coder: opus` · `after: —`
 
@@ -5812,7 +5966,7 @@ documents, and two files under `packages/sim/src/__tests__` (in
 and UI suites derive the cap from the accessor rather than restating it, and stayed green by
 construction — confirmed by running them, not assumed.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (verified absent; `scratch/` is also absent). · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-203 · Surface a named rival's history at the Liar's Dice table — the insult-to-showdown connection is real but invisible — `status: DONE` · `coder: opus` · `after: —`
 
@@ -5831,7 +5985,7 @@ visible before a table is even opened. Scope boundary: no engine or content file
 this is a pure UI surfacing of `npc.disposition`, which the engine already computes and
 exposes on `NpcState`; a `ld-` roster seat's DOM stays byte-identical to before, since a roster
 opponent has no disposition to state.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=2/4.
+Orchestration: attempts=2/4.
 
 **The ask (owner, 2026-08-05):** the owner is enthusiastic about an existing but under-surfaced
 piece of game texture: the same 30 named rival captains (`NPC_PROFILES`,
@@ -6090,7 +6244,7 @@ reader will hit the mismatch. If anyone wants to close it, that is its own task 
 save-shape decision, and it should be taken deliberately rather than drifting into a "while I'm
 here" rename.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=2/4.
+Orchestration: attempts=2/4.
 
 ---
 
@@ -6239,7 +6393,7 @@ field for a deliberately-corrupted copy of the committed fixture — with the re
 already stale they each saw two. All four cleared on the re-stamp; no fingerprint, band, threshold
 or golden was edited.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only the source tree is present). · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-206 · Content pass: author table-talk and catchphrases for all 30 captains — `status: DONE` · `coder: opus` · `after: T-205`
 
@@ -6370,7 +6524,7 @@ packages/content/src/cast.ts` = **30**; `grep -c "catchphrases:" packages/conten
 **30**; no live `VOICE_AUTHORING_PENDING` symbol anywhere in `packages/`; `git diff cast.ts | grep
 '^+' | grep -c 'if ('` = **0**; `baseline-t206-captain-voice` present at all five pointer sites.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only the source tree is present) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-207 · UI: surface table-talk and catchphrases at the table and in combat — `status: DONE` · `coder: opus` · `after: T-206, T-203`
 
@@ -6498,7 +6652,7 @@ analogues.
 **1832-1835** and explicitly nulled in the anonymous arm at **1842-1843**; `CAPTAIN_OUTCOME` at
 **1947** consumed by `combatAftermathSummary` at **2012-2014**.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only the source tree is present) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ### T-208 · Pin quest captains stationary, at a port sane for their questline — `status: DONE` · `coder: opus` · `after: —`
 
@@ -6728,7 +6882,7 @@ packages/content/src/castValidation.ts` → the validator at **:271** (the simul
 (the rule) and **save.ts:619** (`MIGRATIONS[16]` calling it); `grep -n "CURRENT_SAVE_VERSION = "
 packages/engine/src/save.ts` → **:627 = 17**.
 
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; only the source tree is present) · attempts=1/4.
+Orchestration: attempts=1/4.
 
 ---
 

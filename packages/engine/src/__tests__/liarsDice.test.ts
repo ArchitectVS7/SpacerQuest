@@ -2196,3 +2196,108 @@ describe('T-177 · the FOLD ruling — the two currencies partition', () => {
     expect(pricedTrades).toBeGreaterThan(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// T-223 · WHAT A ROSTER SEAT PAYS, AND WHAT IT DOES NOT (F-220-1; LD-30,
+// `docs/LIARS-DICE_REDESIGN.md` §22).
+//
+// F-220-1 measured the roster pool at -200.8 cr/hand and read it as the price of
+// DISPOSITION with a named captain. §22.0 correction 1 shows that premise is false
+// against the shipped rules — a roster seat pays no disposition at all — and §22.0
+// correction 3 shows the -200.8 is a property of the sweep's SEAT-PICKER (the
+// richest candidate wins, and content makes the richest seat the hardest one), not
+// a price the game charges.
+//
+// THIS DESCRIBE PINS THE TWO STRUCTURAL FACTS THOSE CORRECTIONS REST ON, so a
+// later content pass that inverts either goes RED and RE-OPENS LD-30 rather than
+// silently voiding it. Neither is a threshold and neither is fitted to a measured
+// number: both are computed from `LIARS_DICE_OPPONENTS` itself.
+//
+// WHAT IT DELIBERATELY DOES NOT DUPLICATE. `T-145 · roster hands apply NO
+// disposition (§7.6)` above already asserts `dispositionDelta === 0` and the
+// absent `DispositionChanged` through the real resolver at all three terminal
+// modes over 20 seeds. The one thing that sample never asserted is that it REACHES
+// both challenge arms, so a `challenge-win` could have been vacuous there; the
+// first `it` below closes exactly that gap and nothing else.
+// ---------------------------------------------------------------------------
+
+describe('T-223 · what a roster seat pays, and what it does not', () => {
+  it('the §7.6 null holds on the WIN arm too — the challenge sample reaches BOTH outcomes', () => {
+    const outcomes = new Set<DareOutcome>();
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const run = playRosterHand(seed, 'ld-1-2', SUN_3, 'challenge');
+      if (run.outcome === null) continue;
+      outcomes.add(run.outcome);
+      // Re-asserted here only because the vacuity guard below is what makes it
+      // mean something on the arm F-220-1's premise is about: a WON hand against a
+      // named captain still moves no standing.
+      const resolved = run.events.find((e) => e.type === 'DareHandResolved');
+      expect(resolved, `seed ${seed}`).toMatchObject({ dispositionDelta: 0 });
+      expect(
+        run.events.some((e) => e.type === 'DispositionChanged'),
+        `seed ${seed}`,
+      ).toBe(false);
+    }
+    // THE GUARD. Both terminal challenge arms are exercised, so neither is a
+    // vacuous pass. `docs/LIARS-DICE_REDESIGN.md` §22.0 correction 1.
+    expect(outcomes.has('challenge-win'), `outcomes reached: ${[...outcomes].join(', ')}`).toBe(
+      true,
+    );
+    expect(outcomes.has('challenge-loss'), `outcomes reached: ${[...outcomes].join(', ')}`).toBe(
+      true,
+    );
+  });
+
+  it('the seeded purses ARE the authored bankrolls — Σ over the table, no literal', () => {
+    const rows = Object.values(LIARS_DICE_OPPONENTS).flat();
+    const purses = seedLiarsDicePurses();
+    // Row-wise first, so a failure names the seat rather than a total.
+    for (const row of rows) expect(purses[row.id], row.id).toBe(row.bankroll);
+    const authored = rows.reduce((total, row) => total + row.bankroll, 0);
+    const seeded = Object.values(purses).reduce((total, purse) => total + purse, 0);
+    expect(seeded).toBe(authored);
+    // The KEY SETS agree too, so a row added to content without a purse — or a
+    // purse seeded for a row that no longer exists — is a failure rather than a
+    // total that happens to match.
+    expect(Object.keys(purses).sort()).toEqual(rows.map((row) => row.id).sort());
+    // Σ bankroll is the roster's ONE-TIME, BOUNDED capital: the pool is zero-sum
+    // (§7.1) and never regenerates (§7.5), so this is the whole of what a career
+    // can ever take OFF the gauntlet. §22.3 reports the measured draw against it.
+    expect(authored).toBeGreaterThan(0);
+  });
+
+  it('bankroll is STRICTLY increasing in seat at every port — the richest seat is the hardest', () => {
+    // THE PIN THAT MAKES §22.0 CORRECTION 3 DURABLE. `planDare` elects the
+    // RICHEST candidate (`packages/sim/src/index.ts`, ruled at §12.9 F-148-2 and
+    // not this task's to move), and content authors the purse monotone in
+    // difficulty — "difficulty rises monotonically with the purse", the header of
+    // `packages/content/src/liarsDice.ts`. Those two facts MEET: a bankroll-chasing
+    // policy sits at the hardest seat by construction. Nothing here is a
+    // threshold; a content pass that flattens or inverts the ladder goes RED and
+    // re-opens LD-30 rather than quietly re-basing every roster figure in §22.
+    const ports = Object.keys(LIARS_DICE_OPPONENTS)
+      .map(Number)
+      .sort((a, b) => a - b);
+    expect(ports.length).toBeGreaterThan(0);
+    for (const systemId of ports) {
+      const seats = [...LIARS_DICE_OPPONENTS[systemId]].sort((a, b) => a.seat - b.seat);
+      expect(
+        seats.map((seat) => seat.seat),
+        `port ${systemId}`,
+      ).toEqual([1, 2, 3]);
+      for (let i = 1; i < seats.length; i += 1) {
+        expect(
+          seats[i].bankroll,
+          `port ${systemId}: seat ${seats[i].seat} (${seats[i].bankroll}) must out-bank ` +
+            `seat ${seats[i - 1].seat} (${seats[i - 1].bankroll})`,
+        ).toBeGreaterThan(seats[i - 1].bankroll);
+      }
+      // …and the richest seat is the `optimal` one at every port, which is the
+      // half of the join that makes the ladder a DIFFICULTY ladder rather than
+      // merely a money one. Seat 2 is the mix; seat 1 is the soft seat.
+      expect(seats[2].archetype, `port ${systemId} seat 3`).toBe('optimal');
+      expect(seats[1].archetype, `port ${systemId} seat 2`).toBe('mixed');
+      expect(['bad', 'random']).toContain(seats[0].archetype);
+    }
+  });
+});
