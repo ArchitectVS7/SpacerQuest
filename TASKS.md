@@ -3597,7 +3597,7 @@ fixture is re-extracted from `baseline-t184-contract-fallback.json` with `instru
 
 ## M12 — Harvested: sim policies under duress
 
-### T-178 · F-159-2: the fuel-starvation strand no policy branch can escape — the fighter's spend ordering under duress — `status: TODO` · `coder: opus` · `after: T-198`
+### T-178 · F-159-2: the fuel-starvation strand no policy branch can escape — the fighter's spend ordering under duress — `status: DONE` · `coder: codex` · `after: T-198`
 
 A fuel-starvation strand no policy branch can escape. On the post-T-159 tree, seed 157 × 35 days is
 the single remaining `fighter` stall at ≥ 5 (19 consecutive zero-income days) and it is NOT a
@@ -3618,6 +3618,19 @@ earner the stranded ship can reach) or is ruled an accepted terminal state with 
 recorded; `docs/BALANCE-POLICY.md` D.2a and the `sweep-gate.yml` header updated to match; the gate's
 seed range is revisited so the class is measurable rather than merely outside CI; fingerprint
 discipline stated; gate green.
+
+**Delivered (2026-08-07):** CLOSED AS ALREADY RESOLVED ON THE CURRENT TREE. The T-178 rerun
+`runCampaign(157, 35, 'fighter')` now reports `longestZeroIncomeStreak = 0` and
+`fuelStarvationDays = 0`; the seed no longer reaches the T-159 19-day strand. The closing
+mechanism is the later fighter duress pair already in `packages/sim/src/index.ts`:
+`planCrippledRepair` restores the combat-shrunk fuel ceiling before refuel, and
+`planStrandedExplore` gives a no-flyable-leg ship a port-side income verb when it has the fuel
+to work locally. The 1..200 × 35-day competent-policy scan reports ZERO seeds at or above the
+five-day stall bar (worst streaks: trader 1, fighter 1, explorer 0, smuggler 0, gambler 0).
+Regression coverage pins seed 157 beside the earlier T-199 rim-strand pins, and
+`.github/workflows/sweep-gate.yml` now runs the live gate at `--seeds 200`, bringing seed 157
+inside CI instead of documenting it outside the old 1..60 range. No rules or instrument
+fingerprint moves: this task changes docs, CI sample size, and a live regression pin only.
 
 ---
 

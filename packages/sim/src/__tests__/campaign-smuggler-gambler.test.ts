@@ -742,11 +742,14 @@ describe('T-199 · F-199-1/F-199-2 · the rim strands the shared anti-idle move 
   // Each of these sat at or over the `INCOME_STALL_LIMIT` bar of 5 on the tree
   // before T-199, measured by `balance:sweep --seeds 1000 --days 35` (the map is
   // in TASKS.md). They are pinned by seed so the next shared-planner change has to
-  // meet them locally.
+  // meet them locally. T-178 adds seed 157: same 35-day fighter bar, but the
+  // original strand was found by the T-159 audit and closed by the later fighter
+  // duress outs (`planCrippledRepair` / `planStrandedExplore`).
   it.each([
     ['trader' as const, 371, 6],
     ['trader' as const, 571, 7],
     ['fighter' as const, 74, 9],
+    ['fighter' as const, 157, 19],
     ['fighter' as const, 747, 26],
     ['fighter' as const, 916, 24],
     ['smuggler' as const, 677, 6],

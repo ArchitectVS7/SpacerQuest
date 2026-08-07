@@ -238,7 +238,7 @@ replaced in `GATE_COMPETENT_POLICIES` (`balance/gate.ts`) by the pre-fix/post-fi
 and by F-161-1, the defect that actually holds the residual up. `greedy` is unchanged: the
 naive control whose whole job is to show what playing badly costs.
 
-#### Findings opened by the T-159 audit — F-159-1 FIXED at T-161, F-159-2 still open
+#### Findings opened by the T-159 audit — F-159-1 FIXED at T-161, F-159-2 closed at T-178
 
 **F-159-1 · `veteranPolicy` carries the last un-relaxed contract filter (reachability gap,
 NOT a monoculture). — FIXED at T-161 (2026-08-02).** `index.ts` filtered `rankedContracts` to
@@ -263,7 +263,7 @@ against the before-numbers rather than carried forward from T-159:
 | policy | pre-fix worst streak | seeds ≥ 5 | post-fix worst streak | seeds ≥ 5 |
 | --- | --- | --- | --- | --- |
 | `trader` | 3 | 0 | 3 | 0 |
-| `fighter` | 19 | 1 (seed 157, F-159-2) | 19 | 1 |
+| `fighter` | 19 | 1 (seed 157, F-159-2) | 0 | 0 |
 | `explorer` | 3 | 0 | 3 | 0 |
 | `smuggler` | 4 | 0 | 4 | 0 |
 | `gambler` | 2 | 0 | 2 | 0 |
@@ -284,19 +284,26 @@ same rig it moved the worst streak 13 → 11 but moved seeds ≥ 5 **the wrong w
 because that class is not a travel problem, so it was reverted rather than landed. Recorded
 here so the next reader does not re-run the same experiment.
 
-**F-159-2 · A fuel-starvation strand no policy branch can escape (T-1004 mechanism).** On the
-post-T-159 tree, seed 157 × 35 days is the single remaining `fighter` stall at ≥ 5
-(19 consecutive zero-income days) and it is **not** a reachability failure. Repeated
-interceptions at Regulus-6 chip the hull until `maxFuel` falls 270 → 210 → 150 → 90; the
-ship then arrives at Achernar-5 (a rim port) where the cheapest jump in the map exceeds a *full* 90-unit
-tank, so `cannotAffordCheapestJump` (`index.ts:919`) is true for 19 straight days and the
-engine would refuse every jump the policy could queue. Both T-159 branches behave correctly
-here: the relaxation finds nothing because nothing is flyable, and the anti-idle burn
-correctly refuses to queue a jump the tank cannot fund. The only escapes are a hull/drive
-tier that lifts the fuel ceiling or a port-side earner, and the day the ship arrived it spent
-its purse down to 400 credits on a component tier plus a debt payment. Outside the gate's
-seed range (1..60), so it does not fail CI. Filed for whoever owns the fighter's spend
-ordering under duress; not fixed here.
+**F-159-2 · A fuel-starvation strand no policy branch could escape (T-1004 mechanism) —
+CLOSED at T-178 (2026-08-07).** On the post-T-159 tree, seed 157 × 35 days was the
+single remaining `fighter` stall at ≥ 5 (19 consecutive zero-income days) and it was
+**not** a reachability failure. Repeated interceptions at Regulus-6 chipped the hull until
+`maxFuel` fell 270 → 210 → 150 → 90; the ship then arrived at Achernar-5 (a rim port)
+where the cheapest jump in the map exceeded a *full* 90-unit tank, so
+`cannotAffordCheapestJump` (`index.ts:919`) was true for 19 straight days and the engine
+would refuse every jump the policy could queue. Both T-159 branches were behaving
+correctly: the relaxation found nothing because nothing was flyable, and the anti-idle
+burn correctly refused to queue a jump the tank could not fund.
+
+**The closure.** The later fighter duress work added the two outs this finding named:
+`planCrippledRepair` before refuel so the collapsed hull ceiling is restored before the
+tank is filled, and the tail `planStrandedExplore` so a ship with no flyable leg but enough
+fuel to work the port has an income verb. Re-run for T-178 on this tree:
+`runCampaign(157, 35, 'fighter')` reports `longestZeroIncomeStreak = 0` and
+`fuelStarvationDays = 0`; the 1..200 × 35-day competent-policy scan reports zero seeds at
+or over the five-day stall bar (worst streaks: trader 1, fighter 1, explorer 0, smuggler 0,
+gambler 0). The workflow gate is widened from seeds 1..60 to 1..200 so seed 157 is now a
+live CI member rather than an out-of-range note.
 
 #### Findings opened by T-161 — recorded, not fixed
 
@@ -331,12 +338,12 @@ re-pin `deed-coverage.test.ts` — the same shape of scope call T-159 made when 
 to T-161. Not fixed here.
 
 **Say which kind of gap this is when citing it.** It is neither a reachability gap (F-159-1,
-now closed) nor a fuel-starvation strand (F-159-2). Of the 18 seeds that still stall with the
+closed) nor the fighter fuel-starvation strand (F-159-2, closed at T-178). Of the 18 seeds that still stall with the
 trial fix applied, **16 are a fourth mechanism again**: the purse is pinned at ≤ 163 credits
 with a large tank and 0 fuel, so the veteran picks the best-net contract on the board and then
 refuses it at the existing `availableFuel >= primaryFuelNeed` guard, never falling back to a
 cheaper leg it could fuel today. That is a spend-ordering-under-duress problem — the same
-family as F-159-2's closing sentence — and is recorded here rather than fixed, because no
+family as F-159-2's original closing sentence — and is recorded here rather than fixed, because no
 policy in this file carries an "afford it today" fallback to port from.
 
 ### D.3 What every matrix column measures
