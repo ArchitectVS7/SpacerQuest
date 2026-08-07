@@ -7166,7 +7166,7 @@ hardcoded `138px` left pad. Reduced-motion mode no longer reintroduces that magi
 an existing-wire Playwright assertion that the first ticker item starts after the live cap box,
 including the LOG button.
 
-### T-218 · Build: ship the "one phosphor, two materials" visual identity — `status: TODO` · `coder: opus` · `after: T-186`
+### T-218 · Build: ship the "one phosphor, two materials" visual identity — `status: DONE` · `coder: codex` · `after: T-186`
 
 T-186's ruling (2026-08-05): implement candidate D — amber stays the only hue and the only thing
 that emits light; every structural/inert surface (panel chassis, bezels, frames, dividers)
@@ -7210,6 +7210,20 @@ six-panel board used throughout T-186's bake-off) confirms it reads as the ruled
 redrift back toward either the pre-T-186 baseline or the rejected fuller-synthesis attempt; T-216
 and T-217 (both filed during the bake-off) are either fixed in the same pass or explicitly left
 to their own tasks with a reason recorded; gate green.
+
+**Delivered (2026-08-07, Codex):** added a neutral material family in `theme.css`
+(`--steel-*`, `--well`, `--frame`) without moving the five existing amber/phosphor token values.
+Broad structural chrome now reads as unlit metal/well material (tube, panes, chips, fuel well,
+starmap frame, route preview, wire cap, dock, dice and shared button bodies), while amber remains
+the only emitted light. The two ruled interaction edits are pinned: `.slot.ready` is now an
+outlined well with amber border/text/glow instead of reverse-video fill, and `.die.sel` keeps the
+dark die body with an amber inset ring/glow instead of an inverted light fill. PRD §4 now names
+the fiction: amber CRT readouts set into unlit machined-metal chassis.
+
+T-216 and T-217 were already closed earlier in this branch, so this pass did not reopen them.
+Added `theme-token.test.ts` coverage for the steel token family and the two reverse-video
+discipline selectors. Screenshot pass captured the six-panel cockpit and mobile first view at
+`test-results/t218-material-desktop.png` and `test-results/t218-material-mobile.png`.
 
 ### T-209 · CHECKPOINT — do not start M20 until the owner says so — `status: BLOCKED(Owner priority — resume after visual/core-loop work)` · `coder: codex` · `after: —` · `[BLOCKED BY = Owner priority — resume after visual/core-loop work]`
 

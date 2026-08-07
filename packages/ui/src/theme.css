@@ -20,6 +20,13 @@
   --hair: #3a2408;
   --line: var(--hair);
   --accent: var(--ember-hi);
+  --steel-0: #050605;
+  --steel-1: #0b0d0c;
+  --steel-2: #121514;
+  --steel-3: #1b1e1c;
+  --steel-4: #383932;
+  --well: #070807;
+  --frame: #34342d;
 
   --font-display: 'Chakra Petch', system-ui, sans-serif;
   --font-data: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
@@ -38,7 +45,7 @@ body,
   margin: 0;
 }
 body {
-  background: #050403;
+  background: var(--steel-0);
   color: var(--ember);
   font-family: var(--font-data);
   font-size: 15px;
@@ -52,7 +59,12 @@ body {
   position: relative;
   height: 100%;
   padding: 22px 26px;
-  background: radial-gradient(130% 130% at 50% 40%, #150e07 0%, #0b0906 60%, #070502 100%);
+  background: radial-gradient(
+    130% 130% at 50% 40%,
+    #15150f 0%,
+    var(--steel-1) 58%,
+    var(--steel-0) 100%
+  );
   overflow: hidden;
   isolation: isolate;
 }
@@ -208,7 +220,8 @@ body {
   font-size: 12.5px;
 }
 .chip {
-  border: 1px solid var(--hair);
+  border: 1px solid var(--frame);
+  background: linear-gradient(180deg, var(--steel-2), var(--steel-1));
   padding: 5px 10px;
   letter-spacing: 0.06em;
   white-space: nowrap;
@@ -245,9 +258,9 @@ body {
 .fuel .bar {
   width: 96px;
   height: 11px;
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--frame);
   position: relative;
-  background: #0a0704;
+  background: var(--well);
 }
 .fuel .bar i {
   position: absolute;
@@ -285,8 +298,8 @@ body {
   grid-template-rows: minmax(0, auto) minmax(220px, 1fr);
 }
 .pane {
-  border: 1px solid var(--hair);
-  background: linear-gradient(180deg, var(--panel) 0, #0d0905 100%);
+  border: 1px solid var(--frame);
+  background: linear-gradient(180deg, var(--steel-2) 0, var(--steel-1) 100%);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -298,7 +311,7 @@ body {
   justify-content: space-between;
   gap: 10px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid var(--frame);
 }
 .pane > header h2 {
   font-family: var(--font-display);
@@ -351,8 +364,8 @@ body {
   aspect-ratio: 1 / 1;
   margin-inline: auto;
   overflow: hidden;
-  border: 1px solid var(--hair);
-  background: radial-gradient(circle at 50% 48%, rgba(255, 176, 0, 0.1), rgba(5, 7, 5, 0.08) 52%);
+  border: 1px solid var(--frame);
+  background: radial-gradient(circle at 50% 48%, rgba(255, 176, 0, 0.08), rgba(7, 8, 7, 0.18) 52%);
   cursor: grab;
   touch-action: none;
 }
@@ -543,7 +556,8 @@ body {
 
 /* route-preview panel — the plan-before-commit readout */
 .route-preview {
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--frame);
+  background: var(--well);
   padding: 8px 10px;
   display: grid;
   gap: 6px;
@@ -1753,9 +1767,11 @@ body {
 .slot.ready {
   border-style: solid;
   border-color: var(--ember);
-  color: var(--tube);
-  background: var(--ember);
-  box-shadow: var(--glow);
+  color: var(--ember);
+  background: var(--well);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 176, 0, 0.26),
+    var(--glow);
 }
 .mono {
   color: var(--amber);
@@ -1938,8 +1954,8 @@ body {
 
 /* ---- wire ---- */
 .wire {
-  border: 1px solid var(--hair);
-  background: #0c0805;
+  border: 1px solid var(--frame);
+  background: var(--well);
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   align-items: stretch;
@@ -1953,7 +1969,7 @@ body {
   gap: 8px;
   padding: 0 12px;
   z-index: 3;
-  background: linear-gradient(90deg, #12100a 70%, transparent);
+  background: linear-gradient(90deg, var(--steel-2) 70%, transparent);
   font-family: var(--font-display);
   letter-spacing: 0.18em;
   font-size: 11px;
@@ -2191,8 +2207,8 @@ body {
 
 /* ---- hand dock ---- */
 .dock {
-  border: 1px solid var(--hair);
-  background: linear-gradient(180deg, #17100a, #0b0805);
+  border: 1px solid var(--frame);
+  background: linear-gradient(180deg, var(--steel-2), var(--steel-1));
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
@@ -2230,8 +2246,8 @@ body {
   font-weight: 600;
   font-size: 21px;
   color: var(--ember);
-  background: radial-gradient(120% 120% at 50% 35%, #221607, #0e0a05);
-  border: 1px solid var(--amber-dim);
+  background: radial-gradient(120% 120% at 50% 35%, var(--steel-3), var(--well));
+  border: 1px solid var(--frame);
   clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
   transition:
     transform 0.18s,
@@ -2245,8 +2261,10 @@ body {
 }
 .die.sel {
   border-color: var(--ember);
-  color: var(--ember-hi);
-  box-shadow: var(--glow-hi);
+  color: var(--ember);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 176, 0, 0.58),
+    var(--glow-hi);
   transform: translateY(-8px);
 }
 .die .dl {
@@ -2260,9 +2278,9 @@ body {
 }
 .die.spent {
   color: var(--amber-dim);
-  border-color: #241708;
+  border-color: var(--steel-3);
   cursor: default;
-  background: radial-gradient(120% 120% at 50% 35%, #120c06, #0a0704);
+  background: radial-gradient(120% 120% at 50% 35%, var(--steel-2), var(--steel-0));
 }
 .die.spent:hover {
   transform: none;
@@ -2301,9 +2319,9 @@ body {
   font-family: var(--font-display);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  background: transparent;
+  background: linear-gradient(180deg, var(--steel-2), var(--steel-1));
   color: var(--ember);
-  border: 1px solid var(--amber);
+  border: 1px solid var(--frame);
   padding: 8px 14px;
   cursor: pointer;
   font-size: 12px;
@@ -2314,7 +2332,7 @@ body {
 }
 .btn:disabled {
   color: var(--amber-dim);
-  border-color: var(--hair);
+  border-color: var(--steel-3);
   cursor: default;
 }
 .btn:disabled:hover {
@@ -2338,9 +2356,9 @@ body {
 .ctrls button {
   font-family: var(--font-display);
   letter-spacing: 0.14em;
-  background: transparent;
+  background: linear-gradient(180deg, var(--steel-2), var(--steel-1));
   color: var(--amber);
-  border: 1px solid var(--hair);
+  border: 1px solid var(--frame);
   padding: 4px 9px;
   cursor: pointer;
   text-transform: uppercase;
@@ -2358,8 +2376,8 @@ body {
 }
 .seedbar input {
   font-family: var(--font-data);
-  background: #0a0704;
-  border: 1px solid var(--amber-dim);
+  background: var(--well);
+  border: 1px solid var(--frame);
   color: var(--ember);
   padding: 6px 8px;
   width: 90px;
