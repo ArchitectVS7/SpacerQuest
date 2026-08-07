@@ -3552,7 +3552,7 @@ never after. Everything lands in ONE commit: code, the new suite (11 tests), the
 
 Orchestration: attempts=1/4.
 
-### T-184 · Smuggler contract options are `chosen` more often than they were `offered` — the all-weights-zero corner — `status: TODO` · `coder: opus` · `after: T-198`
+### T-184 · Smuggler contract options are `chosen` more often than they were `offered` — the all-weights-zero corner — `status: DONE` · `coder: opus` · `after: T-198`
 
 **RENUMBERED (2026-08-03):** this block was filed as `T-176`, colliding with the earlier `T-176`
 (F-160-2, line 911) — same collision as the T-175→T-183 renumber above. No other file referenced
@@ -3572,6 +3572,26 @@ re-measured and no `chosen/offered` share exceeds 100%, or the report's delibera
 leave-it-visible clamp comments are updated to point at the ruling; this touches
 `packages/engine/src/npc.ts`, so `rulesFingerprint` moves and the expected pinned rows are named up
 front; gate green.
+
+**Delivered (2026-08-07):** Ruled the corner precisely and encoded it at the picker: `pickIntent`'s
+all-zero table remains the existing Idle veto, while `pickContract`'s all-zero board is different
+because N10 deliberately made the contract selector total on a live board. When every contract
+score is 0, `pickContract` now records that long-standing fallback as uniform positive trace
+weights (`1` per board slot) instead of reporting a zero-score slot as unreachable; the untraced
+gameplay path keeps the same board, same tie-break draw, same chosen index and same RNG state. The
+regression lives at the source (`packages/engine/src/__tests__/npc.test.ts`) and at the report
+surface (`packages/sim/src/__tests__/balance-report.test.ts`), and
+`docs/BALANCE-TELEMETRY_SPEC.md` §7.3 records the ruling beside F-140-2. Re-measurement:
+`balance:sweep --label t184-trace-fixed --seeds 25 --days 35 --policies smuggler
+--trace-npc-decisions` emitted **31,070** trace lines; **669** contract decisions used the uniform
+fallback, and a direct chosen/offered reduction found **0** bars with `chosen > offered`. Fingerprint
+discipline: `rulesFingerprint` moves **cabd2112ccf4cefb → fb81de4fa8120bbb**; the full 8-shard
+capstone `t184-contract-fallback` (8,000 rows, milestone days 21/29/30/41/60/120, all eight
+policies) passed every shard and merge gate with **0 invariant violations**. The diff from
+`baseline-t175-archetype-ordering.json` to `baseline-t184-contract-fallback.json` reports
+**NOTHING MOVED** across compared fields, so the expected pinned row movement is none; the smoke
+fixture is re-extracted from `baseline-t184-contract-fallback.json` with `instrumentFingerprint`
+**42da0928b0a76d00**.
 
 ---
 

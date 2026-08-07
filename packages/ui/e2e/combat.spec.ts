@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
-import { FIGHT_FUEL_COST } from '@spacerquest/content';
+import { FIGHT_FUEL_COST, NPC_PROFILES } from '@spacerquest/content';
+import { createInitialState, createSave, startDay, type GameState } from '@spacerquest/engine';
 
 // T-307 acceptance: the combat overlay is a full-screen instrument driven end to
 // end through the UI — an encounter is fought and fled, the weapons-malfunction
@@ -95,6 +96,9 @@ const C_DEST = 9;
 const C_ENEMY_NAME = 'Stomper';
 const C_KILL_DIE_VALUE = 13;
 
+const VOICE_SEED = 77;
+const VOICE_NPC_ID = 'npc-iron-vex';
+
 test.beforeEach(async ({ page }) => {
   // Each test runs in a fresh, isolated context, so localStorage starts empty —
   // we deliberately do NOT clear it on every navigation (an addInitScript would
@@ -117,6 +121,42 @@ async function newGameSeed(page: Page, seed: number): Promise<void> {
   // it unconditionally (every career has its own), so this is the click a player
   // makes too; it calls no engine action, so the pinned RNG stream is unmoved.
   await signOpeningMarker(page);
+}
+
+async function bootSavedCareer(page: Page, game: GameState, seed: number): Promise<void> {
+  const save = createSave(game, seed);
+  await page.addInitScript((blob) => window.localStorage.setItem('sq.save.v1', blob), save);
+  await page.goto('/');
+  await expect(page.getByTestId('hand')).toBeVisible();
+}
+
+function namedCombatVoiceState(): GameState {
+  const state = startDay(createInitialState(VOICE_SEED)).state;
+  const profile = NPC_PROFILES.find((p) => p.id === VOICE_NPC_ID)!;
+  state.player.currentSystemId = 2;
+  state.player.ship.fuel = 300;
+  state.player.dawnHand = { dice: [19, 18, 12, 9, 1], spent: [false, false, false, false, false] };
+  state.encounter = {
+    id: 't266-named-combat-voice',
+    pendingTravel: { origin: 1, destination: 2, fuelUsed: 12 },
+    interceptor: {
+      id: profile.id,
+      source: 'named',
+      name: profile.name,
+      shipName: profile.shipName,
+      profileId: profile.id,
+      stats: profile.stats,
+      tier: profile.tier,
+      flaw: profile.flaw,
+      flawDc: profile.flawDc,
+    },
+    routeDangerLevel: 1,
+    routeDangerChance: 0.3,
+    encounterRoll: 0,
+    round: 1,
+    enemyHull: 2,
+  };
+  return state;
 }
 
 /** Jump from the starmap: assign the given hand die, click the destination, commit. */
@@ -301,4 +341,27 @@ test('a killing volley fires the post-kill retreat and keeps CheckBreakdown hone
   await page.getByTestId('combat-dismiss').click();
   await expect(page.locator('.starmap')).toBeVisible();
   await expect(page.locator('.starmap').getByTestId('check-breakdown')).toHaveCount(0);
+});
+
+test('named combat barks render on entry, battle, and aftermath through the overlay', async ({
+  page,
+}) => {
+  await bootSavedCareer(page, namedCombatVoiceState(), VOICE_SEED);
+
+  await expect(page.getByTestId('combat-overlay')).toBeVisible();
+  await expect(page.getByTestId('combat-enemy-name')).toHaveText('Iron Vex');
+  await expect(page.getByTestId('combat-enemy-bark')).toBeVisible();
+  await expect(page.getByTestId('combat-enemy-bark')).not.toHaveText('');
+
+  await page.locator('[data-testid="combat-die"][data-die-value="19"]').first().click();
+  await page.getByTestId('combat-fight').click();
+  await expect(page.getByTestId('combat-round')).toHaveText('ROUND 2');
+  await expect(page.getByTestId('combat-enemy-battle-bark')).toBeVisible();
+  await expect(page.getByTestId('combat-enemy-battle-bark')).not.toHaveText('');
+
+  await page.locator('[data-testid="combat-die"][data-die-value="18"]').first().click();
+  await page.getByTestId('combat-fight').click();
+  await expect(page.getByTestId('combat-aftermath')).toBeVisible();
+  await expect(page.getByTestId('combat-aftermath-bark')).toBeVisible();
+  await expect(page.getByTestId('combat-aftermath-bark')).not.toHaveText('');
 });

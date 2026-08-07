@@ -116,6 +116,8 @@ test('play a full hand of Liar’s Dice end to end through the real UI', async (
   // The pane is FORCED open while a hand stands: the engine blocks every other
   // verb behind `active-dare-hand`, so a closable panel would be a soft-lock.
   await expect(page.getByTestId('hangout-close')).toHaveCount(0);
+  await expect(page.getByTestId('dare-dealer-table-talk')).toBeVisible();
+  await expect(page.getByTestId('dare-dealer-table-talk')).not.toHaveText('');
 
   // Your four dice are face-up, each a real value — and each a real CSS-3D cube.
   const mine = page.locator('[data-testid="dare-player-die"]');

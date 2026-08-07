@@ -236,6 +236,11 @@ Recorded here so the option reads as decided rather than forgotten.
   is an index) and the board itself is not recorded. An entry is therefore
   interpretable as *"which of the offers presented that day"*, never *"which
   cargo"*. Noted at the emit site in `npc.ts`.
+  **T-184 addendum (2026-08-07):** a smuggler board with no contraband and no rim
+  offers is not the same case as `pickIntent`'s all-zero veto. `pickContract` is
+  deliberately total on a live board, so that corner remains a uniform fallback;
+  the trace now records that fallback as positive `weight: 1` candidates instead
+  of zero-score unreachable preferences.
 - **F-140-3. `instrumentFingerprint` moved, and §6 did not expect it to. THIS
   FINDING IS OPEN — see §7.7.** §6 says `rulesFingerprint`'s move is the ONLY
   expected diff in `docs/balance/smoke/tiers.json`. Three moved:
