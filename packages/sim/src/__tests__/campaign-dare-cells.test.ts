@@ -92,7 +92,16 @@ describe('T-175 · dareCells — the join is lossless', () => {
     expect(keys).toHaveLength(48);
     expect(new Set(keys)).toEqual(new Set(Object.keys(zeroDareCells())));
     for (const cell of Object.values(hangoutPlay.dareCells)) {
-      expect(cell).toEqual({ hands: 0, playerWon: 0, netCredits: 0, bids: 0 });
+      expect(cell).toEqual({
+        hands: 0,
+        playerWon: 0,
+        netCredits: 0,
+        bids: 0,
+        deadZoneHands: 0,
+        deadZonePlayerWon: 0,
+        deadZoneNetCredits: 0,
+        deadZoneBids: 0,
+      });
     }
   });
 
@@ -153,8 +162,76 @@ describe('T-175 · dareCells — the tier is derived and cross-checked', () => {
       playerWon: 0,
       netCredits: 0,
       bids: 0,
+      deadZoneHands: 0,
+      deadZonePlayerWon: 0,
+      deadZoneNetCredits: 0,
+      deadZoneBids: 0,
     });
   });
+});
+
+describe('T-224 · dareCells measure the bounded-band dead zone', () => {
+  it.each(GAMBLER_SEEDS)(
+    'gambler seed %i: the dead-zone subcut is a subset of the settled-cell rollup',
+    (seed) => {
+      const { hangoutPlay } = runCampaign(seed, DAYS, 'gambler');
+      let deadZoneHands = 0;
+      let deadZoneWon = 0;
+      let deadZoneBids = 0;
+      for (const [key, cell] of Object.entries(hangoutPlay.dareCells) as [
+        DareCellKey,
+        DareCellStats,
+      ][]) {
+        expect(cell.deadZoneHands, key).toBeLessThanOrEqual(cell.hands);
+        expect(cell.deadZonePlayerWon, key).toBeLessThanOrEqual(cell.playerWon);
+        expect(cell.deadZoneBids, key).toBeLessThanOrEqual(cell.bids);
+        if (cell.deadZoneHands === 0) {
+          expect(cell.deadZonePlayerWon, key).toBe(0);
+          expect(cell.deadZoneNetCredits, key).toBe(0);
+          expect(cell.deadZoneBids, key).toBe(0);
+        } else {
+          expect(cell.deadZoneBids, key).toBeGreaterThanOrEqual(cell.deadZoneHands);
+        }
+        deadZoneHands += cell.deadZoneHands;
+        deadZoneWon += cell.deadZonePlayerWon;
+        deadZoneBids += cell.deadZoneBids;
+      }
+
+      expect(deadZoneHands).toBeLessThanOrEqual(hangoutPlay.dares);
+      expect(deadZoneWon).toBeLessThanOrEqual(hangoutPlay.daresWon);
+      expect(deadZoneBids).toBeGreaterThanOrEqual(deadZoneHands);
+    },
+    120_000,
+  );
+
+  it('the shipped gambler arm reaches the zone often enough to measure, not just bound', () => {
+    let hands = 0;
+    let deadZoneHands = 0;
+    let deadZoneWon = 0;
+    let deadZoneNet = 0;
+    let deadZoneBids = 0;
+    const populatedCells = new Set<DareCellKey>();
+    for (const seed of WIDE_GAMBLER_SEEDS) {
+      const { dareCells } = runCampaign(seed, DAYS, 'gambler').hangoutPlay;
+      for (const [key, cell] of Object.entries(dareCells) as [DareCellKey, DareCellStats][]) {
+        hands += cell.hands;
+        deadZoneHands += cell.deadZoneHands;
+        deadZoneWon += cell.deadZonePlayerWon;
+        deadZoneNet += cell.deadZoneNetCredits;
+        deadZoneBids += cell.deadZoneBids;
+        if (cell.deadZoneHands > 0) populatedCells.add(key);
+      }
+    }
+
+    expect(hands).toBeGreaterThan(2_000);
+    expect(
+      deadZoneHands,
+      `dead-zone hands ${deadZoneHands}/${hands}; populated cells ${[...populatedCells].join(', ')}`,
+    ).toBeGreaterThan(0);
+    expect(deadZoneWon).toBeGreaterThan(0);
+    expect(deadZoneBids).toBeGreaterThanOrEqual(deadZoneHands);
+    expect(Number.isFinite(deadZoneNet / deadZoneHands)).toBe(true);
+  }, 480_000);
 });
 
 describe('T-175 · the archetype ordering, as a LIVE assertion (F-160-1)', () => {

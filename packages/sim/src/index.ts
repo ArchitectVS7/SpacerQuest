@@ -452,6 +452,19 @@ export interface DareCellStats {
   /** `DareBidPlaced` beats attributed to this cell — BOTH sides, the same quantity
    *  §12 reports as "bids per hand". Joined through `handId`. */
   bids: number;
+  /**
+   * T-224 · Settled hands whose SEATED stake landed in the bounded-band dead zone:
+   * `bandMax !== null && seedWager > bandMax - ante`. Raw, cell-local counter so
+   * §21.4c can measure the actual shipped share instead of bounding it from
+   * `bids/hand`.
+   */
+  deadZoneHands: number;
+  /** T-224 · ...of which the PLAYER took. */
+  deadZonePlayerWon: number;
+  /** T-224 · Sum of player-view `creditsDelta` for the dead-zone subset. */
+  deadZoneNetCredits: number;
+  /** T-224 · `DareBidPlaced` beats attributed to the dead-zone subset. */
+  deadZoneBids: number;
 }
 
 /** T-175 · The three concrete arms plus `'none'`, in the FIXED order the write-up
@@ -482,6 +495,10 @@ export function zeroDareCells(): Record<DareCellKey, DareCellStats> {
           playerWon: 0,
           netCredits: 0,
           bids: 0,
+          deadZoneHands: 0,
+          deadZonePlayerWon: 0,
+          deadZoneNetCredits: 0,
+          deadZoneBids: 0,
         };
       }
     }
@@ -1700,6 +1717,13 @@ interface CampaignMetricAccumulator {
    */
   openDareBids: Map<string, number>;
   /**
+   * T-224 · Open hands, `handId` → whether the seated stake was in the bounded
+   * dead zone at OPEN. Joined at settlement into `dareCells`, beside the parked
+   * bid count, because only the start event carries the stake/system and only the
+   * settlement event carries pool/archetype/tier attribution.
+   */
+  openDareDeadZone: Map<string, boolean>;
+  /**
    * T-176 · Open hands, `handId` → the actor of the LAST `DareBidPlaced` seen.
    * Parked the same way `openDareBids` is and for the same reason — a hand spans
    * event batches — and read once at settlement, where the CHALLENGER is by
@@ -1903,6 +1927,12 @@ function accumulateMetricEvents(
       if (event.seedWager > base) hangoutPlay.handsAboveBaseCeiling += 1;
       if (event.seedWager > raised) hangoutPlay.handsAboveRaisedCeiling += 1;
       hangoutPlay.maxSeedWager = Math.max(hangoutPlay.maxSeedWager, event.seedWager);
+      const tier = derivedDareTier(metrics.settledDareHands);
+      const seatedBandMax = effectiveWagerBand(event.systemId, tier).max;
+      metrics.openDareDeadZone.set(
+        event.handId,
+        seatedBandMax !== null && event.seedWager > seatedBandMax - event.ante,
+      );
     } else if (event.type === 'DareBidPlaced') {
       // T-175 · One beat of the hand, either side. Attributed to a CELL only at
       // settlement, because the cell key needs the pool/archetype/tier that only
@@ -1941,8 +1971,16 @@ function accumulateMetricEvents(
       cell.hands += 1;
       if (playerWon) cell.playerWon += 1;
       cell.netCredits += event.creditsDelta;
-      cell.bids += metrics.openDareBids.get(event.handId) ?? 0;
+      const bids = metrics.openDareBids.get(event.handId) ?? 0;
+      cell.bids += bids;
       metrics.openDareBids.delete(event.handId);
+      if (metrics.openDareDeadZone.get(event.handId) === true) {
+        cell.deadZoneHands += 1;
+        if (playerWon) cell.deadZonePlayerWon += 1;
+        cell.deadZoneNetCredits += event.creditsDelta;
+        cell.deadZoneBids += bids;
+      }
+      metrics.openDareDeadZone.delete(event.handId);
 
       // T-176 · THE CHALLENGER-WON SPLIT AT MATCHED EVIDENCE (F-160-2, §18). Only
       // the two CHALLENGE outcomes reach the body below, and they are the only ones
@@ -6674,6 +6712,7 @@ export function runCampaign(
     // T-175 · the cell split's two running fields (F-160-1).
     settledDareHands: 0,
     openDareBids: new Map<string, number>(),
+    openDareDeadZone: new Map<string, boolean>(),
     openDareLastBidder: new Map<string, DareChallenger>(),
   };
   const balance = newBalanceRecordTracker();

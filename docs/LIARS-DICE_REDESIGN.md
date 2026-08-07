@@ -4124,17 +4124,31 @@ inverts — is **essentially unexercised**: not one career in 1,600 has a mean s
 floor (p10 = 1,537 against a default floor of 25). The measured game lives **at and beyond the
 ceiling end**, which is exactly where §21.4b's dead zone is.
 
-**What cannot be cut without an instrument change, stated as a bound rather than guessed:** the
-share of hands seated *inside* the dead zone. `dareCells` has no stake or headroom dimension, and
-adding one is refused (§21.0 item 4). What the instrument does carry bounds it — a hand with zero
-house headroom carries exactly **one** bid, so `bids/hand = 1.504` puts the share of hands with any
-raise at **≤ 50.4%** and therefore the dead-zone share at **≤ 49.6%**. That the true figure is
-non-trivial is corroborated independently: 64.13% of hands are seated above the *authored* ceiling
-at all, and the gambler requests `min(ceiling, ⌊bankroll × 0.1⌋)` (`packages/sim/src/index.ts`
-`GAMBLER_BANKROLL_FRACTION = 0.1`, `GAMBLER_RESERVE = 3000`), so it seats **exactly at the ceiling**
-whenever `credits ≥ 3,000 + 10 × ceiling` — between 5,000 and 33,000 credits across the shipped
-bands, against a median career purse of 64,622. **Naming the exact share is T-224's, and it needs the
-instrument cut this task refuses to make.**
+**T-224 MEASUREMENT (2026-08-07, 48 gambler careers × 120 days, HEAD): the exact dead-zone share is
+7.37%** — **623 / 8,452** settled hands. This is now a shipped instrument cut, not a bound:
+`HangoutPlayStats.dareCells` carries `deadZoneHands`, `deadZonePlayerWon`, `deadZoneNetCredits` and
+`deadZoneBids` in every existing pool × archetype × tier cell. The old `≤ 49.6%` bound was
+directionally useful but loose by 42.23 pp. The measured subset has exactly **1.0 bids/hand**, as the
+mechanism predicts; player win rate is **66.29%** and player EV is **+351.4 cr/hand** versus the
+same arm's overall **52.89%** and **+174.0 cr/hand**.
+
+| cut | hands | dead-zone hands | share | dead-zone win | dead-zone EV/hand |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| all shipped gambler hands | 8,452 | 623 | **7.37%** | **66.29%** | **+351.4 cr** |
+| t0 | 240 | 15 | 6.25% | 53.33% | +26.6 cr |
+| t1 | 240 | 10 | 4.17% | 60.00% | +50.0 cr |
+| t2 | 480 | 42 | 8.75% | 69.05% | +76.0 cr |
+| t3 | 960 | 105 | 10.94% | 65.71% | +49.6 cr |
+| t4 | 1,920 | 451 | **23.49%** | **66.74%** | **+464.8 cr** |
+| t5 | 4,612 | 0 | 0.00% | — | — |
+
+Populated cells, with all zero cells omitted: `roaming|none|t0` 15/34, `roaming|none|t1` 10/12,
+`roaming|none|t2` 42/106, `roaming|none|t3` 100/299, `roaming|none|t4` 363/1,021,
+`roster|bad|t3` 1/1, `roster|bad|t4` 10/25, `roster|optimal|t3` 4/29,
+`roster|optimal|t4` 70/415 and `roster|random|t4` 8/20. The concentration is therefore exactly
+where the earlier reachability table pointed: bounded high-tier play, especially tier 4. This task
+does **not** rule whether that is acceptable; it supplies the owner-facing number for T-224's
+intended-vs-defect call.
 
 **A4 HOLDS, and it holds by measurement rather than by argument.** Full dissolution (`k = u`) needs
 **≥ 419,896** credits at the cheapest port and **≥ 2,099,476** at the default band; the largest

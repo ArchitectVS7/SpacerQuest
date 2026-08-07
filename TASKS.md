@@ -3123,7 +3123,7 @@ actually buys what the roster sells, and RULED**. The ruling is **LD-30** in
 
 Orchestration: attempts=1/4.
 
-### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: IN-PROGRESS` · `coder: opus` · `after: T-222`
+### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: BLOCKED(Owner ruling: intended dead zone vs defect)` · `coder: codex` · `after: T-222`
 
 **Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4b / §21.7,
 `docs/LIARS-DICE-DECISIONS.md` LD-29, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3d.** `headroomFor`
@@ -3168,6 +3168,23 @@ ante), LD-27's `k`-gate derivation is re-run against the new numbers, the archet
 standing invariants are re-scored alongside** because the fix moves the player's EV directly; §21.4b
 and §21.7 gain the outcome; if any rule moves the task takes its own capstone with the moved rows
 predicted first; gate green.
+
+**Instrument/measurement delivered (2026-08-07, Codex); task now blocks on the owner ruling.**
+`HangoutPlayStats.dareCells` now carries a dead-zone subcut in every existing pool × archetype ×
+tier cell: `deadZoneHands`, `deadZonePlayerWon`, `deadZoneNetCredits` and `deadZoneBids`. The fold
+parks a `DareHandStarted` dead-zone flag by `handId` (`bandMax !== null && seedWager > bandMax -
+ante`) and joins it at `DareHandResolved`, so the settled hand keeps its existing pool/archetype/tier
+attribution without adding an engine event field. Coverage in
+`packages/sim/src/__tests__/campaign-dare-cells.test.ts` pins the zero-fill shape, subset identity,
+and a live gambler sample that reaches the zone.
+
+Measured on HEAD over the repo's widened gambler detector window (48 seeds × 120 days): **623 /
+8,452 = 7.37%** of settled hands sit in the dead zone; the subset has exactly **1.0 bids/hand**,
+**66.29%** player wins and **+351.4 cr/hand** to the player, against **52.89%** and **+174.0
+cr/hand** overall. Tier 4 carries the largest live concentration: **451 / 1,920 = 23.49%** of tier-4
+hands, **66.74%** player wins and **+464.8 cr/hand**. §21.4c and LD-29 now carry these numbers. No
+rule moved and no fix was chosen; the remaining Accept branch is the owner's ruling: intended
+whole-hand exposure feature, or defect to bake off.
 
 ### T-225 · F-222-2: at tier 5 nothing caps the pot/ante ratio, and past `k ≤ 3` the house's own gate misprices — `status: TODO` · `coder: opus` · `after: T-222`
 

@@ -916,8 +916,11 @@ gambler-only-arm artefact §19.9 and §20.0 record, not a regression.)*
    `probAtLeast(1, u)` — **in the player's favour at every width**. Measured house net/seed
    **−0.045** (4 dice) / **−0.321** (6 dice) against **+0.445 / +0.373** one quarter-band lower;
    at the default band at tier 4 that is **+962 cr/hand to the player against −842**. §16.5 already
-   measured the gambler's median stake-to-band ratio at **100.00%**. The lever is §4.3's whole-hand
-   exposure ruling, not the ante.
+   measured the gambler's median stake-to-band ratio at **100.00%**. T-224's shipped-instrument
+   cut measures the actual dead-zone share at **623 / 8,452 = 7.37%** over 48 gambler careers × 120
+   days, with **1.0 bids/hand**, **66.29%** player wins and **+351.4 cr/hand** to the player
+   (**+464.8 cr/hand at tier 4**, n = 451 dead-zone hands). The lever is §4.3's whole-hand exposure
+   ruling, not the ante; T-224 is blocked on the owner's intended-vs-defect ruling.
 3. **FILED, NOT ABSORBED — F-222-2 (`TASKS.md` T-225): tier 5 caps nothing.**
    `effectiveWagerBand → {min: 0, max: null}` removes the ceiling while `anteFor` freezes the ante at
    the tier-4 reference, so the ratio → 0 as the stake grows. Past `k ≤ 3` the direction **reverses**:
