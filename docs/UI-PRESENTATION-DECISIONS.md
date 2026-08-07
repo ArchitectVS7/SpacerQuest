@@ -80,6 +80,13 @@ ring, glow and `--ember` text on the surface's own dark body), never as **INVERT
 * The two states the ruling explicitly MOVED off reverse video are `.slot.ready` (the
   check-clearing badge) and `.die.sel` (the armed die). Both are pinned in both directions by
   `visual-identity.test.ts`; re-inverting either needs a new owner ruling, not a refactor.
+  **These are the ONLY two selectors that differ from D's own reference build**, and both were taken
+  byte-for-byte from `docs/design/T218-reference/chassis-rvrule.html:239,270` and marked
+  DO-NOT-REVERT in source — `.slot.ready` at `packages/ui/src/theme.css:1912-1928` (an outlined
+  `--well` fill with `--ember` border, text and inset glow, not a solid ember fill) and `.die.sel` at
+  `theme.css:2457-2481` (the dark steel body kept, with an `--ember` inset ring, glow and text).
+  `.die.sel`'s `translateY(-8px)` lift STAYS: it is an app affordance, not part of the reverse-video
+  question.
 * The button-body and locked-row treatments from the bake-off's legibility reviewer were
   **explicitly excluded** from the ruling. D's own button/lock treatment ships as built. Do not
   reach for that build for anything.
@@ -107,6 +114,79 @@ row is `minmax(220px, 1fr)`), so the shipped viewBox is 480 × 156. A first pass
 Future pane art is measured against that box, not guessed. Corollary: percentage alignment of
 HTML callouts holds only while the svg box matches the viewBox aspect, so a diagram is sized by
 `max-width` on the wrapper and **never** by `max-height`.
+
+**UI-32 — Candidates A and B of the T-186 palette bake-off are CLOSED, and the REASONS are the
+ruling.** (T-186.) UI-2 already records that A is closed; what stops it being re-proposed is why.
+**A — per-instrument diegetic accent hues** (combat vs. trade vs. Cantina as different "instruments")
+is closed on two independent grounds: it is a CSS-architecture trap, because custom properties do not
+cascade the way the proposal assumed — every derived token needs re-declaring at every scope or it
+silently stays amber — and it is a MEASURED accessibility regression, since under deuteranopia
+simulation the four instruments collapse into two indistinguishable pairs. **B — a harder break from
+monochrome** is closed because it would force rewriting `docs/PRD-REIMAGINED.md` §4 and would
+invalidate the stated Electron/DOM-over-Tauri/canvas rationale at `docs/TECH-STACK.md`:164 and
+:247-248. Neither is deferred; reopening either is a new owner ruling against those two grounds.
+
+**UI-33 — "Everything blends together" is a CONTRAST/STRUCTURE defect until measured otherwise,
+never a hue shortage.** (T-186.) Three independent reviewers converged 3/3 on the same root cause —
+panel-to-background contrast at 1.04:1 and pane borders at 1.36:1, both under the 3:1 perceivability
+floor — and all three landed on "add zero hues, fix through structure". A legibility complaint that
+NAMES a hue fix gets measured before the named fix is priced.
+
+**UI-34 — `--accent` and `--line` were DELETED, not defined and not promoted.** (T-216.) The Accept
+clause offered both branches — give them amber-family values, or adopt them as real documented
+second/third-hue tokens — and promotion was rejected, because T-218's whole subject is making "one
+phosphor" TRUE. Neither token was ever declared anywhere in the repo, so their `#4fd1c5` / `#2b3a44`
+fallbacks were what actually painted (see `docs/LESSONS.md` L-067). Every site is now routed by
+UI-2's material rule instead: `.ship-honor`'s frame is chassis (`theme.css:5375-5382`, `5395-5397`),
+the `you` and held-rank markers are LIT `--ember-hi` (`theme.css:5413-5417`, `5424-5428`), and
+`.comp-effect-next`, which carried the same teal, is lit too (`theme.css:5437-5440`).
+
+**UI-35 — A semantic distinction inside the one-phosphor palette may NOT be carried by hue alone.**
+(T-216.) Viénot-matrix simulation of the two live attitude colours (`#e0562a` hostile vs `#c0781a`
+neutral `--amber`) put both at hue ~52° within 3 units on every channel under deuteranopia, and the
+same collapse under protanopia: a deuteranope or protanope could not tell a hostile captain from a
+neutral one. Moving `.as-hostile` to an amber-family value is therefore explicitly INSUFFICIENT on
+its own. The shipped fix (`theme.css:3625-3670`) adds TWO channels that do not depend on hue — a
+luminance inversion (`background: var(--ember)` with `color: var(--well)`, which survives greyscale)
+and a `!` glyph via `::before`, which depends on no colour channel at all. That inversion is
+PERMITTED under UI-2b rather than in tension with it — a hostile captain is real urgency, the exact
+category the rule reserves inversion for — and the reasoning is written into the CSS beside the rule
+so a future reader does not "fix" it back.
+
+**UI-36 — A MATERIAL or skin change must cost no MEASURED geometry.** (T-218.) The board's 2px
+stock, `overflow: visible`, the −0.45deg hang, the chamfer `clipPath` and the rail span were all kept
+because T-190 and T-191 MEASURE them (UI-5, UI-27); `.pane`'s body keeps the pre-T-218 12px content
+inset exactly (5px well margin + 7px padding) so content width is unchanged; and `.hand` took the
+reference build's `.tray` recess WITHOUT being renamed, because 68 `App.tsx` call sites plus e2e
+depend on the name. A re-material is additive to the shape languages UI-1 reserves, never a re-layout
+smuggled in beside them.
+
+**UI-37 — The Galactic Wire band reserves the cap's space through NORMAL FLOW, not a measured
+offset.** (T-217.) `.wire` is a flex row; `.cap` is a normal-flow item that reserves exactly its own
+width whatever it contains; a new `.wire-track` (`flex: 1; min-width: 0; overflow: hidden`,
+`theme.css:2085-2135`) takes the remainder and clips the scroll, and `.ticker`'s
+`padding: 9px 0 9px 138px` became `padding: 9px 0 9px 6px` (`theme.css:2153-2161`). The single
+`App.tsx:5531-5541` change is the wrapper element. A `ResizeObserver` / `getBoundingClientRect`
+re-measure was explicitly REJECTED as a correct-but-fragile answer to a layout question CSS can
+answer outright — the magic number was deleted, not re-measured. **`min-width: 0` on the track is
+load-bearing**: without it the nowrap ticker sets the flex item's min-content width and shoves the
+cap back off the left edge.
+
+**UI-38 — No pixel constant may encode `.cap`'s width, because that width is DATA-DEPENDENT.**
+(T-217.) T-1406 renders BULLETIN storylet chips inside `.cap`, so the correct constant differs
+between two boots of the same build — there is no number that is right. Any guard on this geometry
+therefore plays FORWARD to the widest data case rather than measuring a virgin boot:
+`packages/ui/e2e/visual-identity.spec.ts` asserts `cap.right <= track.left` and then ends up to six
+days until the wire actually carries a BULLETIN chip before re-measuring.
+
+**UI-39 — Active label-collision suppression is a REQUIRED part of the 3D globe starmap, and
+"rotate to a clean angle" is not a fallback.** (T-188, measured at the 2026-08-05 ruling pass by
+sampling 90 rotations — every 20° yaw × 5 pitches, using the same bounding-box method as
+`packages/ui/src/__tests__/starmap-label-overlap.test.ts`.) 97.8% of rotations carry at least one
+collision, averaging 4 per frame, with `Arcturus-6`/`Fomalhaut-2` colliding in 22 of 90 samples: the
+20 charted systems are too tightly clustered near Sol for rotation to help. Suppression priority is
+current system → set-course target → nearest-to-camera; losers keep their dot and get their label
+back on hover or selection.
 
 ---
 
@@ -244,6 +324,16 @@ does not exist yet.** (T-194.) Combat RUN is `check(die, playerPilot, enemyPursu
 enemyPilot)` with the enemy d20 drawn at resolve time, so its row prints the player's total and
 states that the other side still rolls. Inventing a DC there would be T-193's bug — a cockpit
 advertising a check the resolver never runs — reproduced in a new pane.
+
+**UI-40 — The cockpit NEVER displays a DC for a branch the resolver will not roll.** (T-193, closing
+the dead `PILOT DC` readout T-1605 left behind; UI-30 already cites this bug by name.)
+`routeCheckReadout(game, dest, armedDieIndex)` in `packages/ui/src/format.ts` returns `{kind:'dc'}`
+ONLY for `NEMESIS_SYSTEM_ID`, and reads that DC *through* `travelPreview` rather than recomputing it,
+so panel and resolver cannot drift. Ordinary jumps get `{kind:'die-effect'}` — fuel and evasion
+percentages computed from the engine's own `navDieFuelDiscount` / `navDieEvasionFactor`, with no
+15/20 literal anywhere in the UI — or `{kind:'no-check'}` when no die is armed. A nat 1 reads
+"−0% / −0%" and is deliberately NOT special-cased back to "no check": that is its real live effect,
+and the absence of a DC must read as a STATED FACT rather than as a missing feature.
 
 **UI-22 — Ordering for the dawn-roll work: T-194 (dawn-hand illegibility) lands FIRST.** (T-201.)
 T-194 teaches what a die BUYS at the action; T-201 teaches what a die IS at the deal, and they do

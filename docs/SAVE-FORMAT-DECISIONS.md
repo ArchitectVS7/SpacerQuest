@@ -163,3 +163,20 @@ nothing after birth — its `currentSystemId` has exactly two writers (`executeT
 `executeTravel`), both reachable only via `resolveNpcDay`, whose one production caller is gated by
 `if (!isSimulatedCaptain(npc.profileId)) continue;`. Skipping the migration would have
 half-delivered the feature on every existing save.
+
+**SF-22 — A DISPLAY rename sweeps display text only, and stops at persisted ids and code
+identifiers.** (T-188.) `Sun-3` → `Sol-3` swept ~75 source, doc and test files, but the persisted
+deed id `liars_dice_cleared_sun_3` (`packages/content/src/deeds.ts:921`) and the `SUN_3_HANGOUT`
+identifier (`packages/content/src/portHangouts.ts:278`) were deliberately NOT renamed: renaming a
+persisted id is a save-migration question, and the owner asked for a display change. Dated
+historical and archival documents are also left alone — `docs/archive/`, the two `T-16xx`-era
+balance reports and `TODO.md` provenance record what the game was called at the time (TP-34).
+
+**SF-23 — The ONLY live reading of the save version is the `export const CURRENT_SAVE_VERSION = …`
+declaration in `packages/engine/src/save.ts`.** (T-255; verified `17` at `save.ts:627`, last bumped
+by T-208 v16 → v17.) Neither the `TASKS.md` Standing-constraints anchor nor the version-history
+JSDoc at the top of `save.ts` (e.g. `save.ts:204`, "T-145 bumped … to 15") is a live reading — both
+go stale silently. A Delivered note GREPS the declaration, quotes it, and pins its `file:line` per
+`docs/LESSONS.md`'s resolvable-pin rule; T-255 fix round 1 shipped a note quoting "15,
+`save.ts:509`" lifted from exactly those two stale sources. This is the enforcement half of SF-19's
+"re-read live at delivery".

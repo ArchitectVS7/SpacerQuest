@@ -329,3 +329,76 @@ copy, and the boundary is verified by `git diff --stat` scoped to `packages/engi
 in `.md`, no engine or UI code is touched, the proposal NAMES its own open questions rather than
 silently deciding them, and the follow-up `code`-type implementation task is NOT filed until the
 owner picks a direction.
+
+---
+
+## 8. Harvested 2026-08-06 (T-186 … T-255)
+
+**TP-49 — Work in direct tension with a COMMITTED design pillar is a RULING task that starts
+BLOCKED, never a build-and-ship task.** (T-186.) T-186 sat against `docs/PRD-REIMAGINED.md` §4's
+"committed amber-phosphor CRT style… Duskers-grade commitment" and against `docs/TECH-STACK.md`:164
+and :247-248, which name that aesthetic as the REASON Electron and the DOM/WebGL renderer were
+chosen. Silently reworking the palette would have overridden an explicit prior owner commitment.
+Whatever is then ruled, the pillar doc is UPDATED to match rather than left contradicting shipped
+behaviour.
+
+**TP-50 — A visual-direction ruling is not taken from PROSE.** (T-186, owner-set: he declined to
+pick from descriptions.) The Accept criterion's own path is required — `/bakeoff` with independent
+reviewers in isolated context, each REQUIRED to build and screenshot a real mockup before giving a
+verdict, compared side by side. The ruling then names a specific REFERENCE BUILD
+(`docs/design/T218-reference/T186-chassis.png` / `chassis.html`), not a description; a later
+synthesis that merges the winner with a loser's rules is a NEW thing needing its own approval, which
+is how T-186's fuller-synthesis attempt was rejected on sight.
+
+**TP-51 — A ruled visual reference lives IN-REPO, not in a session scratchpad.** (T-218.)
+`docs/design/T218-reference/` carries `chassis-rvrule.html` and `chassis-rvrule.png` alongside
+candidate D's unmodified `chassis.html` and `T186-chassis.png`, so the two-selector diff recorded at
+UI-2b stays auditable. A scratchpad-only reference makes "matches the ruled reference build"
+unverifiable the moment the scratchpad is collected, and `docs/` is prettier-ignored, so this costs
+the gate nothing.
+
+**TP-52 — One task is worked in exactly ONE working tree.** (T-218.) Round 1 split T-218 across
+`/Users/vs7/Dev/Games/SpacerQuest` (branch `redesign/explore-hangout`) and a six-minute-old
+`../SpacerQuest-guards` on scratch branch `guards/m8-m13-remainders`, producing a HALF diff in one
+tree and the FULL diff in the other with contradicting statuses. The resolution rule: consolidate
+into the branch the track runs on and that tracks `origin` — never commit onto an unmerged,
+upstream-less scratch branch — then verify the tracked diffs byte-identical by hash and REMOVE the
+throwaway worktree (`git worktree remove` + `git branch -d`). Worktrees are throwaway measurement
+rigs and the main tree stays byte-clean (`docs/BALANCE-RIG-DECISIONS.md` BR-7 / BR-19); this is the
+mirror image of the lesson at `docs/NPC_REDESIGN.md:2245`.
+
+**TP-53 — Every dispatched review or gate agent is given the ABSOLUTE repo root; inherited cwd is
+never the anchor.** (T-218.) Review and gate for this file's tasks MUST run with cwd
+`/Users/vs7/Dev/Games/SpacerQuest` (branch `redesign/explore-hangout`). The irreducible remainder,
+named here so it stops being re-litigated: `Iron-Ashes/TASKS.md` also carries its own unrelated
+`T-218` — task ids are unique per PROJECT, not per filesystem, and no file surgery can remove that
+match. Dispatching any judge of this repo's work from the parent folder `/Users/vs7/Dev/Games` is
+the defect, not the duplicate id. See `docs/LESSONS.md` L-068.
+
+**TP-54 — `status: DONE` is the ORCHESTRATOR's to set at protocol step 5, after review passes AND
+the gate is green.** (T-218.) A coder finishing the work does not set it — extending TP-41's "never
+by a coder flipping status because the commit instruction asked for DONE" from feel-gated clauses to
+the protocol generally. T-218 round 1 left T-218, T-216 and T-217 all reading DONE when the review
+had in fact been BLOCKED; all three were reverted to IN-PROGRESS with the Delivered notes left
+intact — only the CLAIM OF ACCEPTANCE was withdrawn, never the evidence.
+
+**TP-55 — A temporary deviation is closed by DATING its record, not by deleting it.** (T-250.)
+`docs/PLAYTEST-TELEMETRY_SPEC.md`'s `INTERIM DEVIATION` block became
+`INTERIM DEVIATION, CLOSED (T-250, 2026-08-06)`, with the provenance — commit `5b430136` and the
+owner's directive wording — preserved in the spec preamble, the `playtestLog.ts` header and the task
+block, while spec §3's "OFF by default." was never touched. Doc and code agree again because the
+code moved back, not because the doc was bent to it. (The TP-33 / TP-34 discipline, applied to a
+deviation rather than to a correction or a rename.)
+
+**TP-56 — No `CHANGELOG.md` entry is owed when an INTERNAL-ONLY default returns to spec.** (T-250.)
+The playtest-logging flip only ever reached the pre-public internal build, and spec §3 has said OFF
+since the document was written, so a changelog line would describe behaviour no released build ever
+had. The omission is a DECISION, recorded here, not an oversight to be corrected later.
+
+**TP-57 — Comparison artifacts an owner ruling will be made against are COMMITTED, not sent as
+ephemeral attachments.** (T-188.) T-188's three prototypes (4a flat orbital, 4b sphere, 4c radar
+console) were never committed; by the 2026-08-05 ruling pass they no longer existed on disk and had
+to be REGENERATED from the committed data (`coordinates3D`, `orbitalLayout2D`, `distance3D`) before
+the owner could compare them at all, and at T-215 the mobile-open failure could only be reproduced
+by rebuilding the failure mode rather than by inspecting the artifact. See TP-51 for the same rule
+applied to a ruled reference build.

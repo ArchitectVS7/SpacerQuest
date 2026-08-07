@@ -563,532 +563,6 @@ Orchestration: attempts=1/4 · HUMAN-GATE HALT, released 2026-08-05.
 
 ---
 
-## M14 — Owner UAT pass 1 feedback (2026-08-03)
-
-Three findings from the owner's first hands-on session (build launched via `npm run dev -w
-@spacerquest/ui` + `npm run dev -w @spacerquest/desktop`, playtest logging **not** enabled for this
-particular pass — the session itself produced no exportable log; these are the owner's direct
-verbal notes, captured per the Bug Discovery Policy rather than left in conversation). All three are
-UX/design, not correctness defects — filed as tasks, not as `F-` findings, because each is
-substantial enough to need its own implementation pass.
-
-**Re-homed here at the 2026-08-06 re-order:** T-218 (the ruled T-186 build) and T-216/T-217
-(both filed during the T-186 bake-off) had been appended under the M20 header, which is
-owner-gated and "deliberately not urgent" — the opposite of this arc's standing priority.
-
-### T-186 · Visual identity reads as monochrome sameness — resolve the tension with the PRD's committed CRT-amber pillar — `status: DONE` · `coder: opus` · `after: T-198`
-
-Owner's read: "the monochrome amber is cool, but everything blends together... even here in an IDE
-there is variety of format and color. We need to do something color-wise, I am not quite sure just
-yet." **This is in direct tension with a COMMITTED design pillar, not a blank slate** —
-`docs/PRD-REIMAGINED.md` §4 states "rendered in committed amber-phosphor CRT style... Duskers-grade
-commitment, not scanline shader on a menu," and `docs/TECH-STACK.md`:164/247-248 name the CRT
-aesthetic as the *reason* Electron and the DOM/WebGL renderer were chosen over alternatives. Silently
-reworking the palette would override an explicit prior commitment the owner made themselves — so
-this is a ruling, not a build-and-ship task, and it starts BLOCKED for exactly that reason.
-
-**Accept (the ruling, first):** the owner reviews candidate directions that add legibility/variety
-*within* the committed CRT-terminal frame (e.g. diegetic per-module accent hues — combat vs. trade
-vs. Hangout rendered as different "instruments" on the one screen, still phosphor-style, still not a
-generic web palette — vs. a harder break from monochrome) before any implementation, ideally via
-`/bakeoff` so the options are compared with mockups rather than argued in prose. Once ruled: `docs/
-PRD-REIMAGINED.md` §4 is updated to match (never silently left to contradict shipped behaviour), the
-chosen direction is implemented (`packages/ui/src/theme.css` and call sites), and a screenshot pass
-confirms it reads as a game, not an IDE-neutral palette bolted onto the existing CRT chrome.
-
-**RULED (owner, 2026-08-05) — process, not final direction: run `/bakeoff`.** The owner declined
-to pick a direction from prose/description alone and asked for the Accept criterion's own
-recommended path — independent review plus real mockups compared side by side — before ruling on
-monochrome-vs-accent-hues-vs-harder-break. No longer `BLOCKED`: the next step (`/bakeoff`) needs
-no further owner input to start; the owner ruling this task is still waiting on is which direction
-wins the bakeoff, not whether to run one.
-
-**`/bakeoff` results (2026-08-05).** Three independent reviewers (visual/art director,
-UX-legibility/accessibility, engineering-feasibility), isolated context, each required to build
-and screenshot a real mockup before giving a verdict — not just argue in prose. Strong 3/3
-convergence: all three independently measured the same root defect (panel/background contrast
-1.04:1, pane borders 1.36:1 — both below the 3:1 floor at which a boundary is perceivable at
-all), all three rejected candidate B (a harder break from monochrome — would force rewriting PRD
-§4 *and* invalidating `docs/TECH-STACK.md`'s stated Electron/DOM-over-Tauri/canvas rationale),
-and all three rejected candidate A (per-instrument accent hues) — engineering found it a real
-CSS-architecture trap (custom properties don't cascade the way you'd assume; every derived token
-needs re-declaring at every scope or it silently stays amber), legibility found it a *measured*
-accessibility regression (colorblind simulation: the four instruments collapse to two
-indistinguishable pairs under deuteranopia), visual rejected it as literally the "second
-phosphor colour" the T-302 law and PRD §4 forbid. All three landed on some flavor of "add zero
-hues, fix through structure": engineering and legibility called it **C+** (pure tonal — value
-zoning, reverse-video reserved to exactly one meaning, physical control bodies, wider
-label→value contrast); the visual director called it **D — "one phosphor, two materials"**:
-amber remains the only hue and the only thing that emits light; everything that is not light
-becomes unlit, near-achromatic metal (chassis, bezels, frames). Two real bugs surfaced and
-filed along the way, independent of which direction won: T-216 (the "one phosphor" law is
-already broken in two live UI spots — `--accent`/`--line` never defined, `.as-hostile` hardcoded
-— amended with a measured accessibility-defect finding) and T-217 (the Galactic Wire `LOG`
-button overlapping the ticker text, root-caused to a stale magic-number offset).
-
-**RULED (owner, 2026-08-05): candidate D**, specifically the visual director's own
-`T186-chassis.png` build/palette — not a subsequent synthesis attempt that tried to merge D's
-material framing with C+'s stricter interaction rules (reverse-video-reserved-to-one-meaning,
-flatter achromatic steel), which the owner rejected on sight ("terrible for a lot of reasons").
-**Open scope question for the follow-on build task, not resolved by this ruling:** whether the
-legibility reviewer's specific, measurement-backed interaction rules (reverse video reserved to
-real urgency only instead of used broadly, a physically distinct button body vs. an inert flag,
-a visibly-dead locked-row treatment) get folded into the D implementation, or whether D ships
-as-is with its own original interaction treatment. Not assumed either way — ask before building.
-
-### T-218 · Build: ship the "one phosphor, two materials" visual identity — `status: DONE` · `coder: opus` · `after: T-186`
-
-T-186's ruling (2026-08-05): implement candidate D — amber stays the only hue and the only thing
-that emits light; every structural/inert surface (panel chassis, bezels, frames, dividers)
-becomes unlit, near-achromatic steel instead of the current amber-on-amber haze. The owner's
-reference build is the bake-off's visual-director mockup, not the subsequent synthesis attempt
-that layered in the legibility reviewer's stricter interaction rules — that synthesis was
-rejected on sight. Real work: `packages/ui/src/theme.css` (new neutral/steel token family
-alongside the existing five amber tokens, which keep their exact current values per the bake-off
-engineering reviewer's finding — this is additive, not a re-hue), `packages/ui/src/App.tsx` call
-sites for structural chrome, and `docs/PRD-REIMAGINED.md` §4 gets the one added sentence the
-bake-off named (the amber-phosphor commitment survives unchanged in hue-count; the fiction shifts
-from "a monochrome tube" to "amber CRT readouts set into machined metal" — write that sentence,
-don't silently leave §4 undescriptive of what ships).
-
-**RULED (owner, 2026-08-05) — the scope question:** D, plus exactly one interaction rule layered
-in — reverse video reserved to real urgency only. The owner rejected a fuller synthesis attempt
-that also changed D's materials/palette toward the legibility reviewer's flatter, colder steel
-("terrible for a lot of reasons"); the follow-up isolated the single rule from that rejected
-attempt and re-tested it as a minimal diff against D's own unmodified source
-(`chassis-rvrule.html`, built from the bake-off's own `chassis.html` by editing exactly two
-selectors) — approved on sight ("go with this version"). **The two concrete edits, and nothing
-else changes from the ruled D reference build:**
-- `.slot.ready` (the "which die clears this check" badge on Manifest Board rows): was solid
-  `background: var(--ember)` + dark text: now an outlined `var(--well)` fill with an `--ember`
-  border, text and inset glow — no longer a reverse-video fill.
-- `.die.sel` (the armed die in the Dawn Hand tray): was a solid light-amber gradient fill with
-  dark text: now the die's own dark steel gradient stays, with an `--ember` inset ring + glow and
-  `--ember` text — selected reads as "lit," not "inverted."
-- Everything else in the reference build — `.chip.rev` (DEBT), `.flag.urgent`, `.due-soon b`,
-  `.ship-region.damaged .rg-v`, all chassis/steel materials, the manifest "paper," the ledger
-  rail, the wire slot, the dawn-hand tray — is **unchanged** from D as ruled. The button-body and
-  locked-row questions raised when this scope call was first opened are **not** part of this
-  ruling — D's own existing button/lock treatment ships as built, nothing added from the
-  legibility reviewer's build beyond the one rule above.
-
-**Accept:** the live UI renders candidate D's material treatment (steel chassis + amber-only
-light) matching the ruled reference build, with the one reverse-video-discipline edit above
-applied to the die-armed and check-clearing-badge states and nothing else changed from D;
-`docs/PRD-REIMAGINED.md` §4 carries its one added sentence; a live screenshot pass (same
-six-panel board used throughout T-186's bake-off) confirms it reads as the ruled direction, not a
-redrift back toward either the pre-T-186 baseline or the rejected fuller-synthesis attempt; T-216
-and T-217 (both filed during the bake-off) are either fixed in the same pass or explicitly left
-to their own tasks with a reason recorded; gate green.
-
-**Delivered (2026-08-06).** Candidate D shipped, plus the one ruled interaction rule, and nothing
-else from the rejected synthesis.
-
-*The reference, preserved.* `docs/design/T218-reference/` now carries the ruled build in-repo
-(`chassis-rvrule.html`, `chassis-rvrule.png`, plus D's unmodified `chassis.html` and
-`T186-chassis.png` so the two-selector diff stays auditable). It lived only in a session
-scratchpad, which would have made "matching the ruled reference build" unverifiable the moment
-that scratchpad was collected. `docs/` is prettier-ignored, so this costs the gate nothing.
-
-*Tokens (`packages/ui/src/theme.css:1-88`).* The five amber tokens keep their EXACT T-302 values
-(`theme.css:50-54`) — additive, not a re-hue. The steel family is new (`theme.css:56-68`):
-`--steel-hi/-/-lo/-deep`, `--etch`, `--etch-dim`, `--well`, `--edge`, plus `--bevel` / `--recess`.
-`--panel` and `--tube` were RETARGETED onto `--steel` / `--well` (`theme.css:75-76`) with a dated
-comment saying why: they are not among the protected five, they ARE the amber-on-amber haze D
-removes, and aliasing them carries every surface not hand-ported (overlays, popovers, Hangout,
-combat, Records) off the haze in one move rather than leaving lit amber islands. The header law
-(`theme.css:1-45`) was rewritten: one phosphor + two materials, the §2 inside-/outside-the-glass
-triage rule, the §3 reverse-video discipline, and §4's two mechanical invariants.
-
-*The port.* Chassis is `var(--edge)` + `--bevel`/`--recess` with `--etch` legends; readouts stay
-amber inside a `--well`. `.pane` is a machined plate with a live lamp on its header
-(`theme.css:384-451`); its body keeps the pre-T-218 12px content inset exactly (5px well margin +
-7px padding) so the material change costs no content width. Geometry that T-190/T-191 MEASURE was
-kept deliberately: the board's 2px stock, `overflow: visible`, the −0.45deg hang, the chamfer
-`clipPath`, the rail span. `.hand` took the reference's `.tray` recess without being renamed (68
-App.tsx call sites + e2e depend on it).
-
-*The two RULED edits, byte-for-byte from `chassis-rvrule.html:239,270`:* `.slot.ready`
-(`theme.css:1912-1928`) and `.die.sel` (`theme.css:2457-2481`), both marked DO-NOT-REVERT. The
-die keeps its `translateY(-8px)` lift — an app affordance, not part of the reverse-video question.
-**Recorded rather than hidden: `.slot.ready` has no live call site in the shipped cockpit.** M17
-removed the die COST from signing a manifest offer (`App.tsx:4840-4841`), so the sign row is now
-`SIGN · FREE · click to sign` and the badge is currently dead CSS. The ruled edit is applied
-anyway (the ruling is about the RULE, and the check-gated row is an M17 reversible); it is pinned
-by the source-level vitest test and measured in e2e through a probe node built from the real
-stylesheet, labelled in the spec as the weaker claim it is rather than dressed up as a live click.
-
-*Reverse video, reserved in BOTH directions.* The four sanctioned sites still invert; every
-"selected/on/owned/available" state that was inverting was moved to LIT — `.ro-tab.on`,
-`.hp-npc.on`, `.set-toggle.on`, `.set-seg-btn.on`, `.audio-mute.on`, `.equip-tag`, `.mb-stamp`.
-
-*Tests.* NEW gated `packages/ui/src/__tests__/visual-identity.test.ts` (22 assertions): the five
-amber values exactly; the steel family declared AND near-achromatic; **no `var(--x)` without a
-declaration and no `var()` colour fallback** (T-216's root cause, made unrepeatable); **no literal
-hex outside amber-family / near-achromatic / near-black**, with a guard-on-the-guard that the
-classifier still rejects the three hues T-216 actually found; both ruled edits pinned; the four
-sanctioned inversions pinned. NEW manual `packages/ui/e2e/visual-identity.spec.ts` (7 tests):
-computed-style achromatic/amber measurements on the running page, both ruled edits, T-216's
-non-hue separation, T-217's geometry, and the screenshot pass. `e2e/manifest-object.spec.ts:87-98`
-was UPDATED, not weakened: its `tradeStyle.boxShadow === 'none'` assertion could not survive D
-giving every pane a bevel, so the same claim is now expressed as "the board carries ≥3 OUTER
-shadows and strictly more than the pane beside it".
-
-*Screenshot pass.* `packages/ui/test-results/T-218-{cockpit,main,dock,dock-armed,manifest,wire,records}.png`,
-compared against `docs/design/T218-reference/chassis-rvrule.png`: steel chassis, amber only where
-something is lit, no redrift to the pre-T-186 haze and none toward the rejected synthesis.
-(Path corrected in fix round 2: the spec writes these relative to the Playwright CWD, which is
-`packages/ui`, not the repo root — the round-1 pin did not resolve.)
-
-*T-216 and T-217 were both FIXED in this pass, not deferred* — see their blocks below.
-
-*Gate:* `npm test` 2699 passing across 6 workspaces, `npx tsc -b`, `npm run lint`,
-`npm run format:check` all clean. `npm run test:e2e -w @spacerquest/ui` — **180/180 passing**,
-including `port-ledger.spec.ts`, `wire.spec.ts` and `dawn-hand.spec.ts` UNEDITED. UI-only: no
-`packages/engine`, `packages/content` or `packages/sim` file changed, so no `rulesFingerprint`
-impact and no capstone owed.
-
-*Docs:* `docs/PRD-REIMAGINED.md` §4 differentiator 4 carries the one added sentence;
-`docs/UI-PRESENTATION-DECISIONS.md` UI-1 gains a material note, UI-2 gains a dated T-218
-amendment (palette ruling CLOSED, shared-rule freeze lifted for this ruling only and re-imposed,
-steel family added to the token list, the material triage rule), and a new UI-2b records the
-reverse-video discipline with its sanctioned sites named.
-
-**FIX ROUND 2 (2026-08-06) — the review and the gate both returned AMBIGUOUS, and the cause was
-not in the diff.** Round 1 was written across TWO working trees of this same repo: it was checked
-out here (`redesign/explore-hangout`, TASKS.md flipped to IN-PROGRESS 12:09), and then a second
-tree, `../SpacerQuest-guards` on a scratch branch `guards/m8-m13-remainders` created from this
-same commit at 12:15, received the rest of the work and was finished there (12:45–13:06). The
-result was one task with a HALF diff in one tree and the FULL diff in another, carrying
-contradicting statuses (IN-PROGRESS here, DONE there). The reviewer and the gate, both invoked
-from the parent folder `/Users/vs7/Dev/Games` rather than a repo root, matched "T-218" in three
-TASKS.md files (both trees, plus an unrelated T-218 in the neighbouring Iron-Ashes project) and
-correctly refused to guess which one they were judging.
-
-*Resolved by consolidation, not by picking a winner blind.* The guards tree's content was proven
-a strict superset first: every one of the 148 unique lines round 1 added to `theme.css` here was
-matched in the guards copy except 8, and those 8 were an EARLIER draft of the header law's §3 and
-the `.pane` inset comment that the guards copy rewrites more fully and more accurately (§3 there
-names the four canonical sites plus the engine's own refusal surfaces; here it named five in a
-flat list). The four `docs/design/T218-reference/` assets were byte-identical in both. The full
-work was then moved into THIS tree and the tracked diffs verified byte-identical by hash, and
-`../SpacerQuest-guards` was restored to a clean HEAD, so T-218 now exists in exactly one working
-tree.
-
-*Why this tree and not that one.* `redesign/explore-hangout` is the branch this whole file's track
-runs on and where every sibling task committed (T-219…T-224); it tracks `origin` and merges to
-`main`. `guards/m8-m13-remainders` was six minutes old, had no upstream, no commits of its own, and
-contained nothing but this task's files — committing here would have stranded T-218 on an unmerged
-local branch. It is also against this repo's own convention, which uses worktrees as throwaway
-measurement rigs and keeps the main tree byte-clean (`docs/BALANCE-RIG-DECISIONS.md` BR-7/BR-19),
-and against the process lesson already recorded at `docs/NPC_REDESIGN.md:2245` — "parallel agents
-need isolated worktrees", filed after N6/N9 contaminated each other in one shared tree. This is
-that lesson's mirror image: ONE task spread across two trees rather than two tasks sharing one.
-
-*Status corrected.* Round 1 left T-218, T-216 and T-217 all reading `DONE` in the guards tree.
-Protocol step 5 makes DONE the orchestrator's to set, after review passes and the gate is green —
-neither had happened, and the review was in fact blocked. All three now read IN-PROGRESS. Every
-Delivered note above and below is round 1's and is unchanged; only the claim of acceptance was
-withdrawn.
-
-*Gate re-run in THIS tree, because the numbers above were measured in the other one:* `npm test`
-**2699 passing across 6 workspaces** (74 + 110 + 61 + 1391 + 587 + 476, exit 0 — the same 2699 the
-note above claims, now true where it will be gated), `npx tsc -b` exit 0, `npm run lint` exit 0,
-`npm run format:check` clean. `src/__tests__/visual-identity.test.ts` is in the run at 22 tests.
-Deliverables re-grepped at their named call sites per the standing constraint: both RULED EDIT
-markers at `theme.css:1912` and `:2457`, and `#4fd1c5` / `#2b3a44` / `#e0562a` surviving only
-inside explanatory comments, never in a declaration. `npm run test:e2e -w @spacerquest/ui` was
-re-run here too: **180 passed, exit 0**, `visual-identity.spec.ts`'s 7 tests among them, and
-`port-ledger.spec.ts` / `wire.spec.ts` / `dawn-hand.spec.ts` still unedited.
-
-*One real defect the move surfaced, and it was NOT a move artefact.* The screenshot-pass evidence
-round 1 cited did not exist in EITHER tree — no `test-results/` directory in the guards tree at
-all, and only `test-results/pilot` here. The pass has now actually been run and all eight PNGs
-written, and the reason the round-1 pin never resolved is that `visual-identity.spec.ts` writes
-its paths relative to the Playwright CWD, which is `packages/ui` — so the artefacts land in
-`packages/ui/test-results/`, not at the repo root as three separate notes claimed (T-218's
-screenshot-pass line, T-216's evidence line, T-217's screenshot line). All three pins are
-corrected above. This is exactly the resolvable-pin rule `docs/LESSONS.md` already carries, and it
-is worth naming that the Accept clause's screenshot requirement was, until this round, discharged
-by a citation to files that were not on disk. The board was then read directly (`T-218-main.png`):
-steel chassis and bezels, amber confined to readouts, values and the pane lamps — the ruled
-direction, with no redrift to the pre-T-186 haze.
-
-**FIX ROUND 3 (2026-08-06) — same failure class as round 2, and again the cause was not in the
-diff: the review and the gate were dispatched with cwd `/Users/vs7/Dev/Games` (the multi-project
-parent folder) instead of this repo root.** The dispatch even asserted "the repo root is the
-working directory" while the working directory contained ~14 independent projects and no `.git`;
-both agents matched "T-218" in multiple TASKS.md files and correctly refused to guess. Nothing in
-this tree's diff was reviewed or gated, so nothing in it was changed this round beyond this note.
-
-*What round 3 fixed at the root.* Round 2 consolidated the work into one tree but left the
-`../SpacerQuest-guards` linked worktree in place at a clean HEAD — which meant a tracked copy of
-this very TASKS.md (and its T-218 block) still existed at a second path, and the round-3 reviewer
-duly listed it as a candidate again. That worktree was created by round 1's own errant session
-(12:15, scratch branch `guards/m8-m13-remainders`, zero commits of its own, no upstream, clean
-tree, byte-identical HEAD `81c0f6b5`), and this repo's convention treats worktrees as throwaway
-rigs (`docs/BALANCE-RIG-DECISIONS.md` BR-7/BR-19). It has now been removed outright
-(`git worktree remove ../SpacerQuest-guards` + `git branch -d guards/m8-m13-remainders` — nothing
-was lost; both were empty of unique content). T-218 now exists in exactly one checkout on disk.
-
-*The irreducible remainder, named so it stops being re-litigated.* `Iron-Ashes/TASKS.md` also
-carries a T-218 (its own, unrelated, `DONE`). Task IDs are unique per project, not per filesystem
-— no file surgery here can or should remove that match. The only correct disambiguator is the one
-the protocol already implies: **review and gate for this file's tasks must run with cwd
-`/Users/vs7/Dev/Games/SpacerQuest` (branch `redesign/explore-hangout`)**, where `git status`,
-`git diff` and the gate commands all resolve. Dispatching any judge of this repo's work from the
-parent folder is the defect; this note is the durable record of that so the next dispatch carries
-the repo root.
-
-*Gate re-verified in this tree this round* (no code changed since round 2's green run, verified by
-`git status` matching round 2's file list exactly, but the claim is re-earned rather than carried):
-`npm test` 2699 passing across 6 workspaces, `npx tsc -b`, `npm run lint`, `npm run format:check`
-all exit 0.
-
-**CLOSED (2026-08-06) — the root cause round 3 named was fixed at the source, and this is the
-first UNAMBIGUOUS gate this task has actually earned.** Round 3's own official Review+Gate pair
-was *itself* dispatched from the parent folder again (the coder's self-check quoted above is real,
-but it is not the protocol's Review/Gate stage) — it hit the same three-way ambiguity
-(`SpacerQuest`, the by-then-already-removed `SpacerQuest-guards`, and `Iron-Ashes`) a fourth time
-and the run halted at `attempt=4/4`, exactly as the ladder is designed to do rather than self-approve.
-`~/.claude/skills/orchestrate/orchestrate-tasks.js` (a user-global tool, shared across every repo in
-the portfolio, not part of this repo) has now been fixed at the source: it resolves an absolute
-`REPO_ROOT` once (`args.repoPath` if given, else one `git rev-parse --show-toplevel` call) and every
-one of its agent prompts is anchored to that path explicitly, rather than trusting inherited cwd —
-closing the exact failure class rounds 2 and 3 both hit. With that fix in place, an unambiguous gate
-was run directly against `/Users/vs7/Dev/Games/SpacerQuest` (branch `redesign/explore-hangout`, the
-one tree this work has lived in since round 2's consolidation): `npm test` — 587 (engine) + 476 (ui)
-plus content/desktop/devpanel, 2699 total across 6 workspaces, 0 failing; `npx tsc -b` exit 0;
-`npm run lint` exit 0; `npm run format:check` clean — all four re-confirming, for the first time
-without an ambiguous dispatch, the same green round 2 and round 3's coder had each already measured
-by hand. No code changed to make this pass; only the judge was fixed.
-
-Orchestration: attempts=4/4.
-
-### T-216 · BUG: `theme.css`'s "one phosphor colour" law is already broken in two live UI spots — `status: DONE` · `coder: opus` · `after: —`
-
-**Found incidentally** during the T-186 visual-identity bake-off (2026-08-05), by the engineering-feasibility reviewer, while establishing the ground truth that "there is currently no second hue anywhere in the shipped UI" — that premise turned out to be false, and this is filed per the Bug Discovery Policy rather than held for later. Confirmed against source directly, not taken on the reviewer's word:
-
-- `packages/ui/src/theme.css:4929,4938,4947` — `color: var(--accent, #4fd1c5)` (teal). `--accent` is **never defined** anywhere in the repo (`grep -n "\-\-accent:" packages/ui/src/theme.css` → no match), so the fallback is what actually renders. Live: `.ship-honor` (the Top Gun Honor List) is rendered at `App.tsx:4381` (`data-testid="honor-list"`) — the player's own row and any held-rank row render teal, not amber.
-- `packages/ui/src/theme.css:4891,4911` — `border: 1px solid var(--line, #2b3a44)` (blue-grey). `--line` is likewise **never defined**; same `.ship-honor` component, so its borders are blue-grey, not amber.
-- `packages/ui/src/theme.css:3217` — `.as-hostile .as-value { color: #e0562a; }` (orange-red), not a broken variable but a hardcoded second hue that bypasses the token system entirely. Live: `App.tsx:3462` builds `` `as-row as-${s.tone}` `` dynamically, so a hostile-attitude row renders orange-red in production right now.
-
-**SEVERITY AMENDMENT (2026-08-05), the T-186 bake-off's legibility/accessibility reviewer,
-independently:** the `.as-hostile` leak is not just a one-phosphor-law consistency violation —
-it is a functional accessibility defect. Simulated via Viénot matrices against the two live
-attitude colors (`#e0562a` hostile vs. `#c0781a` neutral `--amber`): under deuteranopia both
-resolve to hue ≈52° within 3 units on every channel; protanopia is the same collapse. **A
-deuteranope or protanope cannot currently distinguish a hostile captain from a neutral one by
-this color alone.** This raises the Accept bar: closing the leak by giving `.as-hostile` an
-amber-family value does not fully discharge the finding if hostile/neutral then collapse to the
-same *luminance* too — the fix must leave hostile distinguishable from neutral by some
-non-hue-dependent channel (e.g. luminance step, reverse-video, or an icon/glyph), not just move
-the bug from "wrong hue" to "right hue, still indistinguishable."
-
-None of this is dead CSS — both class families are confirmed rendered, not just declared. Whatever T-186 rules (monochrome-only vs. per-instrument accents vs. a harder break), this needs a decision on its own terms: either these three sites get real amber-family values (closing the accidental leak and making "one phosphor" true again), or they get formally adopted as the second/third hue the law already has in production, with `theme.css`'s header law rewritten to say so honestly instead of asserting something the shipped code already contradicts.
-
-**Accept:** `--accent` and `--line` are either defined (as amber-family values, closing the leak) or deliberately promoted to real, documented tokens with `theme.css`'s header comment updated to no longer claim zero second hues; `.as-hostile`'s hardcoded `#e0562a` is resolved the same way — token-ized amber or deliberately kept and documented; a screenshot of `.ship-honor` (Records → ship honors) and an attitude-hostile row confirms the fix; gate green.
-
-**Delivered (2026-08-06, FIXED INSIDE THE T-218 PASS — deliberately not deferred.** Deferring was
-indefensible: T-218's entire subject is making "one phosphor" true, and this bug is three live
-places where it was false. Fixing it anywhere else would have meant shipping T-218 on top of a
-known contradiction of its own law.)
-
-*The two undefined-variable leaks are GONE, not redefined.* `--accent` and `--line` were never
-declared anywhere in the repo, so their `#4fd1c5` / `#2b3a44` FALLBACKS were what actually
-painted. The fallbacks are deleted and each site routed by T-218's own material rule:
-`.ship-honor`'s frame is chassis (`theme.css:5375-5382`, `5395-5397`), and the `you` / held-rank
-markers are LIT `--ember-hi` because they are the readout's live values
-(`theme.css:5413-5417`, `5424-5428`). `.comp-effect-next` carried the same teal and is now lit
-too (`theme.css:5437-5440`).
-
-*`.as-hostile` — the severity amendment is discharged on TWO non-hue channels, not one.*
-`theme.css:3625-3670`. An amber value alone would only have moved the bug from "wrong hue" to
-"right hue, still indistinguishable", which the amendment explicitly rules insufficient. Hostile
-now (a) INVERTS — `background: var(--ember)` with `color: var(--well)`, a luminance inversion that
-survives greyscale and every colour-blindness simulation — and (b) carries a `!` glyph via
-`::before`, which depends on no colour channel at all. Neutral does neither, so the two cannot
-converge. The reverse video is *permitted* rather than in tension with T-218's law §3: a hostile
-captain is real urgency, which is the exact category the rule reserves inversion for; the
-reasoning is written into the CSS beside the rule.
-
-*The header law was updated in the same edit* (`theme.css:1-45`), which is this task's own accept
-clause: it no longer asserts something the shipped code contradicts.
-
-*Made unrepeatable, not just fixed.* `packages/ui/src/__tests__/visual-identity.test.ts` fails the
-build on (a) any `var(--x)` with no declaration in the file, (b) any `var()` with a colour
-fallback — the construct that hid this for months — and (c) any literal hex outside
-amber-family / near-achromatic / near-black. A guard-on-the-guard asserts the classifier still
-rejects `#4fd1c5`, `#2b3a44` and `#e0562a`, so the check can never go vacuous.
-
-*Evidence:* `packages/ui/test-results/T-218-records.png` (the Records overlay, amber-only) and
-`T-218-honor-list.png`; `e2e/visual-identity.spec.ts` measures hostile-vs-neutral luminance
-inversion and glyph presence on the running page. Gate green (see T-218's Delivered note).
-
-Orchestration: bundled into T-218's pass, per T-218's own Accept clause; rode T-218's ladder rather
-than a separate one of its own — attempts=4/4 (T-218's).
-
-### T-217 · BUG: the Galactic Wire ticker scrolls underneath the LOG button — `status: DONE` · `coder: opus` · `after: —`
-
-**Found incidentally** during the T-186 visual-identity bake-off (2026-08-05), by the visual-design
-reviewer, and confirmed independently against a screenshot taken earlier the same session (not
-just the reviewer's word) — visible right now on a live boot: the Galactic Wire band reads
-`GALACTIC WIRE [LOG]uiet. Roll the day and make some news.` instead of `GALACTIC WIRE [LOG]  The
-wire is quiet. Roll the day and make some news.` — the ticker text scrolls in **underneath** the
-LOG button rather than starting clear of it.
-
-**Root cause, confirmed against source.** `packages/ui/src/theme.css:1883-1885` — `.ticker` has a
-hardcoded `padding-left: 138px`, sized to clear the original `.cap` contents (the "GALACTIC WIRE"
-label + pulse dot). `theme.css:1912-1923`'s own comment marks the `.wire-log-btn` as a LATER
-addition ("T-306"), and `App.tsx:5492-5504` confirms it's rendered *inside* the same
-absolutely-positioned `.cap` element, after the label. Adding the button widened `.cap` beyond the
-138px the ticker reserves for it — a magic number that was never updated when T-306 shipped, so
-`.cap`'s real rendered width and the ticker's clearance have silently drifted apart.
-
-**Accept:** the ticker's left clearance tracks `.cap`'s actual rendered width (e.g. measured via
-`ResizeObserver`/`getBoundingClientRect`, or `.cap` reserves its own space via normal flow instead
-of `position: absolute` + a magic-number sibling offset) rather than a hardcoded pixel value that
-can drift again the next time something is added to `.cap`; a screenshot of the Galactic Wire band
-confirms `GALACTIC WIRE [LOG]` and the ticker text no longer overlap; gate green.
-
-**Delivered (2026-08-06, FIXED INSIDE THE T-218 PASS.** T-218's port of the ruled reference build
-already restructures the wire band, and the reference solves this structurally — fixing it in the
-same pass was strictly cheaper than touching the same rules twice.)
-
-*The magic number is not re-measured — it is DELETED, along with the thing that needed measuring.*
-A `ResizeObserver` would have been a correct-but-fragile answer to a layout question CSS can
-answer outright. `.wire` is now a flex row, `.cap` is a NORMAL-FLOW item that reserves exactly its
-own width whatever it contains, and a new `.wire-track` (`flex: 1; min-width: 0; overflow: hidden`)
-takes the remainder and clips the scroll (`theme.css:2085-2135`). `.ticker`'s
-`padding: 9px 0 9px 138px` is now `padding: 9px 0 9px 6px` (`theme.css:2153-2161`). The single
-App.tsx change is the wrapper element (`App.tsx:5531-5541`).
-
-*Why this closes it permanently and the pixel value could not.* `.cap`'s width is DATA-DEPENDENT:
-T-1406 renders BULLETIN storylet chips inside it, so the correct constant differs between two
-boots of the same build. There is no number that is right. `min-width: 0` on the track is
-load-bearing — without it the nowrap ticker sets the flex item's min-content width and shoves the
-cap back off the left edge.
-
-*Evidence.* `e2e/visual-identity.spec.ts` asserts `cap.right ≤ track.left` on the running page and
-then PLAYS FORWARD up to six days until the wire actually carries a BULLETIN chip, re-measuring
-with the cap at its widest — the data-dependent case the original bug needed. `@keyframes tick`'s
-`translateX(-50%)` and the doubled item run are intact; `e2e/wire.spec.ts` and
-`storylet-delivery.spec.ts`'s wire-bulletin test pass UNEDITED. Screenshot:
-`packages/ui/test-results/T-218-wire.png`. Gate green (see T-218's Delivered note).
-
-Orchestration: bundled into T-218's pass, per T-218's own Accept clause; rode T-218's ladder rather
-than a separate one of its own — attempts=4/4 (T-218's).
-
-### T-250 · F-185-4: the playtest-logging default is still the interim ON — `status: DONE` · `coder: opus` · `after: —`
-
-F-185-4 left the playtest-logging default at the interim ON that HEAD `5b430136` flipped it to "for
-the internal UAT build", and nothing else in `TASKS.md` or `TODO.md` tracks restoring it. VERIFIED
-LIVE: `packages/ui/src/playtestLog.ts:166` reads
-`return storage.getItem(PLAYTEST_LOGGING_KEY) !== 'off';` (default ON), while
-`docs/PLAYTEST-TELEMETRY_SPEC.md` §3 line 56 states "**OFF by default.**". Restoring spec §3's OFF
-must ALSO edit the test that now pins the interim ON explicitly
-(`packages/ui/e2e/playtest-logging.spec.ts`, plus the `shell.spec.ts` test that shares the
-`setLogging(page, on)` shape) — that pin was written so the restore cannot pass silently.
-[harvested: T-185/playtest-logging-default-off]
-
-**Accept:** either `packages/ui/src/playtestLog.ts:166` is restored to
-`docs/PLAYTEST-TELEMETRY_SPEC.md` §3's "OFF by default", or spec §3 is amended to ON with the owner's
-reason recorded and dated — the two are never left disagreeing; whichever way it goes,
-`packages/ui/e2e/playtest-logging.spec.ts` and the `shell.spec.ts` test sharing the
-`setLogging(page, on)` shape are updated in the SAME change and shown to fail against the old default
-first, so the restore cannot pass silently; the interim-ON provenance (HEAD `5b430136`, "for the
-internal UAT build") is recorded beside the outcome; the desktop shell's session JSONL behaviour under
-the chosen default is stated; gate green.
-
-**Delivered (2026-08-06) — RESTORED to spec §3's OFF; the spec was NOT amended to ON.** One line of
-behaviour moved: `packages/ui/src/playtestLog.ts`'s `isPlaytestLoggingEnabled` is back to
-`storage.getItem(PLAYTEST_LOGGING_KEY) === 'on'`, byte-for-byte the pre-`5b430136` form. Everything
-else in this change is comments, provenance and the three pins that make the default unforgettable.
-
-**Why restore rather than amend.** The flip was self-labelled temporary in three places at once
-(`playtestLog.ts`'s header, `store.ts`'s `CockpitState.playtestLogging` doc, and the spec preamble's
-"**must be reverted to OFF before any public/Steam release**"), so restoring is the documented exit,
-not a fresh decision. It also costs internal UAT nothing: both tester runbooks —
-`docs/playtests/T-158-pre-uat-brief.md` §2 and `docs/playtests/T-198-pacing-brief.md` §2, the latter
-written *after* the flip — already say "**turn logging ON — it is OFF by default and it is not in your
-save**" and already tell the tester to switch it on once per browser profile / install. The interim ON
-had been silently contradicting the instructions the owner actually reads.
-
-**Provenance, recorded beside the outcome** (in the spec preamble, the `playtestLog.ts` header, and
-here): HEAD `5b430136`, 2026-08-03, "Playtest logging defaults on for internal UAT; file T-185/186/187
-from owner's first playtest pass" — an owner directive to default logging ON "for the pre-public
-internal build so a UAT session isn't lost to a forgotten toggle". Consent, disclosure copy and opt-out
-were unchanged throughout; only the virgin-profile default ever moved. The spec's `INTERIM DEVIATION`
-block is now `INTERIM DEVIATION, CLOSED (T-250, 2026-08-06)` — a dated record of the whole episode
-rather than a deletion — and §3 line 56's "**OFF by default.**" was never touched, so the two are
-agreeing again rather than one having been bent to the other.
-
-**Fail-first evidence — all three suites shown red against the OLD default before the one-line change
-landed** (test and doc edits made first, `playtestLog.ts` left at `!== 'off'`):
-
-- `npm test -w @spacerquest/ui -- playtest-log` → `1 failed | 21 passed (22)`;
-  `src/__tests__/playtest-log.test.ts > … > defaults OFF on a virgin profile (spec §3)` —
-  `AssertionError: expected true to be false // Object.is equality` at line 76.
-- `npm run test:e2e -w @spacerquest/ui -- playtest-logging` → `1 failed / 2 passed`;
-  `defaults OFF (spec §3), with the disclosure at the toggle and no controls until opt-in` —
-  `expect(locator).toHaveAttribute` `Expected: "false" / Received: "true"`, the locator resolving to
-  `<button aria-pressed="true" class="set-toggle on" …>On</button>`, at spec line 108.
-- `npm run test:e2e -w @spacerquest/desktop -- shell.spec.ts -g "playtest"` → `1 failed`;
-  `writes nothing until the player opts in, then appends the real action stream` — same
-  `Expected: "false" / Received: "true"` on the same button, at `shell.spec.ts:662`.
-
-After the one-line restore, all three are green: `22 passed (22)`, `3 passed (7.4s)`, `1 passed (9.3s)`.
-One honest note on the third web test ("the toggle survives a reload"): its persistence direction was
-INVERTED by this change, and inverted it passes vacuously under the old default rather than failing —
-while the default was ON, "still ON after a reload" could be true with nothing stored, which is exactly
-why the test previously stored OFF; under the restored OFF the meaningful direction is the other one,
-so it now stores ON and the reload assertion can only pass if the preference really was written. The
-fail-first pins are the two literal `aria-pressed` assertions and the unit test, not that one.
-
-**What the pins are, and why they are literal.** The e2e suites are not in the gate, so the durable
-guard is `packages/ui/src/__tests__/playtest-log.test.ts`'s "defaults OFF on a virgin profile (spec
-§3)"; `packages/ui/e2e/playtest-logging.spec.ts` and `packages/desktop/e2e/shell.spec.ts` are the
-UI-level guard the task asked for. All three assert the default LITERALLY rather than reading it
-through the `setLogging(page, on)` helper. The helper stays (establishing a known state is still right
-discipline) but is deliberately not used for the default itself — a default-agnostic assertion is
-precisely the "passes silently" failure this task exists to prevent, and it is what let the desktop
-test go quiet in the first place.
-
-**Desktop session JSONL under the restored OFF default** (added to spec §4, echoed in `shell.spec.ts`'s
-comment): a session in which the player never opts in writes **nothing at all** — no `logs/` directory
-and no session file. `packages/desktop/src/playtestLog.ts` calls `mkdirSync` *inside* `append`, so both
-the log directory (`main.ts`'s `resolveLogDir`: `SQ_LOG_DIR ?? app.getPath('userData')/logs`) and
-`playtest-<sessionId>.jsonl` are created lazily by the first line the renderer sends. After opt-in the
-file is appended line-by-line and unbuffered, one file per session, so the last line before a crash is
-already on disk. Pinned by that spec's `expect(existsSync(logDir)).toBe(false)` after a real `payDebt`
-taken before the toggle is pressed.
-
-**Drift the restore closed.** `packages/ui/src/App.tsx`'s Playtest-section header ("OFF BY DEFAULT AND
-VISIBLY SO") and `store.ts`'s `setPlaytestLogging` comment ("OFF by default, spec §3") were never
-updated by `5b430136` and had been false for three days; they are true again with no edit. The two
-comments `5b430136` *did* change — `store.ts`'s `playtest` import header and the
-`CockpitState.playtestLogging` doc — are restored to their pre-flip wording. A repo-wide grep for
-`INTERIM DEVIATION` / `pre-public` / `revert before public` now returns only the closed record in the
-spec and the provenance paragraph in `playtestLog.ts`.
-
-**No save-shape change and no migration owed.** The toggle is a client preference under
-`sq.playtest.logging` in `storage.ts`'s `KeyValueStore`, never `GameState`; `CURRENT_SAVE_VERSION`
-stays at its live value and its pin in `playtest-log.test.ts` was not touched. No `packages/content`
-surface is involved, so no `rulesFingerprint`, capstone or sweep is implicated.
-
-**No `CHANGELOG.md` entry, deliberately.** The shipped/public design never changed — spec §3 has said
-OFF by default since the document was written, and the flip only ever reached the pre-public internal
-build. This is an internal default returning to spec, not a player-visible change, so a changelog line
-would be describing a behaviour no released build ever had. The omission is a decision, recorded here.
-
-**Gate:** `npm test` (exit 0 — 2,699 passed across the six workspaces: 74 / 110 / 61 / 1,391 / 587 /
-476, zero failed), `npx tsc -b` (exit 0), `npm run lint` (exit 0), `npm run format:check` ("All matched
-files use Prettier code style!", exit 0). `npm run format` was run before the gate, not after.
-
-Orchestration: attempts=1/4.
-
----
-
 ## M15 — Owner UAT pass 2: board-quadrant feedback (2026-08-03)
 
 Four findings from the owner's second live session, one per board quadrant. Captured verbatim per
@@ -1097,132 +571,6 @@ same reason as M14: each is substantial enough to need its own implementation pa
 
 **Re-homed here at the 2026-08-06 re-order:** T-215 (the ruled T-188 globe build) had been
 appended under the owner-gated M20 header; it is this milestone's build-out.
-
-### T-188 · Galaxy map: port spacing gives near-zero travel payoff, and a jump is imperceptible — an owner design decision — `status: DONE` · `coder: opus` · `after: —`
-
-Owner's original read: "the galaxy on the top left is too crowded. All the space ports are super
-close together. There is basically zero payoff to travelling between ports... The OG game had a
-real-time ascii animation which was too slow, we just have instant jump to port, and it is barely
-noticeable that any game action has happened. We need to come up with a design decision on this."
-
-**SUPERSEDING SPEC (owner, 2026-08-04) — the ruling arrived as a concrete build plan, not a
-`/bakeoff` request.** Verbatim, in order:
-
-1. **A standing quality gate:** "already you should be flagging and failing this since the port
-   names are overlapping with other ports and names." A regression test for label-collision on the
-   starmap, independent of whichever layout ships — it must hold for ANY coordinate set, not just
-   today's.
-2. **Rename `Sun-3` → `Sol-3`** — "the base game" name, reads more sci-fi. On the screen; swept
-   through docs and tests. **NOT** the persisted deed id `liars_dice_cleared_sun_3`
-   (`packages/content/src/deeds.ts:921`) or the `SUN_3_HANGOUT` code identifier
-   (`packages/content/src/portHangouts.ts:278`) — those are data/code identifiers, not display
-   text, and renaming a persisted id is a save-migration question the owner did not ask for here.
-3. **A real geometry pipeline, replacing the hand-authored `{x,y}` scatter:**
-   - **3a.** Distance-from-Sol per system — already derivable (`distance(1, id)` in
-     `systems.ts`), used as the FIXED radius input to what follows so every existing Sol-relative
-     balance number (rim ring ~20-24, core mean ~11, the fuel/DC/danger tuning in
-     `docs/balance/BASELINE-T-1603a.md`) is preserved exactly.
-   - **3b.** A generated 2D radial ("orbital/atomic," explicitly NOT the old game's linear line)
-     layout: systems placed on rings at their 3a radius, spread by angle within each ring.
-   - **3c.** Lift 3b into 3D: same radius-from-Sol as 3a/3b, dispersed across a sphere. New
-     `coordinates3D: {x,y,z}` field on `StarSystem`. Owner's own note: **nothing about Sol-relative
-     distance, fuel cost or travel time changes at this step.**
-   - **3d.** Pairwise distance between EVERY system pair, from the 3c coordinates. Owner's own
-     note: **this DOES change non-Sol-to-non-Sol route numbers** versus today's ad hoc 2D scatter.
-4. **Three prototype visualizations, screenshotted, not built into the live game yet:**
-   - **4a.** Flat 2D, current system highlighted, connecting lines to every other system.
-   - **4b.** The 3c sphere, draggable/zoomable, same connecting lines.
-   - **4c.** Wildcard — web research for sci-fi galaxy-map UI, mocked up.
-   Owner: "I will pick one and we will build it" — so 4a-4c are comparison artifacts, not a
-   shipped feature yet; whichever is picked becomes its own follow-on build task (wiring it into
-   `App.tsx`'s `Starmap`, replacing the current SVG projection).
-
-**Scope call made during implementation, stated rather than left implicit:** item 3d's new
-pairwise-distance function is additive (`distance3D`, alongside the existing 2D `distance`) —
-it is NOT wired into `travel.ts`'s live `jumpFuelCost`/`travelDc`/`calculateRouteDanger` in this
-pass. The owner's own text acknowledges 3d "will directly affect" contract-run distances once it's
-the live formula, and `packages/content/src/systems.ts` is a hashed rule source
-(`rules-fingerprint.ts`), so swapping the ACTIVE distance formula is a rulesFingerprint-moving
-change with real balance consequences (every rim/danger/fuel number in
-`docs/balance/BASELINE-T-1603a.md` is tuned against the current 2D numbers) — that swap belongs
-with whichever map (4a/4b/4c) the owner picks, not bundled silently into a geometry-data commit.
-Building the 3D data and the comparison prototypes does not itself require moving that live
-formula.
-
-**Accept:** (1) a starmap label-overlap test exists, generic to any coordinate set, and is
-currently RED against today's live map (documented, not silently fixed) unless the map is
-redesigned in the same pass; (2) `Sol-3` is the display name everywhere a player or reader sees
-it, with the deed-id/code-identifier exceptions above stated explicitly, not silently skipped; (3)
-`StarSystem` carries `coordinates3D`, `distanceFromSol` is derivable, and a tested `distance3D`
-function returns real pairwise 3D distances; (4) three screenshotted prototypes exist for the
-owner to choose from; (5) the live travel formula is UNCHANGED by this task (verified: `travel.ts`
-still imports the 2D `distance`); gate green; `rulesFingerprint`'s move (if any) is stated and
-paid for with a capstone re-pin.
-
-**Delivered (2026-08-04) — items 1-3 built, item 4 prototyped; BLOCKED on the owner's pick, not
-DONE.**
-
-1. **The overlap tripwire:** `packages/ui/src/__tests__/starmap-label-overlap.test.ts`, an
-   `it.fails` tripwire (this repo's standing pattern for a documented, intentional red) generic to
-   whatever `starmapProjection` returns — approximate label bounding boxes from `.smlabel`'s actual
-   CSS (8px font, text-anchor middle, `(0,16)` offset), asserting no two intersect. It currently
-   fails against today's live map — confirmed by an out-of-band run: 4 real collisions (Arcturus-6/
-   Procyon-5, Deneb-4/Rigel-8, Fomalhaut-2/Mira-9, Fomalhaut-2/Spica-3) — matching the screenshot
-   the owner flagged. Flips green the moment a redesigned map (4a/4b/4c) ships.
-2. **`Sun-3` → `Sol-3`**, swept across ~75 live source/doc/test files (display text, comments, test
-   assertions). Explicitly NOT renamed: the persisted deed id `liars_dice_cleared_sun_3`
-   (its player-visible citation text WAS updated) and the `SUN_3_HANGOUT` code identifier.
-   Deliberately NOT renamed: dated historical/archival documents (`docs/archive/`, the two
-   `T-16xx`-era balance reports, `TODO.md`'s harvested provenance) — those describe what the game
-   was called at the time, not what it's called now.
-3. **The geometry pipeline, in `packages/content/src/systems.ts`:** `Star3DCoordinates`, a
-   `coordinates3D` field populated for all 28 systems at module load (radius from Sol preserved
-   exactly from the existing 2D `coordinates` — verified: `distance(1, id)` and each system's 3D
-   radius match to rounding), a Fibonacci-sphere point distribution for the angular spread
-   (golden-angle longitude, arccos latitude — the standard even-coverage algorithm), `distance3D`
-   (pairwise 3D Euclidean, additive, NOT wired into `travel.ts`), and `orbitalLayout2D` (the 3b
-   flat radial layout, golden-angle spread, for the 4a prototype). **rulesFingerprint moved**
-   (any edit to a hashed rule-source file does, even purely additive code) — **paid for with a real
-   8,000-run capstone**, `docs/balance/baseline-t188-orbital-3d.json`, re-pinned at all four sites
-   (`balance-targets.test.ts`, `docs/NPC_REDESIGN.md` ×2, `docs/balance/smoke/tiers.json`).
-   **This task's own changes are PROVEN INERT, not assumed** — two isolated 30-seed bisects
-   (gambler, veteran) each report "NOTHING MOVED." The `fleet`/`veteran` movement in the full
-   8,000-row diff against the outgoing baseline is T-161's `veteranPolicy` fix (already reviewed,
-   gated, committed) getting its first capstone — see the standing amendment in `docs/NPC_REDESIGN.md`
-   for the full account, attributed there so it isn't mistaken for new drift from this task.
-4. **Three screenshotted, standalone prototypes** (not wired into `App.tsx`'s live `Starmap`),
-   built from the REAL 3b/3c/3d data: **4a** flat orbital, Sol highlighted, lanes to every system;
-   **4b** the 3c sphere, drag-to-rotate + scroll-to-zoom (genuinely interactive, not just a static
-   mock); **4c** wildcard — a long-range-scan radar console (range rings, a nearest-neighbour lane
-   graph instead of pure hub-and-spoke, a rotating sweep), informed by a web sweep of FTL/Star
-   Traders/Sunless Sea-style node maps. Sent to the owner as screenshots plus the live HTML files.
-   **THE HALT.** Whichever the owner picks becomes its own follow-on build task (wiring the chosen
-   layout/interaction into `App.tsx`'s `Starmap`, replacing the current SVG projection) — not
-   self-selected here.
-
-Gate: `npm test` 118 files / 2,295 tests green across all five workspaces, `npx tsc -b`,
-`npm run lint`, `npm run format:check` clean.
-
-**NOTE (owner, 2026-08-04): the interactive HTML prototypes (4a/4b, sent as standalone files)
-did not work when opened on the owner's mobile app/device.** Not investigated — the screenshots
-sent alongside them were viewable and are the actual basis for comparison; the live HTML was a
-bonus for drag/zoom feel on desktop.
-
-**RULED (owner, 2026-08-05): 4B — the 3D lat/long globe.** The original 4a/4b/4c standalone
-files no longer existed on disk (never committed, sent as ephemeral attachments only) and were
-regenerated from the real committed data (`coordinates3D`, `orbitalLayout2D`, `distance3D`) for
-re-comparison. Two rounds: the first 4B pass was rejected as not actually reading as a sphere (no
-latitude/longitude graticule); rebuilt with a real dotted lat/long wireframe, current-system hub
-(bright, dim lanes to all reachable systems), and one lit lane for a set course. **A real,
-measured finding surfaced during this pass, and it changes the build's scope:** sampling label
-placement across 90 rotation angles (every 20° yaw × 5 pitches, same bounding-box method as
-`starmap-label-overlap.test.ts`) found **97.8% of rotations have at least one label collision**
-(avg. 4/frame; `Arcturus-6`/`Fomalhaut-2` collided in 22/90 samples). "Rotate to a clean angle"
-is not a real fallback — the 20 charted systems are too tightly clustered near Sol for that to
-reliably work. **Active label-collision suppression (priority: current system → set-course
-target → nearest-to-camera, others hidden until hover/selection) is therefore a required part of
-the build, not a nice-to-have.** Ruling also covers scope: 4B **fully replaces** the flat 2D
-Starmap projection, not a toggle/fallback. Follow-on build task: T-215.
 
 ### T-215 · Build: the 3D lat/long globe Starmap, replacing the flat 2D projection — `status: DONE` · `coder: opus` · `after: T-188`
 
@@ -1409,293 +757,6 @@ and `starmap-globe-touch.spec.ts`'s viewport comment re-pointed at that ruling. 
 
 ## M16 — Owner UAT pass 3: the dawn-hand die is illegible (2026-08-04)
 
-### T-193 · BUG: the starmap shows a "PILOT DC" for every jump, but ordinary jumps never roll against it — `status: DONE` · `coder: opus` · `after: T-198`
-
-Found while explaining the dawn-hand mechanic to the owner (they could not tell what assigning a
-die to a jump does — see T-194 for the full finding). Root cause, verified in code:
-`travelPreview()` (`packages/engine/src/actions/travel.ts:189`) unconditionally computes
-`dc: travelDc(routeDistance, destination)` and the route-preview panel
-(`packages/ui/src/App.tsx:3649`, `data-testid="route-dc"`) renders it for EVERY destination. But
-`resolveTravel` (same file, `:572`) only actually rolls a Pilot check against that DC for the
-Nemesis crossing (`isCrossing` branch, `:624-629`) — per the `T-1605 · AN ORDINARY JUMP ALWAYS
-ARRIVES` comment at `:608`, the pilot check was deliberately removed from ordinary travel (34% of
-jumps used to fail even on the player's best die). **Nobody removed the now-dead DC readout when
-the check was removed.** The UI has been showing a stat check that cannot fail for every ordinary
-jump since T-1605 shipped — actively misleading, not merely uninformative: a player reads "PILOT DC
-12" and reasonably concludes their die and Pilot stat matter here, when neither does.
-
-**Accept (amended at the 2026-08-04 review pass — T-195 shipped in the same commit as this
-filing, and it changes what "honest" means here):** the route-preview panel does not display a DC
-for a destination `resolveTravel` will not roll a check against (ordinary jumps); it MAY still
-show the Nemesis crossing's real DC, since that check is real. But do NOT replace the dead DC
-with only a "no check — every jump with fuel arrives" line — since T-195, an ordinary jump's die
-is no longer inert: it sets a fuel discount (`navDieFuelDiscount`, 0-15%) and an
-encounter-evasion factor (`navDieEvasionFactor`, 0-20%), and `travelPreview` already computes
-both once a die is known. The honest readout is the armed die's live effect (e.g. "die 14 · fuel
-−9% · encounter odds −13%"), with the "no check" copy covering the no-die-armed state — either
-way the absence of a DC reads as a stated fact, not a missing feature. `travelPreview`'s `dc`
-field can stay (still useful for the crossing and anything else that reads it), but the UI
-consumer must stop rendering it as if it always means something. Coverage lands in the existing
-DOM pane-test harness (`packages/ui/src/__tests__/`, vitest + testing-library — "coverage" here
-means these; do NOT stand up a browser tier for this task, that is T-162's still-open thread): a
-route preview to a non-crossing destination renders no Pilot-DC readout (the die-effect or
-"no check" copy instead); a preview to the (unlocked) Nemesis crossing still renders the real
-DC. Gate green.
-
-**Delivered (2026-08-06). UI-ONLY, deliberately — no engine or content file was touched.** The
-tempting fix (extract `travelRollsPilotCheck()` into `travel.ts`, add fields to `TravelPreview`) was
-measured first and rejected: `packages/sim`'s `rulesFingerprint` hashes the semantic source of
-`packages/engine/src/**` + `packages/content/src` wholesale, and appending a single line of *code*
-to `travel.ts` flips `balance-smoke.test.ts`'s "the fixture describes the ruleset in the working
-tree · is not stale" from pass to fail — so a provably inert extraction would have owed an 8,000-run
-capstone sweep for a readout bug. The extraction is filed instead as **T-259**, to be batched into
-the next milestone capstone. Confirmed after the change: `rulesFingerprint` did NOT move
-(`balance-smoke.test.ts` 72/72 green, "is not stale" included) — the UI package is not hashed.
-
-- **`packages/ui/src/format.ts`** — new `routeCheckReadout(game, dest, armedDieIndex)` returning a
-  discriminated `RouteCheckReadout`: `{kind:'dc'}` **only** for `NEMESIS_SYSTEM_ID` (the one branch
-  `resolveTravel` still rolls, `travel.ts:662` / `:702-715`), with the DC read *through*
-  `travelPreview` rather than recomputed so panel and resolver cannot drift; otherwise
-  `{kind:'die-effect'}` carrying the armed die's face plus `fuelPct`/`evasionPct` computed from the
-  engine's own `navDieFuelDiscount`/`navDieEvasionFactor` (no 15/20 literal anywhere in the UI); or
-  `{kind:'no-check'}` when the hand is missing, the index is null/out-of-range, or the slot is
-  already spent. The header comment states the T-1605 cause, the T-195 replacement, and the
-  fingerprint reason the predicate stayed in the UI.
-- **`packages/ui/src/App.tsx`** — the `PILOT DC` key/value pair is DELETED from `.rp-grid` (which
-  keeps DISTANCE | FUEL on row 1, DANGER on row 2 under its 4-column template). One full-width check
-  row now renders below the grid, exactly one variant: `route-dc` (bare number, so
-  `nemesis-crossing.spec.ts:181` still reads it), `route-die-effect`
-  ("FUEL −13% · ENCOUNTER −17%"), or `route-no-check` ("NONE — every jump with fuel arrives").
-  `data-testid="route-dc"` is now unreachable for any non-crossing destination. A nat 1 correctly
-  reads −0% / −0% — that IS its live effect and is not special-cased back to "no check".
-- **`packages/ui/src/theme.css`** — `.rp-check` / `.rp-ck` / `.rp-cv`, reusing `--etch-dim` /
-  `--ember` / `--glow`; no new hue (T-186's amber pillar).
-- **`packages/ui/src/walkthrough.ts:204`** — the tutorial repeated the lie ("shows the bill and the
-  PILOT DC"); it now promises the bill and what the armed die takes off it. Nothing pinned the old
-  string.
-- **Coverage.** New `packages/ui/src/__tests__/route-preview.test.ts` (8 tests): no-die →
-  `no-check`; armed die → `die-effect` with the face (not the index) and percentages matching the
-  engine helpers **for all 20 faces**, endpoints pinned explicitly (1 → 0%/0%, 20 → 15%/20%) so a
-  helper retune is visible rather than tautological; spent slot / out-of-range / absent hand →
-  `no-check`; crossing → `dc === NEMESIS_CROSSING_DC === routePreview(...).dc`, and still `dc` with
-  a die armed; plus an L-018 negative control looping every charted ordinary system in both armed
-  and unarmed states, so a stub returning only `no-check` or only `dc` fails one side. ~~No jsdom
-  and no testing-library were added~~ — **this claim was the review finding; see FIX ROUND 1 below,
-  which stands the jsdom pane test up and makes the Accept's DOM half real.**
-- **e2e updated, not weakened** (the F-112-D / F-162-3 failure mode): `starmap.spec.ts:82` and
-  `:134` now assert `route-dc` **count 0** plus the `route-die-effect` text (percentages computed
-  in-spec from the imported engine helpers, per the file's house rule) and `route-no-check`
-  visibility respectively; the now-unused `travelDc` import was dropped and the header rewritten.
-  `nemesis-crossing.spec.ts:181` is UNCHANGED and is now the positive control for the surviving
-  real DC.
-- **Two adjacent bugs filed, not fixed** (Bug Discovery Policy, with the risk analysis written into
-  each block): **T-258** — `travelPreview` applies the die fuel discount to the crossing while
-  `resolveTravel` excludes it (latent: no caller passes a die today, and this task deliberately did
-  not start; named as a prerequisite inside T-237's Accept) — and **T-259**, the deferred
-  `travelRollsPilotCheck` extraction above.
-- **Gate.** `npm run format` run BEFORE the gate. `npm test` 2,736 passed / 0 failed across all six
-  workspaces; `npx tsc -b`, `npm run lint`, `npm run format:check` all exit 0; e2e
-  `starmap nemesis-crossing walkthrough` 25/25 passed.
-
-**FIX ROUND 1 (2026-08-06) — the Accept's DOM clause, honoured rather than argued around.**
-
-_Review finding, accepted in full:_ the Accept says coverage lands in the DOM pane-test harness
-(`packages/ui/src/__tests__/`, **vitest + testing-library** — "coverage here means these"), and the
-first pass shipped only a pure selector test plus Playwright specs the clause explicitly excludes.
-Root cause was a category error in the first pass's own reasoning, not a missing harness: it read
-"do NOT stand up a browser tier (that is T-162's thread)" as forbidding **jsdom inside vitest**. It
-does not. T-162/T-237's open thread is the REAL-BROWSER tier (Playwright); jsdom-in-vitest is the
-escape hatch `packages/ui/vitest.config.ts` has documented since T-1701a ("if a UI test ever needs
-[a DOM] it should say so with a per-file `@vitest-environment` comment"). Net effect of the gap: the
-always-run gate (`npm test` → `vitest run` per workspace; `test:e2e` is NOT part of it) pinned only
-the predicate, so JSX that re-added an unconditional `PILOT DC` would have shipped green.
-
-- **`packages/ui/package.json`** — `jsdom`, `@testing-library/react`, `@testing-library/dom` added
-  as devDependencies of THIS workspace only. No engine, content or sim file touched;
-  `rulesFingerprint` cannot move (the UI package is not hashed) and no sweep is owed.
-- **`packages/ui/vitest.config.ts`** — `include` gains `src/**/*.test.tsx` (the e2e separation the
-  `include` exists to keep is untouched: Playwright lives in `e2e/`, this pattern is rooted at
-  `src/`). `environment` stays `'node'`; jsdom is paid for by one file's docblock.
-- **`packages/ui/src/RoutePreviewPanel.tsx` (new) — a BEHAVIOUR-PRESERVING EXTRACTION, done before
-  the new coverage, per standing constraint.** The panel could not be mounted while it was inline in
-  the 6,000-line `App` component, which imports `./store` — and `store` runs `init()` (storage,
-  sound) at module load. The JSX moved verbatim: same element order, class names, `data-testid`s,
-  copy and HTML entities. The three values `App` computed beside it are now computed inside it from
-  the same expressions — `routePreview(game, dest)`, `routeCheckReadout(game, dest, armedDieIndex)`,
-  and `dieArmed = armedDieIndex !== null` (`App` passes `state.selectedDie`, so this is the same
-  boolean). Props-only, store-free, decides no rule: the variant choice stays `routeCheckReadout`'s
-  in `format.ts`.
-- **`packages/ui/src/App.tsx`** — the inline panel is replaced by `<RoutePreviewPanel …/>`; the local
-  `routeCheck` const and the now-unused `routeCheckReadout` import are deleted. `preview` stays
-  (`showPreview` still reads it).
-- **Coverage, where the Accept says it goes.** New
-  `packages/ui/src/__tests__/route-preview-panel.test.tsx`
-  (7 tests, `// @vitest-environment jsdom` + `@testing-library/react`, `cleanup` wired
-  explicitly because this package runs without `globals`): ordinary destination renders **zero**
-  `route-dc` elements AND no `/PILOT DC/` text (so dropping the testid while keeping the misleading
-  words still fails) plus the `route-no-check` copy; armed die renders `route-die-effect` with
-  percentages recomputed in-test from `navDieFuelDiscount`/`navDieEvasionFactor`; an L-018 DOM-level
-  negative control loops **every** charted ordinary system in both armed and unarmed states; the
-  **unlocked** crossing (`nemesis.crossing.unlocked` set — asserted plottable via `starmapGlobe`,
-  not assumed) renders `route-dc` equal to `NEMESIS_CROSSING_DC` and to `routePreview(...).dc`, with
-  and without a die armed; and two extraction-inertness tests (distance/fuel/danger match the
-  engine preview; confirm button label + `disabled` gate, and its click calls `onConfirm` once).
-- **The stale ruling that caused the miss is amended, not left to trap the next coder.**
-  `docs/TEST-TIER-DECISIONS.md` **TT-12** asserted "this repo has no `@testing-library/react`" and
-  **TT-13** read "a UI acceptance clause asking for DOM pane tests is discharged at the STORE level
-  plus Playwright". New **TT-13a** records the boundary: when the defect IS the markup, and the
-  gate that always runs is `npm test` (never `test:e2e`), the discharge is TT-13's own sanctioned
-  exception — a per-file `@vitest-environment jsdom` docblock — under four bounds (package
-  `environment` stays `node`; the component is extracted store-free first; the e2e spec is kept,
-  not weakened; the pane test is mutation-checked). TT-12's permanent half ("never `../store`") is
-  restated as unchanged.
-- **Mutation-checked, not assumed.** With `{routeCheck.kind === 'dc' &&` forced to `{true &&` and
-  the DC re-sourced from `preview.dc` — i.e. the exact original bug re-introduced — 3 of the 7 tests
-  fail. Reverted; 7/7 green.
-- **Gate (fix round 1).** `npm run format` run BEFORE the gate. `npm test` 2,743 passed / 0 failed
-  across all six workspaces; `npx tsc -b`, `npm run lint`, `npm run format:check` exit 0; e2e
-  `starmap nemesis-crossing walkthrough` 25/25 passed (the extraction is inert in a real browser).
-
-**Delivered (2026-08-06):** the dead "PILOT DC" readout is gone from every ordinary jump —
-`routeCheckReadout` (`packages/ui/src/format.ts`) now returns `{kind:'dc'}` only for the Nemesis
-crossing (the one branch `resolveTravel` still rolls a Pilot check against), `{kind:'die-effect'}`
-showing the armed die's live fuel/evasion effect for ordinary jumps, or `{kind:'no-check'}` when no
-die is armed; `App.tsx`'s `.rp-grid` no longer renders `PILOT DC` at all, and the walkthrough copy
-was corrected to match. The first pass landed the selector and updated e2e coverage; a review pass
-(FIX ROUND 1) found the Accept's DOM pane-test clause had not actually been discharged and stood up
-a jsdom + testing-library tier (`RoutePreviewPanel.tsx` extracted store-free, the new
-`route-preview-panel.test.tsx`, `docs/TEST-TIER-DECISIONS.md` TT-13a) to close it, mutation-checked
-against the original bug. Deliberately out of scope: two adjacent findings were filed rather than
-fixed — T-258 (a latent `travelPreview`/`resolveTravel` fuel-discount mismatch on the crossing,
-unreachable until T-237 lands) and T-259 (the `travelRollsPilotCheck` predicate extraction, deferred
-to avoid owing a standalone `rulesFingerprint` capstone sweep for an otherwise-inert engine-source
-change) — both left `packages/engine` and `packages/content` untouched; this task stayed UI-only
-end to end.
-Orchestration: attempts=2/4.
-
-### T-194 · The dawn hand's die-value mechanic is illegible — teach it, and make success visible — `status: DONE` · `coder: opus` · `after: T-198`
-
-Owner's read, after a live session: "it was not at all apparent why I was adding a d20 to any of my
-tasks. Taking a contract? Making a jump to deliver the contract? Entering the hangout? ... In its
-current state it feels like I have [a] number of action points, I have no feedback if the die does
-anything."
-
-**The pre-M17 mechanic this task was filed against (kept as the record of the finding; the full
-value-blind/value-matters split is preserved in `docs/DAWN-HAND-REDESIGN.md` §3's table):** every
-action cost one die, but only some read its face value, and nothing in the UI distinguished the
-two classes — `dieArmed` (`App.tsx:3471`) is a plain boolean, not a comparison. **M17 dissolves
-that split instead of teaching it:** after T-196a-c and T-197, every remaining Main Action reads
-its die — Jump (fuel discount + encounter evasion, monotonic, T-195), Explore (Pilot vs Nav DC),
-Haggle (Trade vs DC), Combat (Guns/Pilot/Trade vs DC by stance), Peek (Guile vs DC), Nemesis
-crossing (Pilot vs DC) — and everything else is a Free Action costing no die at all. Two
-deliberate corners stay die-blind, both ruled out of M17's scope by the spec's §3: storylet
-choices authored with `spendDie` and no `statCheck`, and Explore's secondary extra-dice toll.
-
-**RE-SCOPED at the owner-approved review pass, 2026-08-04** (originally written pre-M17, then
-marked superseded with a "re-scope later" note — this rewrite IS that re-scope, done now so no
-future coder inherits an Accept that contradicts its own postscript; the original two-part
-version is in git history). Gated `after: T-198` so the tutorial teaches the post-checkpoint
-economy, not numbers the owner may still re-tune.
-
-**Accept, in three parts, all required:**
-
-1. **Teach the two-class economy in the hand-held tutorial (T-187's contextual coach).** At the
-   first die assignment: Main Actions cost a die and the die IS your roll (or, for a jump, your
-   edge — higher is strictly better); Free Actions cost nothing and can be taken even with an
-   empty hand — with one bounded exception, the daily social plays (§4a's pool), taught where
-   the player first meets it (on entering a Hangout), not front-loaded. Demonstrate, don't just
-   state: the walkthrough already covers a Free action (sign a contract) and a Main one (jump)
-   back-to-back, so the contrast is felt.
-2. **Show the roll before it's committed, everywhere a die is read.** For every check-based Main
-   Action (Explore, Haggle, Combat, Peek, Crossing), once a die is armed, render that die's value
-   against the action's DC as a clear success/fail read (e.g. "[14] vs DC 12 — clears it" or a
-   plain pass/fail badge), not a bare DC sitting next to an unrelated hand of dice. For the jump,
-   T-193's die-effect readout is the same idea and lands first; this task extends the pattern to
-   the check actions. A DC shown before any die is armed (planning view) must be visually
-   distinct from a live per-die read.
-3. **The two residual die-blind corners must not be taught wrong.** Storylet `spendDie`-only
-   choices and Explore's extra-dice toll still spend dice without reading them; the tutorial and
-   the per-die read must not imply those dice roll against anything. If making them honest in the
-   UI is cheap, do it here; if not, FILE the cleanup as a follow-up task rather than widening
-   this one.
-
-Gate green.
-
-**SHIPPED, 2026-08-06. UI-ONLY: no file under `packages/engine/src`, `packages/content/src` or
-`packages/sim/src` was touched, so `rulesFingerprint` is unmoved and `balance-smoke.test.ts`'s
-"is not stale" stayed green — no capstone was owed for a readout change.**
-
-*Part 2, the live per-die read.* One discriminated union, `CheckPreview`, decided in
-`packages/ui/src/format.ts` (`plan` / `live` / `opposed` / `none`) plus one selector per surface —
-`exploreCheckPreview`, `haggleCheckPreview`, `peekCheckPreview`, `crossingCheckPreview`,
-`combatCheckPreview(stance)` — and one component, `packages/ui/src/CheckPreviewRow.tsx`. The
-`live` arm is produced by calling the ENGINE's own `check(die, modifier, dc)`, so nat-20
-auto-success, nat-1 auto-fail and `margin` are inherited rather than reimplemented
-(docs/UI-PRESENTATION-DECISIONS.md **UI-29**). Plan and live are visually distinct and
-`data-kind`-discriminated (**UI-28**). Combat RUN is `opposed` and gets no verdict, because
-`resolveRun` draws the interceptor's pursuit d20 at resolve time and there is no DC to clear
-(**UI-30**) — the one place this task deliberately shows less. The four-guard armed-die
-resolution T-193 wrote inline is now the shared `armedDieFace`, reused by `routeCheckReadout`
-behaviour-preservingly.
-
-*The extractions, so the DOM could be tested at all (TT-13a).* `ExploreSweepPanel.tsx`,
-`CombatStancePanel.tsx`, `HaggleRow.tsx` and `PeekControl.tsx` were lifted verbatim out of
-`App.tsx` as props-only, store-free files on `RoutePreviewPanel.tsx`'s terms, and the move is
-PROVED inert by `__tests__/check-preview-panels.test.tsx` (pre-existing testids, labels, disabled
-gates and click wiring all asserted) rather than asserted to be.
-
-*Part 1, the teaching.* Both "STALE COPY … OWNED BY T-194" markers are gone, and with them the
-four false lines: w1–w4 and w6–w7 of `walkthrough.ts`, `dawn-roll` / `first-sign` / `first-jump` /
-`first-explore` / `first-encounter` in `ONBOARDING_PROMPTS`, the w6 dry-tank fallback, and
-`App.tsx`'s three `SOCIAL_TITLES` tooltips (all three still said "(spends a die)" after T-197 made
-them free). **Two more of the same, found by sweeping the cockpit rather than the registries, and
-fixed here rather than filed:** the Borrow and Repay buttons' hover titles also still said
-"(spends a die)" — both have been Free Actions since T-197 — and a `TradePane` comment still
-claimed the port stake was "die-costed like the shipyard", which M17 freed too. A tooltip that
-prices a Free Action in dice is precisely what this task exists to stop teaching, so
-`tutorial-economy.test.ts` now also scans `App.tsx`'s title/label literals as SOURCE, with a live
-control proving the scan catches the deleted strings. The social pool is taught in
-`first-hangout` and NOWHERE else, with
-`SOCIAL_PLAYS_PER_DAY` interpolated from content. Pinned by `__tests__/tutorial-economy.test.ts`,
-whose negative control fails on any of the four deleted strings (mutation-checked in the file).
-
-*Part 3, the die-blind corners, made honest here rather than deferred.*
-`storyletChoiceCostLabel` now emits `die (spent, not rolled)` for a `spendDie` choice with no
-`statCheck` (`e2e/storylet-registry.spec.ts` updated to the honest label), and
-`explorationFailExplanation('insufficient-dice')` plus the w6/`first-explore` copy name the extra
-dice as a TOLL paid to lift a find, never a roll. What was NOT done here is filed as **T-261**
-(surfacing the band's `apCost` before the claim is an engine/content read).
-
-*The two mirrored DCs, and why that is safe.* `trade.ts`'s `const haggleDc = 12` and
-`combat.ts`'s `const dc = 10 + encounter.interceptor.tier` are un-exported literals; exporting
-either would move `rulesFingerprint`. They are mirrored in `format.ts` under a source-reading
-drift alarm, `__tests__/engine-dc-pins.test.ts`, which reads the resolvers' own source and fails
-the instant either literal changes. Promotion filed as **T-260**.
-
-*Evidence.* `npm test` 6/6 workspaces green (UI 36 files / 579 tests, up from 31/520);
-`npx tsc -b`, `npm run lint`, `npm run format:check` clean; Playwright 174 passed (the whole suite
-bar `long-haul`/`flake-rate`), including the extended `exploration.spec.ts` and `combat.spec.ts`
-check-preview assertions and an unchanged `nemesis-crossing.spec.ts` (confirmed, not assumed —
-`route-dc` still carries the bare DC in BOTH the planning and the live state, and
-`CheckPreviewRow`'s `dcTestId` exists to keep it that way). Mutation-checked: forcing the `live`
-branch to `plan` reddens 8 tests across 3 files; reverted. One pre-existing flake found and filed
-as **T-262** (proved pre-existing by reproducing it with this task's CSS removed).
-
-**Delivered (2026-08-06):** shipped the two-class economy (Main Actions read the die, Free
-Actions cost nothing) into T-187's hand-held tutorial, added a live per-die success/fail read
-(`CheckPreviewRow` + `CheckPreview` union in `format.ts`) for every check-based Main Action —
-Explore, Haggle, Combat, Peek, Crossing — driven by the engine's own `check()` so nat-20/nat-1/
-margin are inherited rather than reimplemented, and made both die-blind corners (storylet
-`spendDie`-only choices, Explore's extra-dice toll) honest in their copy without inventing numbers
-the engine can't yet quote. UI-only by design: no `packages/engine/src`, `packages/content/src`
-or `packages/sim/src` file was touched, so `rulesFingerprint` stayed unmoved and no capstone sweep
-was owed. Deliberate scope boundary: promoting the two mirrored DC literals to exported constants
-(filed as T-260) and surfacing Explore's toll before the claim (filed as T-261) both require an
-engine/content change that would move the fingerprint, so both were filed rather than folded in;
-one pre-existing e2e flake found at the gate was proved pre-existing and filed as T-262 rather than
-fixed inside this task's unrelated scope.
-Orchestration: attempts=1/4.
-
 ### T-260 · Promote the haggle and combat-stance DCs to exported content constants — `status: TODO` · `coder: opus` · `after: —`
 
 **Deferred extraction, filed by T-194 with its measured evidence, and BATCHED — never a
@@ -1712,7 +773,7 @@ flips `balance-smoke.test.ts`'s "is not stale" assertion red. Exporting a consta
 would therefore owe a full 8,000-run capstone sweep on its own. **Does not compound:**
 `packages/ui/src/__tests__/engine-dc-pins.test.ts` reads both resolvers' SOURCE and fails the
 build the moment either literal drifts, naming the mirror to update — so the duplication cannot go
-stale silently, and nothing downstream can build on a wrong number.
+stale silently, and nothing downstream can build on a wrong number. [harvested: T-194/T-260]
 
 **Accept:** both DCs live as exported constants in `packages/content/src` (beside
 `TALK_DC_PER_DISPOSITION`, which already models the shape), read by their resolvers AND by
@@ -1739,6 +800,7 @@ the band (or a bound on it) as part of the discovery.
 UI-only by design and a quote helper is an engine/content read that moves `rulesFingerprint`
 (see T-260). (b) DOES NOT COMPOUND: nothing builds on the toll being hidden; the failure already
 renders as a typed notice rather than silence, and the copy no longer mis-teaches it as a roll.
+[harvested: T-194/T-261]
 
 **Accept:** the cockpit can state, before the claim, what lifting a find may cost — either the
 drawn band's real `apCost` (if the engine can quote it at discovery) or the authored WORST CASE
@@ -1766,7 +828,7 @@ a T-217/T-218 geometry spec that T-194 neither wrote nor touched, and fixing a f
 someone else's assertion inside an unrelated task is how a real geometry regression gets hidden.
 (b) DOES NOT COMPOUND: it is a TEST-side race, not a product defect (the settled layout is
 correct); it is confined to one assertion; and it is loud rather than silent — Playwright reports
-it as flaky rather than green. No other work routes around it.
+it as flaky rather than green. No other work routes around it. [harvested: T-194/T-262]
 
 **Accept:** the spec waits for the settled layout before measuring (`await
 page.evaluate(() => document.fonts.ready)`, or the equivalent poll on the cap's own box), the
@@ -1796,6 +858,7 @@ T-193 deliberately did not start passing one — it reads the die's effect throu
 `navDieFuelDiscount`/`navDieEvasionFactor` directly and never asks the preview to apply it. The bug
 becomes reachable **only** if T-237 rules "pass the armed die", which is why it is gated
 `after: T-237` and named as a prerequisite inside T-237's Accept rather than left free-floating.
+[harvested: T-193/T-258]
 
 **Accept:** `travelPreview` excludes the crossing from the die discount by the same predicate
 `resolveTravel` uses (ideally the one T-259 extracts, so the exclusion is stated once, not twice); a
@@ -1822,7 +885,7 @@ UI-only and had the selector branch on the same **content** constant (`NEMESIS_S
 resolver branches on, reading the DC itself out of `travelPreview` so the two cannot quietly
 disagree. Does not compound: the duplication is one comparison against a content id, both sides name
 each other in comments, and any future change to which routes roll a check would fail T-193's
-`packages/ui/src/__tests__/route-preview.test.ts` negative-control loop.
+`packages/ui/src/__tests__/route-preview.test.ts` negative-control loop. [harvested: T-193/T-259]
 
 **Accept:** `travelRollsPilotCheck(destination)` lives in `packages/engine/src/actions/travel.ts`,
 exported through the engine barrel, and is the ONLY place the predicate is written — `resolveTravel`
@@ -2000,134 +1063,6 @@ new vocabulary and the stale `App.tsx:934` pin.
 
 Orchestration: attempts=1/4.
 
-### T-253 · F-204-1: `wireStories.ts`'s "VERBATIM PRD §6 sample" no longer matches the PRD — `status: DONE` · `coder: opus` · `after: —`
-
-**F-204-1 (OPEN, carried forward from T-204).** `wireStories.ts`'s "VERBATIM PRD §6 sample — do not
-reword" contract now diverges from the PRD. `wireStories.ts:49` declares index 0 is the verbatim PRD §6
-sample and it is pinned exactly at `wire.test.ts:132`; that line now says "Cantina" while
-`docs/PRD-REIMAGINED.md:113` still says "Hangout" (as do §7.3/§7.5 at lines 145/163/167/177/195/217/223).
-The PRD was not in T-204's IN-SCOPE list, so updating it is its own scoped decision. Related and
-deliberate: the comment at `wireStories.ts:16-17` quoting the old sample and the one at
-`hangout.test.ts:373-374` ("The gamble templates all name the Hangout") were left UNEDITED to keep
-T-204's out-of-scope comment-count proof clean; both are knowingly stale pending the PRD decision and
-should be corrected by whichever task takes it. [harvested: T-204/F-204-1]
-
-**Accept:** the PRD decision is taken explicitly — either `docs/PRD-REIMAGINED.md:113` and the §7.3/§7.5
-occurrences (lines 145/163/167/177/195/217/223) are updated to "Cantina" so `wireStories.ts:49`'s
-verbatim contract holds again, or the sample is de-designated as verbatim and `wire.test.ts:132`'s exact
-pin is re-shaped, with the reason recorded either way; the two knowingly-stale comments
-(`wireStories.ts:16-17` and `hangout.test.ts:373-374`) are corrected in the same change; the "VERBATIM
-PRD §6 sample — do not reword" contract is left either genuinely true or explicitly retired, never
-half-true; content/doc-only change, so no rule fingerprint moves — state that explicitly; gate green.
-
-**Delivered (2026-08-06):** Ruled the PRD as the lagging site (HO-25, `docs/HANGOUT-DECISIONS.md`
-§8) and moved nine of its ten "Hangout" occurrences to "Cantina" (`docs/PRD-REIMAGINED.md` lines 58,
-113, 129, 145, 163, 167, 177, 195, 217), keeping the one deliberate exception at §9 which now reads
-"the Spacers Hangout (shipping as the **Cantina**)" since that line names the 1991 artefact, not a
-shipped surface. `wireStories.ts:49`'s "VERBATIM PRD §6 sample" designation is kept rather than
-retired, and made enforceable rather than merely asserted: new test
-`packages/content/src/__tests__/prdWireSample.test.ts` fills the template and requires the result in
-PRD §6, verified RED against the pre-fix PRD and GREEN on restore. The two comments the finding
-flagged as knowingly stale (`wireStories.ts:16-17`, `hangout.test.ts:373-374`) were corrected, plus
-three more the PRD edit would otherwise have newly staled (`hangout.ts:3,91`, `systems.ts:39-40`) and
-one found at the pin itself (`wire.test.ts:78-79`); a narrow "quoting comments track the PRD, using
-comments don't" rule was recorded to draw the line without pre-empting T-254's broader internal-vs-PRD
-vocabulary split. Deliberate scope boundary: no identifier, file name, `describe` string, or save
-literal was touched — those stay "Hangout" under HO-23 and are T-254's concern, not this task's.
-`rulesFingerprint` and `instrumentFingerprint` do not move (comment-only edits under the semantic hash,
-nothing under `packages/sim/src` touched); only the informational `docsFingerprint` moved, by design.
-
-Orchestration: attempts=1/4.
-
----
-
-## M19 — Captain voice: table talk, battle catchphrases, and quest-captain pinning (owner, 2026-08-05)
-
-Two owner requests from reviewing the cast content-authoring survey. Both are about the 30 named
-captains (`NPC_PROFILES`, `packages/content/src/cast.ts`) and the 11 quest captains
-(`QUEST_PROFILES`, same file) specifically — NOT the 42-seat Liar's Dice roster (already has its
-own `lines`) and NOT the 65-entry anonymous pirate/patrol pool (explicitly out of scope here; the
-owner confirmed the gambler ladder and dropped the random-gambler idea with no further action).
-
-**Moved at the 2026-08-06 re-order:** T-256 and T-257 (both owner content-design rulings) now
-sit in the OWNER GATE section below. T-255 is autonomous and stays.
-
-### T-255 · The four captain-voice surfaces have unit coverage only — prove them in real DOM — `status: DONE` · `coder: opus` · `after: —`
-
-T-207's four new player-visible surfaces have UNIT coverage only and no real-DOM proof. T-207's block
-states "No e2e change was needed or made" because `packages/ui/e2e/combat.spec.ts`'s two seeds are both
-ANONYMOUS encounters, and `packages/ui/e2e/liars-dice-roster.spec.ts`'s `dare-table-talk` /
-`dare-dealer-history` assertions are on the ROSTER seat. VERIFIED: grepping `packages/ui/e2e/` finds NO
-assertion on `dare-dealer-table-talk` (the roaming captain's line, `packages/ui/src/App.tsx:3017`) nor on
-`combat-enemy-bark` / `combat-enemy-battle-bark` / `combat-aftermath-bark`
-(`App.tsx:1818 · 1823 · 2041`). It needs an e2e seed that deals a ROAMING named captain's hand and one
-that draws a NAMED interceptor, so the copy a player can actually see is proved where
-`packages/ui/src/__tests__/liars-dice-pane.test.ts`'s own T-221 header says such a claim can be proved.
-[harvested: T-207/t207-e2e-bark-dom]
-
-**Accept:** `packages/ui/e2e` gains a seed that deals a ROAMING named captain's Liar's Dice hand and a
-seed that draws a NAMED combat interceptor, and asserts all four surfaces in real DOM —
-`dare-dealer-table-talk` (`App.tsx:3017`), `combat-enemy-bark`, `combat-enemy-battle-bark` and
-`combat-aftermath-bark` (`App.tsx:1818 · 1823 · 2041`); the seeds are found and pinned deterministically
-rather than left to chance, and each assertion is shown to fail with the bark rendering suppressed, so
-none is vacuous; the existing anonymous-encounter seeds in `combat.spec.ts` and the ROSTER-seat
-assertions in `liars-dice-roster.spec.ts` are left intact; the specs declare their first-run walkthrough
-stance per the suite convention; UI/test-only change, no fingerprint moves — state that explicitly;
-gate green.
-
-**Delivered (2026-08-06).** One new file, `packages/ui/e2e/captain-voice.spec.ts`, six tests. **UI/TEST-ONLY:
-no engine, content, save-shape or fingerprint change.** Nothing under `packages/engine`, `packages/content`
-or `packages/ui/src` was touched, so `rulesFingerprint` cannot move, no capstone is owed,
-`CURRENT_SAVE_VERSION` is untouched and no migration is owed — re-read live at delivery: **17**
-(`export const CURRENT_SAVE_VERSION = 17;`, `packages/engine/src/save.ts:627`; last bumped by T-208,
-v16→v17). The `15` / `save.ts:509` this note first quoted was the Standing-constraints anchor and a
-historical JSDoc line (`save.ts:204`, "T-145 bumped … to 15"), not the declaration — corrected here.
-`combat.spec.ts` and `liars-dice-roster.spec.ts` were never opened and are byte-identical.
-
-**The brief's line pins were STALE and are corrected here** (component + testid, per the resolvable-pin
-rule, so the next reader does not re-chase a number): `combat-enemy-bark` `App.tsx:1873` and
-`combat-enemy-battle-bark` `App.tsx:1878`, both in `CombatInstrument` under `readout?.enterLine` /
-`readout?.battleLine`; `combat-aftermath-bark` `App.tsx:2061` in `CombatAftermathPanel` under
-`aftermath.opponentLine`; `dare-dealer-table-talk` `App.tsx:3064` in the Liar's Dice scene under
-`view?.dealerTableTalk`.
-
-**Two fixtures, found by an offline sweep and pinned, not left to chance** — derivation method, sweep range
-and predicate are recorded in the spec header so a future maintainer whose seed goes stale RE-HUNTS rather
-than patches a literal. Seeds 1..400 × jump-die INDEX 0..4 × destination 2..12, replaying
-`startDay(createInitialState(seed))` → `applyPlayerAction` exactly as the store does, kept the first draw
-with `interceptor.source === 'named'`, `enemyHull >= 2` and an authored `catchphrases` pool. **NAMED
-interceptor: seed 30**, die index 0 → Altair-3 draws `npc-zero-risk` (tier 2, hull 2, 215 fuel left — clear
-of the 50-fuel fight cost, so no weapons-offline band); fight index 1 → round 2 (the even round the
-battle-line timing rule fires on), fight index 2 → the killing volley resolves `interceptor-escaped`, which
-`CAPTAIN_OUTCOME` reads from the captain's side as a `loss`. **ROAMING named captain's hand: seed 1,
-`npc-iron-vex`** — the fixture `liars-dice.spec.ts` already documents (seated at Sol-3 on any seed), a
-proven-reachable path that had simply never been asserted for its bark. Dice are addressed BY HAND INDEX,
-never by value: seed 30's hand is `[15,15,15,10,1]`, so a `data-die-value="15"` locator would be ambiguous.
-
-**Non-vacuity discharged twice, and the second layer was RUN, not asserted in prose.** (a) A
-`proveBarkNotVacuous` helper asserts the line is in the DOM and is a member of the captain's authored pool
-(never a hardcoded quote — every string is read from `@spacerquest/content`), then removes that element and
-re-runs the identical assertion, requiring it to go red; it also guards the pool against emptiness, since a
-membership check over an empty pool is the exact vacuity this task exists to rule out. Each probe is the
-LAST act of its test — the barks are conditional children of a still-mounted parent, so a later React
-re-render would `removeChild` a node already detached. (b) The content-level negative controls: the
-anonymous raider (seed 43, re-walked here rather than edited into `combat.spec.ts`) and the roster seat
-`ld-1-1`, where the shipped guards suppress the render genuinely, each proving the surrounding pane really
-mounted so the absence is a claim about the bark. **Verified by mutation:** suppressing all four render
-guards in `App.tsx` turned exactly the four positive tests red and left the two negative controls green;
-`App.tsx` was reverted to pristine (`git checkout`) before the gate.
-
-Suite convention observed: the T-187 walkthrough-stance comment plus `skipFirstTurnWalkthrough` in
-`beforeEach`, and **no `@tag` in any test title** — `flake-rate.spec.ts` gates on a `@tour-one` denominator
-an unrelated task must not move. Gate: `npm test` 2,900 passing / 0 failing across six workspaces;
-`npx tsc -b`, `npm run lint`, `npm run format:check` all clean; full `npm run test:e2e -w @spacerquest/ui`
-**214 passed** (208 + the 6 new), zero flaky. Named-deliverable check: `grep -rn` over `packages/ui/e2e/`
-now returns all four testids in `captain-voice.spec.ts`.
-
-Orchestration: attempts=2/4.
-
----
-
 ## M8 — Harvested: testing, CI and gate coverage
 
 Transplanted 2026-08-02 out of completed blocks before they were pruned. Each body carries its
@@ -2282,6 +1217,83 @@ check while the existing `castValidation.test.ts:307-308` `.source`/`.flags` pin
 proving the old pin was not enough; the `CAST_DICE_COUNT_PHRASE` duplication is re-commented to point
 at the check rather than at prose; type-only imports are explicitly permitted and that carve-out is
 documented; gate green.
+
+### T-263 · Write the check that every artefact path cited in a Delivered/Accept note resolves on disk — `status: TODO` · `coder: opus` · `after: —`
+
+Write the check that every artefact path cited in a `TASKS.md` **Delivered** or **Accept** note
+actually resolves on disk. `docs/LESSONS.md:54` states the resolvable-pin rule, but nothing
+EXECUTES it: for three consecutive rounds T-218's screenshot-pass Accept clause — plus T-216's
+evidence line and T-217's screenshot line — was discharged by citing `test-results/*.png` at the
+REPO ROOT, when Playwright's CWD is `packages/ui` and therefore the files existed in NEITHER tree.
+The claim read as satisfied and the artefacts were never there. Neither the vitest suite nor
+`~/.claude/skills/orchestrate/orchestrate-tasks.js` has a step that greps cited evidence paths, so
+the class is entirely unguarded. This is the ARTEFACT-path sibling of T-230 (symbols and source
+paths in Delivered notes); they may share one implementation.
+[harvested: T-218/evidence-pin-resolves-check]
+
+**Accept:** an automated check extracts artefact-shaped paths (screenshots, JSON reports, logs,
+`test-results/**`) from `Delivered` and `Accept` notes in `TASKS.md` and fails when a cited path
+does not exist on disk, resolving relative paths against the package that actually produces them
+rather than assuming the repo root; the T-218/T-216/T-217 `test-results/*.png` citations are used
+as the regression fixture and provably fail the check as written; the false-positive rate over the
+existing notes is measured and stated, with a documented ignore convention for illustrative
+(non-artefact) paths; the check is wired where it will actually run; gate green.
+
+### T-264 · Write the check that an interim deviation marker has an open restore entry — `status: TODO` · `coder: opus` · `after: —`
+
+Write the check that catches an UNTRACKED temporary deviation. Nothing automated fails today when a
+self-labelled interim marker (`INTERIM DEVIATION`, `pre-public`, `revert before public`) sits in the
+tree with no open entry in `TASKS.md` or `TODO.md` naming its restore — which is exactly how the
+`5b430136` playtest-logging flip survived three days until F-185-4 found it by hand. Verified at
+filing time: `scripts/` contains only `check-signoff.mjs`, `prose-scan.mjs`, `tag-rc.mjs` and
+`verify-clean-clone.mjs`, and none of them greps for these markers. The surviving live markers are
+`docs/PLAYTEST-TELEMETRY_SPEC.md:13,15` and `packages/ui/src/playtestLog.ts:17` — all part of
+T-250's CLOSED record — so the check must treat a dated `..., CLOSED (T-###, date)` marker as
+SATISFIED rather than flagging it. [harvested: T-250/interim-deviation-marker-check]
+
+**Accept:** an automated check (a `scripts/` scanner wired into the gate, or a source-scanning test)
+fails when a marker matching `INTERIM DEVIATION` / `pre-public` / `revert before public` exists with
+neither a dated `CLOSED (T-###, date)` annotation nor an open `TASKS.md`/`TODO.md` entry naming the
+restore; the three surviving CLOSED markers pass unflagged (proving the closed-form carve-out
+works); a deliberately re-introduced untracked marker in a scratch arm provably fails the check,
+demonstrated against the `5b430136` shape; gate green.
+
+### T-265 · Write the source-scan guard that no e2e test title outside the tour-one specs contains an `@tag` — `status: TODO` · `coder: opus` · `after: —`
+
+Write the source-scan guard that no Playwright test TITLE outside the tour-one specs contains an
+`@word`. Playwright lifts `@tag` out of a title and treats it as a REAL tag, so a stray `@tour-one`
+(or anything the grep expression matches) in an unrelated title would silently enrol that spec in
+the denominator `packages/ui/e2e/flake-rate.spec.ts` gates on (`TOUR_ONE_TAG`, defined in
+`packages/ui/e2e/support/flake.ts`) — moving the measured flake rate without anyone editing the
+gate. Today this is only a header comment at `flake-rate.spec.ts:20-24` and a convention T-255
+observed by hand; nothing fails when it is broken. `packages/ui/e2e/derule.spec.ts` is the in-suite
+precedent for a page-less source-scan guard and should be the shape copied.
+[harvested: T-255/e2e-tag-guard]
+
+**Accept:** a page-less source-scan guard in `packages/ui/e2e/` (modelled on `derule.spec.ts`) reads
+every `packages/ui/e2e/**/*.spec.ts` and fails when a `test(...)`/`test.describe(...)` title outside
+the allowed tour-one specs contains an `@word`, with the allow-list stated in one place and named in
+the failure message; an `@tour-one` added to an unrelated title in a scratch arm provably fails the
+guard; the header comment at `flake-rate.spec.ts:20-24` is re-pointed at the guard rather than
+restating the convention as prose; gate green.
+
+### T-266 · Write the check that a testid rendering authored copy has at least one e2e assertion — `status: TODO` · `coder: opus` · `after: —`
+
+Write the check that any testid in `packages/ui/src/App.tsx` which renders AUTHORED content copy has
+at least one assertion somewhere in `packages/ui/e2e/`. T-207 shipped four such player-visible
+surfaces — `dare-dealer-table-talk`, `combat-enemy-bark`, `combat-enemy-battle-bark`,
+`combat-aftermath-bark` — with UNIT coverage only, and its own Delivered note asserted "No e2e change
+was needed or made". The gap survived until T-255 grepped `packages/ui/e2e/` by hand. No gate catches
+the CLASS, so the next player-visible copy surface can ship exactly the same way.
+[harvested: T-255/player-visible-copy-dom-coverage-check]
+
+**Accept:** an automated check enumerates the `data-testid` values in `packages/ui/src/App.tsx` that
+render authored content copy and fails when one has no assertion in any `packages/ui/e2e/**` spec,
+with a documented, justified opt-out list for testids that are deliberately unit-only; the four
+T-207 testids are used as the regression fixture and the check provably fails on the pre-T-255 tree
+(with their e2e assertions removed in a scratch arm) while passing on the current tree; the
+selection rule for "renders authored content copy" is stated explicitly rather than left to
+judgement; gate green.
 
 ---
 
@@ -3000,6 +2012,25 @@ site still claims the build is unplayed or that T-158 is pending, and no site po
 block; EITHER the stage advances and the `alpha` tag is cut per `docs/VERSIONING.md`'s own criteria,
 OR a dated statement records why pre-alpha still stands (and what would end it); gate green.
 
+### T-268 · A jump to a port is imperceptible — nothing marks that a game action happened — `status: TODO` · `coder: opus` · `after: —`
+
+The second half of T-188's title, and of the owner's original quote — "we just have instant jump to
+port, and it is barely noticeable that any game action has happened" — was never addressed by
+anything. The owner's superseding spec (2026-08-04) and the 4B ruling (2026-08-05) both scoped
+themselves to the MAP's geometry and visual question only (that scoping is already recorded at
+`docs/TASK-PROCESS-DECISIONS.md` TP-43), and T-215 shipped the globe with no jump-transition
+feedback of any kind. No task block and no `TODO.md` line currently carries it — grepping for
+"imperceptible" hits only the T-188 header and two unrelated docs — so deleting the T-188 block
+would erase the request entirely. [harvested: T-188/imperceptible-jump]
+
+**Accept:** a jump between systems is PERCEPTIBLE as an event in the cockpit — the transition reads
+as something that happened rather than an instant state swap — with the treatment chosen against
+the existing motion tiers (`docs/` motion rules; Cinematic / Snappy / the third tier T-252 shipped)
+and honouring reduced-motion; an e2e assertion in `packages/ui/e2e/` proves the transition surface
+appears on a real jump and is skipped/collapsed at the reduced-motion tier; UI-only unless the owner
+rules otherwise, so `rulesFingerprint` stays unmoved and no capstone sweep is owed (if any
+engine/content change becomes necessary, it is filed rather than folded in); gate green.
+
 ---
 
 ## OWNER GATE — open tasks that need a human ruling or session
@@ -3012,7 +2043,8 @@ first four are one owner sitting: they are the Liar's Dice findings T-222/T-223 
 share one evidence base (`docs/LIARS-DICE_REDESIGN.md` §21/§22).
 
 Provenance (harvest grouping, for the record): T-224–T-227 from M9; T-171 from M10; T-237 from
-M17; T-254 from M18; T-256/T-257 from M19; T-251 from M18; T-181, T-232, T-234 from M13.
+M17; T-254 from M18; T-256/T-257 from M19; T-251 from M18; T-181, T-232, T-234 from M13;
+T-267 from T-188 (the 4B map ruling).
 
 ### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: TODO` · `coder: opus` · `after: T-222`
 
@@ -3366,6 +2398,29 @@ M15 feel-level sessions discharge that criterion and says why; whichever way it 
 decision (coordinate with T-233 so the two do not contradict each other); the task halts `BLOCKED`
 for the owner and is never self-approved.
 
+### T-267 · `distance3D` was built but never wired into the live travel formula — rule the swap or close it — `status: TODO` · `coder: opus` · `after: —`
+
+T-188 item 3d built `distance3D` in `packages/content/src/systems.ts` as **additive only**, and
+explicitly deferred wiring it into the LIVE travel formula to "whichever map (4a/4b/4c) the owner
+picks". The owner picked **4B**, and T-215 then shipped the globe UI-only with NO `rulesFingerprint`
+move — so the swap is now owned by no task at all. Verified still open:
+`packages/engine/src/actions/travel.ts:17` imports `distance as systemDistance` (the **2D**
+function) and feeds it to `jumpFuelCost`, `travelDc` and `calculateRouteDanger`. This is the ONLY
+lever that changes non-Sol-to-non-Sol route numbers — the owner's own note says 3d "will directly
+affect" contract-run distances — i.e. it is the "basically zero payoff to travelling between ports"
+half of T-188's own title. Swapping it is a rulesFingerprint-MOVING change: it owes an 8,000-run
+capstone sweep and re-tuning against `docs/balance/BASELINE-T-1603a.md`.
+[harvested: T-188/distance3d-live-formula]
+
+**Accept:** (human-gated) the owner rules EITHER that the 3D swap proceeds — in which case it is
+filed as its own balance task with the capstone sweep and the re-tune against
+`docs/balance/BASELINE-T-1603a.md` written into its Accept, never folded into unrelated work — OR
+that `distance3D` stays additive-only, in which case a dated statement records why and
+`packages/content/src/systems.ts` is re-commented so the function is not read as pending wiring; the
+before/after route-number effect on at least two non-Sol-to-non-Sol runs is measured and presented
+to the owner BEFORE the ruling is asked for; the task halts `BLOCKED` for the owner and is never
+self-approved.
+
 ---
 
 ## M20 — Admin/balance authoring panel: the "Tier 2 levers dashboard" (owner, 2026-08-05)
@@ -3559,3 +2614,13 @@ Retrieve any block with `git log --grep="^<ID>:" -1 -p -- TASKS.md`.
 | T-206 | Content pass: author table-talk and catchphrases for all 30 captains | M19 | 2026-08-05 | `818cb60f` | content-data-only-check, lesson, lesson, lesson |
 | T-207 | UI: surface table-talk and catchphrases at the table and in combat | M19 | 2026-08-05 | `6301747f` | t207-e2e-bark-dom, lesson, lesson, lesson |
 | T-208 | Pin quest captains stationary, at a port sane for their questline | M19 | 2026-08-05 | `85e91ad3` | quest-captain-regulars, quest-captains-seatable-dealers, quest-captain-voice, lesson, lesson |
+| T-186 | Visual identity reads as monochrome sameness — resolve the tension with the PRD's committed CRT-amber pillar | M14 | 2026-08-06 | — | contrast-floor-check |
+| T-218 | Build: ship the "one phosphor, two materials" visual identity | M14 | 2026-08-06 | `f66dac20` | slot-ready-dead-css, evidence-pin-resolves-check, lesson, lesson |
+| T-216 | BUG: `theme.css`'s "one phosphor colour" law is already broken in two live UI spots | M14 | 2026-08-06 | — | lesson, lesson |
+| T-217 | BUG: the Galactic Wire ticker scrolls underneath the LOG button | M14 | 2026-08-06 | — | lesson |
+| T-250 | F-185-4: the playtest-logging default is still the interim ON | M14 | 2026-08-06 | `50395347` | interim-deviation-marker-check, lesson |
+| T-188 | Galaxy map: port spacing gives near-zero travel payoff, and a jump is imperceptible — an owner design decision | M15 | 2026-08-04 | `6327a5e3` | distance3d-live-formula, imperceptible-jump, lesson |
+| T-193 | BUG: the starmap shows a "PILOT DC" for every jump, but ordinary jumps never roll against it | M16 | 2026-08-06 | `1f8872dd` | T-258, T-259, real-browser-tier, lesson |
+| T-194 | The dawn hand's die-value mechanic is illegible — teach it, and make success visible | M16 | 2026-08-06 | `14ff8fde` | T-260, T-261, T-262, lesson, lesson, lesson |
+| T-253 | F-204-1: `wireStories.ts`'s "VERBATIM PRD §6 sample" no longer matches the PRD | M18 | 2026-08-06 | `45190db0` | lesson |
+| T-255 | The four captain-voice surfaces have unit coverage only — prove them in real DOM | M19 | 2026-08-06 | `a075e59a` | e2e-tag-guard, player-visible-copy-dom-coverage-check |

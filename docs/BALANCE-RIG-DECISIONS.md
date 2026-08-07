@@ -1119,3 +1119,25 @@ Exactly two of eight policy rows moved — `explorer` and `smuggler` — and the
 byte-identical on every headline metric. Predict die-budget changes to move Explore-queuing
 policies only, and cross-check on an independent sample via `campaign-degraded.test.ts`'s
 `PINNED_FINGERPRINTS`.
+
+**BR-125 — The starmap's generated geometry takes DISTANCE-FROM-SOL as a FIXED input, never a
+re-authored one.** (T-188.) `coordinates3D` in `packages/content/src/systems.ts` places each system
+on a Fibonacci sphere at exactly the radius `distance(1, id)` already returns, so every Sol-relative
+balance number — the rim ring at ~20-24, the core mean at ~11, and the fuel/DC/danger tuning in
+`docs/balance/BASELINE-T-1603a.md` — is preserved bit-for-bit BY CONSTRUCTION. Any future re-layout
+of the map inherits this invariant: the angular spread is free, the radius is not.
+
+**BR-126 — `distance3D` is ADDITIVE, and the live travel formula stays on the 2D `distance`.**
+(T-188.) Swapping the ACTIVE distance formula in `packages/engine/src/actions/travel.ts` is a
+`rulesFingerprint`-moving change with real balance consequences — every rim, danger and fuel number
+in `docs/balance/BASELINE-T-1603a.md` is tuned against the current 2D values — so it belongs to a
+deliberate balance pass with its own capstone, never bundled into a geometry-data or UI commit.
+
+**BR-127 — A READOUT-ONLY bug is fixed UI-only: do not append even a provably inert line of CODE to
+`packages/engine/src` or `packages/content/src` to de-duplicate a predicate.** (T-193; complementary
+to BR-101.) Measured live at T-193: one added line of code to `packages/engine/src/actions/travel.ts`
+flips `balance-smoke.test.ts`'s "the fixture describes the ruleset in the working tree · is not
+stale" from pass to FAIL, so the dedupe would owe an 8,000-run capstone sweep for a cosmetic fix.
+Such extractions are FILED and batched into the next milestone capstone (here: T-259), and the
+duplicated predicate is cross-referenced in comments on both sides meanwhile. Confirmed: the UI-only
+fix left `rulesFingerprint` unmoved, balance-smoke 72/72 green with "is not stale" included.

@@ -55,6 +55,15 @@ and the provenance recorded in the spec's header comment (`starmap.spec.ts` seed
 rules. This is TP-24's sibling: TP-24 forbids pre-seeding fixtures around a design defect, TT-4
 forbids relaxing an assertion around a rules change.
 
+**TT-4a — AMENDED at T-255: the derivation is recorded at AUTHORING time, not only at repair.** A
+pinned e2e fixture writes its sweep range, replay method and selection predicate into the spec
+header when it is first pinned, so a future maintainer whose seed goes stale RE-HUNTS rather than
+patches a literal. T-255's recorded sweep: seeds 1..400 × jump-die INDEX 0..4 × destination 2..12,
+replaying `startDay(createInitialState(seed))` → `applyPlayerAction` exactly as the store does, and
+keeping the first draw with `interceptor.source === 'named'`, `enemyHull >= 2` and a non-empty
+authored `catchphrases` pool — yielding NAMED interceptor seed 30 (`npc-zero-risk`) and ROAMING
+captain seed 1 (`npc-iron-vex`).
+
 ---
 
 ## 3. CI coverage — which branches run what
@@ -238,3 +247,29 @@ re-pinning a number, 162/162 green after. Two repair rules came out of it: a die
 that a freed verb no longer consumes must stay IDEMPOTENT (`store.ts`'s `selectDie` DISARMS an
 already-armed die), and a spec asserting a retired trigger is REWRITTEN around the durable
 property (read the engine's own `spent` flag), never deleted.
+
+**TT-22 — When a design ruling INVALIDATES a test assertion, re-express the same claim in terms
+that survive — never delete it and never loosen it.** (T-218.)
+`packages/ui/e2e/manifest-object.spec.ts:87-98` asserted `tradeStyle.boxShadow === 'none'`, which
+could not survive candidate D giving every pane a bevel. It now asserts the durable form of the same
+claim — the board carries at least three OUTER shadows and strictly more than the pane beside it —
+so the "manifest board reads as distinct stock" property is still gated. Updated, not weakened; a
+ruling that makes an assertion false is a reason to restate the property, not a licence to drop it.
+
+**TT-23 — A real-DOM assertion on AUTHORED COPY is proved non-vacuous by RUNNING the negative, not
+by asserting it in prose.** (T-255.) The `proveBarkNotVacuous` helper
+(`packages/ui/e2e/captain-voice.spec.ts:203`) does three things in order: asserts the line is in the
+DOM and is a MEMBER of that captain's authored pool read live from `@spacerquest/content` (never a
+hardcoded quote); guards that pool against emptiness, because a membership check over an empty pool
+is precisely the vacuity being ruled out; then REMOVES the element and re-runs the identical
+assertion, requiring it to go red. This is L-016's rule discharged at the e2e tier.
+
+**TT-24 — A DOM-removal non-vacuity probe must be the LAST act of its test.** (T-255.) The barks are
+conditional children of a still-mounted parent, so a later React re-render would `removeChild` a node
+that is already detached and crash the test for a reason unrelated to the claim under test. Order is
+load-bearing here in the same way TT-16's dismissal order is.
+
+**TT-25 — No e2e test TITLE outside the tour-one specs may contain an `@word`.** (T-255.) Playwright
+lifts `@tag` out of a title as a real tag, and an accidental tag moves the `@tour-one` DENOMINATOR
+that `packages/ui/e2e/flake-rate.spec.ts` measures — an unrelated task must not move that
+population. T-255's six new tests are deliberately untagged for this reason.

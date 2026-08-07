@@ -26,13 +26,14 @@ indexed at the bottom — pointers only, never content.
 - When a policy or enumerator plans an action, it applies the exact filter set the resolver accepts, read through the engine's own accessor — `legalActions` passing is not proof, because the campaign runner never calls it.
 - When fixing a loop, guard or shared helper, enumerate every sibling call site and fix or tripwire each; where two call-site conventions have diverged, commit the caller list as a manifest a test rescans from source.
 - A helper that returns a modified copy of a shared state record copies the WHOLE input — spread, then override — never a literal listing today's fields, and preserves an optional field's true absence.
-- When a constant moves into content behind an accessor, move every mirror of it in the same change and pin each with a test that reads the accessor, never a restated literal.
+- When a constant moves into content behind an accessor, move every mirror of it in the same change and pin each with a test that reads the accessor, never a restated literal; where a mirror is unavoidable, a test reads the ORIGINAL's source and fails on drift, and the promotion is filed rather than assumed.
 - A selector that picks one global winner among mount-scoped candidates must be mount-aware; whenever a feature's reach widens, re-run the specs that assert each candidate fires in its own scope.
 - Any test that quantifies over a derived, enumerated or scanned set must prove it is non-vacuous: assert the set non-empty, pin its cardinality to the source in both directions, name every location inspected in the failure message, and count skips as failures — and an audit driver's all-clear counter sheet is such a set, so pin a verb-breadth floor beside the counter assertions.
+- When a gate is a scan filtered by a classifier, pin the classifier itself: assert it still REJECTS the exact values that caused the original defect and still accepts a known-good one, or the gate can silently stop testing anything.
 - To prove content is authored, assert against the shape a generator would have produced — and that the generator itself is gone from the source — never merely against the fallback default value.
 - Any test asserting an input is ACCEPTED must, in the same test, assert a deliberately invalid input is REJECTED, and any concurrency claim is asserted with a barrier a serial implementation cannot satisfy; a normaliser feeding an equality or determinism check asserts both its ignore-set and a deliberately mutated field that still diverges.
 - Information the player or an AI must not have is structurally unavailable — absent from the function's declared inputs and absent from the DOM — and is proved at that boundary, never on outputs alone.
-- A precondition or absence guarantee stated in prose — a doc comment, a docstring, an Accept clause — is not a check; land a test that exercises the violating case at the consuming boundary.
+- A precondition or absence guarantee stated in prose — a doc comment, a docstring, an Accept clause — is not a check; land a test that exercises the violating case at the consuming boundary, and a comment claiming a literal is a VERBATIM quote of a document is backed by a test that opens both artefacts.
 - A known-failing balance target stays an `it.fails` tripwire across every baseline re-pin, and the re-pin is explicitly re-read against it in the delivery note.
 - Instrument-shape changes get their own commit, with the fixture re-extracted and the baseline re-pinned there; a capstone commit adds no instrument field.
 - When a tool's flag can be dropped without failing and the loss is invisible to every fingerprint, assert the SHIPPED artifact's provenance value as its own test; the remedy is re-running the tool, never editing the assertion.
@@ -59,7 +60,7 @@ indexed at the bottom — pointers only, never content.
 - A UI handler derives engine state from the authoritative post-action state, never from the presence or absence of a notice or refusal message.
 - Feedback that can legitimately repeat carries a monotonic identity attribute bumped at one choke point, so a repeat is observable in the DOM.
 - A test exercising a failure path CAPTURES the tool's human-readable output and asserts on it, never letting production-shaped failure text escape into the shared run log.
-- When one value is recorded in more than one file, one runtime-read site is the authority, a test reads every other site and fails on disagreement, and a totality pass over the tree catches the site nobody remembered; take the count from the test, never from a task block.
+- When one value is recorded in more than one file, one runtime-read site is the authority, a test reads every other site and fails on disagreement, and a totality pass over the tree catches the site nobody remembered; take the count from the test, never from a task block — and the sites include component source literals (JSX `title`, `label`, tooltip copy), not just the content registries.
 - A check that encodes a numeric or lexical PROXY for the property it cares about is replaced with the property, never re-pinned — task ids are not monotonic in this repo.
 - A zero, a null diff or an unreached threshold measured by an instrument is a fact about the instrument until re-measured on the rig and at the horizon the thing was derived against.
 - A pre-committed criterion and a declined finding both ship as live assertions that recompute their derivation from shipped symbols — no literal thresholds — carrying both rates, both `n` and the SE in the failure message.
@@ -68,7 +69,13 @@ indexed at the bottom — pointers only, never content.
 - When an AI prices an opponent's public action, the probability model is conditioned on the constraint that action implies, and calibrated by bucket before any argmax is trusted.
 - A new instrument field is proved inert byte-identically — deep-equal, stringify-equal, key ABSENT — with the degraded fingerprints re-pinned and a strip-the-keys ledger entry, before any number from it is argued from; a field describing the measurement joins `IGNORED_PATHS` in the same commit.
 - Before declaring a move dominated, derive its EV in every currency the game pays out and record the crossover as a formula over live constants, never as a measured take-rate.
-- A price the UI quotes is compared to the resolver's own delta and the port's own row, never to a literal or a view-side re-derivation.
+- A price the UI quotes is compared to the resolver's own delta and the port's own row, never to a literal or a view-side re-derivation; and any UI readout of a rules OUTCOME calls the engine resolver's own predicate rather than re-deriving the comparison.
+- A design token is referenced bare — `var(--x)`, never `var(--x, <colour>)` — and any colour-separation requirement is asserted on a non-hue channel (luminance, glyph, inversion), never on hue alone.
+- Every dispatched agent prompt carries the ABSOLUTE repo root and is forbidden from operating anywhere else; inherited cwd is never the anchor, because task ids and `TASKS.md` are not unique across the filesystem.
+- When one element must clear a sibling, reserve the space with normal flow, never a hardcoded pixel offset against an absolutely-positioned sibling; and where the sibling's contents are data-dependent, the guard plays forward to the widest case instead of measuring a virgin boot.
+- A default is pinned with a LITERAL assertion on the virgin state; a state-setting helper may establish a known state but must never be the thing that asserts the default, and a default change is shown failing against the OLD default before it lands.
+- Any generated coordinate layout that draws text ships a collision test generic to ANY coordinate set, so a redesign inherits the gate instead of re-earning the owner's bug report.
+- When a resolver branch is deleted, delete or re-point every UI readout that described it, and pin the ABSENCE in a test that mounts the markup — the testid AND the words — mutation-checked by re-introducing the defect.
 - Audio is verified by spectrum inside 150 Hz – 4 kHz, never by peak amplitude at the destination; mix raises go inside the shared envelope, never into a persisted mixer default.
 - No audio-graph construction happens at module load; every node defers behind the first real gesture, guarded by a console-cleanliness test.
 - Any always-on subsystem carries a plain-boot test — load autosave, no New Game, no day end — not just a fresh-career one.
@@ -161,9 +168,9 @@ Two occurrences, two shapes. **All siblings broken (T-150):** after fixing `expl
 
 ### L-014 · An extraction is not behaviour-preserving until every consumer reads the accessor
 In T-120 the Hangout wager band and check DCs moved out of `hangout.ts`'s constants into content behind `wagerBandFor` / `venueParamsFor`, but `legalActions` and `packages/ui/src/format.ts`'s `dareWagerBounds` / `hangoutNpcs` still clamped and advertised against the old `DARE_MIN_WAGER` / `DARE_MAX_WAGER` / `BEFRIEND_DC` constants — the UGT harness and the Hangout pane would have offered a band the engine no longer read.
-**T-196c — the same shape when the thing that moved is a RULE, not a constant.** All nine verbs freed of their die cost in the engine still read `state.selectedDie` in `packages/ui/src/store.ts`, refused when null, and CLEARED `selectedDie` / wrote `bloomDie` on commit — so buying fuel silently disarmed the die queued for a jump, and `dropDie`'s drag bridge had it in reverse, ARMING a die as a side effect of a free verb. **T-205 — the same shape when the mirror is forced.** `LIARS_DICE_DICE_COUNT_PHRASE` could not be imported into `castValidation.ts` without closing a `cast.ts → castValidation.ts → liarsDiceValidation.ts → cast.ts` init cycle, so the regex shipped as a second copy with nothing but a docblock tying the two together.
-**Enforced by:** `packages/sim/src/__tests__/protocol.test.ts:1268` (wager domain asserted equal to `wagerBandFor(portId)` with a non-vacuity check that the port band differs from the global one) + `packages/ui/src/__tests__/liars-dice-pane.test.ts:416` + `packages/ui/src/__tests__/free-actions.test.ts` (a two-sided source-scan manifest of GATED vs FREED creators) + `packages/content/src/__tests__/castValidation.test.ts:307-308` (`.source` and `.flags` of both copies asserted equal)
-**Rule:** When a constant or a rule moves, move every mirror of it in the SAME change — sim protocol, UI format, and the store creators that gate on it — stripping the resource READS and the resource WRITES together, and pin each mirror with a test that reads the accessor rather than a restated literal. Where a shared constant genuinely must be duplicated to avoid a module-init cycle, EXPORT both copies and pin them equal in a test file (a test file is a leaf and adds no edge to the module graph); a comment naming the other copy is not enforcement.
+**T-196c — the same shape when the thing that moved is a RULE, not a constant.** All nine verbs freed of their die cost in the engine still read `state.selectedDie` in `packages/ui/src/store.ts`, refused when null, and CLEARED `selectedDie` / wrote `bloomDie` on commit — so buying fuel silently disarmed the die queued for a jump, and `dropDie`'s drag bridge had it in reverse, ARMING a die as a side effect of a free verb. **T-205 — the same shape when the mirror is forced.** `LIARS_DICE_DICE_COUNT_PHRASE` could not be imported into `castValidation.ts` without closing a `cast.ts → castValidation.ts → liarsDiceValidation.ts → cast.ts` init cycle, so the regex shipped as a second copy with nothing but a docblock tying the two together. **T-194 — the same shape when the original cannot be EXPORTED at all.** `const haggleDc = 12;` (`packages/engine/src/actions/trade.ts`) and `const dc = 10 + encounter.interceptor.tier;` (`packages/engine/src/actions/combat.ts`) are un-exported, and exporting either would move `rulesFingerprint` and owe an 8,000-run capstone for a readout change — so both were MIRRORED into `packages/ui/src/format.ts` (`HAGGLE_DC`, `combatStanceDc`) and the promotion FILED as T-260 rather than assumed.
+**Enforced by:** `packages/sim/src/__tests__/protocol.test.ts:1268` (wager domain asserted equal to `wagerBandFor(portId)` with a non-vacuity check that the port band differs from the global one) + `packages/ui/src/__tests__/liars-dice-pane.test.ts:416` + `packages/ui/src/__tests__/free-actions.test.ts` (a two-sided source-scan manifest of GATED vs FREED creators) + `packages/content/src/__tests__/castValidation.test.ts:307-308` (`.source` and `.flags` of both copies asserted equal) + `packages/ui/src/__tests__/engine-dc-pins.test.ts` (READS `trade.ts` / `combat.ts` as source and fails when the mirrored literal drifts)
+**Rule:** When a constant or a rule moves, move every mirror of it in the SAME change — sim protocol, UI format, and the store creators that gate on it — stripping the resource READS and the resource WRITES together, and pin each mirror with a test that reads the accessor rather than a restated literal. Where a shared constant genuinely must be duplicated to avoid a module-init cycle, EXPORT both copies and pin them equal in a test file (a test file is a leaf and adds no edge to the module graph); where the original cannot be exported at all without a fingerprint cost, the mirror is allowed ONLY behind a test that reads the original's SOURCE and fails on drift, with the promotion filed as its own task. A comment naming the other copy is not enforcement.
 
 ### L-015 · A one-global-winner selector is a latent single-scope assumption
 T-122 found F-121-2: `activeOnboardingPrompt` picks ONE global winner, and `first-loan` — predicate `hangoutOpen(game) && loan == null`, mounted inside the *closed* Hangout panel — took that slot at every `hasHangout` port, rendering nothing and blocking `first-contraband`, `first-port` and `first-explore`. Latent at 1 of 28 ports, live at 14 of 28 the moment T-121 widened Hangout reach.
@@ -174,8 +181,9 @@ T-122 found F-121-2: `activeOnboardingPrompt` picks ONE global winner, and `firs
 Seven occurrences of one class — green while asserting nothing. T-122: an Accept clause named a literal grep over a content file, executed from a test in a different package, so a wrong path, an emptied file or a moved table would pass vacuously. T-124: `AUTHORED_PORTS` / `MECHANICALLY_DEVIANT_PORTS` drive every `it.each` in the file, so a dropped row would quietly stop being tested by every block and nothing would go red. T-124 again: T-121's "the unauthored rows are still BASELINE rows" test would have become a loop over an empty id list once the last four ports were authored — green forever. T-149: flavor tests iterate port sets derived from `STAR_SYSTEMS`, so a content edit flagging the whole rim would have emptied them. T-143: the "panel is not shipped" test greps eight build-output directories, and on a machine where nothing has been built an unrecorded pass would report green having checked nothing. T-153: the clean gate fixture would have reported all-pass while several `EXPECTED_EVENT_RATES` bands were merely SKIPPED for want of sample size. **T-155 — the sharpest form, where the SET is a driver's behaviour rather than a list:** the pilot's volume leg would have reported `illegalAttempts` / `protocolErrors` / `fallbacks` all zero off the `first-legal` brain, which reaches just 5 distinct verbs over 5 seeds × 30 days (three at seed 1) with a flat, seed-independent `stepsApplied: 150`. An all-zero counter sheet over 5 of the 87 `specType`s the engine offers measures the driver, not the system.
 **Enforced by:** `packages/engine/src/__tests__/hangoutContent.test.ts:537` (enumeration pinned to the table's key set in both directions plus cardinality) and `:550`; `packages/engine/src/__tests__/hangoutRules.test.ts:265` (inverted to the positive claim with a cardinality guard); `packages/engine/src/__tests__/npc.test.ts` ('has both port sets non-empty, so nothing below can pass vacuously'); `packages/devpanel/src/__tests__/not-shipped.test.ts` (records `absent (not built)` per directory in the assertion message); `packages/sim/src/__tests__/sweep-gate.test.ts` ('the clean sample passes every band, and SKIPS none of them'; 'SKIPPED is a third value, not a quiet pass'); `packages/sim/src/__tests__/pilot.test.ts:393` ('is not first-legal in disguise — it exercises real verb breadth')
 **Three further shapes, all of them "green while asserting nothing".** **T-221 — the sample that may never reach its own case:** an escrow-tracking test needed a REACHABLE RAISE, which is a property of the seed, so scanning seeds until one occurs would have passed while never entering the case it claims to guard. **T-208 — the invariance a dead system also satisfies:** asserting the eleven quest captains' `{id → currentSystemId}` byte-identical after a 40-day career is a claim a dusk loop that stopped running entirely would also pass. **T-177 — the zero that stops meaning anything the moment the mechanism changes:** `optimal` never folds because `probClaimTrue` is a POINT read (`pTrue` exactly 0 or 1), and a test asserting "folds 0" would still pass if a later soft read revived the branch at a low fold share.
-**Enforced by (additions):** `packages/ui/src/__tests__/liars-dice-pane.test.ts` (`expect(raised).toBe(1)` — the precondition itself asserted) · `packages/engine/src/__tests__/day.test.ts` (`T-208 · quest captains are stationary`, with the ANTI-VACUITY CHECK at :434-441 asserting at least one SIMULATED captain relocated over the same run) · `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` (describe `T-177 · F-175-2 — OPTIMAL never folds, and that is now a construction`, asserting `probClaimTrue ∈ {0,1}` at every shipped tier width)
-**Rule:** Any test that quantifies over a derived, enumerated or scanned set must prove it is non-vacuous — assert the set non-empty, pin its cardinality to the source in both directions, first assert the scanned file is non-trivial and holds the symbols claimed, enumerate every location inspected in the failure message, and count skips as failures; when a task empties the set a test quantifies over, invert it into the positive claim over the new set rather than leaving a loop that can pass over nothing. An audit driver's clean-counter claim is a quantification too, and only as wide as its action breadth: pin a breadth floor in the same file as the counter assertions. Three corollaries: a test that widens its sample until a precondition occurs ASSERTS the precondition was reached; any "X did not change" assertion asserts IN THE SAME RUN that the mechanism which could have changed X was live; and any "this branch never fires" assertion pins the CONSTRUCTION that makes it never fire, not the zero count.
+**A fourth shape, where the SET is fine and the PREDICATE is the hole (T-216).** `visual-identity.test.ts`'s "no literal hex outside amber-family / near-achromatic / near-black" gate is a scan filtered by a `classifyHex` predicate. Loosening one threshold would make the whole gate pass trivially while `#4fd1c5` was back in the file — the scan would still enumerate every hex and still assert on all of them, and still be testing nothing.
+**Enforced by (additions):** `packages/ui/src/__tests__/liars-dice-pane.test.ts` (`expect(raised).toBe(1)` — the precondition itself asserted) · `packages/engine/src/__tests__/day.test.ts` (`T-208 · quest captains are stationary`, with the ANTI-VACUITY CHECK at :434-441 asserting at least one SIMULATED captain relocated over the same run) · `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` (describe `T-177 · F-175-2 — OPTIMAL never folds, and that is now a construction`, asserting `probClaimTrue ∈ {0,1}` at every shipped tier width) · `packages/ui/src/__tests__/visual-identity.test.ts:210` (the guard-on-the-guard: `classifyHex` still REJECTS `#4fd1c5`, `#2b3a44`, `#e0562a` and still accepts a known-good amber)
+**Rule:** Any test that quantifies over a derived, enumerated or scanned set must prove it is non-vacuous — and where the quantification is filtered by a CLASSIFIER, pin the classifier too, asserting it still rejects the exact values that caused the original defect and still accepts a known-good one. Assert the set non-empty, pin its cardinality to the source in both directions, first assert the scanned file is non-trivial and holds the symbols claimed, enumerate every location inspected in the failure message, and count skips as failures; when a task empties the set a test quantifies over, invert it into the positive claim over the new set rather than leaving a loop that can pass over nothing. An audit driver's clean-counter claim is a quantification too, and only as wide as its action breadth: pin a breadth floor in the same file as the counter assertions. Three corollaries: a test that widens its sample until a precondition occurs ASSERTS the precondition was reached; any "X did not change" assertion asserts IN THE SAME RUN that the mechanism which could have changed X was live; and any "this branch never fires" assertion pins the CONSTRUCTION that makes it never fire, not the zero count.
 
 ### L-017 · Assert against the generator's shape, not against the fallback constant
 The existing "not the DEFAULT house name" check did NOT catch a T-121 baseline row, because `baselineHangout` generated `the <system> Hangout` per port — a name of its own that passed the default check while carrying no authored voice. The teeth came from asserting `houseName !== \`the ${STAR_SYSTEMS[id]?.name} Hangout\`` and from grepping the source for a surviving `baselineHangout` call.
@@ -194,9 +202,10 @@ Three occurrences. T-134 named cheating-AI as a bug class no existing verb guard
 **Rule:** Information the player or an AI must not have is structurally unavailable — absent from the function's declared inputs and absent from the DOM before the reveal frame — and is proved at that boundary by invariance under varying the hidden state, never on outputs alone.
 
 ### L-020 · Prose is not enforcement
-Two occurrences. T-132/F-101-5: `rankClientele`'s doc comment states its contract explicitly — "the caller passes the ALREADY-FILTERED live in-system, non-dead set" — and the UI caller `hangoutNpcs` filtered on `currentSystemId` only, so the opponent list could offer a dead captain. T-140: an instrument-only `NpcDecisionTraceSink` seam was threaded through `pickIntent`/`pickContract`/`resolveNpcDay`, and the Accept clause asked only for a manual `grep` under `packages/ui` and `packages/desktop` — a sink attached in the cockpit would be a per-captain-per-day allocation on the player's dusk and a diagnostic channel on the save-writing path.
-**Enforced by:** `packages/ui/src/__tests__/hangout-pane.test.ts` (exercises a mixed live/dead roster and an all-dead roster) + `packages/ui/src/__tests__/npc-trace-absent.test.ts` (source scan forbidding `npcDecisionTrace`, `NpcDecisionTraceSink`, `NpcDecisionTrace`, `EndDayOptions` in every shipped root)
-**Rule:** A precondition or absence guarantee stated in prose — a doc comment, a docstring, an Accept clause — is not a check; land a test that exercises the violating case at the consuming boundary, and never leave an absence to a grep someone has to remember to run.
+Three occurrences. T-132/F-101-5: `rankClientele`'s doc comment states its contract explicitly — "the caller passes the ALREADY-FILTERED live in-system, non-dead set" — and the UI caller `hangoutNpcs` filtered on `currentSystemId` only, so the opponent list could offer a dead captain. T-140: an instrument-only `NpcDecisionTraceSink` seam was threaded through `pickIntent`/`pickContract`/`resolveNpcDay`, and the Accept clause asked only for a manual `grep` under `packages/ui` and `packages/desktop` — a sink attached in the cockpit would be a per-captain-per-day allocation on the player's dusk and a diagnostic channel on the save-writing path.
+**T-253/F-204-1 — the sharpest form, where the prose claims a VERBATIM QUOTE and a real pin sits beside it.** `packages/content/src/wireStories.ts:49` declared `NAT_WIRE_TEMPLATES.gamble.nat20[0]` the "VERBATIM PRD §6 sample — do not reword", and `packages/engine/src/__tests__/wire.test.ts:132` pinned that string EXACTLY — but both pins sit on the CODE side, so for months the template read "Cantina" (HO-23's player-facing rename) while `docs/PRD-REIMAGINED.md` §6 still read "Hangout", and nothing went red. The exact pin gave false confidence precisely because it never opened the artefact the comment claimed to quote.
+**Enforced by:** `packages/ui/src/__tests__/hangout-pane.test.ts` (exercises a mixed live/dead roster and an all-dead roster) + `packages/ui/src/__tests__/npc-trace-absent.test.ts` (source scan forbidding `npcDecisionTrace`, `NpcDecisionTraceSink`, `NpcDecisionTrace`, `EndDayOptions` in every shipped root) + `packages/content/src/__tests__/prdWireSample.test.ts` (fills the code-side template, requires the result inside the named PRD section, throws loudly if the heading vanishes)
+**Rule:** A precondition or absence guarantee stated in prose — a doc comment, a docstring, an Accept clause — is not a check; land a test that exercises the violating case at the consuming boundary, and never leave an absence to a grep someone has to remember to run. A comment asserting that a literal is a verbatim quote of a DOCUMENT is prose too, and a pin on the code side proves only the code side: derive the expected string from the code-side template and assert it appears inside the named document section, direction-free, so editing either side alone fails instead of silently diverging.
 
 ### L-021 · A re-pin must be re-read against the known-red tripwires, never chosen to make them pass
 T-125 re-pinned the baseline of record to an 8,000-row aggregate and re-read the trader clear-day tripwire against it: still RED at `debtClearedDay.median` 21 vs `[22, 30]`, n = 987. It was not converted from `it.fails` to `it`, and the baseline was not selected to move the number into band.
@@ -335,7 +344,14 @@ because task ids are not monotonic here (T-196a re-pins after T-199). T-202 foun
 new docs prose that accidentally matches the pointer pattern, where the fix is to reword the
 sentence out of pointer shape, **not** to grow `ACKNOWLEDGED_NON_POINTERS`, which is exactly how
 the fifth pointer appeared unnoticed in the first place.
-**Enforced by:** `packages/sim/src/__tests__/baseline-pointers.test.ts` (the `SITES` list, the
+**T-194 — the same class where the duplicated value is player-facing COPY and the missed sites are
+in JSX.** Sweeping only `walkthrough.ts` and `ONBOARDING_PROMPTS` after T-197 made nine verbs Free
+Actions left live mis-teaching in `App.tsx`: the three `SOCIAL_TITLES` tooltips and the Borrow and
+Repay hover titles still said "(spends a die)", and a `TradePane` comment still called the port
+stake die-costed. A tooltip that prices a Free Action in dice teaches the wrong economy exactly as
+loudly as a tutorial line does.
+**Enforced by:** `packages/ui/src/__tests__/tutorial-economy.test.ts` (scans component SOURCE
+literals as well as the content registries) + `packages/sim/src/__tests__/baseline-pointers.test.ts` (the `SITES` list, the
 `disagreements()` pure core driven by seeded-bad reading sets, the banner-ordering test asserting
 the PROPERTY rather than a proxy, and the totality pass over every `.md` under `docs/`)
 **Rule:** When one value is recorded in more than one file, name a single RUNTIME-READ site as the
@@ -343,7 +359,9 @@ authority and commit a test that reads every other site and fails on disagreemen
 and identity of those sites from the test, never from a task block's prose; give the check a
 totality pass that scans the whole tree for the pattern so a new site cannot appear unnoticed; and
 when a check encodes a numeric or lexical PROXY for the property it cares about, replace the proxy
-with the property rather than re-pinning the proxy.
+with the property rather than re-pinning the proxy. When the duplicated thing is COPY rather than a
+number, the audit's site list includes component source literals — JSX `title`, `label`, tooltip and
+button text — not just the content registries a grep for the mechanic's name would reach.
 
 ### L-046 · A zero measured by an instrument is a fact about the instrument
 Three tasks, three readings-as-if-the-player. **T-169:** "0 grand slams in 720 careers" was taken
@@ -456,12 +474,22 @@ T-221: T-177 had ruled FOLD a priced purchase, but nothing at the table quoted e
 quote asserted against a literal — or against a formula re-derived in the view — would drift from
 `settleDareHand` the moment `DARE_FOLD_DISPOSITION` or the escrow rule was retuned, and the player
 would be shown a price the engine no longer charges.
+**T-194 — the same class where the quoted thing is an OUTCOME rather than a price, and where a
+view-side re-derivation agrees on every ordinary case.** T-194 added a live per-die success/fail
+read for Explore, Haggle, Combat, Peek and Crossing. A UI-side `total >= dc` comparison is right on
+the common path and wrong on exactly the two rolls the player remembers — a nat 1 whose total
+clears and a nat 20 whose total does not — so `dcPreview` in `packages/ui/src/format.ts` calls the
+ENGINE's own `check(die, modifier, dc)` and inherits nat-20 auto-success, nat-1 auto-fail and
+`margin` instead of re-implementing them.
 **Enforced by:** `packages/ui/src/__tests__/liars-dice-pane.test.ts` (applies the real action and
 compares the quoted value to `DareHandResolved`'s own `creditsDelta` / `dispositionDelta` and to
-`venueParamsFor(...).dispositionOnFold`) + `packages/ui/e2e/liars-dice.spec.ts`
+`venueParamsFor(...).dispositionOnFold`) + `packages/ui/e2e/liars-dice.spec.ts` +
+`packages/ui/src/__tests__/check-preview.test.ts` (the nat-1/nat-20 pair a `total >= dc` cannot pass)
 **Rule:** When the UI quotes a price the engine will charge, the test applies the real action and
 compares the quoted value to the RESOLVER's own delta and to the port's own row — never to a
-literal typed in the test, and never to a formula the view re-derived.
+literal typed in the test, and never to a formula the view re-derived. The same holds one level up
+for OUTCOMES: any UI readout of a rules result calls the engine resolver's own predicate, and
+re-deriving the comparison in the view is a defect even when it agrees on the common path.
 
 ### L-053 · A bed can be the loudest thing in the mix and still be inaudible
 T-185: the ambient drive hum peaked 0.25 at the destination — 5.8× louder than the one-shot cues —
@@ -652,6 +680,96 @@ naming `git fetch --unshallow` and the workflow rather than skipping.
 `.github/workflows/ci.yml` (`test` job, `fetch-depth: 0`)
 **Rule:** Any check that reads repository history fails loudly — never skips — when the revision is
 unreachable, and the CI job that runs it checks out with `fetch-depth: 0`.
+
+### L-067 · A `var()` colour fallback is not a safety net — it is the thing that ships
+T-216 (fixed inside the T-218 pass): `packages/ui/src/theme.css` referenced `var(--accent, #4fd1c5)`
+(teal, lines 4929/4938/4947) and `var(--line, #2b3a44)` (blue-grey, 4891/4911) for custom properties
+that were **never declared anywhere in the repo** — so the FALLBACKS were what actually painted
+`.ship-honor`, the Top Gun Honor List live at `App.tsx:4381`, for months, while `theme.css`'s own
+header asserted a "one phosphor colour" law. A third leak bypassed the token system outright:
+`.as-hostile .as-value { color: #e0562a }`, which the bake-off's legibility reviewer measured as
+collapsing to within 3 units of neutral amber on every channel under deuteranopia AND protanopia —
+a hostile captain and a neutral one were indistinguishable to those players.
+**Enforced by:** `packages/ui/src/__tests__/visual-identity.test.ts` (22 gated assertions — `:184`
+every `var(--x)` resolves to a declaration in the file; `:190` no `var()` reference carries a colour
+fallback; `:199` every literal hex is amber-family, near-achromatic or near-black; `:264` hostile is
+separable from neutral WITHOUT relying on hue)
+**Rule:** A design token is referenced bare — `var(--x)`, never `var(--x, <colour>)` — so a missing
+declaration fails loudly instead of silently rendering an off-system hue; and any colour-separation
+requirement is asserted on a NON-HUE channel (luminance inversion, a glyph, greyscale survival),
+because hue alone does not survive colour-blind simulation.
+
+### L-068 · A judge dispatched with an inherited cwd will judge the wrong repository
+T-218 fix rounds 2, 3 and the CLOSED round: the Review and Gate agents were dispatched with cwd
+`/Users/vs7/Dev/Games` — a folder holding ~14 independent projects and no `.git` — while the prompt
+asserted "the repo root is the working directory". They matched "T-218" in three `TASKS.md` files
+(both SpacerQuest trees plus an unrelated T-218 in Iron-Ashes), correctly refused to guess, and
+returned AMBIGUOUS, burning the ladder to attempts=4/4 without a single line of the diff ever being
+reviewed. Nothing was wrong with the diff.
+**Enforced by:** `/Users/vs7/.claude/skills/orchestrate/orchestrate-tasks.js` (resolves one absolute
+`REPO_ROOT` at lines 254-290 — `args.repoPath` verified by `git rev-parse --show-toplevel && test -f
+TASKS.md`, else discovered — and prefixes EVERY agent prompt with it at line 296 rather than trusting
+inherited cwd)
+**Rule:** Every dispatched agent prompt carries the absolute repo root explicitly and is forbidden
+from operating against any other directory; inherited cwd is never the anchor, because identically
+named files and duplicate task ids exist elsewhere on disk.
+
+### L-069 · A magic-number sibling offset drifts the moment the sibling gains content
+T-217: `.ticker` (`packages/ui/src/theme.css:1883-1885`) carried a hardcoded `padding-left: 138px`
+sized to clear the original absolutely-positioned `.cap` contents (the "GALACTIC WIRE" label plus
+pulse dot). When T-306 later added `.wire-log-btn` INSIDE that same `.cap` (`App.tsx:5492-5504`), the
+cap widened past the reserved 138px and the ticker scrolled underneath the LOG button — a live boot
+read `GALACTIC WIRE [LOG]uiet. Roll the day and make some news.` The constant was never updated
+because nothing measured it, and no constant could have been right: T-1406 renders BULLETIN storylet
+chips inside the same cap, so the correct width differs between two boots of one build.
+**Enforced by:** `packages/ui/e2e/visual-identity.spec.ts:269` ("T-217 · the wire cap reserves its
+own space and never overlaps the ticker" — asserts `cap.right <= track.left`, then ends up to six
+days until the wire actually carries a BULLETIN chip before re-measuring), run by `npx playwright test`
+**Rule:** When one element must clear a sibling, reserve the space with normal flow (flex/grid),
+never with a hardcoded pixel offset against a `position: absolute` sibling — and if the sibling's
+contents are data-dependent, the guard plays forward to the widest case rather than measuring a
+virgin boot.
+
+### L-070 · A default asserted through a state-setting helper is not pinned
+T-250: `packages/desktop/e2e/shell.spec.ts` and `packages/ui/e2e/playtest-logging.spec.ts` both
+established playtest-logging state through the `setLogging(page, on)` helper, so both stayed GREEN
+when `5b430136` flipped `packages/ui/src/playtestLog.ts`'s default from `=== 'on'` to `!== 'off'`.
+A default-agnostic assertion is exactly the "passes silently" failure, and it is what let the desktop
+suite go quiet for three days. The restore was graded by showing all three suites RED against the old
+default first (unit `AssertionError: expected true to be false` at line 76; two e2e `aria-pressed`
+`Expected: "false" / Received: "true"` at spec line 108 and `shell.spec.ts:662`).
+**Enforced by:** `packages/ui/src/__tests__/playtest-log.test.ts:65` — `defaults OFF on a virgin
+profile (spec §3)`, a literal assertion inside root `npm test`; the e2e specs are not in the gate, so
+the unit test is the durable guard
+**Rule:** Pin a default with a LITERAL assertion on the virgin state; a state-setting helper may
+establish a known state but must never be the thing that asserts the default, and any default change
+is shown failing against the old default before it lands.
+
+### L-071 · An illegibility the owner can see by eye had no test at all
+T-188: the owner had to flag overlapping port labels on the starmap himself — "already you should be
+flagging and failing this since the port names are overlapping with other ports and names." No
+automated check existed. The first one written found 4 real collisions on the shipped map
+(Arcturus-6/Procyon-5, Deneb-4/Rigel-8, Fomalhaut-2/Mira-9, Fomalhaut-2/Spica-3), exactly matching
+the screenshot the owner had sent.
+**Enforced by:** `packages/ui/src/__tests__/starmap-label-overlap.test.ts` (generic over any
+coordinate set) + the real-rendered-box tier in `packages/ui/e2e/starmap-globe.spec.ts`
+**Rule:** Any generated coordinate layout that draws text ships with a collision test written
+generically over ANY coordinate set — never tied to today's data — so a redesign inherits the gate
+instead of re-earning the owner's bug report.
+
+### L-072 · A readout outlives the rule it described
+T-193: T-1605 removed the Pilot check from ordinary travel, but nobody removed the `PILOT DC`
+readout. `travelPreview()` (`packages/engine/src/actions/travel.ts:189`) kept computing
+`dc: travelDc(...)` and `App.tsx`'s `data-testid="route-dc"` kept rendering it for EVERY destination,
+so outside the nemesis milestone the cockpit advertised a stat check that could not fail. Actively
+misleading rather than merely stale: a player reads "PILOT DC 12" and concludes their die and Pilot
+stat matter.
+**Enforced by:** `packages/ui/src/__tests__/route-preview-panel.test.tsx` (mounts the markup and
+asserts ZERO `route-dc` elements AND no `/PILOT DC/` text, so dropping the testid while keeping the
+misleading words still fails; mutation-checked by re-introducing the original defect)
+**Rule:** When a resolver branch is deleted, delete or re-point every UI readout that described it,
+and pin the ABSENCE in a test that mounts the real markup — the testid and the words — rather than in
+a selector test that can only see the predicate.
 
 ---
 

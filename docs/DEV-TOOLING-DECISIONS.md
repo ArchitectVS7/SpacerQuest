@@ -74,6 +74,20 @@ an alias.** The scan lives in `packages/ui` but covers `packages/desktop` too �
 `npc-trace-absent.test.ts` precedent — so one scan owns the whole surface and cannot be half
 deleted.
 
+**DT-38 — Playtest logging is OFF by default on a virgin profile, and the interim ON is CLOSED.**
+(T-250; `docs/PLAYTEST-TELEMETRY_SPEC.md` §3 line 56.) HEAD `5b430136` (2026-08-03, "for the
+internal UAT build") flipped `packages/ui/src/playtestLog.ts` from `=== 'on'` to `!== 'off'`; T-250
+restored `storage.getItem(PLAYTEST_LOGGING_KEY) === 'on'`. **Restore was chosen over amending the
+spec to ON** because the flip was self-labelled temporary in three places at once — `playtestLog.ts`'s
+header, `store.ts`'s `CockpitState.playtestLogging` doc, and the spec preamble's "must be reverted to
+OFF before any public/Steam release" — and because it cost internal UAT nothing: both tester runbooks
+(`docs/playtests/T-158-pre-uat-brief.md` §2 and `docs/playtests/T-198-pacing-brief.md` §2, the latter
+written AFTER the flip) already instruct the tester to turn logging on. Under the restored OFF a
+session with no opt-in writes nothing at all — no `logs/` directory and no
+`playtest-<sessionId>.jsonl` — because `packages/desktop/src/playtestLog.ts` calls `mkdirSync` inside
+`append` (spec §4). The default is pinned by a literal virgin-state assertion, never through the
+e2e `setLogging` helper (`docs/LESSONS.md` L-070). Closure ceremony: TP-55.
+
 ---
 
 ## 3. The balance report generator

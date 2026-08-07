@@ -1146,3 +1146,9 @@ computed and exposed on `NpcState` — touched no file in `packages/engine/src` 
 `packages/content/src`, so `rulesFingerprint` could not move and no capstone, sweep or re-pin was
 owed. See `docs/BALANCE-RIG-DECISIONS.md` BR-101 for the fingerprint half; the design half is that
 a readout which needs a new ENGINE field is a different task with a different cost.
+
+**LD-35 — IN LIAR'S DICE E2E, A DIE IS ADDRESSED BY HAND INDEX, NEVER BY VALUE.** (T-255.) Seed 1
+and seed 30 hands repeat values — seed 30's hand is `[15, 15, 15, 10, 1]` — so a
+`data-die-value="15"` locator is ambiguous and picks whichever node Playwright reaches first.
+`spendDie` takes a HAND INDEX, not a die value (`packages/ui/e2e/captain-voice.spec.ts:58`), and any
+new spec addressing the hand uses the same convention.

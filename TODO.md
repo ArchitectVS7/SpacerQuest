@@ -663,6 +663,26 @@ item, put it in the section where comparable work already lives.
   content-scoped rule and no content-purity test exists. Write the check so CE-1/CE-2 survive an
   author who does not run the grep. [harvested: T-206/content-data-only-check]
 
+- **Nothing gates a minimum CONTRAST RATIO on the cockpit's surface boundaries** — the root defect
+  the T-186 bake-off found and no check pins. All three T-186 reviewers independently measured
+  panel-against-background at **1.04:1** and pane borders at **1.36:1**, both under the 3:1 floor at
+  which a boundary is perceivable at all. `packages/ui/src/__tests__/visual-identity.test.ts` (the
+  GATED one) asserts hue/achromaticity and the two ruled edits, not ratios;
+  `packages/ui/e2e/visual-identity.spec.ts` measures luminance **ordering** only (`luminance()`
+  defined at :50, used at :190/:212/:255) and never a ratio — and T-218 filed that spec as MANUAL,
+  outside `npm test`. Because T-218 moved separation onto the `--bevel`/`--recess` shadow pair
+  rather than a coloured hairline, the check must measure the RENDERED boundary, not a pair of
+  tokens. [harvested: T-186/contrast-floor-check]
+
+- **`.slot.ready` — ruled edit 1 of T-218, at `packages/ui/src/theme.css:1912-1928` — has no live
+  call site in the shipped cockpit.** M17 removed the die COST from signing a manifest offer
+  (`App.tsx:4840-4841`), so the sign row now reads `SIGN · FREE · click to sign` and the
+  check-clearing badge is currently dead CSS. The ruled edit is applied anyway, and
+  `packages/ui/e2e/visual-identity.spec.ts` measures it only through a probe node built from the
+  real stylesheet — labelled in place as the weaker claim it is. M17 is explicitly a reversible: if
+  it is reversed, re-prove the badge with a real click and upgrade the e2e assertion off the probe.
+  [harvested: T-218/slot-ready-dead-css]
+
 ---
 
 ## Notes — bounded limitations, deferrals and standing pointers
@@ -1026,6 +1046,14 @@ item, put it in the section where comparable work already lives.
   later task may legitimately voice one", and T-208 has now parked all eleven permanently at
   Cantinas where the table-talk surface renders — so voicing them is a live option that no task
   currently owns. [harvested: T-208/quest-captain-voice]
+
+- **T-193's jsdom-in-vitest pane test is NOT the real-browser tier.** It renders in jsdom under
+  vitest and was never a substitute for the Playwright long-horizon tier that T-162/T-237 owes;
+  that thread stays open. Already recorded at `docs/TEST-TIER-DECISIONS.md` TT-13a ("This is still
+  NOT the real-browser tier T-162/T-237 owes; that one is Playwright, and it remains open") and
+  adjacent to this file's `[harvested: T-162/longhaul-unfired-verbs]` entry in the Gaps section.
+  Carried here only so that pruning the T-193 block does not erase the pointer.
+  [harvested: T-193/real-browser-tier]
 
 ---
 
