@@ -3308,7 +3308,7 @@ the inversion zones move without a ruling. No rule, save shape, sim instrument o
 moved. The remaining Accept branch is the owner's ruling: record LD-25 as a mid-band property with
 this range, or rule the floor/deep-tail inversions defects to bake off.
 
-### T-227 · F-223-1: the player is never told which of the house's three seats is the hard one — `status: TODO` · `coder: opus` · `after: T-223`
+### T-227 · F-223-1: the player is never told which of the house's three seats is the hard one — `status: BLOCKED(Owner disclosure ruling)` · `coder: codex` · `after: T-223`
 
 **Filed at T-223 (2026-08-06), `docs/HANGOUT_REDESIGN.md` §7 Finding F-223-1 /
 `docs/LIARS-DICE_REDESIGN.md` §22.6 / `docs/LIARS-DICE-DECISIONS.md` LD-30.** Content authors a
@@ -3347,11 +3347,15 @@ its three authored strings (T-146's), and does **not** import a content constant
 §22.6 and the F-223-1 finding gain the outcome; if any rule moves the task takes its own capstone
 with the moved rows predicted first; gate green.
 
+**Blocked by Codex (2026-08-07):** no code path is selected until the owner rules what the player
+should be told about the seat ladder and when. The task explicitly accepts "accept as-is" only as a
+recorded owner ruling, not as an agent inference.
+
 ---
 
 ## M10 — Harvested: Explore, deeds and the recovery ladder
 
-### T-171 · Deed supply after Explore's 10× event-rate drop — an owner ruling on the sealed-pod line — `status: TODO` · `coder: opus` · `after: T-198`
+### T-171 · Deed supply after Explore's 10× event-rate drop — an owner ruling on the sealed-pod line — `status: BLOCKED(Owner sealed-pod supply ruling)` · `coder: codex` · `after: T-198`
 
 F-115-B left an unanswered supply question. Explore's per-outcome event rate fell ~10× by design
 (a board now draws one row of 100 instead of walking three legs), and on
@@ -3370,6 +3374,9 @@ three deeds, move the `>= 2` threshold, or accept as-is — any of the four coun
 the post-ruling per-career slate-completion number re-measured on `COVERAGE_SEEDS` and stated
 beside the pre-ruling two-in-sixty-five; the ruling written into the Explore spec beside §10.4's
 other open calls; gate green.
+
+**Blocked by Codex (2026-08-07):** this is explicitly a sealed-pod supply ruling with four owner
+choices. No implementation branch can be chosen without that recorded ruling.
 
 ### T-172 · Re-measure per-band recovery collection and forfeiture — prove band 4 is reachable after T-131 — `status: DONE` · `coder: opus` · `after: T-198`
 
@@ -3720,7 +3727,7 @@ task halts `BLOCKED` for the owner and is never self-approved.
 12.3 = W1 (keep write-once). Recorded in full in `docs/PLAYER-TRINKETS_SPEC.md` §12. No build
 scheduled; `player.stats` stays write-once; F-151-5/F-151-6 stay parked.
 
-### T-180 · N8 — the actor-parameterised `resolveVisitHangout`, un-gated but unscheduled — `status: TODO` · `coder: opus` · `after: T-198`
+### T-180 · N8 — the actor-parameterised `resolveVisitHangout`, un-gated but unscheduled — `status: BLOCKED(Owner scheduling: future work, not scheduled here)` · `coder: codex` · `after: T-198`
 
 N8 is now UN-GATED but NOT scheduled: the owner's 2026-08-02 ruling on `docs/NPC_REDESIGN.md`'s
 PARITY LEDGER `| VisitHangout |` row explicitly does not commit to the build — "unblocked as future
@@ -3740,7 +3747,10 @@ explicitly re-deferred with a reason; `gambler` no longer needs its entry in
 `ACKNOWLEDGED_COVERAGE_GAPS`; its own capstone is run and the four baseline pointers re-pinned;
 `docs/NPC_REDESIGN.md`'s STATUS BOARD and PARITY LEDGER row updated; gate green.
 
-### T-181 · D7's not-built alternative: a per-port interest-rate multiplier on `LOAN_DAILY_RATE` — `status: TODO` · `coder: opus` · `after: T-198`
+**Blocked by Codex (2026-08-07):** the task text records the owner ruling as "unblocked as future
+work, not scheduled here." Treating that as scheduled implementation would contradict the ruling.
+
+### T-181 · D7's not-built alternative: a per-port interest-rate multiplier on `LOAN_DAILY_RATE` — `status: BLOCKED(UAT/playtest read required first)` · `coder: codex` · `after: T-198`
 
 The per-port INTEREST RATE multiplier on `LOAN_DAILY_RATE` — the alternative logged under owner
 ruling D7 and explicitly NOT built by T-133 ("the previously-logged interest-rate-multiplier
@@ -3755,6 +3765,9 @@ distinction is recorded first; then either a per-port `LOAN_DAILY_RATE` multipli
 (read through an accessor, never an `if (systemId === ...)` branch in the engine, per T-133's
 standing rule) with its band pinned by accessor rather than literal, or the alternative is closed
 with the reason recorded in the D7 log; gate green.
+
+**Blocked by Codex (2026-08-07):** the acceptance path requires the UAT/playtest read before either
+shipping or closing the multiplier alternative.
 
 ---
 
@@ -7178,7 +7191,7 @@ redrift back toward either the pre-T-186 baseline or the rejected fuller-synthes
 and T-217 (both filed during the bake-off) are either fixed in the same pass or explicitly left
 to their own tasks with a reason recorded; gate green.
 
-### T-209 · CHECKPOINT — do not start M20 until the owner says so — `status: TODO` · `coder: —` · `after: —` · `[BLOCKED BY = Owner priority — resume after visual/core-loop work]`
+### T-209 · CHECKPOINT — do not start M20 until the owner says so — `status: BLOCKED(Owner priority — resume after visual/core-loop work)` · `coder: codex` · `after: —` · `[BLOCKED BY = Owner priority — resume after visual/core-loop work]`
 
 This task exists ONLY to keep every other task in this milestone from being picked up by
 `/orchestrate all`. It has no automated deliverable — the runner will find nothing to prepare and
@@ -7186,6 +7199,9 @@ should commit it `BLOCKED(Owner priority — resume after visual/core-loop work)
 immediately per the standard human-gate protocol. **Do not build anything for this task.** The
 owner un-gates the milestone by flipping this task's status directly (not via the orchestrator) or
 by explicitly re-scoping a future `/orchestrate` call to name T-210 onward.
+
+**Blocked by Codex (2026-08-07):** applied the checkpoint exactly as written. Do not start T-210+
+until the owner flips T-209 or explicitly scopes a future run to M20.
 
 ### T-210 · Design: the sandboxed hypothesis/clone architecture — `status: TODO` · `coder: fable` · `type: design` · `after: T-209`
 
