@@ -14,6 +14,9 @@ import {
   windowShown,
 } from './support/cockpit';
 
+// FIRST_RUN_WALKTHROUGH: tests-first-run — packaged startCareer drives the same
+// first-run sequence as a player opening the built app.
+
 // ---------------------------------------------------------------------------
 // T-1701b ACCEPTANCE — the PACKAGED app, driven as a player drives it.
 //

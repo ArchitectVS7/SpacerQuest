@@ -3309,7 +3309,7 @@ the post-ruling per-career slate-completion number re-measured on `COVERAGE_SEED
 beside the pre-ruling two-in-sixty-five; the ruling written into the Explore spec beside §10.4's
 other open calls; gate green.
 
-### T-172 · Re-measure per-band recovery collection and forfeiture — prove band 4 is reachable after T-131 — `status: TODO` · `coder: opus` · `after: T-198`
+### T-172 · Re-measure per-band recovery collection and forfeiture — prove band 4 is reachable after T-131 — `status: DONE` · `coder: opus` · `after: T-198`
 
 T-116 measured that the recovery ladder forfeits 75.8% of everything it defers (1,553 of 2,049
 resolved recoveries, essentially all `departed`) with ZERO band-4 payouts in 14,400 simulated days
@@ -3325,6 +3325,13 @@ a stated seeds × days window, with band 4's post-T-131 payout count stated expl
 T-116's zero-in-14,400-days baseline; `docs/EXPLORE_REDESIGN.md` §9.4 updated with the post-T-131
 numbers; if band 4 is still unreachable that is filed as a finding rather than smoothed over; gate
 green.
+
+**Delivered (2026-08-07):** `packages/sim/src/__tests__/recovery-band-measurement.test.ts`
+measures seeds 1..120 × 120 days (`explorerPolicy`) and records the resolved recovery ladder by
+band in `docs/EXPLORE_REDESIGN.md` §9.4. Post-T-131 band 4 is reachable: 259 total band-4
+recoveries, 205 collected and 54 forfeited, against T-116's zero-in-14,400-days baseline. The
+calendar recovery payout count remains 0 because bands 3-4 are now same-day extra-dice recoveries;
+that timing distinction is pinned in the measurement and the write-up.
 
 ---
 

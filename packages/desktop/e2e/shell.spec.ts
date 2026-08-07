@@ -20,6 +20,9 @@ import {
   type LaunchOpts,
 } from './support/cockpit';
 
+// FIRST_RUN_WALKTHROUGH: tests-first-run — desktop startCareer drives the real
+// first-run release sequence through the shell helpers.
+
 // ---------------------------------------------------------------------------
 // T-1701a ACCEPTANCE — the Electron shell in DEV MODE, driven as a player
 // drives it. (The PACKAGED build is `packaged.spec.ts`, T-1701b.)

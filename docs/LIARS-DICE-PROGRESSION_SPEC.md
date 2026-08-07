@@ -929,6 +929,11 @@ play, worth **+43.7% bids per hand and nothing else**. A re-derivation of the ti
 a caller (i.e. a caller that computes `band.max × LIARS_DICE_RAISED_CEILING_MULT` itself) is the
 same bug wearing different clothes and is equally forbidden.
 
+**Enforced at T-243.** `packages/sim/src/__tests__/liars-dice-process.test.ts` scans the shipped
+source and keeps the four licensed `liarsDiceTier(...)` call sites exact. The same check forbids a
+non-engine stake-domain caller from sizing off raw `wagerBandFor(...)` or restating the raised
+ceiling multiplier. The old manual grep is retired; this invariant is now a gate.
+
 **What did NOT change.** The hand still freezes effects, not the tier. `actions/hangout.ts` remains
 the one freeze site. The solvency clamp is still not the band's business (§4.8). §8's ripple table
 is still a list of constant-to-frozen-field substitutions, and nothing in it moves.

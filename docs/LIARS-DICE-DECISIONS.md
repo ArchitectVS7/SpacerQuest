@@ -372,6 +372,12 @@ list**, in the spec, before the code.
 re-derives `band.max × LIARS_DICE_RAISED_CEILING_MULT` for itself. That is a *stricter* rule than
 the one it replaces: it catches the F-148-4 defect, which the old one could not see.
 
+**Enforced at T-243.** `packages/sim/src/__tests__/liars-dice-process.test.ts` scans the source for
+the exact four licensed `liarsDiceTier(...)` call sites and for the forbidden non-engine
+stake-domain mirrors. A fifth live-tier read, a raw non-engine `wagerBandFor(...)` stake-domain
+reader, or a restated raised-ceiling multiplier now fails the gate instead of relying on a manual
+grep.
+
 ---
 
 **LD-25 — `optimal` READS THE STANDING CLAIM. The chosen shape, and the four measured and
@@ -507,9 +513,11 @@ flavour text.
 **The concealment claim (§6.1) is RETIRED from the justification, not repeated.** It is
 mechanically inert — `dealerMove` and `archetypeMove` take no history parameter and hold no
 cross-hand memory, so there is no channel by which a past reveal could reach a future decision. It
-is NOT part of why FOLD is kept, and a later reader must not re-derive the ruling from it. **M4e is
-the milestone that gives archetypes memory** (§16.3); concealment becomes worth something there,
-for free, without this ruling pre-empting it.
+is NOT part of why FOLD is kept, and a later reader must not re-derive the ruling from it.
+**Re-read at T-244 after M4e shipped:** no live task now owns cross-hand memory for
+`dealerMove`/`archetypeMove`, so the §6.1 concealment benefit is retired rather than deferred to a
+phantom owner. A future memory feature must file a new owner, save shape, migration and measurement
+before it can revive concealment as a payoff.
 
 **The two shapes REJECTED, with reasons.**
 
@@ -517,8 +525,9 @@ for free, without this ruling pre-empting it.
   `archetypeMove` — a signature change on both policies plus persisted per-opponent memory, i.e. a
   save-shape change with a migration and a round-trip test, a `rulesFingerprint` move, a capstone
   and an 8,000-row sweep. It would also re-open the archetype ordering LD-25 shipped one task
-  earlier and collide with the open raise-valuation finding (`T-219` / F-176-1). M4e already owns
-  the memory; the correct move is to wait for it rather than to buy it here at full price.
+  earlier and collide with the open raise-valuation finding (`T-219` / F-176-1). **Re-rejected at
+  T-244:** M4e has shipped and did not add that memory channel, so there is no active owner to wait
+  on; buying shape B now is a new rules-and-save feature, not a deferred implementation detail.
 - **(C) change FOLD's economics** (e.g. refund a fraction of `potPlayer`). **LD-7** pins "FOLD
   forfeits seed plus all accumulated antes" as a CLOSED exploit fix, and §6.2 rejected the
   neighbouring shapes (auto-challenge, void) for exactly the gameability a partial refund
@@ -531,7 +540,7 @@ for free, without this ruling pre-empting it.
 `DARE_FOLD_DISPOSITION`, `DARE_WIN_DISPOSITION` or `DARE_LOSS_DISPOSITION` — retuning one of them to
 relocate the crossover would be tuning a number to make the ruling come out, and the ruling is
 precisely that the crossover falls where the constants already are. It does not give the dealer
-memory (M4e's). It does not touch `optimal`'s raise valuation (`T-219`'s). Nothing shipped in
+memory. It does not touch `optimal`'s raise valuation (`T-219`'s). Nothing shipped in
 `packages/engine/src` beyond comments: `rulesFingerprint` was computed before and after and is
 UNMOVED, so no capstone, no sweep and no re-measurement were owed. T-160's standing measurement
 (n = 18,678 post-bid player decision points, FOLD legal at 100.00% and taken at 3.51%) satisfies the

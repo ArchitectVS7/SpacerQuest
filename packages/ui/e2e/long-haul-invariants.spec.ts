@@ -22,6 +22,8 @@ import {
 // Plus a totality guard, so a ninth invariant added to `LONGHAUL_INVARIANTS`
 // and never wired fails HERE rather than silently never running.
 //
+// FIRST_RUN_WALKTHROUGH: not-virgin — this is a pure invariant fixture suite.
+//
 // NO BROWSER. This spec never touches the `page` fixture, so Playwright never
 // launches Chromium for it: the battery is a pure function and is tested as one.
 // It lives in `e2e/` rather than `src/` because `packages/ui/vitest.config.ts`

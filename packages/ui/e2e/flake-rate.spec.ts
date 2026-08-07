@@ -17,11 +17,13 @@ import {
 // feed `summarize` synthetic reports and pin the arithmetic AND the gate's two
 // clauses.
 //
+// FIRST_RUN_WALKTHROUGH: not-virgin — no browser/profile boots here.
+//
 // It uses no `page` (precedent: `derule.spec.ts`, a source-scan guard), and it
 // is deliberately UNTAGGED so it is not itself part of the suite it measures.
-// That also means no test TITLE here may contain an `@word`: Playwright lifts
-// `@tag` out of a title as a real tag, which would silently enrol this spec in
-// the very population it is gating — the measurement measuring itself.
+// `src/__tests__/e2e-source-contracts.test.ts` enforces the matching source rule:
+// no Playwright test title outside the tour-one specs may contain an `@word`,
+// because Playwright would lift it into a real tag.
 // ---------------------------------------------------------------------------
 
 type Status = 'expected' | 'flaky' | 'unexpected' | 'skipped';

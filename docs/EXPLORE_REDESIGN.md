@@ -1281,14 +1281,39 @@ nav check and burned 80 fuel. They now differ by more than they did, because 5,1
 
 ### 9.4 Where the value went — and why it does not rescue the verb
 
+**POST-T-131 RE-MEASUREMENT (T-172, 2026-08-07): the ladder now splits collection from
+calendar recovery.** The original T-116 table below is a dated pre-D1 measurement: bands 3 and 4
+still opened three- and six-day recovery clocks there. Owner ruling D1/T-131 moved bands 3 and 4
+onto same-day extra-dice payment, so a current measurement must count both `RecoveryPaidOut`
+(band 2's calendar collection) and same-day collection/forfeiture (bands 3 and 4's new channel).
+
+Committed check: `packages/sim/src/__tests__/recovery-band-measurement.test.ts`, seeds 1..120 ×
+120 days (`explorerPolicy`, 14,400 policy-days). It observed 24,757 queued `Explore` actions and
+7,359 successful boards:
+
+| band | drawn | `RecoveryStarted` | `RecoveryPaidOut` | same-day collected | forfeited (`insufficient-dice`) | abandoned departed / succession / unknown | open at day 120 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 1,821 | 0 | 0 | 1,821 | 0 | 0 / 0 / 0 | 0 |
+| 1 | 2,399 | 0 | 0 | 2,399 | 0 | 0 / 0 / 0 | 0 |
+| 2 | 1,812 | 1,812 | 686 | 0 | 0 | 1,114 / 0 / 0 | 12 |
+| 3 | 1,068 | 0 | 0 | 947 | 121 | 0 / 0 / 0 | 0 |
+| 4 | 259 | 0 | 0 | **205** | 54 | 0 / 0 / 0 | 0 |
+
+**Band 4 is reachable after T-131.** T-116's baseline saw **0 band-4 `RecoveryPaidOut` in 14,400
+simulated days** because the six-day hold was never collected. At HEAD, band 4 still has
+`RecoveryPaidOut = 0`, but that is now the expected event shape: band 4 no longer opens a recovery
+clock at all. Its payout count is the same-day collection count, **205 collected band-4 boards**
+in the same 14,400-day window, with **54** explicit extra-dice forfeits. The top rung is no longer
+unclaimable; its current price is hand thickness, not staying moored for six days.
+
 **`SalvageRecovered` credits are no longer the payoff, by design.** Gross salvage fell
 9,688 → 1,704 per run because the rebuild deliberately moved value off the credit column:
 
 - T-117 replaced the three-leg carrier with a **single band-weighted draw**, so a board
   yields one outcome instead of three independent rolls;
 - **25% of boards are band 0** — an authored dead end that pays nothing (§5.2);
-- **bands 2, 3 and 4 (42% of the weight) defer their payout to a recovery dusk** rather
-  than paying on the day;
+- **pre-T-131**, bands 2, 3 and 4 (42% of the weight) deferred their payout to a recovery dusk;
+  **at HEAD**, only band 2 still defers, while bands 3 and 4 collect or forfeit same-day;
 - most of §5.5's per-board value is **items, questline hooks, NPC standing and fragments**,
   which a `finalCredits` column cannot see at all.
 

@@ -1910,8 +1910,8 @@ There is no corner of the hand-strength space where folding is the better credit
    (`liarsDiceRules.ts:274-283`) takes `dealerDice`, `bid`, `bidder`, `dealerGuile`, `ante`,
    `headroom`, `dealerCredits` and `roll` — **no history parameter, no cross-hand memory, and no
    `GameState`.** There is no channel through which a past reveal could reach a future decision.
-   Concealment will become worth something when M4e gives archetypes memory; it is worth nothing
-   now.
+   **Re-read at T-244 after M4e shipped:** no live owner now adds that memory to `dealerMove` or
+   `archetypeMove`, so concealment is retired as a payoff, not deferred to M4e.
 
 **The counterfactual, and it is the empirical half of the answer.** The same 960 runs re-flown
 with a probe-local `planDareMoveNoFold` (identical to the shipped planner except branch (c1)
@@ -1947,8 +1947,9 @@ about the rule; a human player who folds often would be leaking the per-fold 627
 > dead move** — and §16.6's measured interceptor lift is what makes the currency it buys worth having.
 >
 > **Counterweight 2 above (concealment) is RETIRED from the justification.** It is inert, exactly as
-> §16.3 says, and the ruling does not lean on it — it is *not* part of why FOLD is kept. M4e still
-> owns the memory that would make it worth something.
+> §16.3 says, and the ruling does not lean on it — it is *not* part of why FOLD is kept. Re-read at
+> T-244 after M4e shipped: no live task owns the memory that would make it worth something, so the
+> concealment payoff is retired unless a future owner files it as a new rules/save feature.
 >
 > Nothing shipped in `packages/engine/src` beyond comments; `rulesFingerprint` was computed before
 > and after and is unmoved, so the "if anything ships" clause did not fire. Shapes (B) *give

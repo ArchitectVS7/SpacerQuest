@@ -6,17 +6,12 @@ import {
   isGatedDestination,
   NEMESIS_SYSTEM_ID,
   type StarCoordinates,
-} from '@spacerquest/content';
+} from '../index.js';
 
-// T-1101 · Real 2D starmap geometry — the "content test" for the authored
-// coordinates.
-//
-// T-164 · IT LANDED HERE BECAUSE THE CONTENT PACKAGE HAD NO TEST RUNNER. It has
-// one now, and this file imports nothing but `@spacerquest/content`, so under
-// `docs/TESTING-STRATEGY.md` Part I it qualifies to move beside its rows. It is
-// on that ruling's migration ledger (F-164-1) rather than in T-164's scope.
+// T-238 · Relocated from the engine suite under docs/TESTING-STRATEGY.md Part I:
+// this block reads only authored content and content-owned helpers.
 
-const CORE_IDS = Array.from({ length: 14 }, (_, index) => index + 1); // 1–14
+const CORE_IDS = Array.from({ length: 14 }, (_unused, index) => index + 1);
 const RIM_IDS = [15, 16, 17, 18, 19, 20];
 
 function mean(values: number[]): number {
@@ -31,8 +26,6 @@ describe('Starmap geography (T-1101)', () => {
   });
 
   it('degenerate id-line is gone: distance no longer equals |id difference|', () => {
-    // The shipped layout put every core/rim system at (id-1, 0), so distance
-    // collapsed to |id diff|. Assert the spread genuinely diverges from that.
     let divergences = 0;
     for (const a of [...CORE_IDS, ...RIM_IDS]) {
       for (const b of [...CORE_IDS, ...RIM_IDS]) {
@@ -43,7 +36,7 @@ describe('Starmap geography (T-1101)', () => {
     expect(divergences).toBeGreaterThan(0);
   });
 
-  it('rim mean distance-from-core exceeds core–core mean distance', () => {
+  it('rim mean distance-from-core exceeds core-core mean distance', () => {
     const coreCentroid: StarCoordinates = {
       x: mean(CORE_IDS.map((id) => STAR_SYSTEMS[id].coordinates.x)),
       y: mean(CORE_IDS.map((id) => STAR_SYSTEMS[id].coordinates.y)),
@@ -62,32 +55,24 @@ describe('Starmap geography (T-1101)', () => {
         );
       }
     }
-    const coreCoreMean = mean(coreCorePairs);
 
-    expect(rimMeanFromCore).toBeGreaterThan(coreCoreMean);
+    expect(rimMeanFromCore).toBeGreaterThan(mean(coreCorePairs));
   });
 
   it('NEMESIS is remote, not home-adjacent (regression for the (0,0) collision)', () => {
-    // NEMESIS (28) sat at (0,0) — identical to Sol-3 (1), one jump from home.
     expect(STAR_SYSTEMS[28].coordinates).not.toEqual(STAR_SYSTEMS[1].coordinates);
-    // Farther from home than the farthest rim port.
     const farthestRim = Math.max(...RIM_IDS.map((id) => distance(1, id)));
     expect(distance(1, 28)).toBeGreaterThan(farthestRim);
   });
 
-  it('gates Andromeda (21–26) and the special systems (27–28)', () => {
+  it('gates Andromeda (21-26) and the special systems (27-28)', () => {
     for (let id = 1; id <= 20; id += 1) expect(isGatedDestination(id)).toBe(false);
     for (let id = 21; id <= 28; id += 1) expect(isGatedDestination(id)).toBe(true);
   });
 
   it('T-1505b · NEMESIS_SYSTEM_ID names the black hole and is still a GATED id', () => {
-    // The exported id every crossing reader keys off (the day.ts gate, the sim
-    // protocol, the UI starmap band) — so none of them spells the literal 28.
     expect(NEMESIS_SYSTEM_ID).toBe(28);
     expect(STAR_SYSTEMS[NEMESIS_SYSTEM_ID].name).toBe('NEMESIS');
-    // The GATE predicate is unchanged by T-1505b: 28 is still gated. Only the
-    // LIFT is narrowed (the flag opens this id and no other), which is asserted
-    // in day.test.ts rather than here — this is the predicate, not the lift.
     expect(isGatedDestination(NEMESIS_SYSTEM_ID)).toBe(true);
   });
 });
