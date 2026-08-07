@@ -223,6 +223,9 @@ test('scripted-seed encounter: fought, survives reload, then fled through the UI
   // 3) Fight one round with the value-14 die. The round advances (enemy pressed)
   //    and the honest PLAYER roll — not the enemy counter-attack — is surfaced.
   await page.locator('[data-testid="combat-die"][data-die-value="14"]').first().click();
+  await expect(page.getByTestId('combat-fight-preview')).toHaveAttribute('data-die', '14');
+  await expect(page.getByTestId('combat-fight-preview')).toHaveAttribute('data-stat', 'GUNS');
+  await expect(page.getByTestId('combat-fight-preview')).toHaveAttribute('data-success', 'true');
   await page.getByTestId('combat-fight').click();
   await expect(page.getByTestId('combat-round')).toHaveText('ROUND 2');
   // Scope the check readout to the overlay: the covered Manifest pane also mounts
@@ -235,6 +238,9 @@ test('scripted-seed encounter: fought, survives reload, then fled through the UI
   // 4) Flee with the natural-20 die → PILOT auto-success → escape. The overlay
   //    transitions to the aftermath summary, then dismisses back to the cockpit.
   await page.locator('[data-testid="combat-die"][data-die-value="20"]').first().click();
+  await expect(page.getByTestId('combat-run-preview')).toHaveAttribute('data-die', '20');
+  await expect(page.getByTestId('combat-run-preview')).toHaveAttribute('data-stat', 'PILOT');
+  await expect(page.getByTestId('combat-run-preview')).toHaveAttribute('data-success', 'true');
   await page.getByTestId('combat-run').click();
   await expect(page.getByTestId('combat-aftermath')).toBeVisible();
   await expect(page.getByTestId('combat-aftermath-resolution')).toHaveText(

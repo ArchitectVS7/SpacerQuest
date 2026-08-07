@@ -286,6 +286,8 @@ test('the Peek spends a die and shows exactly one of the house’s dice', async 
   await expect(move(page, 'peek')).toBeDisabled();
   await page.getByTestId('die').nth(1).click();
   await expect(move(page, 'peek')).toBeEnabled();
+  await expect(page.getByTestId('dare-peek-preview')).toHaveAttribute('data-tone', 'armed');
+  await expect(page.getByTestId('dare-peek-preview')).toHaveAttribute('data-stat', 'GUILE');
   await move(page, 'peek').click();
 
   // The honest roll renders, whichever way it went.

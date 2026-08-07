@@ -103,6 +103,7 @@ import {
   starmapProjection,
   routePreview,
   routeDieReadout,
+  explorationCheckPreview,
   explorationPreview,
   recoveryReadout,
   hangoutOpen,
@@ -112,6 +113,7 @@ import {
   hangoutVenueOffered,
   hangoutRumorLines,
   dareWagerBounds,
+  darePeekCheckPreview,
   // T-197 · the two daily Hangout caps, rendered beside the controls they bound.
   hangoutSocialPlays,
   hangoutDareRounds,
@@ -156,6 +158,9 @@ import {
   storyletChoiceCostLabel,
   storyletChoiceNeedsDie,
   storyletChoiceLock,
+  haggleCheckPreview,
+  combatStanceCheckPreview,
+  crossingCheckPreview,
   deedRegistry,
   manifestSheet,
   ledgerFascia,
@@ -188,6 +193,7 @@ import {
   type EndingView,
   type OnboardingAnchor,
   type OnboardingMount,
+  type ActionCheckPreview,
   type ResolutionCeremonyView,
   type ShipComponentRow,
   type ShipDiagramMark,
@@ -1793,6 +1799,13 @@ function CombatInstrument({ state }: { state: CockpitState }) {
     encounter.interceptor.kind,
     encounter.interceptor.tier - game.player.tier,
   );
+  const armedDieValue =
+    state.selectedDie !== null ? game.player.dawnHand?.dice[state.selectedDie] : undefined;
+  const stancePreviews = {
+    fight: combatStanceCheckPreview(game, 'fight', armedDieValue),
+    talk: combatStanceCheckPreview(game, 'talk', armedDieValue),
+    run: combatStanceCheckPreview(game, 'run', armedDieValue),
+  };
 
   return (
     <section className="co-instrument">
@@ -1948,6 +1961,7 @@ function CombatInstrument({ state }: { state: CockpitState }) {
               onClick={() => combat('fight')}
             >
               FIGHT
+              <ActionCheckProjection preview={stancePreviews.fight} testid="combat-fight-preview" />
             </button>
             <button
               className="btn stance talk"
@@ -1957,6 +1971,7 @@ function CombatInstrument({ state }: { state: CockpitState }) {
               onClick={() => combat('talk')}
             >
               TALK
+              <ActionCheckProjection preview={stancePreviews.talk} testid="combat-talk-preview" />
             </button>
             <button
               className="btn stance run"
@@ -1966,6 +1981,7 @@ function CombatInstrument({ state }: { state: CockpitState }) {
               onClick={() => combat('run')}
             >
               RUN
+              <ActionCheckProjection preview={stancePreviews.run} testid="combat-run-preview" />
             </button>
           </div>
           <div className="co-tribute" data-testid="combat-tribute">
@@ -2214,9 +2230,9 @@ const SOCIAL_LABELS: Record<'meet' | 'befriend' | 'insult', string> = {
   insult: 'Say the wrong thing',
 };
 const SOCIAL_TITLES: Record<'meet' | 'befriend' | 'insult', string> = {
-  meet: 'Give your name to the table (spends a die)',
-  befriend: 'Roll GUILE against the house DC to win them over (spends a die)',
-  insult: 'A hard word, no roll, and the room remembers (spends a die)',
+  meet: 'Give your name to the table (uses one social play)',
+  befriend: 'Roll GUILE against the house DC to win them over (uses one social play)',
+  insult: 'A hard word, no roll, and the room remembers (uses one social play)',
 };
 
 // The Hangout & lending pane (T-1404). The Spacers Hangout as a visitable place:
@@ -2280,9 +2296,12 @@ function HangoutPanel({
   // Action by ruling (§3), and still spends a die. No other control in this pane
   // reads it — the T-196c treatment at the yard and trade panes, applied here.
   const armed = state.selectedDie !== null;
+  const armedDieValue =
+    state.selectedDie !== null ? game.player.dawnHand?.dice[state.selectedDie] : undefined;
   // T-136 · THE FOG PROJECTION, and the ONLY thing the live scene is given. It has
   // no `dealerDice` field; see `format.ts`'s `DareSceneView`.
   const scene = dareScene(game);
+  const peekPreview = darePeekCheckPreview(game, armedDieValue);
   const house = hangoutHouse(game);
   const socialOutcome = state.socialOutcome;
   const offers = (v: HangoutVenueId) => hangoutVenueOffered(game, v);
@@ -2568,6 +2587,7 @@ function HangoutPanel({
             reveal={state.dareReveal}
             beats={state.dareBeats}
             armed={armed}
+            peekPreview={peekPreview}
             reduced={state.reducedMotion || systemPrefersReducedMotion()}
             lastCheck={state.lastCheck}
             lastCheckKey={state.lastCheckKey}
@@ -2651,7 +2671,7 @@ function HangoutPanel({
       {/* ---- rumor table (engine's own hangoutRumors) ----
           T-132 · This table is a FREE read, rendered every frame — which is exactly
           why the seventh venue, `VisitHangout{rumor}`, gets no control: it would
-          spend a die to produce these same lines. */}
+          produce these same lines. */}
       <div className="hp-section">
         <div className="hp-shead">RUMOR TABLE</div>
         <VenueFlavour line={house.flavour.rumor} venue="rumor" />
@@ -2716,7 +2736,7 @@ function HangoutPanel({
                       className="btn"
                       data-testid="loan-repay"
                       disabled={loanDisabledReason !== null || repayAmount <= 0}
-                      title={loanDisabledReason ?? 'Pay down the loan (spends a die)'}
+                      title={loanDisabledReason ?? 'Pay down the loan'}
                       onClick={() => repayLoan(repayAmount)}
                     >
                       {loanDisabledReason ?? 'Repay'}
@@ -2745,7 +2765,7 @@ function HangoutPanel({
                 className="btn"
                 data-testid="loan-borrow"
                 disabled={loanDisabledReason !== null}
-                title={loanDisabledReason ?? 'Take a loan at Penny Wise’s desk (spends a die)'}
+                title={loanDisabledReason ?? 'Take a loan at Penny Wise’s desk'}
                 onClick={() => borrowLoan(principal)}
               >
                 {loanDisabledReason ?? 'Borrow'}
@@ -2849,6 +2869,7 @@ function LiarsDiceScene({
   reveal,
   beats,
   armed,
+  peekPreview,
   reduced,
   lastCheck,
   lastCheckKey,
@@ -2859,6 +2880,7 @@ function LiarsDiceScene({
   reveal: DareRevealView | null;
   beats: CockpitState['dareBeats'];
   armed: boolean;
+  peekPreview: ActionCheckPreview | null;
   reduced: boolean;
   lastCheck: CockpitState['lastCheck'];
   lastCheckKey: number;
@@ -3267,6 +3289,7 @@ function LiarsDiceScene({
               onClick={() => darePeek()}
             >
               {DARE_MOVE_LABEL.peek} · DC {view.peekDc}
+              <ActionCheckProjection preview={peekPreview} testid="dare-peek-preview" />
             </button>
           )}
           {canMove('challenge') && (
@@ -3715,6 +3738,7 @@ function Starmap({ state }: { state: CockpitState }) {
   // through the pure `recoveryReadout`; no clock is recomputed in JSX.
   const recovery = recoveryReadout(game);
   const canSweep = dieArmed && sweep.canAfford && recovery === null;
+  const sweepRoll = explorationCheckPreview(game, armedDieValue);
   const sweepLabel =
     recovery !== null
       ? 'Salvage op under way'
@@ -3734,6 +3758,10 @@ function Starmap({ state }: { state: CockpitState }) {
   const preview = target !== null ? routePreview(game, target, armedDieValue) : null;
   const routeIsCrossing = target === NEMESIS_SYSTEM_ID;
   const routeNavReadout = routeDieReadout(armedDieValue);
+  const crossingRoll =
+    preview !== null && routeIsCrossing
+      ? crossingCheckPreview(game, preview.dc, armedDieValue)
+      : null;
   // A stale target (e.g. after a jump moved us) simply resolves to no preview.
   const showPreview = preview !== null && targetNode !== null && target !== here;
 
@@ -3887,6 +3915,13 @@ function Starmap({ state }: { state: CockpitState }) {
                     <span className="rp-v" data-testid="route-dc">
                       {preview.dc}
                     </span>
+                    <span className="rp-k">ROLL</span>
+                    <span className="rp-v">
+                      <ActionCheckProjection
+                        preview={crossingRoll}
+                        testid="route-crossing-preview"
+                      />
+                    </span>
                   </>
                 ) : (
                   <>
@@ -3928,6 +3963,7 @@ function Starmap({ state }: { state: CockpitState }) {
             PILOT DC {sweep.dc} · FUEL {sweep.fuelCost} · NAV{' '}
             {signedMargin(sweep.effectiveModifier)}
           </div>
+          <ActionCheckProjection preview={sweepRoll} testid="explore-check-preview" />
           {recovery && (
             <div className="es-recovery" data-testid="explore-recovery">
               SALVAGE OP · {recovery.outcomeName} at {recovery.systemName} ·{' '}
@@ -4726,6 +4762,9 @@ function Manifest({ state }: { state: CockpitState }) {
   // (docs/DAWN-HAND-REDESIGN.md §3) and no longer reads this at all — hence no
   // `dieVal` either, since the sign row stopped rendering a die slot.
   const armed = state.selectedDie !== null;
+  const armedDieValue =
+    state.selectedDie !== null ? state.game.player.dawnHand?.dice[state.selectedDie] : undefined;
+  const hagglePreview = haggleCheckPreview(state.game, armedDieValue);
   const sheet = manifestSheet(state.game);
   const [stowed, setStowed] = useState(false);
   const open = !stowed || walkthroughActive(state.walkthrough);
@@ -4863,6 +4902,8 @@ function Manifest({ state }: { state: CockpitState }) {
                     <span className="mono">FREE</span>
                     <span className="arrow">&rarr;</span>
                     <span className="mono">click to sign</span>
+                  </div>
+                  <div className="haggle-row">
                     {/* Kept ENABLED even once haggled: a second haggle is an engine
                     refusal that spends no die, and the store surfaces it as a
                     visible notice. Disabling it here would make that failure a
@@ -4884,6 +4925,10 @@ function Manifest({ state }: { state: CockpitState }) {
                       }}
                     >
                       HAGGLE
+                      <ActionCheckProjection
+                        preview={hagglePreview}
+                        testid="haggle-check-preview"
+                      />
                     </button>
                   </div>
                 </div>
@@ -5295,8 +5340,8 @@ function TradePane({
         </div>
 
         {/* Port authority (T-1405) — buy the stake you stand in, then watch its
-            launch-fee income tick at dusk. Buy costs a die (die-costed like the
-            shipyard); the income ledger below is the "watch income tick" surface. */}
+            launch-fee income tick at dusk. The income ledger below is the
+            "watch income tick" surface. */}
         <div
           className="ledger-block port-authority"
           data-testid="port-authority"
@@ -5437,6 +5482,36 @@ function CheckBreakdown({
       label={`CHECK${lc.context ? ` · ${lc.context.toUpperCase()}` : ''}`}
       testid="check-breakdown"
     />
+  );
+}
+
+function ActionCheckProjection({
+  preview,
+  testid,
+}: {
+  preview: ActionCheckPreview | null;
+  testid: string;
+}) {
+  if (!preview) return null;
+  const cls = [
+    'action-check',
+    preview.tone,
+    preview.success === true ? 'clear' : preview.success === false ? 'miss' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return (
+    <span
+      className={cls}
+      data-testid={testid}
+      data-tone={preview.tone}
+      data-success={preview.success === null ? undefined : String(preview.success)}
+      data-stat={statName(preview.stat)}
+      data-dc={preview.dc}
+      data-die={preview.die ?? undefined}
+    >
+      {preview.label}
+    </span>
   );
 }
 

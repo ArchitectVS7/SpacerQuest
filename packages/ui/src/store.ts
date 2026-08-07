@@ -1868,22 +1868,21 @@ export function clearDareBeats(): void {
  * (PRD §7.1–§7.4; `docs/HANGOUT_REDESIGN.md` F-101-4). The three social venues the
  * T-1404 pane authored numbers for at fourteen ports and then never offered.
  *
- * A pure CLIENT of the T-1303 `VisitHangout` venues, exactly like `visitDare`: arm
- * a die, name an opponent, ONE engine call, and read the result off the typed
- * events. The venue is a DISPATCH PARAMETER, not a rule branch — the three beats
- * differ only in what the ENGINE does with them, so there is one function and not
- * three. `befriend` rolls a GUILE check against the PORT's authored DC and the
- * engine emits a `StatCheck`; it is captured into `socialOutcome.check` and
- * rendered by `CheckReadout`, so the honest-dice signature holds here exactly as it
- * does for the Dare. `meet` and `insult` never roll: their whole result is the
- * `DispositionChanged` delta the engine wrote, read off the event and NEVER
- * recomputed.
+ * A pure CLIENT of the T-1303 `VisitHangout` venues, exactly like `visitDare`:
+ * name an opponent, spend one social play, make ONE engine call, and read the
+ * result off the typed events. The venue is a DISPATCH PARAMETER, not a rule
+ * branch — the three beats differ only in what the ENGINE does with them, so there
+ * is one function and not three. `befriend` rolls an internal GUILE check against
+ * the PORT's authored DC and the engine emits a `StatCheck`; it is captured into
+ * `socialOutcome.check` and rendered by `CheckReadout`. `meet` and `insult` never
+ * roll: their whole result is the `DispositionChanged` delta the engine wrote,
+ * read off the event and NEVER recomputed.
  *
  * NO 'rumor' DISPATCH, DELIBERATELY (the seventh venue). `VisitHangout{rumor}`
- * spends a die to emit exactly the `hangoutRumors(state)` output the pane already
- * renders for free every frame (`format.ts` `hangoutRumorLines`), so a paid
- * affordance would be strictly dominated by the free one already on screen. That is
- * why F-101-4 counts "three of six venues" over a SEVEN-member venue union.
+ * emits exactly the `hangoutRumors(state)` output the pane already renders for
+ * free every frame (`format.ts` `hangoutRumorLines`), so a control would be
+ * strictly dominated by the free one already on screen. That is why F-101-4 counts
+ * "three of six venues" over a SEVEN-member venue union.
  *
  * A typed fail (`no-opponent`, `venue-not-offered`, `social-limit-reached`) costs
  * NOTHING, keeps the selection, and surfaces a visible notice.

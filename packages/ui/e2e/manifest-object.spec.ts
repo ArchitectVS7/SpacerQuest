@@ -167,6 +167,14 @@ test('HAGGLE is unchanged: it still rolls a visible TRADE check, never a dead cl
 }) => {
   await page.goto('/');
   await armDie(page);
+  await expect(page.getByTestId('haggle-check-preview').first()).toHaveAttribute(
+    'data-tone',
+    'armed',
+  );
+  await expect(page.getByTestId('haggle-check-preview').first()).toHaveAttribute(
+    'data-stat',
+    'TRADE',
+  );
   await page.getByTestId('haggle').first().click();
 
   // An engine refusal is never silent (UGT Finding 4's lesson) and a success is

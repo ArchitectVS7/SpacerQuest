@@ -154,14 +154,9 @@ export interface WalkthroughStep {
  * `lastPayment` for the card's body); it just does not gate.
  */
 /**
- * T-196c · STALE COPY IN w1–w4, LEFT DELIBERATELY AND OWNED BY T-194. M17
- * (docs/DAWN-HAND-REDESIGN.md §3) freed the administrative actions, so "sign a
- * job, buy fuel" are no longer die-priced (w1), "nothing in the cockpit will
- * take an action until a die is armed" is no longer true (w2), "the armed die
- * pays for the signature" is false (w3), and "buy some at the depot first — that
- * costs a die too" is false (w4). T-196c changes UI BEHAVIOUR only; the teaching
- * copy belongs to T-194, gated behind T-198 precisely so the new economy settles
- * before the tutorial bakes it in. Marked here rather than silently half-fixed.
+ * T-194 · The walkthrough teaches the settled post-M17 economy: Free Actions can
+ * be taken without dice, while Main Actions spend an armed die as their roll or
+ * jump edge.
  */
 export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
   {
@@ -169,7 +164,7 @@ export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
     index: 1,
     title: 'Your Dawn Hand',
     what: 'These are the dice you rolled at dawn. You get one roll a day — no more.',
-    why: 'Each die is one action: sign a job, buy fuel, make a jump, sweep off-lane, sit at a table. When the hand is spent the day is over, so a die is the real currency of Rimward.',
+    why: 'Main Actions spend dice, and the die is your roll or edge. Free Actions like signing work and buying fuel cost no die, so use them before you commit the hand.',
     anchor: 'hand',
     ack: true,
     allow: [],
@@ -179,7 +174,7 @@ export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
     index: 2,
     title: 'Arm a Die',
     what: 'Click any die in the hand to arm it. It lights up when it is ready to spend.',
-    why: 'Nothing in the cockpit will take an action until a die is armed — that is the game telling you what a turn costs before you pay it.',
+    why: 'Arming previews what the die will do: checks show whether it clears the DC, and jumps show the fuel and encounter edge before you pay it.',
     anchor: 'hand',
     ack: false,
     flag: 'dieAssigned',
@@ -189,8 +184,8 @@ export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
     id: 'w3-take-contract',
     index: 3,
     title: 'Sign a Job',
-    what: 'Click an offer on the Manifest Board to sign it. The armed die pays for the signature.',
-    why: 'Your hold is empty and the Guild marker is running. A contract is where every credit in this game starts — the cargo rides with you until you deliver it.',
+    what: 'Click an offer on the Manifest Board to sign it. The signature is free; only HAGGLE spends a die.',
+    why: 'Your hold is empty and the Guild marker is running. Free Actions keep the ship moving, while Main Actions are where a die face matters.',
     anchor: 'manifest',
     ack: false,
     flag: 'signed',
@@ -200,8 +195,8 @@ export const WALKTHROUGH_STEPS: readonly WalkthroughStep[] = [
     id: 'w4-make-the-jump',
     index: 4,
     title: 'Make the Jump',
-    what: 'Arm another die, click your destination on the starmap, then Confirm jump. Short on fuel? Buy some at the depot first — that costs a die too.',
-    why: 'Fuel is the plot. The route preview shows the bill and the PILOT DC before you commit, so a jump is a decision you make with the numbers in front of you.',
+    what: 'Arm another die, click your destination on the starmap, then Confirm jump. Short on fuel? Buy some at the depot first — fueling is free.',
+    why: 'Fuel is the plot. Ordinary jumps always arrive if the tank can pay; the die makes the burn cheaper and lowers encounter odds.',
     anchor: 'starmap',
     ack: false,
     flag: 'jumped',

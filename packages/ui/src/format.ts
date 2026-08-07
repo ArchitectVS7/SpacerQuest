@@ -13,6 +13,7 @@ import {
   Stat,
   FIGHT_FUEL_COST,
   RUN_FUEL_COST,
+  TALK_DC_PER_DISPOSITION,
   EXPLORATION_NAV_DC,
   EXPLORATION_FUEL_COST,
   LOAN_DAILY_RATE,
@@ -73,6 +74,7 @@ import {
   tributeForRound,
   nextRankFor,
   quoteStoryletChoice,
+  check,
   travelPreview,
   navDieFuelDiscount,
   navDieEvasionFactor,
@@ -378,6 +380,127 @@ export function explorationPreview(game: GameState): ExplorationPreview {
     effectiveModifier: game.player.stats[Stat.PILOT] + navBonus(ship),
     canAfford: ship.fuel >= EXPLORATION_FUEL_COST,
   };
+}
+
+export type ActionCheckTone = 'armed' | 'unarmed';
+
+export interface ActionCheckPreview {
+  stat: Stat;
+  dc: number;
+  die: number | null;
+  modifier: number;
+  total: number | null;
+  margin: number | null;
+  success: boolean | null;
+  tone: ActionCheckTone;
+  label: string;
+}
+
+function actionCheckPreview(
+  stat: Stat,
+  modifier: number,
+  dc: number,
+  die: number | null | undefined,
+): ActionCheckPreview {
+  if (die === null || die === undefined) {
+    return {
+      stat,
+      dc,
+      die: null,
+      modifier,
+      total: null,
+      margin: null,
+      success: null,
+      tone: 'unarmed',
+      label: `${statName(stat)} DC ${dc} · arm a die`,
+    };
+  }
+  const result = check(die, modifier, dc);
+  return {
+    stat,
+    dc,
+    die,
+    modifier: result.modifier,
+    total: result.total,
+    margin: result.margin,
+    success: result.success,
+    tone: 'armed',
+    label: `[${die}] ${signedMargin(result.modifier)} vs DC ${dc} · ${
+      result.success ? 'clears it' : 'misses'
+    }`,
+  };
+}
+
+export function explorationCheckPreview(
+  game: GameState,
+  die: number | null | undefined,
+): ActionCheckPreview {
+  return actionCheckPreview(
+    Stat.PILOT,
+    game.player.stats[Stat.PILOT] + navBonus(game.player.ship),
+    EXPLORATION_NAV_DC,
+    die,
+  );
+}
+
+export function haggleCheckPreview(
+  game: GameState,
+  die: number | null | undefined,
+): ActionCheckPreview {
+  return actionCheckPreview(Stat.TRADE, game.player.stats[Stat.TRADE], 12, die);
+}
+
+export function darePeekCheckPreview(
+  game: GameState,
+  die: number | null | undefined,
+): ActionCheckPreview | null {
+  if (!game.dareHand) return null;
+  return actionCheckPreview(
+    Stat.GUILE,
+    game.player.stats[Stat.GUILE],
+    venueParamsFor(game.dareHand.systemId, 'dare').dc,
+    die,
+  );
+}
+
+export type CombatStanceId = 'fight' | 'talk' | 'run';
+
+export function combatStanceCheckPreview(
+  game: GameState,
+  stance: CombatStanceId,
+  die: number | null | undefined,
+): ActionCheckPreview | null {
+  const encounter = game.encounter;
+  if (!encounter) return null;
+  const baseDc = 10 + encounter.interceptor.tier;
+  if (stance === 'fight') {
+    return actionCheckPreview(Stat.GUNS, game.player.stats[Stat.GUNS], baseDc, die);
+  }
+  if (stance === 'run') {
+    return actionCheckPreview(Stat.PILOT, game.player.stats[Stat.PILOT], baseDc, die);
+  }
+
+  // Display-only mirror of combat.ts's talk DC until the engine grows a public
+  // pre-commit quote for combat stances.
+  const disposition =
+    encounter.interceptor.source === 'named'
+      ? (game.npcs.find((npc) => npc.id === encounter.interceptor.id)?.disposition ?? 0)
+      : 0;
+  const dc = baseDc - TALK_DC_PER_DISPOSITION * disposition;
+  return actionCheckPreview(Stat.TRADE, game.player.stats[Stat.TRADE], dc, die);
+}
+
+export function crossingCheckPreview(
+  game: GameState,
+  dc: number,
+  die: number | null | undefined,
+): ActionCheckPreview {
+  return actionCheckPreview(
+    Stat.PILOT,
+    game.player.stats[Stat.PILOT] + navBonus(game.player.ship),
+    dc,
+    die,
+  );
 }
 
 /**
@@ -3457,13 +3580,10 @@ export interface OnboardingPrompt {
  * existing engine surface (`encounter`, `day`, `dawnHand`, `activeContract`,
  * `market.manifestBoard`).
  *
- * T-196c · STALE COPY BELOW, LEFT DELIBERATELY AND OWNED BY T-194. `first-sign`
- * still says "assign a die to a manifest offer", and `dawn-roll` still frames a
- * die as the price of every action. M17 (docs/DAWN-HAND-REDESIGN.md §3) made
- * signing free, so that instruction is now false. T-196c changes UI BEHAVIOUR
- * only; the teaching copy belongs to T-194, which is gated behind T-198 for the
- * express reason that the new economy must settle before the tutorial bakes it
- * in. Marked here rather than silently half-fixed.
+ * T-194 · Post-M17 teaching: dice are no longer generic action points. Main
+ * Actions spend one and read its face; Free Actions cost no die. The first-turn
+ * walkthrough demonstrates the contrast, and these contextual prompts reinforce
+ * it when the scripted walkthrough is not running.
  */
 export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   {
@@ -3478,7 +3598,7 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
     title: 'The Dawn Hand',
     // T-1405 · Hand-size-neutral copy: crew (a First Officer) can grow the dawn
     // hand to 6–7 dice, so the count is no longer a fixed "five".
-    body: 'Your dawn hand — one roll each day. Pick a die, then assign it to an action.',
+    body: 'Your dawn hand — Main Actions spend a die and read its face. Free Actions cost nothing.',
     anchor: 'hand',
     active: (game) => {
       const hand = game.player.dawnHand;
@@ -3488,14 +3608,14 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   {
     id: 'first-sign',
     title: 'Sign a Job',
-    body: 'Your hold is empty — assign a die to a manifest offer to take a job.',
+    body: 'Your hold is empty — click a manifest offer to take a job for free; HAGGLE is the die-spending roll.',
     anchor: 'manifest',
     active: (game) => game.player.activeContract == null && game.market.manifestBoard.length > 0,
   },
   {
     id: 'first-jump',
     title: 'Plot the Jump',
-    body: 'Cargo aboard. Pick a die, plot the destination on the map, then confirm the jump.',
+    body: 'Cargo aboard. Pick a die, plot the destination, and read the fuel discount before you confirm.',
     anchor: 'starmap',
     active: (game) => game.player.activeContract != null,
   },

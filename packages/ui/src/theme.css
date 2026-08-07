@@ -1713,10 +1713,18 @@ body {
   padding: 1px 7px;
   font-weight: 600;
 }
+.haggle-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
 
 /* ---- haggle affordance + drag/drop assignment ---- */
 .haggle {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-display);
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1779,6 +1787,27 @@ body {
 .check-breakdown.crit .cb-expr b,
 .check-breakdown.crit .cb-lbl {
   color: var(--ember-hi);
+}
+.action-check {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--font-data);
+  font-size: 9.5px;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--amber);
+  white-space: normal;
+}
+.action-check.clear {
+  color: var(--ember-hi);
+}
+.action-check.miss {
+  color: var(--amber-dim);
+}
+.action-check.unarmed {
+  color: var(--amber-dim);
+  font-style: italic;
 }
 .nat-juice {
   font-family: var(--font-display);

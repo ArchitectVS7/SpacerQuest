@@ -10,8 +10,8 @@ import {
 } from '@spacerquest/content';
 
 // T-1404 acceptance: the Spacers Hangout as a visitable place, driven ENTIRELY
-// through the real UI (no state injection, no API calls). Visit the pane, wager a
-// die on a Spacer's Dare and read BOTH opposed actors' honest checks; take and
+// through the real UI (no state injection, no API calls). Visit the pane, deal a
+// Spacer's Dare hand and read BOTH opposed actors' honest checks; take and
 // repay a Penny Wise loan through the desk; confirm the pane tracks exactly where
 // the engine says a Hangout exists; and trace every displayed number to an engine
 // export / content constant.
@@ -21,9 +21,9 @@ import {
 // rumor table and Penny Wise's desk — plus the authored house name, room line and
 // per-venue flavour that fourteen `PORT_HANGOUTS` rows carry and that nothing read
 // until now. The SEVENTH venue, `rumor`, is deliberately not dispatchable:
-// `VisitHangout{rumor}` spends a die to emit exactly the `hangoutRumors` lines the
-// rumor table already renders for free, so a paid control would be strictly
-// dominated by one already on screen.
+// `VisitHangout{rumor}` emits exactly the `hangoutRumors` lines the rumor table
+// already renders for free, so an action control would be strictly dominated by
+// one already on screen.
 //
 // FIXTURE: the player starts at Sol-3 (id 1 — the home hall, and since T-121 one
 // of fourteen `hasHangout` core ports) and the

@@ -4731,7 +4731,7 @@ route preview to a non-crossing destination renders no Pilot-DC readout (the die
 "no check" copy instead); a preview to the (unlocked) Nemesis crossing still renders the real
 DC. Gate green.
 
-### T-194 · The dawn hand's die-value mechanic is illegible — teach it, and make success visible — `status: TODO` · `coder: opus` · `after: T-198`
+### T-194 · The dawn hand's die-value mechanic is illegible — teach it, and make success visible — `status: DONE` · `coder: codex` · `after: T-198`
 
 Owner's read, after a live session: "it was not at all apparent why I was adding a d20 to any of my
 tasks. Taking a contract? Making a jump to deliver the contract? Entering the hangout? ... In its
@@ -4779,7 +4779,7 @@ economy, not numbers the owner may still re-tune.
 
 Gate green.
 
-**Delivered (2026-08-07, Codex):** ordinary route previews now render `NAV DIE` instead of the
+**Prerequisite delivered by T-193 (2026-08-07, Codex):** ordinary route previews now render `NAV DIE` instead of the
 dead `PILOT DC`, with no-die copy (`no check · pick a die for jump edge`) until the player arms
 a die; once armed, the same panel shows the engine-owned fuel discount and encounter-evasion
 effect, and passes that die into `travelPreview` so the displayed fuel cost matches the eventual
@@ -4787,6 +4787,18 @@ charge. The Nemesis crossing keeps its real `PILOT DC` branch. Coverage added in
 `packages/ui/src/__tests__/starmap-route-readout.test.ts`; this repo intentionally has no
 React Testing Library/jsdom harness, so the test stays in the existing pure Vitest UI harness
 rather than adding a browser tier.
+
+**Delivered (2026-08-07, Codex):** T-194 now renders a shared live action-check projection for
+every check-based Main Action named in the Accept: Explore (`PILOT` vs nav DC), Haggle (`TRADE`
+vs DC 12), Combat stance buttons (`GUNS`/`TRADE`/`PILOT` vs the stance DC), Peek (`GUILE` vs the
+Dare venue DC), and the Nemesis crossing (`PILOT` vs crossing DC). With no die armed, these
+read as planning DCs; with a die armed, the UI shows the die, effective modifier, DC, and
+clear/miss verdict before the player commits. The walkthrough copy now teaches the Free
+Action/Main Action split directly, and the residual die-blind corners are not given fake roll
+projections: Liar's Dice bid/raise/challenge/fold still stay hidden from the dawn hand, and
+storylet spend-only choices remain labeled as die costs without success/fail claims. Coverage
+added in `packages/ui/src/__tests__/action-check-preview.test.ts` plus the existing
+Explore/Manifest/Combat/Liar's Dice E2E journeys.
 
 ### T-195 · The travel die matters again — fuel discount + encounter evasion, both monotonic — `status: DONE` · `coder: opus` · `after: —`
 
