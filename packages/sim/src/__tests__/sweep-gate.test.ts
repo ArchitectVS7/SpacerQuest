@@ -50,10 +50,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { JOB_POOL_BOARD_SIZE } from '@spacerquest/engine';
+import { Stat } from '@spacerquest/content';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { runCampaign, type CampaignStatsReport, type SimPolicyName } from '../index.js';
-import { aggregate, isCombatWin, type SeedRow } from '../balance/aggregate.js';
+import { aggregate, isCombatWin, summarizeReport, type SeedRow } from '../balance/aggregate.js';
 import * as gateModule from '../balance/gate.js';
 import {
   ABSOLUTE_MAX_FUEL,
@@ -85,6 +86,7 @@ import { main, parseSweepArgs, reportGate, runGate } from '../balance/sweep.js';
 import {
   TRINKET_RIG_MEDIANS,
   TRINKET_RIG_VARIANTS,
+  FIXTURE_MILESTONES,
   cleanReport,
   cleanRows,
   corrupt,
@@ -1124,6 +1126,40 @@ describe('T-167 · the rig sensitivity check', () => {
       );
       expect(found.map((violated) => violated.policy)).toEqual(['fighter']);
       expect(found[0].detail).toContain('all 2 live variants');
+    },
+    SAMPLE_TIMEOUT_MS,
+  );
+
+  it(
+    'T-174 · the live fighter rig moves under fresh-start GUNS/GRIT perturbations',
+    () => {
+      const seeds = Array.from({ length: 120 }, (_, index) => index + 1);
+      const rows = (playerStatDeltas: Partial<Record<Stat, number>>) =>
+        seeds.map((seed) =>
+          summarizeReport(
+            runCampaign(seed, 35, 'fighter', {
+              milestoneDays: FIXTURE_MILESTONES,
+              playerStatDeltas,
+            }),
+          ),
+        );
+      const control = aggregate('t174-fighter-control', rows({}));
+      const variants = [
+        { variant: 'guns_p1', aggregate: aggregate('t174-fighter-guns-p1', rows({ GUNS: 1 })) },
+        { variant: 'grit_p1', aggregate: aggregate('t174-fighter-grit-p1', rows({ GRIT: 1 })) },
+        { variant: 'guns_p2', aggregate: aggregate('t174-fighter-guns-p2', rows({ GUNS: 2 })) },
+        { variant: 'grit_p2', aggregate: aggregate('t174-fighter-grit-p2', rows({ GRIT: 2 })) },
+      ];
+
+      const medians = variants.map(
+        (arm) =>
+          arm.aggregate.byPolicy[0].finalCredits.median - control.byPolicy[0].finalCredits.median,
+      );
+      expect(
+        medians.some((delta) => delta !== 0),
+        `fighter deltas ${medians.join(', ')}`,
+      ).toBe(true);
+      expect(assertVariantsPerturbEveryPolicy(control, variants)).toEqual([]);
     },
     SAMPLE_TIMEOUT_MS,
   );

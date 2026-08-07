@@ -17,6 +17,7 @@ import {
   type DiceBenefit,
   type PowerTier,
   type RenownRankId,
+  type StatBlock,
 } from '@spacerquest/content';
 import {
   FIGHT_FUEL_COST,
@@ -1339,6 +1340,12 @@ export interface RunCampaignExtras {
    * there is deliberately no way to open it without being marked.
    */
   startState?: GameState;
+  /**
+   * T-174 · A fresh-start balance-rig perturbation. Unlike `startState`, this
+   * still begins from `createInitialState(seed)`, so aggregate rows remain
+   * balance measurements rather than synthetic breakage samples.
+   */
+  playerStatDeltas?: Partial<StatBlock>;
   /** Days (by `state.day`, sampled at dawn before the day is played) to record a
    *  {@link MilestoneSample} for. */
   milestoneDays?: readonly number[];
@@ -6567,6 +6574,11 @@ export function runCampaign(
   const milestoneDays = new Set(extras.milestoneDays ?? []);
   const milestones: MilestoneSample[] = [];
   let state = extras.startState ?? createInitialState(seed);
+  if (extras.startState === undefined && extras.playerStatDeltas !== undefined) {
+    for (const [stat, delta] of Object.entries(extras.playerStatDeltas) as [Stat, number][]) {
+      state.player.stats[stat] += delta;
+    }
+  }
   const creditsCurve: number[] = [];
   const daily: CampaignDayStats[] = [];
   let debtClearedDay: number | null = null;

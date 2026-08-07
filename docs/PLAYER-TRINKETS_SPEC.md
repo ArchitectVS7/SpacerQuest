@@ -676,21 +676,21 @@ than shipped silently.
 **Note the asymmetry this creates**, per C4: GUILE is *load-bearing on the NPC side* (the Liar's
 Dice dealer AI is driven by `dealerGuile`). "GUILE is a weak stat" is true of the player only.
 
-### 5.3 GUNS — EXCLUDED, as a measured dead option, with an instrument caveat
+### 5.3 GUNS — EXCLUDED, with the instrument caveat now closed
 
 `guns_p1` changes **2.5%** of campaigns and beats the control on **1 of 8 policies by 15
 credits** (§2.3(d), (f)). On the measurement, a GUNS trinket is a dead option.
 
 > [!IMPORTANT]
-> **The honest caveat, filed as F-151-9 rather than buried.** The `fighter` policy's median is
-> **2,825 credits in every one of the eight variants** — bit-for-bit flat. A policy that does not
-> move under *any* stat change is not measuring what a stat change does to combat. So the rig
-> cannot distinguish *"GUNS is a dead option"* from *"the instrument cannot see GUNS."* The
-> exclusion therefore rests on **two independent legs**: the measurement above, **and** the
-> structural fact that GUNS has no existing content-authorable bonus pathway at all (§5.4), so a
-> GUNS trinket would be the *first* way content can move a GUNS check — a materially larger design
-> step than "one more way". **If the owner wants GUNS in scope, the honest prerequisite is fixing
-> or replacing the `fighter` instrument first, not authoring a row.**
+> **T-174 closes the F-151-9 instrument caveat.** The historical §2.3(b) matrix is still preserved
+> as the finding: the old rig read the `fighter` row flat at **2,825 credits** in all eight columns.
+> T-174 adds a fresh-start stat-delta rig (`runCampaign(..., { playerStatDeltas })`) and feeds
+> control / `guns_p1` / `grit_p1` / `guns_p2` / `grit_p2` fighter arms through
+> `assertVariantsPerturbEveryPolicy`; the predicate returns zero violations, and the measured
+> day-35 medians move (`9630.5` control; `9710`, `9710`, `10177.5`, `9245.5`). The GUNS exclusion
+> therefore no longer rests on instrument uncertainty. It still rests on the original rig's weak
+> effect and on the structural fact that GUNS has no existing content-authorable bonus pathway at
+> all (§5.4), so a GUNS trinket would be the first such path rather than "one more way."
 
 ### 5.4 PILOT and TRADE — IN SCOPE
 
@@ -871,7 +871,7 @@ owner's call, not this task's.
 | **F-151-6** | No existing test pins `player.stats` across a run, so a missing clamp or a double-applied delta would be caught by nothing | R4; the engine suites use stats as scenario setup | **ESCALATED** — any implementation task must add the pin |
 | **F-151-7** | Routine travel is no longer a PILOT check (`travel.ts:610-629`, T-1605); only the one-time Nemesis Crossing survives. PILOT's recurring check surface is the Explore nav DC 12 plus combat retreat | Read directly; confirmed by two reviewers | **CLOSED** — corrects the task's own MEASURE framing |
 | **F-151-8** | `TASKS.md`'s M6 header says stats are *"rolled once at character creation."* They are hard-coded literals (`state.ts:147-153`); nothing rolls them | Read directly; confirmed by four reviewers | **OPEN** — a `TASKS.md` prose correction for the owner |
-| **F-151-9** | **The `fighter` sim policy's day-35 median is 2,825cr in all eight rig variants — bit-for-bit flat under every stat change, including `+2` GRIT.** A policy that does not move under any stat perturbation cannot measure what a stat does to combat, so the rig cannot separate *"GUNS is a dead option"* from *"the instrument cannot see GUNS"* | §2.3(b), (d); `n` = 300 per cell | **ESCALATED — an INSTRUMENT finding, not a balance one.** It is the reason §5.3's GUNS exclusion is argued on two independent legs. Fixing the instrument is the prerequisite for any future GUNS ruling. **An automated detector now exists (T-167, 2026-08-04):** `assertVariantsPerturbEveryPolicy` (`packages/sim/src/balance/gate.ts`) fails when a policy is bit-for-bit identical to the control across every live variant, and is replayed against this exact §2.3(b) matrix in `packages/sim/src/__tests__/sweep-gate.test.ts`. **The finding itself is still OPEN — T-174 owns fixing `fighter`;** what changed is that it can no longer go unnoticed |
+| **F-151-9** | **The historical `fighter` sim policy rig read flat: day-35 median 2,825cr in all eight variants, including `+2` GRIT.** A policy that does not move under any stat perturbation cannot measure what a stat does to combat, so the rig could not separate *"GUNS is a dead option"* from *"the instrument cannot see GUNS"* | §2.3(b), (d); `n` = 300 per historical cell; T-174 live rig `n` = 120 fighter careers per arm | **CLOSED at T-174 (2026-08-07).** The old matrix remains transcribed verbatim as evidence for T-167's detector, but T-174 adds a non-synthetic fresh-start stat-delta hook and a live aggregate test: control / `guns_p1` / `grit_p1` / `guns_p2` / `grit_p2` fighter arms feed `assertVariantsPerturbEveryPolicy`, which returns zero violations. The day-35 medians move (`9630.5`, `9710`, `9710`, `10177.5`, `9245.5`), so future GUNS rulings no longer inherit an instrument-cannot-see-it caveat. |
 | **F-151-10** | `trade_p1`/`trade_p2` drive **life-support failures and scares to zero** (2→0, 7→0) despite TRADE touching neither formula — a second-order routing effect, not a direct one | §2.3(c) | **CLOSED as observed** — evidence for *"check how outcomes are reached, not just who wins"*: a stat delta changes which days happen, not just how well they go |
 
 ---
@@ -936,12 +936,11 @@ succession split itself.
 
 ### 12.4 One thing the owner should know before ruling on GUNS
 
-If the ruling is **A**, §5.3 excludes GUNS partly on a measurement the instrument may not be able
-to make (**F-151-9**: the `fighter` policy is flat at 2,825cr across all eight variants). The
-exclusion is *safe* either way — it ships nothing — but **it should not be read as a settled fact
-about GUNS.** If the owner wants GUNS in scope, the honest order is: fix the instrument, re-measure,
-then rule. This spec does not ask the owner to decide that now; it asks that the ambiguity not be
-laundered into a certainty later.
+If the ruling is **A**, §5.3's original GUNS exclusion used to carry an instrument caveat:
+**F-151-9**, the `fighter` policy's historical flat 2,825cr row. **T-174 closes that caveat** by
+adding a fresh-start stat-delta rig and proving the live fighter aggregate moves under GUNS/GRIT
+perturbations. Future GUNS rulings should therefore re-measure on that rig; they no longer get to
+quote the old flatness as uncertainty.
 
 **RULED (owner, 2026-08-05), all three questions, at T-179:**
 
@@ -975,5 +974,5 @@ itself; if it rules for C, this table is the record of what was declined.
 | *(capstone)* | §9.2 | One batch capstone per milestone, **after `npm run format`**, re-pinning the baseline of record; the fingerprint moves because content moved, which is correct |
 | *(owner, unruled)* | §9.4 | The PARITY LEDGER row: do NPCs wear trinkets, and does a trinket-wearing NPC re-derive `NPC_COMPONENT_STAT_AFFINITY` live or freeze it at spawn |
 | *(owner, unruled)* | §11 | The alternative two reviewers preferred: give GUNS/TRADE a `navBonus`-shaped component pathway instead of a trinket system — damped and death-reset by construction, no `player.stats` write, no save question |
-| *(instrument, prerequisite to any GUNS ruling)* | F-151-9 | Fix or replace the `fighter` sim policy, whose day-35 median is **flat at 2,825cr across all eight rig variants**. Until it moves under a stat perturbation, no measurement can say anything about GUNS — including this spec's own exclusion, which is why §5.3 argues on two legs. The DETECTOR shipped at T-167 (`assertVariantsPerturbEveryPolicy`, `packages/sim/src/balance/gate.ts`); that predicate returning zero violations over the fixed rig's arms is T-174's exit check |
+| *(instrument, prerequisite to any GUNS ruling)* | F-151-9 | **DONE at T-174.** The historical flat `fighter` row stays as T-167's detector fixture, but the live rig now has a fresh-start `playerStatDeltas` hook and an aggregate test where control / GUNS / GRIT fighter arms return zero `assertVariantsPerturbEveryPolicy` violations. Future GUNS rulings should use that rig rather than the old caveat. |
 | *(housekeeping)* | F-151-1, F-151-8 | The `content/components.ts:164` 55% → 60% prose fix, and the `TASKS.md` M6 "rolled once at character creation" correction |

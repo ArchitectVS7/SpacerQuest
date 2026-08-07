@@ -3404,7 +3404,7 @@ All 528 one-sided paths are the new fields; not one shared path moved, which is 
 
 Orchestration: attempts=1/4.
 
-### T-174 · F-151-9: the `fighter` sim policy is bit-for-bit flat under every stat change — fix or replace it — `status: TODO` · `coder: opus` · `after: T-198`
+### T-174 · F-151-9: the `fighter` sim policy is bit-for-bit flat under every stat change — fix or replace it — `status: DONE` · `coder: opus` · `after: T-198`
 
 INSTRUMENT defect: the `fighter` sim policy's day-35 median is 2,825cr in ALL eight rig variants —
 bit-for-bit flat under every stat change, including +2 GRIT. The rig therefore cannot separate
@@ -3421,6 +3421,22 @@ bar; the two-leg workaround
 in `docs/PLAYER-TRINKETS_SPEC.md` §5.3 and the instrument row in §13 are updated to point at the
 fixed instrument; fingerprint discipline stated (instrument moves, rules does not) and the expected
 pinned rows named; gate green.
+
+**Delivered (2026-08-07):** Closed the F-151-9 caveat by adding a fresh-start rig hook,
+`runCampaign(..., { playerStatDeltas })`, that perturbs the player stats immediately after
+`createInitialState(seed)` and therefore remains a real balance measurement rather than a synthetic
+mid-game start. The live T-174 rig runs fighter seeds 1..120 × 35 days with milestone samples at
+10/30, folds each arm through the production aggregate, and feeds control / `guns_p1` / `grit_p1` /
+`guns_p2` / `grit_p2` into `assertVariantsPerturbEveryPolicy`: it returns zero violations.
+Measured day-35 medians move: control **9630.5**, `guns_p1` **9710**, `grit_p1` **9710**,
+`guns_p2` **10177.5**, `grit_p2` **9245.5**. The historical 2,825-flat matrix remains transcribed
+unchanged as T-167's detector fixture; this task proves the current live instrument can see the
+stat perturbation. `docs/PLAYER-TRINKETS_SPEC.md` §5.3, §10's F-151-9 row and §13 now point at the
+fixed rig. Fingerprint discipline: `rulesFingerprint` stays **cabd2112ccf4cefb**; the sim
+instrument changes and the smoke fixture is re-extracted from the unchanged baseline of record
+(`baseline-t175-archetype-ordering.json`) with `instrumentFingerprint` **42da0928b0a76d00**. No
+ordinary campaign report path opts into `playerStatDeltas`, so the expected campaign-degraded row
+movement is **none**.
 
 ### T-183 · F-142-1: a merged aggregate carries no `rulesFingerprint`/`gitCommit` — stamp it at write time — `status: DONE` · `coder: opus` · `after: —`
 
