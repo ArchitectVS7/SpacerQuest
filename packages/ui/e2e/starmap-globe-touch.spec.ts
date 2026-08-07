@@ -36,12 +36,19 @@ import { skipFirstTurnWalkthrough } from './support/career';
 //
 // WHY THIS VIEWPORT AND NOT `devices['Pixel 5']`. The risk under test is TOUCH
 // INPUT, and that is what is emulated here (`hasTouch` + `isMobile`, so the page
-// gets the mobile viewport treatment and real touch events). At Pixel 5's 393px
-// the COCKPIT AS A WHOLE overlaps itself — the manifest board paints across the
-// starmap — which is a pre-existing, task-independent limitation of a fixed
-// console layout, filed in TASKS.md rather than quietly worked around here. A
-// touch test run inside a broken layout would be measuring the layout, not the
-// gesture.
+// gets the mobile viewport treatment and real touch events). The viewport is
+// chosen to isolate that risk: 1024px sits above the 900px breakpoint, so the
+// board is still two columns and the gesture is measured against the layout it
+// was designed in, not against a responsive reflow.
+//
+// (T-219 UPDATE, 2026-08-06. This note used to end "at Pixel 5's 393px the
+// cockpit as a whole overlaps itself … filed in TASKS.md". That is no longer
+// true — T-219 fixed it, and phone width is now a supported surface for the web
+// build per ruling UI-41 in `docs/UI-PRESENTATION-DECISIONS.md`. Pixel 5 layout
+// is measured directly by `e2e/cockpit-phone-layout.spec.ts`, which also carries
+// the `scrollWidth <= clientWidth` claim the last test in this file makes at
+// this viewport. The reason for 1024px survives the fix and is stated above; the
+// layout excuse does not.)
 //
 // A second Playwright PROJECT was deliberately not added: it would double the
 // runtime of all 40+ specs and move the `@tour-one` denominator that

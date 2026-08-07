@@ -353,7 +353,7 @@ appended under the owner-gated M20 header; it is this milestone's build-out.
 
 Compacted 2026-08-06 — kept only as a dependency anchor for open `after:` references; triaged first (no open work found, everything below already had a permanent home). Full record: `git show 428fa274` or `git log --grep="^T-215:" -p -- TASKS.md`. Rulings/findings duplicated in `docs/UI-PRESENTATION-DECISIONS.md` (UI-1, UI-39).
 
-### T-219 · BUG: the cockpit's panes overlap each other at phone width — `status: TODO` · `coder: opus` · `after: T-215`
+### T-219 · BUG: the cockpit's panes overlap each other at phone width — `status: DONE` · `coder: opus` · `after: T-215`
 
 Found during T-215's mobile root-cause pass (2026-08-06) and filed rather than folded into it —
 it is out of that task's scope (T-215 is the starmap's geometry and gestures, and this reproduces
@@ -376,6 +376,86 @@ resolution of this task.
 control is inside the viewport, with an e2e spec pinning it; or (b) a recorded owner ruling that
 phone width is out of scope, written into `docs/UI-PRESENTATION-DECISIONS.md` with the reason,
 and `starmap-globe-touch.spec.ts`'s viewport comment re-pointed at that ruling. Gate green.
+
+**Delivered — route (a), the fix. Route (b) was not available: it requires "a recorded owner
+ruling", no owner was in this loop, and writing a ruling the owner never made would fabricate a
+decision record.** The defect is CSS-only. **No file under `packages/engine`, `packages/content` or
+`packages/sim` was touched** — so no `rulesFingerprint` staling, no content capstone, no save-shape
+change, no migration, and no `CURRENT_SAVE_VERSION` reading is quoted here because none is relevant.
+
+*Root cause, measured at `devices['Pixel 5']` (393×851, clientHeight 727) against the real preview
+build — two independent defects, both in `packages/ui/src/theme.css`:*
+
+1. **Horizontal.** `.screen` is `display: grid` with no `grid-template-columns`, so its one implicit
+   `auto` track took a `min-content` automatic minimum. `.bezel`/`.wire`/`.dock` do not wrap, so
+   that minimum was 398px inside a 341px parent: every child blew out to 398px and the Settings and
+   New game switches measured `right: 424` against a 393px viewport, clipped silently by
+   `.tube { overflow: hidden }` — which is exactly why `document.scrollWidth === clientWidth` while
+   controls sat off screen.
+2. **Vertical.** The `@media (max-width: 900px)` block stacked `.main` to one column while
+   `.col.left` still carried `grid-template-rows: 200px auto`. Bezel 237.6 + dock 225.7 of 727 left
+   the `1fr` row 144.8px, so a 200px starmap row was forced into a 66.4px column: `pane starmap`
+   painted across `pane manifest-board` (h=25.3) and `pane trade` (h=20.2), `pane ship` was 2px.
+
+*Changes:*
+
+- **Tier 1 — structure**, the amended `@media (max-width: 900px)` block, `packages/ui/src/theme.css:3323`
+  (comment) / `3361` (rules). The `200px` row is DELETED, not re-tuned. `.screen` and `.main` take
+  `minmax(0, 1fr)`; `.col`/`.col.left` take `grid-auto-rows: min-content`; `.main` becomes the
+  scroll container (`overflow-y: auto; overflow-x: hidden`) so `body { overflow: hidden }` and
+  `.tube`'s viewport-sized positioning context survive for every absolutely-positioned overlay.
+- **Tier 2 — density**, a new `@media (max-width: 560px)` block, `theme.css:3395` (comment) / `3412`
+  (rules). No structural rules; chrome only. Returns ~100px to the board: bezel 265.8 → 181.5,
+  `.main` 116.7 → 253. Includes `.smsvg { max-height: 190px }`; the T-215 ruling at the `.smsvg`
+  declaration (`theme.css:559`, note at `:569`) forbids RAISING that ceiling, and the comment there now records
+  that this phone-only lowering is that ruling applied, not waived.
+- **The bottom-anchored overlays**, a consolidated `@media (max-width: 560px)` block at
+  `theme.css:4855` (comment) / `4889` (rules). `.storylet-panel` (150px), `.walkthrough[…='hand']` (150px) and
+  `.onboarding[…='hand']` (132px) all held distances chosen against a desktop dock; the phone dock
+  is ~210px, so all three sat on the dawn-hand tray — and the walkthrough card is not
+  `pointer-events: none`, so it ate the die clicks step w2 asks for. Re-anchored to the TOP
+  (`top: 8px; bottom: auto`), not given a bigger `bottom:`, because dock height is content-driven.
+  The block must stay LAST in source: identical specificity means source order is the whole
+  mechanism, and the first cut of the fix put it 500 lines too early, left `bottom: 132px` in force,
+  and produced a 567px-tall coach (a box with both `top` and `bottom` resolved STRETCHES).
+- **`packages/ui/e2e/cockpit-phone-layout.spec.ts`** (new, 7 tests, untagged, per-file `test.use`
+  and no new Playwright project so the `@tour-one` flake denominator does not move). Anti-gaming
+  guards included: pane count must be 4 (unmounting one would satisfy everything else) and the
+  shortest pane ≥ 40px (crushing one also removes its overlaps). **Negative control run:** against
+  the pre-fix `theme.css`, 6 of the 7 fail (`pane starmap: 200.0 | pane ship: 2.0 |
+  pane manifest-board: 25.3 | pane trade: 20.2`); the one that passes is the
+  `scrollWidth <= clientWidth` test, which is the invariant the fix had to PRESERVE.
+- **`packages/ui/src/__tests__/phone-layout.test.ts`** (new, 6 tests). `npm test` is vitest only, so
+  the e2e spec above is outside the mandatory gate; this source scan closes that hole and pins the
+  three declarations the geometry rests on — no pixel `grid-template-rows` on `.col.left`,
+  `minmax(0, 1fr)` on `.screen`/`.main`, and the source-order dependency of the overlay overrides.
+  Negative control: 5 of 6 fail against the pre-fix file.
+- **`docs/UI-PRESENTATION-DECISIONS.md` — new ruling UI-41** (§1, after UI-39; UI-40 was the prior
+  maximum). Records that **phone width IS a supported surface for the web build**, which is the
+  substance of the fork this task was handed, plus the measured evidence and both readers.
+- **`packages/ui/e2e/starmap-globe-touch.spec.ts:37-51`** — the comment claiming the cockpit
+  overlaps itself at 393px was false after this task. Re-pointed at UI-41 and at the new spec; the
+  surviving reason for the 1024px viewport (1024 is above the 900px breakpoint, so the gesture is
+  measured in the layout it was designed in) is stated in its own right.
+
+*Verified unchanged at desktop:* both media tiers are inert above 900px, and every other e2e spec
+runs at 1280×720 except `starmap-globe-touch.spec.ts` at 1024×800.
+
+**Delivered (2026-08-06):** shipped route (a), the CSS-only fix, not route (b) — no owner ruling on
+phone-support was in this loop to record, so writing one would have fabricated a decision. Two
+independent `theme.css` defects (an unconstrained `.screen` grid track blowing controls off-viewport,
+and a fixed 200px starmap row forced into a 66.4px column under the 900px breakpoint) are corrected
+with two new responsive tiers (structure at 900px, density at 560px) plus a re-anchor of three
+bottom-docked overlays; `cockpit-phone-layout.spec.ts` (7 e2e tests, with anti-gaming pane-count and
+min-height guards) and `phone-layout.test.ts` (6 unit tests) pin the geometry, both with negative
+controls proven red against the pre-fix file. `docs/UI-PRESENTATION-DECISIONS.md` records ruling UI-41
+that phone width IS a supported surface for the web build, and the stale overlap comment in
+`starmap-globe-touch.spec.ts` is re-pointed at it. No file under `packages/engine`, `packages/content`
+or `packages/sim` was touched, so no `rulesFingerprint` move, no capstone, and no `CURRENT_SAVE_VERSION`
+change is owed. Scope boundary: this closes the whole cockpit's phone-width layout, not just the
+starmap pane that surfaced it — desktop (>900px) is verified inert under both new media tiers.
+
+Orchestration: attempts=1/4.
 
 ---
 

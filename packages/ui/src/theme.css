@@ -565,7 +565,11 @@ body {
      so every pixel taken here pushes the off-lane sweep's button below the fold.
      Measured at 264px and 320px: both hide the control. The globe was made to
      fill more of the plate by TIGHTENING ITS viewBox instead (260x200 around a
-     168-unit sphere, `format.ts`), which costs the layout nothing. */
+     168-unit sphere, `format.ts`), which costs the layout nothing.
+     T-219 LOWERS this to 190px inside `@media (max-width: 560px)` only. That is
+     the SAME ruling applied, not an exception to it: the ruling forbids RAISING
+     the ceiling because height taken here pushes the sweep control below the
+     fold, and on a 393px plate a shorter globe pushes it back up. */
   max-height: 240px;
   overflow: visible;
   display: block;
@@ -3316,6 +3320,44 @@ body {
 :root[data-text-size='large'] .tube {
   zoom: 1.15;
 }
+/* ---- T-219 · THE NARROW COCKPIT, tier 1: STRUCTURE ---------------------
+   THE RULE THIS BLOCK STATES: the cockpit is a FIXED-HEIGHT INSTRUMENT PANEL
+   ONLY WHILE THE BOARD IS TWO COLUMNS. The moment `.main` collapses to one
+   column — which is exactly what this 900px block does — four panes have to
+   share the height that two used to, and no fixed pixel row can be honoured.
+   Measured at Pixel 5 (393x851, clientHeight 727) BEFORE this fix: the bezel
+   took 237.6px and the dock 225.7px, leaving the `1fr` row just 144.8px, into
+   which `.col.left { grid-template-rows: 200px auto }` forced a 200px starmap
+   row inside a 66.4px column. Result: `pane starmap` (h=200) painted across
+   `pane manifest-board` (h=25.3) and `pane trade` (h=20.2), and `pane ship`
+   was crushed to 2px. So the 200px row is DELETED, not re-tuned — a magic row
+   height is the defect, and a different magic number is the same defect.
+
+   TWO DEFECTS DIE HERE, and they are independent:
+
+   (i) HORIZONTAL. `.screen` is `display: grid` with no `grid-template-columns`,
+       so it has one IMPLICIT `auto` track whose automatic minimum is
+       `min-content`. `.bezel`, `.wire` and `.dock` all overflow visibly and do
+       not wrap, so their 398px min-content sized the track and blew every child
+       out to 398px inside a 341px parent — the Settings and New game buttons
+       measured `right: 424` against a 393px viewport. `.tube { overflow: hidden }`
+       clipped it, which is why `document.scrollWidth === clientWidth` while
+       controls sat off-screen. `minmax(0, 1fr)` replaces that automatic minimum
+       with zero, which is the whole repair. (`.pane` has `overflow: hidden`, so
+       panes never contributed to the blown track — they were its victims.)
+
+   (ii) VERTICAL, described above: every row now sizes to `min-content` and
+        `.main` SCROLLS instead.
+
+   WHY `.main` IS THE SCROLL CONTAINER AND NOT `<body>`. `body { overflow: hidden }`
+   and `.tube { height: 100%; position: relative }` are the positioning context
+   every absolutely-positioned overlay was authored against — `.storylet-panel`,
+   `.onboarding`, `.walkthrough`, `.records-overlay`, `.co-frame`, `.combat-overlay`
+   are all pinned to the VIEWPORT-sized tube. Making the document scroll would
+   slide those overlays out from under their anchors and would break
+   `starmap-globe-touch.spec.ts`'s standing `scrollWidth <= clientWidth`
+   assertion. Scrolling the board alone keeps both intact.
+   READER: `e2e/cockpit-phone-layout.spec.ts`. RULING: UI-41. */
 @media (max-width: 900px) {
   .bezel {
     grid-template-columns: 1fr;
@@ -3325,11 +3367,19 @@ body {
   .readouts {
     justify-self: start;
   }
-  .main {
-    grid-template-columns: 1fr;
+  .screen {
+    grid-template-columns: minmax(0, 1fr);
   }
+  .main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: min-content;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .col,
   .col.left {
-    grid-template-rows: 200px auto;
+    grid-template-rows: none;
+    grid-auto-rows: min-content;
   }
   .dock {
     grid-template-columns: 1fr;
@@ -3339,6 +3389,59 @@ body {
   .hint {
     justify-self: center;
     text-align: center;
+  }
+}
+
+/* ---- T-219 · THE NARROW COCKPIT, tier 2: DENSITY ------------------------
+   PHONE WIDTH ONLY, and DELIBERATELY NO STRUCTURAL RULES — tier 1 above owns
+   the grid; this block only reclaims chrome so the scrolling board gets a
+   usable window. Measured at 393x727: the console frame (tube padding, bezel,
+   dock) was eating 582px of 727, leaving `.main` a 116.7px porthole. This
+   block returns roughly 100px of that to the board.
+
+   It MUST stay after the 900px block in source order: `.bezel`'s padding here
+   has the same specificity as the padding the 900px block sets, so position is
+   what decides it.
+
+   `.smsvg { max-height }` — READ THE T-215 RULING at the `.smsvg` declaration
+   before touching this. That ruling forbids RAISING the 240px ceiling, because
+   every pixel taken pushes the off-lane sweep's button below the fold.
+   LOWERING it inside a phone-only query is the same ruling applied, not
+   ignored: on a 393px-wide plate a 240px-tall globe is already letterboxed by
+   its own viewBox, and the shorter ceiling buys the sweep control back. */
+@media (max-width: 560px) {
+  .tube {
+    padding: 10px;
+  }
+  .screen,
+  .main,
+  .col,
+  .col.left {
+    gap: 8px;
+  }
+  .bezel {
+    padding-top: 0;
+    padding-bottom: 6px;
+    gap: 4px 10px;
+  }
+  .brand h1 {
+    font-size: 15px;
+    letter-spacing: 0.2em;
+  }
+  .readouts {
+    font-size: 11px;
+    gap: 6px;
+  }
+  .ctrls {
+    font-size: 9.5px;
+    gap: 6px;
+  }
+  .dock {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .smsvg {
+    max-height: 190px;
   }
 }
 
@@ -4366,6 +4469,9 @@ body {
     bottom: 210px;
   }
 }
+/* T-219 · The 'hand' anchor is the one this 720px block leaves alone, and on a
+   phone it is the one that matters most — see the consolidated phone-anchor
+   block at the end of this section (`T-219 · THE BOTTOM-ANCHORED OVERLAYS`). */
 /* The rails themselves. `inert` already does the WORK (no pointer events, no
    focus, no AX exposure); these two rules are purely how it READS. */
 [data-rails-off='1'] {
@@ -4743,6 +4849,49 @@ body {
     transform: translateX(-50%);
     top: auto;
     bottom: 200px;
+  }
+}
+
+/* ---- T-219 · THE BOTTOM-ANCHORED OVERLAYS, FLIPPED OFF THE TRAY ---------
+   THE RULE: on a phone, NOTHING may be anchored to the bottom of the tube. The
+   three overlays below are each pinned a fixed distance up from the bottom
+   edge — `.storylet-panel` 150px, `.walkthrough[…='hand']` 150px,
+   `.onboarding[…='hand']` 132px — and every one of those distances was chosen
+   against a desktop dock. The phone dock measures ~210px tall (it stacks to one
+   column under the 900px block), so all three land INSIDE the dawn-hand tray:
+   the third symptom in T-219's reproduction, "the dawn-hand tray sits under the
+   overlay". Measured at 393x727 before this block, against a tray at y 507-717:
+
+     .onboarding[…='hand']   y 385-585  → 78px of tray covered
+     .walkthrough[…='hand']  y 286-567  → 60px, and this one is NOT
+                                          `pointer-events: none` — it is an
+                                          interactive card that would eat the
+                                          very die clicks step w2 asks for
+     .storylet-panel         y 160-567  → 60px
+
+   Anchored to the TOP instead. That is deliberately not a bigger `bottom:` —
+   the dock's height is content-driven (a First Officer grows the dawn hand to
+   6-7 dice), so any distance-from-the-bottom is a number that goes stale. From
+   the top, each overlay covers the readouts it is NOT teaching rather than the
+   interaction it IS. Post-flip: coach 18-205, walkthrough 18-299, storylet
+   18-425 (its `max-height: 56vh` still caps it), tray 507-717, no overlap.
+
+   `bottom: auto` is LOAD-BEARING, not tidiness. With both `top` and `bottom`
+   resolved and `height: auto`, an absolutely-positioned box STRETCHES to span
+   them — the first cut of this fix left `bottom: 132px` in force and produced a
+   567px-tall coach whose three grid children stretched to ~146px apiece.
+
+   AND THIS BLOCK MUST STAY LAST. All three selectors have the same specificity
+   as their base rules (which live ~250, ~400 and ~1250 lines above), so source
+   position is the only thing that decides them. That is why the three are
+   consolidated here instead of homed beside their families.
+   READER: `e2e/cockpit-phone-layout.spec.ts`. RULING: UI-41. */
+@media (max-width: 560px) {
+  .onboarding[data-onboarding-anchor='hand'],
+  .walkthrough[data-walkthrough-anchor='hand'],
+  .storylet-panel {
+    top: 8px;
+    bottom: auto;
   }
 }
 

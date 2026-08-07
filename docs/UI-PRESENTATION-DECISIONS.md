@@ -188,6 +188,43 @@ collision, averaging 4 per frame, with `Arcturus-6`/`Fomalhaut-2` colliding in 2
 current system → set-course target → nearest-to-camera; losers keep their dot and get their label
 back on hover or selection.
 
+**UI-41 — The cockpit is a FIXED-HEIGHT INSTRUMENT PANEL only while the board is two columns.
+Below 900px `.main` becomes the scroll container, every row sizes to `min-content`, and NO pane row
+may carry a fixed pixel height.** (T-219.) Phone width IS a supported surface for the web build —
+that is the substance of this ruling, and it is written down so the next task does not re-litigate
+it. Two rules follow from it and both are mechanical:
+
+- _No fixed row track under the collapse._ Measured at `devices['Pixel 5']` (393×851, clientHeight
+  727): the bezel took 237.6px and the dock 225.7px, leaving the `1fr` row 144.8px for FOUR panes,
+  into which `.col.left { grid-template-rows: 200px auto }` forced a 200px starmap row inside a
+  66.4px column. `pane starmap` then painted across `pane manifest-board` (h=25.3) and `pane trade`
+  (h=20.2) while `pane ship` was crushed to 2px. The repair deletes the pixel row; it does not
+  re-tune it, because a different magic number is the same defect.
+- _No implicit `min-content` track._ `.screen` and `.main` take `minmax(0, 1fr)` columns. A grid
+  container with no `grid-template-columns` gets one implicit `auto` track whose automatic minimum
+  is `min-content`, and `.bezel`/`.wire`/`.dock` do not wrap: that minimum measured 398px inside a
+  341px parent, carrying the masthead's Settings and New game switches to `right: 424` against a
+  393px viewport. `.tube { overflow: hidden }` clipped it silently, which is why
+  `document.scrollWidth === clientWidth` throughout — this class of defect is OVERLAP, and a
+  scroll-width check can never see it.
+
+The scroll container is `.main`, never `<body>`. `body { overflow: hidden }` and `.tube`'s
+viewport-sized positioning context are what every absolutely-positioned overlay was authored
+against; scrolling the document would slide them off their anchors and would break the standing
+`scrollWidth <= clientWidth` assertion in `packages/ui/e2e/starmap-globe-touch.spec.ts`.
+
+**Corollary — at phone width nothing may be anchored to the BOTTOM of the tube.** `.storylet-panel`
+(150px), `.walkthrough[…='hand']` (150px) and `.onboarding[…='hand']` (132px) each held a distance
+chosen against a desktop dock; the phone dock is ~210px tall, so all three sat on the dawn-hand
+tray — and the walkthrough card is not `pointer-events: none`, so it ate the die clicks step w2
+asks for. They are re-anchored to the TOP, not given a larger `bottom:`, because the dock's height
+is content-driven (a First Officer grows the hand to 6–7 dice) and any distance-from-the-bottom
+goes stale.
+
+READER: `packages/ui/e2e/cockpit-phone-layout.spec.ts` measures the geometry;
+`packages/ui/src/__tests__/phone-layout.test.ts` guards the three declarations it rests on inside
+`npm test`, which the e2e suite is not part of.
+
 ---
 
 ## 2. UI state, engine state, and the line between them
