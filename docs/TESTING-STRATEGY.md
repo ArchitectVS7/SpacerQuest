@@ -257,17 +257,36 @@ The second clause is not a preference — it is forced. `packages/engine` depend
 - **Split the Explore validator rather than moving it.** The old file's own header said *"Two things are asserted here and nowhere else: that every authored ROW IS WELL-FORMED, and that the table's VALUE DISTRIBUTION matches the spec's ladder"* — that is sections 1 and 2, and those (20 of its 36 `it` blocks) are now `packages/content/src/__tests__/exploreContent.test.ts`. Sections 3–5 are id resolution against the live roster, the 6,000-seed `resolveExploration` reachability sweep and the band-2 dusk payout; all three are engine work by construction and stayed. One assertion pair crossed the other way: `recoveryDays(vp)`/`apCost(vp)` are engine functions, so the second half of *"no authored row carries a recoveryDays or apCost key"* is now an engine `it` of its own. **No assertion was dropped in the move**, and the helper block is duplicated across the two files on purpose — sharing it would mean one test suite deep-importing the other's `dist/__tests__`, a build-order coupling to save twenty lines of pure function.
 - **Enforced the boundary.** Per **L-020**, prose is not enforcement: `packages/content/src/__tests__/contentPackageBoundary.test.ts` reads the manifest and fails if `@spacerquest/engine`, `@spacerquest/sim` or `@spacerquest/ui` appears in any dependency field, with the cycle argument in the failure message. The failure mode it catches is the *well-intentioned* one — a future pass reading this ruling, deciding the rest of the file "should live with the rows too", and adding a devDependency to make the import resolve.
 
-### The migration ledger (F-164-1)
+### The migration ledger (F-164-1) — closed by T-238
 
-Three blocks are pure-content, are hosted in the engine suite for the historical reason only, and **qualify to move** under the rule above. They are deliberately out of T-164's scope — its charter was the runner and the Explore split, not a mass relocation — and are filed as **F-164-1** in `TASKS.md` so the ledger exists in the repo and not only in this document:
+T-238 moved all three eligible blocks into `packages/content/src/__tests__/`. The engine suite
+keeps only tests that need engine projections or live state. The ledger remains here as the
+permanent outcome record, not as open work.
 
-| block | file | why it qualifies |
-| --- | --- | --- |
-| T-1101 starmap geometry | `packages/engine/src/__tests__/systems.test.ts:11` | imports only `@spacerquest/content` |
-| T-1505a Signal Fragment validation | `packages/engine/src/__tests__/nemesis.test.ts:253` | a content-validator fixture block; no engine import |
-| T-1504c renown-rank validation | `packages/engine/src/__tests__/deeds.test.ts:1179` | same shape as the above |
+Three blocks were pure-content and hosted in the engine suite for the historical reason only:
+
+| block | outcome |
+| --- | --- |
+| T-1101 starmap geometry | moved from deleted `packages/engine/src/__tests__/systems.test.ts` to `packages/content/src/__tests__/starmapContent.test.ts` |
+| T-1505a Signal Fragment validation | moved from `packages/engine/src/__tests__/nemesis.test.ts` to `packages/content/src/__tests__/signalFragmentsContent.test.ts` |
+| T-1504c renown-rank validation | moved from `packages/engine/src/__tests__/deeds.test.ts` to `packages/content/src/__tests__/renownRanksContent.test.ts` |
 
 **Two files explicitly do NOT qualify**, and are named here so nobody re-litigates them: `hangoutContent.test.ts` and `liarsDiceContent.test.ts` assert through `../hangoutRules.js` and `../liarsDiceRules.js`. They are engine-hosted **permanently**, by the second clause of the rule.
+
+## Part J — Playwright first-run stance and title tags (T-240/T-265, 2026-08-07)
+
+Every Playwright spec under `packages/ui/e2e` and `packages/desktop/e2e` must declare what it does
+with the first-run sequence. Most specs call their suite's `skipFirstTurnWalkthrough(page)` helper
+before boot. Specs that deliberately test the first-run flow, or never boot a virgin profile because
+they are page-less source scans, carry a top-level marker:
+`FIRST_RUN_WALKTHROUGH: tests-first-run`, `FIRST_RUN_WALKTHROUGH: preseeded`, or
+`FIRST_RUN_WALKTHROUGH: not-virgin`. `packages/ui/src/__tests__/e2e-source-contracts.test.ts`
+enforces the convention in the root `npm test` gate.
+
+The same Vitest source scan also keeps Playwright title tags narrow: only
+`tour-one-career.spec.ts` and `tour-one-death.spec.ts` may put an `@word` in a test or describe
+title. Everywhere else, tag changes belong in Playwright metadata or the explicit tour-one files,
+not incidental prose.
 
 ### The shapes not chosen
 

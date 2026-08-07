@@ -372,6 +372,12 @@ list**, in the spec, before the code.
 re-derives `band.max × LIARS_DICE_RAISED_CEILING_MULT` for itself. That is a *stricter* rule than
 the one it replaces: it catches the F-148-4 defect, which the old one could not see.
 
+**Enforced at T-243.** `packages/sim/src/__tests__/liars-dice-process.test.ts` scans the source for
+the exact four licensed `liarsDiceTier(...)` call sites and for the forbidden non-engine
+stake-domain mirrors. A fifth live-tier read, a raw non-engine `wagerBandFor(...)` stake-domain
+reader, or a restated raised-ceiling multiplier now fails the gate instead of relying on a manual
+grep.
+
 ---
 
 **LD-25 — `optimal` READS THE STANDING CLAIM. The chosen shape, and the four measured and
@@ -507,9 +513,11 @@ flavour text.
 **The concealment claim (§6.1) is RETIRED from the justification, not repeated.** It is
 mechanically inert — `dealerMove` and `archetypeMove` take no history parameter and hold no
 cross-hand memory, so there is no channel by which a past reveal could reach a future decision. It
-is NOT part of why FOLD is kept, and a later reader must not re-derive the ruling from it. **M4e is
-the milestone that gives archetypes memory** (§16.3); concealment becomes worth something there,
-for free, without this ruling pre-empting it.
+is NOT part of why FOLD is kept, and a later reader must not re-derive the ruling from it.
+**Re-read at T-244 after M4e shipped:** no live task now owns cross-hand memory for
+`dealerMove`/`archetypeMove`, so the §6.1 concealment benefit is retired rather than deferred to a
+phantom owner. A future memory feature must file a new owner, save shape, migration and measurement
+before it can revive concealment as a payoff.
 
 **The two shapes REJECTED, with reasons.**
 
@@ -517,8 +525,9 @@ for free, without this ruling pre-empting it.
   `archetypeMove` — a signature change on both policies plus persisted per-opponent memory, i.e. a
   save-shape change with a migration and a round-trip test, a `rulesFingerprint` move, a capstone
   and an 8,000-row sweep. It would also re-open the archetype ordering LD-25 shipped one task
-  earlier and collide with the open raise-valuation finding (`T-219` / F-176-1). M4e already owns
-  the memory; the correct move is to wait for it rather than to buy it here at full price.
+  earlier and collide with the open raise-valuation finding (`T-219` / F-176-1). **Re-rejected at
+  T-244:** M4e has shipped and did not add that memory channel, so there is no active owner to wait
+  on; buying shape B now is a new rules-and-save feature, not a deferred implementation detail.
 - **(C) change FOLD's economics** (e.g. refund a fraction of `potPlayer`). **LD-7** pins "FOLD
   forfeits seed plus all accumulated antes" as a CLOSED exploit fix, and §6.2 rejected the
   neighbouring shapes (auto-challenge, void) for exactly the gameability a partial refund
@@ -531,7 +540,7 @@ for free, without this ruling pre-empting it.
 `DARE_FOLD_DISPOSITION`, `DARE_WIN_DISPOSITION` or `DARE_LOSS_DISPOSITION` — retuning one of them to
 relocate the crossover would be tuning a number to make the ruling come out, and the ruling is
 precisely that the crossover falls where the constants already are. It does not give the dealer
-memory (M4e's). It does not touch `optimal`'s raise valuation (`T-219`'s). Nothing shipped in
+memory. It does not touch `optimal`'s raise valuation (`T-219`'s). Nothing shipped in
 `packages/engine/src` beyond comments: `rulesFingerprint` was computed before and after and is
 UNMOVED, so no capstone, no sweep and no re-measurement were owed. T-160's standing measurement
 (n = 18,678 post-bid player decision points, FOLD legal at 100.00% and taken at 3.51%) satisfies the
@@ -907,8 +916,11 @@ gambler-only-arm artefact §19.9 and §20.0 record, not a regression.)*
    `probAtLeast(1, u)` — **in the player's favour at every width**. Measured house net/seed
    **−0.045** (4 dice) / **−0.321** (6 dice) against **+0.445 / +0.373** one quarter-band lower;
    at the default band at tier 4 that is **+962 cr/hand to the player against −842**. §16.5 already
-   measured the gambler's median stake-to-band ratio at **100.00%**. The lever is §4.3's whole-hand
-   exposure ruling, not the ante.
+   measured the gambler's median stake-to-band ratio at **100.00%**. T-224's shipped-instrument
+   cut measures the actual dead-zone share at **623 / 8,452 = 7.37%** over 48 gambler careers × 120
+   days, with **1.0 bids/hand**, **66.29%** player wins and **+351.4 cr/hand** to the player
+   (**+464.8 cr/hand at tier 4**, n = 451 dead-zone hands). The lever is §4.3's whole-hand exposure
+   ruling, not the ante; T-224 is blocked on the owner's intended-vs-defect ruling.
 3. **FILED, NOT ABSORBED — F-222-2 (`TASKS.md` T-225): tier 5 caps nothing.**
    `effectiveWagerBand → {min: 0, max: null}` removes the ceiling while `anteFor` freezes the ante at
    the tier-4 reference, so the ratio → 0 as the stake grows. Past `k ≤ 3` the direction **reverses**:
@@ -916,11 +928,20 @@ gambler-only-arm artefact §19.9 and §20.0 record, not a regression.)*
    `k = 4` is admitted from **1,026 cr** (5–200 port) and **5,127** (default band), both inside the
    **32,510** maximum stake measured over 1,600 careers. **T-222 predicted this would not happen and
    was wrong** (§21.6, prediction 3); the ruling above is scoped to bounded tiers in consequence
-   rather than being restated to match.
+   rather than being restated to match. T-225's shipped-instrument cut now measures the live tier-5
+   stake distribution over 48 gambler careers × 120 days: **4,612** tier-5 hands, `k ≤ 4` on
+   **1,725 / 4,612 = 37.40%**, `k ≥ 5` on **8 / 4,612 = 0.17%** (Denebola-5 5 hands, Mira-9 3
+   hands), and **0** fully dissolved hands. T-225 is blocked on the owner's intended-vs-defect
+   ruling for the uncapped veteran ratio.
 4. **FILED, NOT ABSORBED — F-222-3 (`TASKS.md` T-226): the archetype ordering is stake-conditional.**
    `bad − optimal` runs **−21.15 pp** at band floors to **+20.61 pp** mid-band to **0.00** in the dead
    zone. `bad` reads no pot at all, so the whole dependence is `optimal`'s. LD-25 states the ordering
-   without a stake range and no test covers it off the stakes the sweep happens to play.
+   without a stake range and no test covers it off the stakes the sweep happens to play. T-226 now
+   pins that range in `liarsDiceArchetypes.test.ts` at n = 12,000 per cell: floor inversions at four
+   and six dice (**−15.64 pp**, **−10.64 pp**), positive mid-band rows (**+2.08 pp**, **+20.36 pp**),
+   positive tier-5 `k ≤ 4` (**+13.82 pp**) and a re-inverted cheap-port `k ≥ 5` tail (**−2.92 pp**).
+   T-226 is blocked on the owner's ruling whether LD-25 should be restated as a mid-band property or
+   the inversion zones are defects to bake off.
 
 **WHAT THIS RULING DOES NOT DO.** It does not move `DARE_ANTE_BAND_FRACTION`, the ante's reference,
 any wager band, `headroomFor`, `effectiveWagerBand`, `anteFor`, `probClaimTrue`, `BAD_CREDULITY`,

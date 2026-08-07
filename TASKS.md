@@ -2960,6 +2960,8 @@ file touched anywhere is a test.**
   or §4.3's exposure ceiling (that is T-224's), does not touch `effectiveWagerBand` or §4.8 (T-225's),
   and does not add the `dareCells` stake dimension that would name the exact dead-zone share —
   §21.4c bounds it at ≤ 49.6% from `bids/hand = 1.504` and hands the exact figure to T-224.
+  Later correction: T-224 delivered that exact share (**623 / 8,452 = 7.37%**) and T-225 delivered
+  the tier-5 port cut; the scope boundary here remains true.
 - **Gate green**: `npm run format`, `npm test`, `npx tsc -b`, `npm run lint`, `npm run
   format:check`.
 
@@ -3123,7 +3125,7 @@ actually buys what the roster sells, and RULED**. The ruling is **LD-30** in
 
 Orchestration: attempts=1/4.
 
-### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: IN-PROGRESS` · `coder: opus` · `after: T-222`
+### T-224 · F-222-1: the top 3% of every wager band is a DEAD ZONE, and sitting in it is the best play in the game — `status: BLOCKED(Owner ruling: intended dead zone vs defect)` · `coder: codex` · `after: T-222`
 
 **Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4b / §21.7,
 `docs/LIARS-DICE-DECISIONS.md` LD-29, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3d.** `headroomFor`
@@ -3169,7 +3171,24 @@ standing invariants are re-scored alongside** because the fix moves the player's
 and §21.7 gain the outcome; if any rule moves the task takes its own capstone with the moved rows
 predicted first; gate green.
 
-### T-225 · F-222-2: at tier 5 nothing caps the pot/ante ratio, and past `k ≤ 3` the house's own gate misprices — `status: TODO` · `coder: opus` · `after: T-222`
+**Instrument/measurement delivered (2026-08-07, Codex); task now blocks on the owner ruling.**
+`HangoutPlayStats.dareCells` now carries a dead-zone subcut in every existing pool × archetype ×
+tier cell: `deadZoneHands`, `deadZonePlayerWon`, `deadZoneNetCredits` and `deadZoneBids`. The fold
+parks a `DareHandStarted` dead-zone flag by `handId` (`bandMax !== null && seedWager > bandMax -
+ante`) and joins it at `DareHandResolved`, so the settled hand keeps its existing pool/archetype/tier
+attribution without adding an engine event field. Coverage in
+`packages/sim/src/__tests__/campaign-dare-cells.test.ts` pins the zero-fill shape, subset identity,
+and a live gambler sample that reaches the zone.
+
+Measured on HEAD over the repo's widened gambler detector window (48 seeds × 120 days): **623 /
+8,452 = 7.37%** of settled hands sit in the dead zone; the subset has exactly **1.0 bids/hand**,
+**66.29%** player wins and **+351.4 cr/hand** to the player, against **52.89%** and **+174.0
+cr/hand** overall. Tier 4 carries the largest live concentration: **451 / 1,920 = 23.49%** of tier-4
+hands, **66.74%** player wins and **+464.8 cr/hand**. §21.4c and LD-29 now carry these numbers. No
+rule moved and no fix was chosen; the remaining Accept branch is the owner's ruling: intended
+whole-hand exposure feature, or defect to bake off.
+
+### T-225 · F-222-2: at tier 5 nothing caps the pot/ante ratio, and past `k ≤ 3` the house's own gate misprices — `status: BLOCKED(Owner ruling: uncapped tier-5 ratio intended vs defect)` · `coder: codex` · `after: T-222`
 
 **Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4 / §21.7,
 `docs/LIARS-DICE-DECISIONS.md` LD-29, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3d.** Every **bounded**
@@ -3212,7 +3231,28 @@ rather than argued**, since it moves the table against the player at every measu
 re-scored alongside; §21.4 and §21.7 gain the outcome; if any rule moves the task takes its own
 capstone with the moved rows predicted first; gate green.
 
-### T-226 · F-222-3: the archetype ordering is STAKE-CONDITIONAL, and no test covers it off the stakes the sweep happens to play — `status: TODO` · `coder: opus` · `after: T-222`
+**Instrument/measurement delivered (2026-08-07, Codex); task now blocks on the owner ruling.**
+`HangoutPlayStats.dareTier5StakeCells` now carries a zero-filled port cut over every authored
+Liar's Dice table: tier-5 `hands`, `playerWon`, `netCredits`, seated-stake sum/max, `k4Hands`,
+`pastK4Hands`, `pastK4NetCredits`, `pastK4SumSeedWager`, `pastK4MaxSeedWager` and
+`dissolvedHands`. The fold parks the frozen `DareHandStarted` system/stake/opening-gate facts by
+`handId` and joins them at `DareHandResolved`; the gate is computed from `probAtLeast`,
+`dicePerSideForTier`, the frozen `seedWager` and the frozen `ante`, not from copied stake literals.
+Coverage in `packages/sim/src/__tests__/campaign-dare-cells.test.ts` pins the zero-filled port
+shape, the derived boundary helper, subset identities and a live gambler sample that reaches the
+past-`k <= 4` population.
+
+Measured on HEAD over the same widened gambler detector window (48 seeds × 120 days): tier 5
+accounts for **4,612** settled hands, **53.69%** player wins and **+295.7 cr/hand**, with mean
+seated stake **4,381.5 cr** and max **28,045 cr**. The opening gate reaches `k <= 4` on **1,725 /
+4,612 = 37.40%** of tier-5 hands. It reaches **past** `k <= 4` (`k >= 5`) on only **8 / 4,612 =
+0.17%** of tier-5 hands, all at the two cheapest effective-ante ports: **Denebola-5** (5 / 338,
+max stake 28,045, EV **-4,103.4 cr/hand**) and **Mira-9** (3 / 425, max stake 16,687, EV
+**+4,324.3 cr/hand**). Full dissolution remains **0** hands. §21.4, §21.7, LD-29 and §3.3d now
+carry these numbers. No rule moved and no fix was chosen; the remaining Accept branch is the
+owner's ruling: intended uncapped veteran-table ratio, or defect to bake off.
+
+### T-226 · F-222-3: the archetype ordering is STAKE-CONDITIONAL, and no test covers it off the stakes the sweep happens to play — `status: BLOCKED(Owner ruling: mid-band property vs defect)` · `coder: codex` · `after: T-222`
 
 **Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4 / §21.7,
 `docs/LIARS-DICE-DECISIONS.md` LD-29.** LD-25 publishes `bad − optimal > 0` as a property of the
@@ -3246,7 +3286,29 @@ either way `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` gains an 
 RED if the range moves; §21.7 gains the outcome; if any rule moves the task takes its own capstone
 with the moved rows predicted first; gate green.
 
-### T-227 · F-223-1: the player is never told which of the house's three seats is the hard one — `status: TODO` · `coder: opus` · `after: T-223`
+**Measurement/regression delivered (2026-08-07, Codex); task now blocks on the owner ruling.**
+`packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` now pins the ordering over a stake-axis
+fixture computed from `probAtLeast`, `anteFor`, `wagerBandFor`, `effectiveWagerBand` and
+`dicePerSideForTier`, with no copied stake literal from the write-up. The shipped terminating-hand
+simulator was parameterized by seated stake/ante/headroom, then the regression measured six cells at
+**n = 12,000** per cell:
+
+| cell | seated stake / ante | `bad` player win | `optimal` player win | `bad - optimal` |
+| --- | ---: | ---: | ---: | ---: |
+| four-dice floor | 25 / 30 | 30.50% | 46.14% | **-15.64 pp** |
+| four-dice mid-band (`k >= 2`) | 99 / 30 | 30.27% | 28.18% | **+2.08 pp** |
+| six-dice floor | 25 / 30 | 51.89% | 62.53% | **-10.64 pp** |
+| six-dice mid-band (`k >= 3`) | 226 / 30 | 52.30% | 31.94% | **+20.36 pp** |
+| tier-5 `k <= 4` | 5,127 / 90 | 52.56% | 38.73% | **+13.82 pp** |
+| tier-5 `k >= 5` cheap-port tail | 13,537 / 18 | 53.77% | 56.70% | **-2.92 pp** |
+
+This closes the test gap without moving any production rule: the ordering is now enforced where it
+is actually claimed to hold (bounded mid-band and tier-5 `k <= 4`) and intentionally goes red if
+the inversion zones move without a ruling. No rule, save shape, sim instrument or smoke fixture
+moved. The remaining Accept branch is the owner's ruling: record LD-25 as a mid-band property with
+this range, or rule the floor/deep-tail inversions defects to bake off.
+
+### T-227 · F-223-1: the player is never told which of the house's three seats is the hard one — `status: BLOCKED(Owner disclosure ruling)` · `coder: codex` · `after: T-223`
 
 **Filed at T-223 (2026-08-06), `docs/HANGOUT_REDESIGN.md` §7 Finding F-223-1 /
 `docs/LIARS-DICE_REDESIGN.md` §22.6 / `docs/LIARS-DICE-DECISIONS.md` LD-30.** Content authors a
@@ -3285,11 +3347,15 @@ its three authored strings (T-146's), and does **not** import a content constant
 §22.6 and the F-223-1 finding gain the outcome; if any rule moves the task takes its own capstone
 with the moved rows predicted first; gate green.
 
+**Blocked by Codex (2026-08-07):** no code path is selected until the owner rules what the player
+should be told about the seat ladder and when. The task explicitly accepts "accept as-is" only as a
+recorded owner ruling, not as an agent inference.
+
 ---
 
 ## M10 — Harvested: Explore, deeds and the recovery ladder
 
-### T-171 · Deed supply after Explore's 10× event-rate drop — an owner ruling on the sealed-pod line — `status: TODO` · `coder: opus` · `after: T-198`
+### T-171 · Deed supply after Explore's 10× event-rate drop — an owner ruling on the sealed-pod line — `status: BLOCKED(Owner sealed-pod supply ruling)` · `coder: codex` · `after: T-198`
 
 F-115-B left an unanswered supply question. Explore's per-outcome event rate fell ~10× by design
 (a board now draws one row of 100 instead of walking three legs), and on
@@ -3309,7 +3375,10 @@ the post-ruling per-career slate-completion number re-measured on `COVERAGE_SEED
 beside the pre-ruling two-in-sixty-five; the ruling written into the Explore spec beside §10.4's
 other open calls; gate green.
 
-### T-172 · Re-measure per-band recovery collection and forfeiture — prove band 4 is reachable after T-131 — `status: TODO` · `coder: opus` · `after: T-198`
+**Blocked by Codex (2026-08-07):** this is explicitly a sealed-pod supply ruling with four owner
+choices. No implementation branch can be chosen without that recorded ruling.
+
+### T-172 · Re-measure per-band recovery collection and forfeiture — prove band 4 is reachable after T-131 — `status: DONE` · `coder: opus` · `after: T-198`
 
 T-116 measured that the recovery ladder forfeits 75.8% of everything it defers (1,553 of 2,049
 resolved recoveries, essentially all `departed`) with ZERO band-4 payouts in 14,400 simulated days
@@ -3325,6 +3394,13 @@ a stated seeds × days window, with band 4's post-T-131 payout count stated expl
 T-116's zero-in-14,400-days baseline; `docs/EXPLORE_REDESIGN.md` §9.4 updated with the post-T-131
 numbers; if band 4 is still unreachable that is filed as a finding rather than smoothed over; gate
 green.
+
+**Delivered (2026-08-07):** `packages/sim/src/__tests__/recovery-band-measurement.test.ts`
+measures seeds 1..120 × 120 days (`explorerPolicy`) and records the resolved recovery ladder by
+band in `docs/EXPLORE_REDESIGN.md` §9.4. Post-T-131 band 4 is reachable: 259 total band-4
+recoveries, 205 collected and 54 forfeited, against T-116's zero-in-14,400-days baseline. The
+calendar recovery payout count remains 0 because bands 3-4 are now same-day extra-dice recoveries;
+that timing distinction is pinned in the measurement and the write-up.
 
 ---
 
@@ -3397,7 +3473,7 @@ All 528 one-sided paths are the new fields; not one shared path moved, which is 
 
 Orchestration: attempts=1/4.
 
-### T-174 · F-151-9: the `fighter` sim policy is bit-for-bit flat under every stat change — fix or replace it — `status: TODO` · `coder: opus` · `after: T-198`
+### T-174 · F-151-9: the `fighter` sim policy is bit-for-bit flat under every stat change — fix or replace it — `status: DONE` · `coder: opus` · `after: T-198`
 
 INSTRUMENT defect: the `fighter` sim policy's day-35 median is 2,825cr in ALL eight rig variants —
 bit-for-bit flat under every stat change, including +2 GRIT. The rig therefore cannot separate
@@ -3414,6 +3490,22 @@ bar; the two-leg workaround
 in `docs/PLAYER-TRINKETS_SPEC.md` §5.3 and the instrument row in §13 are updated to point at the
 fixed instrument; fingerprint discipline stated (instrument moves, rules does not) and the expected
 pinned rows named; gate green.
+
+**Delivered (2026-08-07):** Closed the F-151-9 caveat by adding a fresh-start rig hook,
+`runCampaign(..., { playerStatDeltas })`, that perturbs the player stats immediately after
+`createInitialState(seed)` and therefore remains a real balance measurement rather than a synthetic
+mid-game start. The live T-174 rig runs fighter seeds 1..120 × 35 days with milestone samples at
+10/30, folds each arm through the production aggregate, and feeds control / `guns_p1` / `grit_p1` /
+`guns_p2` / `grit_p2` into `assertVariantsPerturbEveryPolicy`: it returns zero violations.
+Measured day-35 medians move: control **9630.5**, `guns_p1` **9710**, `grit_p1` **9710**,
+`guns_p2` **10177.5**, `grit_p2` **9245.5**. The historical 2,825-flat matrix remains transcribed
+unchanged as T-167's detector fixture; this task proves the current live instrument can see the
+stat perturbation. `docs/PLAYER-TRINKETS_SPEC.md` §5.3, §10's F-151-9 row and §13 now point at the
+fixed rig. Fingerprint discipline: `rulesFingerprint` stays **cabd2112ccf4cefb**; the sim
+instrument changes and the smoke fixture is re-extracted from the unchanged baseline of record
+(`baseline-t175-archetype-ordering.json`) with `instrumentFingerprint` **42da0928b0a76d00**. No
+ordinary campaign report path opts into `playerStatDeltas`, so the expected campaign-degraded row
+movement is **none**.
 
 ### T-183 · F-142-1: a merged aggregate carries no `rulesFingerprint`/`gitCommit` — stamp it at write time — `status: DONE` · `coder: opus` · `after: —`
 
@@ -3529,7 +3621,7 @@ never after. Everything lands in ONE commit: code, the new suite (11 tests), the
 
 Orchestration: attempts=1/4.
 
-### T-184 · Smuggler contract options are `chosen` more often than they were `offered` — the all-weights-zero corner — `status: TODO` · `coder: opus` · `after: T-198`
+### T-184 · Smuggler contract options are `chosen` more often than they were `offered` — the all-weights-zero corner — `status: DONE` · `coder: opus` · `after: T-198`
 
 **RENUMBERED (2026-08-03):** this block was filed as `T-176`, colliding with the earlier `T-176`
 (F-160-2, line 911) — same collision as the T-175→T-183 renumber above. No other file referenced
@@ -3550,11 +3642,31 @@ leave-it-visible clamp comments are updated to point at the ruling; this touches
 `packages/engine/src/npc.ts`, so `rulesFingerprint` moves and the expected pinned rows are named up
 front; gate green.
 
+**Delivered (2026-08-07):** Ruled the corner precisely and encoded it at the picker: `pickIntent`'s
+all-zero table remains the existing Idle veto, while `pickContract`'s all-zero board is different
+because N10 deliberately made the contract selector total on a live board. When every contract
+score is 0, `pickContract` now records that long-standing fallback as uniform positive trace
+weights (`1` per board slot) instead of reporting a zero-score slot as unreachable; the untraced
+gameplay path keeps the same board, same tie-break draw, same chosen index and same RNG state. The
+regression lives at the source (`packages/engine/src/__tests__/npc.test.ts`) and at the report
+surface (`packages/sim/src/__tests__/balance-report.test.ts`), and
+`docs/BALANCE-TELEMETRY_SPEC.md` §7.3 records the ruling beside F-140-2. Re-measurement:
+`balance:sweep --label t184-trace-fixed --seeds 25 --days 35 --policies smuggler
+--trace-npc-decisions` emitted **31,070** trace lines; **669** contract decisions used the uniform
+fallback, and a direct chosen/offered reduction found **0** bars with `chosen > offered`. Fingerprint
+discipline: `rulesFingerprint` moves **cabd2112ccf4cefb → fb81de4fa8120bbb**; the full 8-shard
+capstone `t184-contract-fallback` (8,000 rows, milestone days 21/29/30/41/60/120, all eight
+policies) passed every shard and merge gate with **0 invariant violations**. The diff from
+`baseline-t175-archetype-ordering.json` to `baseline-t184-contract-fallback.json` reports
+**NOTHING MOVED** across compared fields, so the expected pinned row movement is none; the smoke
+fixture is re-extracted from `baseline-t184-contract-fallback.json` with `instrumentFingerprint`
+**42da0928b0a76d00**.
+
 ---
 
 ## M12 — Harvested: sim policies under duress
 
-### T-178 · F-159-2: the fuel-starvation strand no policy branch can escape — the fighter's spend ordering under duress — `status: TODO` · `coder: opus` · `after: T-198`
+### T-178 · F-159-2: the fuel-starvation strand no policy branch can escape — the fighter's spend ordering under duress — `status: DONE` · `coder: codex` · `after: T-198`
 
 A fuel-starvation strand no policy branch can escape. On the post-T-159 tree, seed 157 × 35 days is
 the single remaining `fighter` stall at ≥ 5 (19 consecutive zero-income days) and it is NOT a
@@ -3575,6 +3687,19 @@ earner the stranded ship can reach) or is ruled an accepted terminal state with 
 recorded; `docs/BALANCE-POLICY.md` D.2a and the `sweep-gate.yml` header updated to match; the gate's
 seed range is revisited so the class is measurable rather than merely outside CI; fingerprint
 discipline stated; gate green.
+
+**Delivered (2026-08-07):** CLOSED AS ALREADY RESOLVED ON THE CURRENT TREE. The T-178 rerun
+`runCampaign(157, 35, 'fighter')` now reports `longestZeroIncomeStreak = 0` and
+`fuelStarvationDays = 0`; the seed no longer reaches the T-159 19-day strand. The closing
+mechanism is the later fighter duress pair already in `packages/sim/src/index.ts`:
+`planCrippledRepair` restores the combat-shrunk fuel ceiling before refuel, and
+`planStrandedExplore` gives a no-flyable-leg ship a port-side income verb when it has the fuel
+to work locally. The 1..200 × 35-day competent-policy scan reports ZERO seeds at or above the
+five-day stall bar (worst streaks: trader 1, fighter 1, explorer 0, smuggler 0, gambler 0).
+Regression coverage pins seed 157 beside the earlier T-199 rim-strand pins, and
+`.github/workflows/sweep-gate.yml` now runs the live gate at `--seeds 200`, bringing seed 157
+inside CI instead of documenting it outside the old 1..60 range. No rules or instrument
+fingerprint moves: this task changes docs, CI sample size, and a live regression pin only.
 
 ---
 
@@ -3602,7 +3727,7 @@ task halts `BLOCKED` for the owner and is never self-approved.
 12.3 = W1 (keep write-once). Recorded in full in `docs/PLAYER-TRINKETS_SPEC.md` §12. No build
 scheduled; `player.stats` stays write-once; F-151-5/F-151-6 stay parked.
 
-### T-180 · N8 — the actor-parameterised `resolveVisitHangout`, un-gated but unscheduled — `status: TODO` · `coder: opus` · `after: T-198`
+### T-180 · N8 — the actor-parameterised `resolveVisitHangout`, un-gated but unscheduled — `status: BLOCKED(Owner scheduling: future work, not scheduled here)` · `coder: codex` · `after: T-198`
 
 N8 is now UN-GATED but NOT scheduled: the owner's 2026-08-02 ruling on `docs/NPC_REDESIGN.md`'s
 PARITY LEDGER `| VisitHangout |` row explicitly does not commit to the build — "unblocked as future
@@ -3622,7 +3747,10 @@ explicitly re-deferred with a reason; `gambler` no longer needs its entry in
 `ACKNOWLEDGED_COVERAGE_GAPS`; its own capstone is run and the four baseline pointers re-pinned;
 `docs/NPC_REDESIGN.md`'s STATUS BOARD and PARITY LEDGER row updated; gate green.
 
-### T-181 · D7's not-built alternative: a per-port interest-rate multiplier on `LOAN_DAILY_RATE` — `status: TODO` · `coder: opus` · `after: T-198`
+**Blocked by Codex (2026-08-07):** the task text records the owner ruling as "unblocked as future
+work, not scheduled here." Treating that as scheduled implementation would contradict the ruling.
+
+### T-181 · D7's not-built alternative: a per-port interest-rate multiplier on `LOAN_DAILY_RATE` — `status: BLOCKED(UAT/playtest read required first)` · `coder: codex` · `after: T-198`
 
 The per-port INTEREST RATE multiplier on `LOAN_DAILY_RATE` — the alternative logged under owner
 ruling D7 and explicitly NOT built by T-133 ("the previously-logged interest-rate-multiplier
@@ -3637,6 +3765,9 @@ distinction is recorded first; then either a per-port `LOAN_DAILY_RATE` multipli
 (read through an accessor, never an `if (systemId === ...)` branch in the engine, per T-133's
 standing rule) with its band pinned by accessor rather than literal, or the alternative is closed
 with the reason recorded in the D7 log; gate green.
+
+**Blocked by Codex (2026-08-07):** the acceptance path requires the UAT/playtest read before either
+shipping or closing the multiplier alternative.
 
 ---
 
@@ -4642,7 +4773,7 @@ this one.
 
 ## M16 — Owner UAT pass 3: the dawn-hand die is illegible (2026-08-04)
 
-### T-193 · BUG: the starmap shows a "PILOT DC" for every jump, but ordinary jumps never roll against it — `status: TODO` · `coder: opus` · `after: T-198`
+### T-193 · BUG: the starmap shows a "PILOT DC" for every jump, but ordinary jumps never roll against it — `status: DONE` · `coder: codex` · `after: T-198`
 
 Found while explaining the dawn-hand mechanic to the owner (they could not tell what assigning a
 die to a jump does — see T-194 for the full finding). Root cause, verified in code:
@@ -4675,7 +4806,7 @@ route preview to a non-crossing destination renders no Pilot-DC readout (the die
 "no check" copy instead); a preview to the (unlocked) Nemesis crossing still renders the real
 DC. Gate green.
 
-### T-194 · The dawn hand's die-value mechanic is illegible — teach it, and make success visible — `status: TODO` · `coder: opus` · `after: T-198`
+### T-194 · The dawn hand's die-value mechanic is illegible — teach it, and make success visible — `status: DONE` · `coder: codex` · `after: T-198`
 
 Owner's read, after a live session: "it was not at all apparent why I was adding a d20 to any of my
 tasks. Taking a contract? Making a jump to deliver the contract? Entering the hangout? ... In its
@@ -4722,6 +4853,27 @@ economy, not numbers the owner may still re-tune.
    this one.
 
 Gate green.
+
+**Prerequisite delivered by T-193 (2026-08-07, Codex):** ordinary route previews now render `NAV DIE` instead of the
+dead `PILOT DC`, with no-die copy (`no check · pick a die for jump edge`) until the player arms
+a die; once armed, the same panel shows the engine-owned fuel discount and encounter-evasion
+effect, and passes that die into `travelPreview` so the displayed fuel cost matches the eventual
+charge. The Nemesis crossing keeps its real `PILOT DC` branch. Coverage added in
+`packages/ui/src/__tests__/starmap-route-readout.test.ts`; this repo intentionally has no
+React Testing Library/jsdom harness, so the test stays in the existing pure Vitest UI harness
+rather than adding a browser tier.
+
+**Delivered (2026-08-07, Codex):** T-194 now renders a shared live action-check projection for
+every check-based Main Action named in the Accept: Explore (`PILOT` vs nav DC), Haggle (`TRADE`
+vs DC 12), Combat stance buttons (`GUNS`/`TRADE`/`PILOT` vs the stance DC), Peek (`GUILE` vs the
+Dare venue DC), and the Nemesis crossing (`PILOT` vs crossing DC). With no die armed, these
+read as planning DCs; with a die armed, the UI shows the die, effective modifier, DC, and
+clear/miss verdict before the player commits. The walkthrough copy now teaches the Free
+Action/Main Action split directly, and the residual die-blind corners are not given fake roll
+projections: Liar's Dice bid/raise/challenge/fold still stay hidden from the dawn hand, and
+storylet spend-only choices remain labeled as die costs without success/fail claims. Coverage
+added in `packages/ui/src/__tests__/action-check-preview.test.ts` plus the existing
+Explore/Manifest/Combat/Liar's Dice E2E journeys.
 
 ### T-195 · The travel die matters again — fuel discount + encounter evasion, both monotonic — `status: DONE` · `coder: opus` · `after: —`
 
@@ -6900,7 +7052,7 @@ rewards — eventually most of `packages/content`), run against a **cloned** con
 overwrites the committed source, click a test button that runs the real balance sweep, and see
 results — ideally visualized — before deciding whether to actually make the change for real.
 
-### T-215 · Build: the 3D lat/long globe Starmap, replacing the flat 2D projection — `status: TODO` · `coder: opus` · `after: T-188`
+### T-215 · Build: the 3D lat/long globe Starmap, replacing the flat 2D projection — `status: DONE` · `coder: codex` · `after: T-188`
 
 T-188's ruling (2026-08-05): build candidate 4B, the rotatable 3D globe, as the live Starmap in
 `App.tsx` — not a prototype, not a toggle-able alternative to the existing flat SVG projection,
@@ -6934,7 +7086,27 @@ sample of rotations, not just one; the current-system/course-lane brightness beh
 the ruling; the mobile-open failure is root-caused and fixed or explicitly re-scoped with a
 reason recorded; the old flat 2D projection code is deleted; gate green.
 
-### T-216 · BUG: `theme.css`'s "one phosphor colour" law is already broken in two live UI spots — `status: TODO` · `coder: opus` · `after: —`
+**Delivered (2026-08-07, Codex):** the flat `starmapProjection`/SVG plot path is gone. The
+cockpit now renders `starmapGlobeProjection` from the committed `coordinates3D` geometry through a
+Three.js WebGL globe with dotted latitude/longitude graticule rings, depth-sorted system dots,
+drag rotation and wheel zoom. Route lanes are recomputed from the current docked system: reachable
+lanes render dim by default and the selected course renders as the single bright lane.
+
+Label collision suppression now uses browser-measured `.smlabel` dimensions from an off-screen
+measurement bin, with the priority order current system → selected target → nearest-to-camera;
+unselected losers keep their dot and drop only the label. The fast
+`starmap-label-overlap.test.ts` successor samples globe rotations, and `e2e/starmap.spec.ts`
+adds rendered-DOM overlap checks plus canvas-pixel checks.
+
+Mobile root cause: the old narrow layout forced `.col.left` to a 200px starmap row and kept the
+whole `.screen` in a desktop-style fixed grid, so the taller 3D globe opened under later cockpit
+rows; the depth-sorted system buttons also sat above onboarding's dismiss button. Fixed by making
+the mobile screen a vertical scrolling stack, sizing mobile main rows to content, giving the
+globe pane a mobile opening height, and raising onboarding above starmap node depth. Verified by
+Playwright canvas-pixel checks and screenshots at `1280x900` and `390x700`
+(`test-results/t215-starmap-desktop.png`, `test-results/t215-starmap-mobile.png`).
+
+### T-216 · BUG: `theme.css`'s "one phosphor colour" law is already broken in two live UI spots — `status: DONE` · `coder: codex` · `after: —`
 
 **Found incidentally** during the T-186 visual-identity bake-off (2026-08-05), by the engineering-feasibility reviewer, while establishing the ground truth that "there is currently no second hue anywhere in the shipped UI" — that premise turned out to be false, and this is filed per the Bug Discovery Policy rather than held for later. Confirmed against source directly, not taken on the reviewer's word:
 
@@ -6958,7 +7130,14 @@ None of this is dead CSS — both class families are confirmed rendered, not jus
 
 **Accept:** `--accent` and `--line` are either defined (as amber-family values, closing the leak) or deliberately promoted to real, documented tokens with `theme.css`'s header comment updated to no longer claim zero second hues; `.as-hostile`'s hardcoded `#e0562a` is resolved the same way — token-ized amber or deliberately kept and documented; a screenshot of `.ship-honor` (Records → ship honors) and an attitude-hostile row confirms the fix; gate green.
 
-### T-217 · BUG: the Galactic Wire ticker scrolls underneath the LOG button — `status: TODO` · `coder: opus` · `after: —`
+**Delivered (2026-08-07, Codex):** `--accent` and `--line` are now real amber-family tokens
+(`--ember-hi` / `--hair`), so the honor board no longer falls through to teal or blue-grey.
+Hostile alliance standing no longer uses the hardcoded orange-red leak; it is rendered as
+amber reverse-video (`--ember` background, `--tube` text), giving a non-hue distinction from
+neutral. Added `packages/ui/src/__tests__/theme-token.test.ts` to pin the token definitions and
+forbid the retired fallback literals.
+
+### T-217 · BUG: the Galactic Wire ticker scrolls underneath the LOG button — `status: DONE` · `coder: codex` · `after: —`
 
 **Found incidentally** during the T-186 visual-identity bake-off (2026-08-05), by the visual-design
 reviewer, and confirmed independently against a screenshot taken earlier the same session (not
@@ -6981,7 +7160,13 @@ of `position: absolute` + a magic-number sibling offset) rather than a hardcoded
 can drift again the next time something is added to `.cap`; a screenshot of the Galactic Wire band
 confirms `GALACTIC WIRE [LOG]` and the ticker text no longer overlap; gate green.
 
-### T-218 · Build: ship the "one phosphor, two materials" visual identity — `status: TODO` · `coder: opus` · `after: T-186`
+**Delivered (2026-08-07, Codex):** `.wire` now lays out the cap and ticker in a two-column grid,
+with `.cap` in normal flow and `.ticker` starting in the second column instead of relying on a
+hardcoded `138px` left pad. Reduced-motion mode no longer reintroduces that magic offset. Added
+an existing-wire Playwright assertion that the first ticker item starts after the live cap box,
+including the LOG button.
+
+### T-218 · Build: ship the "one phosphor, two materials" visual identity — `status: DONE` · `coder: codex` · `after: T-186`
 
 T-186's ruling (2026-08-05): implement candidate D — amber stays the only hue and the only thing
 that emits light; every structural/inert surface (panel chassis, bezels, frames, dividers)
@@ -7026,7 +7211,21 @@ redrift back toward either the pre-T-186 baseline or the rejected fuller-synthes
 and T-217 (both filed during the bake-off) are either fixed in the same pass or explicitly left
 to their own tasks with a reason recorded; gate green.
 
-### T-209 · CHECKPOINT — do not start M20 until the owner says so — `status: TODO` · `coder: —` · `after: —` · `[BLOCKED BY = Owner priority — resume after visual/core-loop work]`
+**Delivered (2026-08-07, Codex):** added a neutral material family in `theme.css`
+(`--steel-*`, `--well`, `--frame`) without moving the five existing amber/phosphor token values.
+Broad structural chrome now reads as unlit metal/well material (tube, panes, chips, fuel well,
+starmap frame, route preview, wire cap, dock, dice and shared button bodies), while amber remains
+the only emitted light. The two ruled interaction edits are pinned: `.slot.ready` is now an
+outlined well with amber border/text/glow instead of reverse-video fill, and `.die.sel` keeps the
+dark die body with an amber inset ring/glow instead of an inverted light fill. PRD §4 now names
+the fiction: amber CRT readouts set into unlit machined-metal chassis.
+
+T-216 and T-217 were already closed earlier in this branch, so this pass did not reopen them.
+Added `theme-token.test.ts` coverage for the steel token family and the two reverse-video
+discipline selectors. Screenshot pass captured the six-panel cockpit and mobile first view at
+`test-results/t218-material-desktop.png` and `test-results/t218-material-mobile.png`.
+
+### T-209 · CHECKPOINT — do not start M20 until the owner says so — `status: BLOCKED(Owner priority — resume after visual/core-loop work)` · `coder: codex` · `after: —` · `[BLOCKED BY = Owner priority — resume after visual/core-loop work]`
 
 This task exists ONLY to keep every other task in this milestone from being picked up by
 `/orchestrate all`. It has no automated deliverable — the runner will find nothing to prepare and
@@ -7034,6 +7233,9 @@ should commit it `BLOCKED(Owner priority — resume after visual/core-loop work)
 immediately per the standard human-gate protocol. **Do not build anything for this task.** The
 owner un-gates the milestone by flipping this task's status directly (not via the orchestrator) or
 by explicitly re-scoping a future `/orchestrate` call to name T-210 onward.
+
+**Blocked by Codex (2026-08-07):** applied the checkpoint exactly as written. Do not start T-210+
+until the owner flips T-209 or explicitly scopes a future run to M20.
 
 ### T-210 · Design: the sandboxed hypothesis/clone architecture — `status: TODO` · `coder: fable` · `type: design` · `after: T-209`
 

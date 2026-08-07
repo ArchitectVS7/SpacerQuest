@@ -3,6 +3,8 @@ import { createInitialState, startDay, createSave } from '@spacerquest/engine';
 import { DARE_MIN_WAGER } from '@spacerquest/content';
 import { WALKTHROUGH_KEY, signOpeningMarker, skipOpeningMarker } from './support/career';
 
+// FIRST_RUN_WALKTHROUGH: tests-first-run — this suite owns the tutorial rails.
+
 // ---------------------------------------------------------------------------
 // T-187 acceptance: THE SCRIPTED FIRST-TURN WALKTHROUGH, PLAYED AS A PLAYER.
 //

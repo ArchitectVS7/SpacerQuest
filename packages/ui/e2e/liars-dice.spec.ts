@@ -116,6 +116,8 @@ test('play a full hand of Liar’s Dice end to end through the real UI', async (
   // The pane is FORCED open while a hand stands: the engine blocks every other
   // verb behind `active-dare-hand`, so a closable panel would be a soft-lock.
   await expect(page.getByTestId('hangout-close')).toHaveCount(0);
+  await expect(page.getByTestId('dare-dealer-table-talk')).toBeVisible();
+  await expect(page.getByTestId('dare-dealer-table-talk')).not.toHaveText('');
 
   // Your four dice are face-up, each a real value — and each a real CSS-3D cube.
   const mine = page.locator('[data-testid="dare-player-die"]');
@@ -284,6 +286,8 @@ test('the Peek spends a die and shows exactly one of the house’s dice', async 
   await expect(move(page, 'peek')).toBeDisabled();
   await page.getByTestId('die').nth(1).click();
   await expect(move(page, 'peek')).toBeEnabled();
+  await expect(page.getByTestId('dare-peek-preview')).toHaveAttribute('data-tone', 'armed');
+  await expect(page.getByTestId('dare-peek-preview')).toHaveAttribute('data-stat', 'GUILE');
   await move(page, 'peek').click();
 
   // The honest roll renders, whichever way it went.

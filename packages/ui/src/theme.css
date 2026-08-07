@@ -18,6 +18,15 @@
   --amber: #c0781a;
   --amber-dim: #5e3b0e;
   --hair: #3a2408;
+  --line: var(--hair);
+  --accent: var(--ember-hi);
+  --steel-0: #050605;
+  --steel-1: #0b0d0c;
+  --steel-2: #121514;
+  --steel-3: #1b1e1c;
+  --steel-4: #383932;
+  --well: #070807;
+  --frame: #34342d;
 
   --font-display: 'Chakra Petch', system-ui, sans-serif;
   --font-data: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
@@ -36,7 +45,7 @@ body,
   margin: 0;
 }
 body {
-  background: #050403;
+  background: var(--steel-0);
   color: var(--ember);
   font-family: var(--font-data);
   font-size: 15px;
@@ -50,7 +59,12 @@ body {
   position: relative;
   height: 100%;
   padding: 22px 26px;
-  background: radial-gradient(130% 130% at 50% 40%, #150e07 0%, #0b0906 60%, #070502 100%);
+  background: radial-gradient(
+    130% 130% at 50% 40%,
+    #15150f 0%,
+    var(--steel-1) 58%,
+    var(--steel-0) 100%
+  );
   overflow: hidden;
   isolation: isolate;
 }
@@ -206,7 +220,8 @@ body {
   font-size: 12.5px;
 }
 .chip {
-  border: 1px solid var(--hair);
+  border: 1px solid var(--frame);
+  background: linear-gradient(180deg, var(--steel-2), var(--steel-1));
   padding: 5px 10px;
   letter-spacing: 0.06em;
   white-space: nowrap;
@@ -243,9 +258,9 @@ body {
 .fuel .bar {
   width: 96px;
   height: 11px;
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--frame);
   position: relative;
-  background: #0a0704;
+  background: var(--well);
 }
 .fuel .bar i {
   position: absolute;
@@ -273,7 +288,7 @@ body {
   /* Starmap sizes to its content when the column has room; the taller ship & yard
      pane takes the flexible remainder and scrolls internally (minmax(0,…) lets it
      shrink below content height so it never overflows the column and paints over the
-     starmap SVG, which draws with overflow:visible). T-1403: the starmap row is
+     starmap globe). T-1403: the starmap row is
      minmax(0,auto) — NOT bare `auto` — so on a short viewport (the persistent
      off-lane sweep control added height to the pane) the starmap can itself shrink
      and scroll internally rather than overflow the column into the wire ticker and
@@ -283,8 +298,8 @@ body {
   grid-template-rows: minmax(0, auto) minmax(220px, 1fr);
 }
 .pane {
-  border: 1px solid var(--hair);
-  background: linear-gradient(180deg, var(--panel) 0, #0d0905 100%);
+  border: 1px solid var(--frame);
+  background: linear-gradient(180deg, var(--steel-2) 0, var(--steel-1) 100%);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -296,7 +311,7 @@ body {
   justify-content: space-between;
   gap: 10px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid var(--frame);
 }
 .pane > header h2 {
   font-family: var(--font-display);
@@ -326,11 +341,14 @@ body {
   background: var(--amber-dim);
 }
 
-/* ---- starmap (T-304 coordinate map, fuel ring, route preview) ---- */
+/* ---- starmap (T-215 3D globe, fuel ring, route preview) ---- */
 .starmap .body {
   display: grid;
   gap: 10px;
   align-content: start;
+}
+.pane.starmap {
+  display: block;
 }
 /* T-187 · The plot group (chart + route preview + Confirm jump) is one rails
    region; the off-lane sweep beneath it is another. The wrapper repeats the
@@ -340,12 +358,42 @@ body {
   gap: 10px;
   align-content: start;
 }
-.smsvg {
+.smglobe {
+  position: relative;
+  width: min(100%, 360px);
+  aspect-ratio: 1 / 1;
+  margin-inline: auto;
+  overflow: hidden;
+  border: 1px solid var(--frame);
+  background: radial-gradient(circle at 50% 48%, rgba(255, 176, 0, 0.08), rgba(7, 8, 7, 0.18) 52%);
+  cursor: grab;
+  touch-action: none;
+}
+.smglobe:active {
+  cursor: grabbing;
+}
+.smglobe-canvas,
+.smglobe-lanes,
+.smglobe-overlay {
+  position: absolute;
+  inset: 0;
+}
+.smglobe-canvas {
   width: 100%;
-  height: auto;
-  max-height: 240px;
-  overflow: visible;
+  height: 100%;
   display: block;
+}
+.smglobe-lanes,
+.smglobe-overlay {
+  pointer-events: none;
+}
+.smlabel-measure-bin {
+  position: absolute;
+  left: -10000px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* fuel-range ring — a true distance circle centred on the ship */
@@ -378,13 +426,27 @@ body {
   stroke-dasharray: 3 2;
   pointer-events: none;
 }
+.route-line.dim {
+  stroke: var(--amber-dim);
+  stroke-width: 0.35;
+  opacity: 0.28;
+}
 .route-line.blocked {
   stroke: var(--amber-dim);
 }
 
 /* system nodes */
 .smsys {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  transform: translate(-50%, -50%);
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--amber);
   cursor: pointer;
+  pointer-events: auto;
 }
 /* Only the invisible hit-rect is interactive; every visible mark is inert so a
    neighbour's label can never intercept a node's click (dense lane of 20). */
@@ -398,55 +460,65 @@ body {
   pointer-events: none;
 }
 .smsys .smdot {
-  fill: #7a4e14;
-  stroke: var(--hair);
-  stroke-width: 0.6;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--hair);
+  border-radius: 50%;
+  background: #7a4e14;
 }
 .smsys .smlabel {
-  fill: var(--amber);
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 12px);
+  transform: translateX(-50%);
+  color: var(--amber);
   font-size: 8px;
-  text-anchor: middle;
-  paint-order: stroke;
-  stroke: var(--tube);
-  stroke-width: 1.6;
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow:
+    0 0 2px var(--tube),
+    0 0 4px var(--tube);
 }
 .smsys.rim .smdot {
-  fill: var(--amber);
+  background: var(--amber);
 }
 .smsys.visited .smdot {
-  fill: var(--ember);
+  background: var(--ember);
   filter: drop-shadow(0 0 2px rgba(255, 176, 0, 0.6));
 }
 .smsys.visited .smlabel {
-  fill: var(--ember);
+  color: var(--ember);
 }
 .smsys.here .smdot {
-  fill: var(--ember-hi);
-  stroke: var(--ember);
-  stroke-width: 1.2;
+  background: var(--ember-hi);
+  border-color: var(--ember);
+  box-shadow: 0 0 0 2px rgba(255, 176, 0, 0.16);
   filter: drop-shadow(0 0 3px rgba(255, 176, 0, 0.8));
 }
 .smsys.here .smlabel {
-  fill: var(--ember-hi);
+  color: var(--ember-hi);
   font-weight: 600;
 }
 .smsys.sel .smdot {
-  stroke: var(--ember-hi);
-  stroke-width: 1.4;
+  border-color: var(--ember-hi);
+  box-shadow: 0 0 0 3px rgba(255, 176, 0, 0.18);
 }
 .smsys.sel .smlabel {
-  fill: var(--ember-hi);
+  color: var(--ember-hi);
 }
 /* T-1505b · the event horizon. Only ever drawn once the crossing stake is paid
-   (format.ts starmapProjection), so it reads as a door that just opened rather
+   (format.ts starmapGlobeProjection), so it reads as a door that just opened rather
    than a port on the lane: hollow dot, ember rim, ember label. */
 .smsys.crossing .smdot {
-  fill: none;
-  stroke: var(--ember-hi);
-  stroke-width: 1.2;
+  background: transparent;
+  border-color: var(--ember-hi);
 }
 .smsys.crossing .smlabel {
-  fill: var(--ember-hi);
+  color: var(--ember-hi);
   letter-spacing: 0.14em;
 }
 /* unreachable systems are visibly gated AND not clickable */
@@ -455,28 +527,37 @@ body {
   opacity: 0.32;
 }
 .smsys.unreachable .smdot {
-  fill: transparent;
-  stroke: var(--amber-dim);
-  stroke-dasharray: 1.5 1.5;
+  background: transparent;
+  border-color: var(--amber-dim);
+  border-style: dashed;
 }
 .smsys.unreachable .smlabel {
-  fill: var(--amber-dim);
+  color: var(--amber-dim);
 }
 
 /* era-event region badge */
-.era-badge rect {
-  fill: none;
-  stroke: var(--ember);
-  stroke-width: 0.8;
+.era-badge {
+  position: absolute;
+  left: calc(50% + 5px);
+  top: calc(50% - 10px);
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--ember);
 }
 /* known-NPC presence pips */
 .npc-pip {
-  fill: var(--ember-hi);
+  position: absolute;
+  top: 2px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--ember-hi);
 }
 
 /* route-preview panel — the plan-before-commit readout */
 .route-preview {
-  border: 1px solid var(--amber-dim);
+  border: 1px solid var(--frame);
+  background: var(--well);
   padding: 8px 10px;
   display: grid;
   gap: 6px;
@@ -1686,9 +1767,11 @@ body {
 .slot.ready {
   border-style: solid;
   border-color: var(--ember);
-  color: var(--tube);
-  background: var(--ember);
-  box-shadow: var(--glow);
+  color: var(--ember);
+  background: var(--well);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 176, 0, 0.26),
+    var(--glow);
 }
 .mono {
   color: var(--amber);
@@ -1711,10 +1794,18 @@ body {
   padding: 1px 7px;
   font-weight: 600;
 }
+.haggle-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
 
 /* ---- haggle affordance + drag/drop assignment ---- */
 .haggle {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-display);
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1777,6 +1868,27 @@ body {
 .check-breakdown.crit .cb-expr b,
 .check-breakdown.crit .cb-lbl {
   color: var(--ember-hi);
+}
+.action-check {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--font-data);
+  font-size: 9.5px;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--amber);
+  white-space: normal;
+}
+.action-check.clear {
+  color: var(--ember-hi);
+}
+.action-check.miss {
+  color: var(--amber-dim);
+}
+.action-check.unarmed {
+  color: var(--amber-dim);
+  font-style: italic;
 }
 .nat-juice {
   font-family: var(--font-display);
@@ -1842,22 +1954,22 @@ body {
 
 /* ---- wire ---- */
 .wire {
-  border: 1px solid var(--hair);
-  background: #0c0805;
+  border: 1px solid var(--frame);
+  background: var(--well);
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: stretch;
   overflow: hidden;
   position: relative;
 }
 .wire .cap {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 0 12px;
   z-index: 3;
-  background: linear-gradient(90deg, #12100a 70%, transparent);
+  background: linear-gradient(90deg, var(--steel-2) 70%, transparent);
   font-family: var(--font-display);
   letter-spacing: 0.18em;
   font-size: 11px;
@@ -1882,7 +1994,8 @@ body {
 }
 .ticker {
   white-space: nowrap;
-  padding: 9px 0 9px 138px;
+  min-width: 0;
+  padding: 9px 0;
   animation: tick 40s linear infinite;
   font-size: 13px;
   color: var(--amber);
@@ -2094,8 +2207,8 @@ body {
 
 /* ---- hand dock ---- */
 .dock {
-  border: 1px solid var(--hair);
-  background: linear-gradient(180deg, #17100a, #0b0805);
+  border: 1px solid var(--frame);
+  background: linear-gradient(180deg, var(--steel-2), var(--steel-1));
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
@@ -2133,8 +2246,8 @@ body {
   font-weight: 600;
   font-size: 21px;
   color: var(--ember);
-  background: radial-gradient(120% 120% at 50% 35%, #221607, #0e0a05);
-  border: 1px solid var(--amber-dim);
+  background: radial-gradient(120% 120% at 50% 35%, var(--steel-3), var(--well));
+  border: 1px solid var(--frame);
   clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
   transition:
     transform 0.18s,
@@ -2148,8 +2261,10 @@ body {
 }
 .die.sel {
   border-color: var(--ember);
-  color: var(--ember-hi);
-  box-shadow: var(--glow-hi);
+  color: var(--ember);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 176, 0, 0.58),
+    var(--glow-hi);
   transform: translateY(-8px);
 }
 .die .dl {
@@ -2163,9 +2278,9 @@ body {
 }
 .die.spent {
   color: var(--amber-dim);
-  border-color: #241708;
+  border-color: var(--steel-3);
   cursor: default;
-  background: radial-gradient(120% 120% at 50% 35%, #120c06, #0a0704);
+  background: radial-gradient(120% 120% at 50% 35%, var(--steel-2), var(--steel-0));
 }
 .die.spent:hover {
   transform: none;
@@ -2204,9 +2319,9 @@ body {
   font-family: var(--font-display);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  background: transparent;
+  background: linear-gradient(180deg, var(--steel-2), var(--steel-1));
   color: var(--ember);
-  border: 1px solid var(--amber);
+  border: 1px solid var(--frame);
   padding: 8px 14px;
   cursor: pointer;
   font-size: 12px;
@@ -2217,7 +2332,7 @@ body {
 }
 .btn:disabled {
   color: var(--amber-dim);
-  border-color: var(--hair);
+  border-color: var(--steel-3);
   cursor: default;
 }
 .btn:disabled:hover {
@@ -2241,9 +2356,9 @@ body {
 .ctrls button {
   font-family: var(--font-display);
   letter-spacing: 0.14em;
-  background: transparent;
+  background: linear-gradient(180deg, var(--steel-2), var(--steel-1));
   color: var(--amber);
-  border: 1px solid var(--hair);
+  border: 1px solid var(--frame);
   padding: 4px 9px;
   cursor: pointer;
   text-transform: uppercase;
@@ -2261,8 +2376,8 @@ body {
 }
 .seedbar input {
   font-family: var(--font-data);
-  background: #0a0704;
-  border: 1px solid var(--amber-dim);
+  background: var(--well);
+  border: 1px solid var(--frame);
   color: var(--ember);
   padding: 6px 8px;
   width: 90px;
@@ -2573,7 +2688,6 @@ body {
   }
   .ticker {
     animation: none;
-    padding-left: 138px;
   }
   .die.bloom {
     animation: none;
@@ -2615,6 +2729,12 @@ body {
   zoom: 1.15;
 }
 @media (max-width: 900px) {
+  .screen {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: auto;
+  }
   .bezel {
     grid-template-columns: 1fr;
     padding-right: 0;
@@ -2625,9 +2745,17 @@ body {
   }
   .main {
     grid-template-columns: 1fr;
+    grid-auto-rows: max-content;
+    align-content: start;
+    align-items: start;
+    min-height: max-content;
+    overflow: visible;
   }
   .col.left {
-    grid-template-rows: 200px auto;
+    grid-template-rows: auto auto;
+  }
+  .pane.starmap {
+    min-height: calc(34px + min(360px, calc(100vw - 46px)) + 170px);
   }
   .dock {
     grid-template-columns: 1fr;
@@ -3214,7 +3342,11 @@ body {
   color: var(--amber);
 }
 .as-hostile .as-value {
-  color: #e0562a;
+  padding: 0 5px;
+  border: 1px solid var(--ember);
+  background: var(--ember);
+  color: var(--tube);
+  text-shadow: none;
 }
 
 .registry-empty,
@@ -3366,7 +3498,7 @@ body {
 /* ---- contextual onboarding coach ---- */
 .onboarding {
   position: absolute;
-  z-index: 82; /* above the storylet panel (78); inside co-frame it rides local */
+  z-index: 180; /* above storylet panels and depth-sorted starmap nodes */
   width: min(340px, 80vw);
   border: 1px solid var(--amber);
   background: linear-gradient(180deg, #1c1208, #0e0a05);
@@ -4900,7 +5032,7 @@ body {
 .ship-honor {
   margin: 0.6rem 0;
   padding: 0.5rem 0.6rem;
-  border: 1px solid var(--line, #2b3a44);
+  border: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.18);
 }
 .ship-honor .honor-head {
@@ -4920,7 +5052,7 @@ body {
 .ship-honor .honor-row.all-around {
   margin-top: 0.35rem;
   padding-top: 0.35rem;
-  border-top: 1px solid var(--line, #2b3a44);
+  border-top: 1px solid var(--line);
   font-weight: 600;
 }
 .ship-honor .honor-holders {
@@ -4938,7 +5070,7 @@ body {
 /* The player is marked, never ranked differently — `playerRank` counts captains
    scoring strictly higher and is blind to this class. */
 .ship-honor .honor-holder.you {
-  color: var(--accent, #4fd1c5);
+  color: var(--accent);
   font-weight: 600;
 }
 .ship-honor .honor-rank {
@@ -4947,7 +5079,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .ship-honor .honor-rank.held {
-  color: var(--accent, #4fd1c5);
+  color: var(--accent);
   opacity: 1;
 }
 /* T-1406 · the component's mechanical effect, shown beside its price. */
@@ -4956,7 +5088,7 @@ body {
   opacity: 0.8;
 }
 .comp-effect-next {
-  color: var(--accent, #4fd1c5);
+  color: var(--accent);
 }
 
 /* =========================================================================

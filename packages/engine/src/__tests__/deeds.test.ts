@@ -4,13 +4,9 @@ import {
   RENOWN_DEED_THRESHOLDS,
   RENOWN_RANKS,
   defineDeeds,
-  defineRenownRanks,
   defineStorylets,
   validateDeeds,
-  validateRenownRanks,
   type DeedDefinition,
-  type RenownRankDefinition,
-  type RenownRankId,
 } from '@spacerquest/content';
 import {
   EVENT_PATHS,
@@ -1168,87 +1164,6 @@ describe('T-1504a deed content validation', () => {
     );
     // The positive control: a genuine storylet-fed deed is accepted.
     expect(() => defineStorylets(storylet('ray_s_ledger'))).not.toThrow();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// T-1504c · Renown-rank content validation. `defineRenownRanks` throws at content
-// IMPORT time, so a malformed rank ladder fails the build rather than a test —
-// these fixtures prove each rule actually rejects, and the positive case is the
-// literal "the ten citation texts load and validate" acceptance.
-//
-// T-164 · IT LIVED HERE BECAUSE `packages/content` HAD NO TEST RUNNER; it does
-// now. This block reads only `@spacerquest/content`, so under
-// `docs/TESTING-STRATEGY.md` Part I it qualifies to move beside its rows and is
-// on that ruling's migration ledger (F-164-1), out of T-164's own scope.
-// ---------------------------------------------------------------------------
-describe('T-1504c renown rank content validation', () => {
-  /** A well-formed two-rank ladder; each test breaks exactly one thing. Cast at
-   *  the call site because the fixtures are deliberately ill-typed (that is the
-   *  point: the guard is a RUNTIME one, protecting hand-edited content). */
-  function fixtureRanks(
-    overrides: Record<string, Partial<RenownRankDefinition>> = {},
-  ): Record<string, RenownRankDefinition> {
-    const base: Record<string, RenownRankDefinition> = {
-      LIEUTENANT: { id: 'LIEUTENANT', label: 'Lieutenant', citation: 'Registry opens a file.' },
-      COMMANDER: { id: 'COMMANDER', label: 'Commander', citation: 'Registry confirms the name.' },
-    };
-    for (const [key, patch] of Object.entries(overrides)) {
-      base[key] = { ...base[key], ...patch };
-    }
-    return base;
-  }
-
-  const define = (ranks: Record<string, RenownRankDefinition>) =>
-    defineRenownRanks(ranks as Record<RenownRankId, RenownRankDefinition>);
-
-  it('the shipped rank table loads and validates with zero errors', () => {
-    // The literal "all 10 ranks carry citation text … texts load and validate"
-    // acceptance, asserted rather than implied by the import not blowing up.
-    expect(validateRenownRanks(RENOWN_RANKS)).toEqual([]);
-    expect(RENOWN_RANK_ORDER.length).toBe(10);
-    expect(Object.keys(RENOWN_RANKS)).toEqual([...RENOWN_RANK_ORDER]);
-  });
-
-  it('rejects an empty citation', () => {
-    expect(() => define(fixtureRanks({ COMMANDER: { citation: '' } }))).toThrow(
-      /citation must be a non-empty string/,
-    );
-  });
-
-  it('rejects a citation carrying a {day} placeholder', () => {
-    // READERS that make this a real failure and not a style rule: the rank-up
-    // WireEntry branch of `evaluateDeeds` and `deedRegistry().rankCitation`
-    // (ui/format.ts) both print the citation VERBATIM — no substitution pass runs
-    // on it — so a placeholder reaches the player as literal braces. Note this is
-    // the exact OPPOSITE of the DeedDefinition.citationTemplate rule above, which
-    // REQUIRES {day}.
-    expect(() =>
-      define(fixtureRanks({ COMMANDER: { citation: 'On day {day}, Registry confirmed it.' } })),
-    ).toThrow(/must not contain a \{…\} placeholder/);
-  });
-
-  it('rejects two ranks sharing a citation', () => {
-    // The rank-up wire entry IS the citation, so duplicates make two different
-    // promotions indistinguishable on the wire.
-    expect(() =>
-      define(fixtureRanks({ COMMANDER: { citation: 'Registry opens a file.' } })),
-    ).toThrow(/identical to renownRanks.LIEUTENANT.citation/);
-  });
-
-  it('rejects a rank whose id disagrees with its key', () => {
-    // RENOWN_RANK_ORDER is Object.keys(RENOWN_RANKS) and drives renownRankIndex →
-    // rankTier → encounter matchmaking, while `id` is what gets stored/compared;
-    // a mismatch desyncs the ladder from the stored rank silently.
-    expect(() => define(fixtureRanks({ COMMANDER: { id: 'CAPTAIN' } }))).toThrow(
-      /id must equal its key/,
-    );
-  });
-
-  it('rejects an empty label', () => {
-    expect(() => define(fixtureRanks({ LIEUTENANT: { label: '' } }))).toThrow(
-      /label must be a non-empty string/,
-    );
   });
 });
 

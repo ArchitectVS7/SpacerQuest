@@ -576,6 +576,7 @@ describe('T-145 · obligation 9 — OPTIMAL is a measurably better policy than B
     maxQuantity: number;
     bid: DareBid | null;
     ante: number;
+    headroom: number;
     credits: number;
   }): { move: DareMoveKind; quantity?: number; face?: number } {
     const own = (face: number) => input.dice.filter((d) => d === face).length;
@@ -585,7 +586,14 @@ describe('T-145 · obligation 9 — OPTIMAL is a measurably better policy than B
       return { move: 'bid', quantity: own(bestFace) + 1, face: bestFace };
     }
     const bid = input.bid;
-    const legal = legalMovesFrom(bid, input.ante, 10_000, input.credits, true, input.maxQuantity);
+    const legal = legalMovesFrom(
+      bid,
+      input.ante,
+      input.headroom,
+      input.credits,
+      true,
+      input.maxQuantity,
+    );
     const expected = own(bid.face) + input.dicePerSide / 6;
     if (own(bid.face) === 0 && bid.quantity >= SIM_FOLD_QUANTITY && legal.includes('fold')) {
       return { move: 'fold' };
@@ -611,10 +619,12 @@ describe('T-145 · obligation 9 — OPTIMAL is a measurably better policy than B
     archetype: 'optimal' | 'bad' | 'random',
     rng: SeededRng,
     dicePerSide: number,
-  ): { houseNet: number; plies: number } {
+    economics: { seedStake?: number; ante?: number; headroom?: number } = {},
+  ): { houseNet: number; playerWon: boolean; plies: number } {
     const maxQuantity = maxQuantityForDice(dicePerSide);
-    const ANTE = 30;
-    const SEED_STAKE = 100;
+    const ANTE = economics.ante ?? 30;
+    const SEED_STAKE = economics.seedStake ?? 100;
+    const HEADROOM = economics.headroom ?? 10_000;
     const houseDice = Array.from({ length: dicePerSide }, () => rng.d6());
     const playerDice = Array.from({ length: dicePerSide }, () => rng.d6());
     const truthOf = (claim: DareBid) =>
@@ -642,12 +652,14 @@ describe('T-145 · obligation 9 — OPTIMAL is a measurably better policy than B
           maxQuantity,
           bid,
           ante: ANTE,
+          headroom: HEADROOM,
           credits: 100_000,
         });
-        if (move.move === 'fold') return { houseNet: potPlayer, plies };
+        if (move.move === 'fold') return { houseNet: potPlayer, playerWon: false, plies };
         if (move.move === 'challenge') {
           // The player called the HOUSE's claim: the bidder wins iff it is true.
-          return { houseNet: truthOf(bid!) ? potPlayer : -potHouse, plies };
+          const playerWon = !truthOf(bid!);
+          return { houseNet: playerWon ? -potHouse : potPlayer, playerWon, plies };
         }
         if (move.move !== 'bid') potPlayer += move.move === 'raise-both' ? 2 * ANTE : ANTE;
         bid = { quantity: move.quantity!, face: move.face! };
@@ -660,16 +672,17 @@ describe('T-145 · obligation 9 — OPTIMAL is a measurably better policy than B
           maxQuantity,
           bid: bid!,
           ante: ANTE,
-          headroom: 10_000,
+          headroom: HEADROOM,
           dealerCredits: 100_000,
           potPlayer,
           potDealer: potHouse,
           roll: Math.floor(rng.next() * 100),
         });
-        if (move.move === 'fold') return { houseNet: -potHouse, plies };
+        if (move.move === 'fold') return { houseNet: -potHouse, playerWon: true, plies };
         if (move.move === 'challenge') {
           // The house called the PLAYER's claim: the bidder wins iff it is true.
-          return { houseNet: truthOf(bid!) ? -potHouse : potPlayer, plies };
+          const playerWon = truthOf(bid!);
+          return { houseNet: playerWon ? -potHouse : potPlayer, playerWon, plies };
         }
         potHouse += move.move === 'raise-both' ? 2 * ANTE : ANTE;
         bid = { quantity: move.quantity!, face: move.face! };
@@ -723,6 +736,120 @@ describe('T-145 · obligation 9 — OPTIMAL is a measurably better policy than B
     },
     120_000,
   );
+
+  it('T-226 · the archetype ordering is enforced only over the measured stake range', () => {
+    // T-226 · F-222-3. LD-25's "bad − optimal > 0" is NOT a free-floating
+    // archetype property; it is a property of the archetypes at a stake. The
+    // rows below pin the range explicitly:
+    //   * band floors invert (bad − optimal < 0) at both dice widths;
+    //   * the bounded mid-band range holds (bad − optimal > 0);
+    //   * tier 5's `k <= 4` step still holds, but the cheap-port `k >= 5` tail
+    //     re-inverts.
+    //
+    // Stakes are computed from `probAtLeast`, `anteFor`, `wagerBandFor` and
+    // `effectiveWagerBand`; there is no copied stake literal from the write-up.
+    const minSeedForGate = (k: number, ante: number, dicePerSide: number) => {
+      const p = probAtLeast(k, dicePerSide);
+      return Math.floor((ante * (1 - p)) / (2 * p)) + 1;
+    };
+    const SYSTEM = 1;
+    const CHEAP_SYSTEM = 8;
+    const rows = [
+      {
+        label: 'four-dice floor',
+        dicePerSide: dicePerSideForTier(0),
+        seedStake: wagerBandFor(SYSTEM).min,
+        ante: anteFor(SYSTEM, 0),
+        expected: 'negative',
+      },
+      {
+        label: 'four-dice mid-band',
+        dicePerSide: dicePerSideForTier(0),
+        seedStake: minSeedForGate(2, anteFor(SYSTEM, 0), dicePerSideForTier(0)),
+        ante: anteFor(SYSTEM, 0),
+        expected: 'positive',
+      },
+      {
+        label: 'six-dice floor',
+        dicePerSide: dicePerSideForTier(2),
+        seedStake: wagerBandFor(SYSTEM).min,
+        ante: anteFor(SYSTEM, 2),
+        expected: 'negative',
+      },
+      {
+        label: 'six-dice mid-band',
+        dicePerSide: dicePerSideForTier(2),
+        seedStake: minSeedForGate(3, anteFor(SYSTEM, 2), dicePerSideForTier(2)),
+        ante: anteFor(SYSTEM, 2),
+        expected: 'positive',
+      },
+      {
+        label: 'tier-5 k4',
+        dicePerSide: dicePerSideForTier(5),
+        seedStake: minSeedForGate(4, anteFor(SYSTEM, 5), dicePerSideForTier(5)),
+        ante: anteFor(SYSTEM, 5),
+        expected: 'positive',
+      },
+      {
+        label: 'tier-5 past k4',
+        dicePerSide: dicePerSideForTier(5),
+        seedStake: minSeedForGate(5, anteFor(CHEAP_SYSTEM, 5), dicePerSideForTier(5)),
+        ante: anteFor(CHEAP_SYSTEM, 5),
+        expected: 'negative',
+      },
+    ] as const;
+
+    expect(effectiveWagerBand(SYSTEM, 5).max).toBeNull();
+    expect(rows.map((row) => row.label)).toEqual([
+      'four-dice floor',
+      'four-dice mid-band',
+      'six-dice floor',
+      'six-dice mid-band',
+      'tier-5 k4',
+      'tier-5 past k4',
+    ]);
+
+    const N = 12_000;
+    for (const row of rows) {
+      const rng = new SeededRng(20_260_807 + row.seedStake + row.ante + row.dicePerSide);
+      let badWins = 0;
+      let optimalWins = 0;
+      for (let i = 0; i < N; i += 1) {
+        if (
+          playFullHand('bad', rng, row.dicePerSide, {
+            seedStake: row.seedStake,
+            ante: row.ante,
+            headroom: Number.MAX_SAFE_INTEGER,
+          }).playerWon
+        ) {
+          badWins += 1;
+        }
+        if (
+          playFullHand('optimal', rng, row.dicePerSide, {
+            seedStake: row.seedStake,
+            ante: row.ante,
+            headroom: Number.MAX_SAFE_INTEGER,
+          }).playerWon
+        ) {
+          optimalWins += 1;
+        }
+      }
+      const badRate = badWins / N;
+      const optimalRate = optimalWins / N;
+      const badMinusOptimal = badRate - optimalRate;
+      const message =
+        `${row.label}: bad ${(100 * badRate).toFixed(2)}% vs optimal ` +
+        `${(100 * optimalRate).toFixed(2)}%, bad − optimal ` +
+        `${(100 * badMinusOptimal).toFixed(2)} pp, n=${N}, stake=${row.seedStake}, ante=${
+          row.ante
+        }`;
+      if (row.expected === 'positive') {
+        expect(badMinusOptimal, message).toBeGreaterThan(0);
+      } else {
+        expect(badMinusOptimal, message).toBeLessThan(0);
+      }
+    }
+  }, 180_000);
 });
 
 // ---------------------------------------------------------------------------

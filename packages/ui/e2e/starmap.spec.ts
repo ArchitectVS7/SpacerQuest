@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
-import { jumpFuelCost, travelDc, maxJumpDistance } from '@spacerquest/engine';
+import { jumpFuelCost, maxJumpDistance, navDieFuelDiscount } from '@spacerquest/engine';
 import { distance, STAR_SYSTEMS } from '@spacerquest/content';
 
 // T-304 acceptance: plan and execute a jump entirely via the starmap; the
@@ -38,6 +38,117 @@ function sysNode(page: Page, id: number) {
   return page.locator(`[data-testid="starmap-system"][data-system-id="${id}"]`);
 }
 
+async function globePixelStats(
+  page: Page,
+): Promise<{ lit: number; width: number; height: number }> {
+  return page.locator('.smglobe-canvas').evaluate((canvas) => {
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      throw new Error('starmap canvas did not render as a canvas');
+    }
+    const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+    if (!gl) throw new Error('starmap canvas has no WebGL context');
+    const width = gl.drawingBufferWidth;
+    const height = gl.drawingBufferHeight;
+    const pixels = new Uint8Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    let lit = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i + 3] > 0 && pixels[i] + pixels[i + 1] + pixels[i + 2] > 12) lit += 1;
+    }
+    return { lit, width, height };
+  });
+}
+
+async function renderedLabelBoxes(
+  page: Page,
+): Promise<Array<{ name: string; left: number; right: number; top: number; bottom: number }>> {
+  return page.locator('.smsys .smlabel').evaluateAll((labels) =>
+    labels.map((label) => {
+      const box = label.getBoundingClientRect();
+      return {
+        name: label.textContent?.trim() ?? '',
+        left: box.left,
+        right: box.right,
+        top: box.top,
+        bottom: box.bottom,
+      };
+    }),
+  );
+}
+
+function boxesOverlap(
+  a: { left: number; right: number; top: number; bottom: number },
+  b: { left: number; right: number; top: number; bottom: number },
+): boolean {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+async function expectNoRenderedLabelOverlaps(page: Page): Promise<void> {
+  const boxes = await renderedLabelBoxes(page);
+  const collisions: string[] = [];
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      if (boxesOverlap(boxes[i], boxes[j])) collisions.push(`${boxes[i].name} / ${boxes[j].name}`);
+    }
+  }
+  expect(collisions, `Rendered starmap label collisions:\n${collisions.join('\n')}`).toEqual([]);
+}
+
+async function systemCenter(page: Page, id: number): Promise<{ x: number; y: number }> {
+  const box = await sysNode(page, id).boundingBox();
+  if (!box) throw new Error(`system ${id} did not render`);
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+test('3D globe renders, drags and labels without overlap on desktop', async ({ page }) => {
+  await page.goto('/');
+
+  await expect(page.locator('.smglobe')).toBeVisible();
+  const pixels = await globePixelStats(page);
+  expect(pixels.width).toBeGreaterThan(100);
+  expect(pixels.height).toBeGreaterThan(100);
+  expect(pixels.lit).toBeGreaterThan(500);
+  await expectNoRenderedLabelOverlaps(page);
+
+  const systemCount = await page.getByTestId('starmap-system').count();
+  const labelCount = await page.locator('.smsys .smlabel').count();
+  expect(labelCount).toBeGreaterThan(0);
+  expect(labelCount).toBeLessThan(systemCount);
+
+  const dimRoutes = page.locator('svg.smglobe-lanes line.route-line.dim');
+  await expect(dimRoutes.first()).toBeVisible();
+  await expect(page.locator('svg.smglobe-lanes line.route-line:not(.dim)')).toHaveCount(0);
+  await sysNode(page, 2).click();
+  await expect(page.locator('svg.smglobe-lanes line.route-line:not(.dim)')).toHaveCount(1);
+
+  const before = await systemCenter(page, 20);
+  const globe = await page.locator('.smglobe').boundingBox();
+  if (!globe) throw new Error('globe did not render');
+  await page.mouse.move(globe.x + 18, globe.y + 18);
+  await page.mouse.down();
+  await page.mouse.move(globe.x + 158, globe.y + 53);
+  await page.mouse.up();
+  const afterDrag = await systemCenter(page, 20);
+  expect(Math.hypot(afterDrag.x - before.x, afterDrag.y - before.y)).toBeGreaterThan(8);
+  await expectNoRenderedLabelOverlaps(page);
+});
+
+test('3D globe opens nonblank on mobile viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.goto('/');
+
+  const globeBox = await page.locator('.smglobe').boundingBox();
+  if (!globeBox) throw new Error('mobile globe did not render');
+  expect(globeBox.width).toBeGreaterThan(250);
+  expect(globeBox.height).toBeGreaterThan(190);
+
+  const pixels = await globePixelStats(page);
+  expect(pixels.width).toBeGreaterThan(100);
+  expect(pixels.height).toBeGreaterThan(100);
+  expect(pixels.lit).toBeGreaterThan(300);
+  await expectNoRenderedLabelOverlaps(page);
+});
+
 test('plan and execute a jump entirely via the map', async ({ page }) => {
   await page.goto('/');
   // Seed 1 deals the dawn hand [17,15,15,7,4] on Sol (system 1). The Sol->
@@ -58,10 +169,14 @@ test('plan and execute a jump entirely via the map', async ({ page }) => {
   const d = distance(1, dest);
   await expect(page.getByTestId('route-preview')).toBeVisible();
   await expect(page.getByTestId('route-distance')).toHaveText(String(d));
+  const baseFuel = jumpFuelCost(STARTER_DRIVES, d, false);
   await expect(page.getByTestId('route-fuel')).toHaveText(
-    String(jumpFuelCost(STARTER_DRIVES, d, false)),
+    String(Math.max(1, Math.round(baseFuel * (1 - navDieFuelDiscount(17))))),
   );
-  await expect(page.getByTestId('route-dc')).toHaveText(String(travelDc(d)));
+  await expect(page.getByTestId('route-dc')).toHaveCount(0);
+  await expect(page.getByTestId('route-die-effect')).toHaveText(
+    'die 17 · fuel -13% · encounter odds -17%',
+  );
 
   // 3) Commit the jump.
   await page.getByTestId('confirm-jump').click();
@@ -103,7 +218,10 @@ test('fuel ring and route preview match engine math', async ({ page }) => {
   await expect(page.getByTestId('route-fuel')).toHaveText(
     String(jumpFuelCost(STARTER_DRIVES, d, false)),
   );
-  await expect(page.getByTestId('route-dc')).toHaveText(String(travelDc(d)));
+  await expect(page.getByTestId('route-dc')).toHaveCount(0);
+  await expect(page.getByTestId('route-die-effect')).toHaveText(
+    'no check · pick a die for jump edge',
+  );
 
   // The fuel-range ring is drawn at exactly maxJumpDistance for the starter ship.
   const units = await page.getByTestId('fuel-ring').getAttribute('data-radius-units');

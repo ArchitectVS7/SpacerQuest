@@ -2,6 +2,9 @@ import { test, expect, type Page } from '@playwright/test';
 import { createInitialState, startDay, createSave } from '@spacerquest/engine';
 import { OPENING_KEY, signOpeningMarker } from './support/career';
 
+// FIRST_RUN_WALKTHROUGH: tests-first-run — the marker and rails handoff are the
+// subject of this suite, so skipping them would erase the behavior under test.
+
 // ---------------------------------------------------------------------------
 // T-200 acceptance: THE OPENING MARKER — the debt as a cold open.
 //

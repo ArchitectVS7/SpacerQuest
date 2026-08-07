@@ -37,11 +37,10 @@
 # header records the curve: 35d=283ms … 150d=3,322ms on the authoring machine), so
 # the horizon, not the seed count, is what makes a sweep expensive.
 #
-# Measured for the `gate` shape below on the authoring machine (2026-08-01, macOS,
-# node 22): 210 runs per shard (30 seeds x 7 policies at 35 days) in **11.3s**, so
-# both shards plus the merge are well under a minute of sweep. A GitHub runner is
-# slower; `timeout-minutes: 20` leaves order-of-magnitude headroom while still
-# tripping fast on a genuine hang.
+# Measured for the `gate` shape below on the authoring machine (2026-08-07, macOS,
+# node 22): 700 runs per shard (100 seeds x 7 policies at 35 days) in **36-37s**.
+# A GitHub runner is slower; `timeout-minutes: 20` leaves order-of-magnitude
+# headroom while still tripping fast on a genuine hang.
 #
 # WHY THE FULL 8,000-RUN CAPSTONE SHAPE IS NOT THE NIGHTLY DEFAULT. That is
 # 1,000 seeds x 8 policies x 120 days — measured at 207s wall clock across EIGHT
@@ -117,11 +116,15 @@
 #            The ported split closes it (197 -> 18 seeds >= 5) but regresses the
 #            deed slate (`deed-coverage.test.ts` full slates 2 -> 0 over seeds
 #            1..76), so it needs a task that owns the deed-hunter instrument.
-#   F-159-2  Seed 157's remaining 19-day fighter stall is a DIFFERENT mechanism —
-#            combat damage shrinks `maxFuel` 270 -> 90, below the cheapest jump in
-#            the map, so `cannotAffordCheapestJump` is true and the engine would
-#            refuse every jump a policy could queue. Outside the gate's 1..60 seed
-#            range; no policy branch can escape it.
+# CLOSED AT T-178 (2026-08-07), and now inside this live gate:
+#   F-159-2  Seed 157's remaining 19-day fighter stall was a DIFFERENT mechanism —
+#            combat damage shrank `maxFuel` 270 -> 90, below the cheapest jump in
+#            the map, so `cannotAffordCheapestJump` was true and the engine would
+#            refuse every jump a policy could queue. The later fighter
+#            repair/stranded-explore machinery now resolves it: seed 157 x 35 days
+#            reports longest zero-income streak 0 and fuelStarvationDays 0. The gate
+#            runs seeds 1..200 so this seed is no longer merely documented out of
+#            range.
 #
 # The gate was NOT weakened, then or now. Not a widened threshold, not a
 # hand-picked seed range that dodges seed 35, not an allowlist — see the header of
@@ -206,14 +209,14 @@ jobs:
       - name: Sweep gate — shard 1/2
         run: |
           npm run balance:sweep -w @spacerquest/sim -- \
-            --label ci-gate --seeds 60 --days 35 --shard 1/2 \
+            --label ci-gate --seeds 200 --days 35 --shard 1/2 \
             --milestone-days 10,30 \
             --out "$RUNNER_TEMP/balance" --aggregate-out "$RUNNER_TEMP/balance"
 
       - name: Sweep gate — shard 2/2
         run: |
           npm run balance:sweep -w @spacerquest/sim -- \
-            --label ci-gate --seeds 60 --days 35 --shard 2/2 \
+            --label ci-gate --seeds 200 --days 35 --shard 2/2 \
             --milestone-days 10,30 \
             --out "$RUNNER_TEMP/balance" --aggregate-out "$RUNNER_TEMP/balance"
 

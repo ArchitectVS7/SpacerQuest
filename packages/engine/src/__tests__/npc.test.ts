@@ -1416,9 +1416,10 @@ describe('T-140 · decision tracing', () => {
   function tracedContract(
     archetype: NpcArchetype,
     rng: SeededRng,
+    offers: readonly CargoContract[] = OFFERS,
   ): { chosen: number; entry: NpcDecisionEvidence } {
     const entries: NpcDecisionEvidence[] = [];
-    const chosen = pickContract(archetype, OFFERS, ORIGIN, rng, (evidence) =>
+    const chosen = pickContract(archetype, offers, ORIGIN, rng, (evidence) =>
       entries.push(evidence),
     );
     expect(entries).toHaveLength(1);
@@ -1454,6 +1455,23 @@ describe('T-140 · decision tracing', () => {
     expect(entry.roll!).toBeGreaterThanOrEqual(0);
     expect(entry.roll!).toBeLessThan(2);
     expect(Math.floor(entry.roll!)).toBe(['2', '3'].indexOf(entry.chosen));
+  });
+
+  it("records the smuggler's all-zero contract board as the uniform fallback, not unreachable", () => {
+    const coreOnly: CargoContract[] = [
+      { destination: 2, cargoType: 1, payment: 1200, pods: 1 },
+      { destination: 3, cargoType: 2, payment: 1800, pods: 2 },
+    ];
+    const { chosen, entry } = tracedContract('smuggler', new SeededRng(19), coreOnly);
+    expect(entry.kind).toBe('contract');
+    expect([0, 1]).toContain(chosen);
+    expect(entry.chosen).toBe(String(chosen));
+    expect(entry.candidates).toEqual([
+      { option: '0', weight: 1 },
+      { option: '1', weight: 1 },
+    ]);
+    expect(entry.roll!).toBeGreaterThanOrEqual(0);
+    expect(entry.roll!).toBeLessThan(2);
   });
 
   it('binds day/npcId/archetype/ideal once per captain-day, in resolveNpcDay', () => {

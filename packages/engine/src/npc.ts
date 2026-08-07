@@ -597,6 +597,8 @@ export type NpcDecisionTraceSink = (entry: NpcDecisionTrace) => void;
 export type NpcDecisionEvidence = Pick<NpcDecisionTrace, 'kind' | 'candidates' | 'roll' | 'chosen'>;
 export type NpcDecisionEvidenceSink = (evidence: NpcDecisionEvidence) => void;
 
+const CONTRACT_FALLBACK_WEIGHT = 1;
+
 export interface NpcDayContext {
   day: number;
   /** The player's live manifest board when this NPC is allowed to claim from
@@ -1586,7 +1588,10 @@ export function pickContract(
    *
    *   - `roll` is the TIE-BREAK draw over the tied-best set (`rng.next() * ties`),
    *     not a weighted draw over the whole board. This function argmaxes and only
-   *     then rolls; the score IS the preference.
+   *     then rolls; the score IS the preference. T-184: if every score is 0, the
+   *     selector's long-standing "take any board slot" totality rule is represented
+   *     as a real uniform fallback (`weight: 1`) in the trace, so reports do not
+   *     label the chosen contract as unreachable.
    *   - `option`/`chosen` are BOARD INDICES, stringified, because §3 defines
    *     `chosen` as "the same value the function returns today" and that value is
    *     an index. F-140-2: the board itself is not recorded, so an entry says
@@ -1644,9 +1649,11 @@ export function pickContract(
 
   const tieBreak = rng.next() * candidates.length;
   const chosen = candidates[Math.floor(tieBreak)];
+  const traceScores =
+    scores === null ? [] : best <= 0 ? scores.map(() => CONTRACT_FALLBACK_WEIGHT) : scores;
   trace?.({
     kind: 'contract',
-    candidates: (scores ?? []).map((weight, index) => ({ option: String(index), weight })),
+    candidates: traceScores.map((weight, index) => ({ option: String(index), weight })),
     roll: tieBreak,
     chosen: String(chosen),
   });

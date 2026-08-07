@@ -291,6 +291,35 @@ describe('T-142 · option frequency over real T-140 traces', () => {
     expect(TRACE_ATTRIBUTION_CAVEAT).toContain('F-140-1');
   });
 
+  it("does not report a smuggler's uniform all-zero-board fallback as chosen over offered", () => {
+    const fallback = buildTraceView(
+      traceSource(
+        [
+          JSON.stringify({
+            day: 1,
+            npcId: 'npc-neon-shade',
+            archetype: 'smuggler',
+            ideal: 'Mystery',
+            kind: 'contract',
+            candidates: [
+              { option: '0', weight: 1 },
+              { option: '1', weight: 1 },
+            ],
+            roll: 0.25,
+            chosen: '0',
+          }),
+        ].join('\n') + '\n',
+      ),
+    );
+    const contract = fallback.groups.find((entry) => entry.key === 'contract · smuggler')!;
+    expect(contract.bars.find((bar) => bar.option === '0')).toEqual(
+      expect.objectContaining({ chosen: 1, offered: 1, share: 1 }),
+    );
+    expect(
+      fallback.caveats.some((line) => line.includes('CHOSEN more often than it was reachable')),
+    ).toBe(false);
+  });
+
   it('reports unparseable lines rather than swallowing them', () => {
     const damaged = buildTraceView(traceSource(`${TRACE_JSONL_SAMPLE}{"day":1,"kind":"int`));
     expect(damaged.files[0].skipped).toBe(1);

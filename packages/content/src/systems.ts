@@ -295,7 +295,7 @@ function round2(value: number): number {
 //  2. the UGT protocol's legalActions in packages/sim/src/protocol.ts (must not
 //     advertise a sealed system as a legal Travel destination, and must not
 //     advertise Andromeda even post-unlock) — `protocol.test.ts`;
-//  3. the UI starmap band in packages/ui/src/format.ts `starmapProjection`
+//  3. the UI starmap band in packages/ui/src/format.ts `starmapGlobeProjection`
 //     (renders id 28 only once the stake is paid) — `e2e/nemesis-crossing.spec.ts`.
 // The sim travel-destination pickers in packages/sim/src/index.ts also consult
 // `isGatedDestination` and must never target a sealed system.

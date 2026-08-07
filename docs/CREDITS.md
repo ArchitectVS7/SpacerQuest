@@ -21,6 +21,7 @@ page and the legal box on it.
 | IBM Plex Mono | IBM Corp. | SIL Open Font License 1.1 | Loaded from Google Fonts by the web build; a packaged offline launch falls back to ui-monospace. No font binary is bundled. |
 | All sound cues and the score | The Spacer Quest project | CC0 1.0 Universal | Original procedural WebAudio synthesis and composition. There are zero audio asset files and zero third-party samples — see packages/ui/src/sound.ts (cues) and packages/ui/src/music.ts (the score). |
 | React and React-DOM 19 | Meta Platforms, Inc. and affiliates | MIT | Bundled into the cockpit on every build, web and desktop. |
+| Three.js | three.js authors | MIT | Bundled into the cockpit on every build, web and desktop for the 3D starmap. |
 | GSAP 3.15.0 | GreenSock, Inc. | Standard "No Charge" GSAP License | Bundled into the cockpit on every build, web and desktop. The npm package ships no LICENSE file — its README names the licence and points at the URL above, which permits commercial use in a sold product and prohibits only building competing visual-animation tooling. |
 | Electron 43 | Electron contributors and the OpenJS Foundation | MIT | Desktop builds only. It carries Chromium (BSD-3-Clause) and Node.js (MIT) with it. |
 | steamworks.js | ceifa and contributors | MIT | An optional dependency, present only in desktop builds. The Steamworks SDK it binds to is redistributed under Valve terms — see docs/RELEASE-CHECKLIST.md item B6. |

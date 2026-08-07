@@ -79,10 +79,10 @@ export const CATCHPHRASE_SLOTS: readonly (keyof BattleCatchphrases)[] = [
  * cycle, not tidiness: that file does a RUNTIME `import { ALL_NPC_PROFILES } from
  * './cast.js'`, so importing it from here would close
  * `cast.ts -> castValidation.ts -> liarsDiceValidation.ts -> cast.ts` and put a
- * TDZ hazard on module load. Both constants are exported and
- * `__tests__/castValidation.test.ts` asserts their sources are identical, so the
- * duplication is pinned rather than trusted — a test file is a leaf and adds no
- * edge to the module graph.
+ * TDZ hazard on module load. `__tests__/moduleCycle.test.ts` forbids that
+ * runtime edge and any other content module cycle; `__tests__/castValidation.test.ts`
+ * separately asserts both regex sources are identical. Type-only imports remain
+ * allowed because they erase before runtime.
  */
 export const CAST_DICE_COUNT_PHRASE =
   /\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|a|an)\s+(?:dice|die|d6s?)\b/i;

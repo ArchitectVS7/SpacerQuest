@@ -67,6 +67,9 @@ test('sweep off-lane through the UI: fragment gained, sealed pod taken, Nemesis 
   await page.getByTestId('die').nth(HIGH_DIE).click();
   await expect(page.getByTestId('explore-cost')).toContainText(`PILOT DC ${EXPLORATION_NAV_DC}`);
   await expect(page.getByTestId('explore-cost')).toContainText(`FUEL ${EXPLORATION_FUEL_COST}`);
+  await expect(page.getByTestId('explore-check-preview')).toHaveAttribute('data-die', '18');
+  await expect(page.getByTestId('explore-check-preview')).toHaveAttribute('data-success', 'true');
+  await expect(page.getByTestId('explore-check-preview')).toContainText('clears it');
 
   // 2) Commit the off-lane sweep — the missing Explore verb, reached via the UI.
   await page.getByTestId('explore-sweep').click();
@@ -117,6 +120,9 @@ test('a failed nav sweep renders its typed fail as a visible notice, never silen
   // Arm a low die (value 9 → total 10 < DC 12) and sweep: the engine emits a typed
   // ExplorationFailed(nav-check). It must reach the player as a visible notice.
   await page.getByTestId('die').nth(LOW_DIE).click();
+  await expect(page.getByTestId('explore-check-preview')).toHaveAttribute('data-die', '10');
+  await expect(page.getByTestId('explore-check-preview')).toHaveAttribute('data-success', 'false');
+  await expect(page.getByTestId('explore-check-preview')).toContainText('misses');
   await page.getByTestId('explore-sweep').click();
 
   await expect(page.getByTestId('notice')).toBeVisible();

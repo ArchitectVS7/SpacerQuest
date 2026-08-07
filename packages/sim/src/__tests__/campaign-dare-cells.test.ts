@@ -1,16 +1,28 @@
 import { describe, expect, it } from 'vitest';
 
 import { LIARS_DICE_OPPONENTS, LIARS_DICE_UNLOCK_GAMES } from '@spacerquest/content';
-import { DARE_MAX_FACE, dicePerSideForTier, probAtLeast } from '@spacerquest/engine';
+import {
+  DARE_MAX_FACE,
+  anteFor,
+  dicePerSideForTier,
+  effectiveWagerBand,
+  probAtLeast,
+} from '@spacerquest/engine';
 
 import {
   dareCellKey,
+  dareMinSeedForOpeningGate,
+  dareOpeningGate,
+  dareTier5StakeCellKey,
   derivedDareTier,
   dicePerSideAgreesWithTier,
   runCampaign,
   zeroDareCells,
+  zeroDareTier5StakeCells,
   type DareCellKey,
   type DareCellStats,
+  type DareTier5StakeCellKey,
+  type DareTier5StakeStats,
 } from '../index.js';
 
 // ---------------------------------------------------------------------------
@@ -92,7 +104,16 @@ describe('T-175 · dareCells — the join is lossless', () => {
     expect(keys).toHaveLength(48);
     expect(new Set(keys)).toEqual(new Set(Object.keys(zeroDareCells())));
     for (const cell of Object.values(hangoutPlay.dareCells)) {
-      expect(cell).toEqual({ hands: 0, playerWon: 0, netCredits: 0, bids: 0 });
+      expect(cell).toEqual({
+        hands: 0,
+        playerWon: 0,
+        netCredits: 0,
+        bids: 0,
+        deadZoneHands: 0,
+        deadZonePlayerWon: 0,
+        deadZoneNetCredits: 0,
+        deadZoneBids: 0,
+      });
     }
   });
 
@@ -153,6 +174,186 @@ describe('T-175 · dareCells — the tier is derived and cross-checked', () => {
       playerWon: 0,
       netCredits: 0,
       bids: 0,
+      deadZoneHands: 0,
+      deadZonePlayerWon: 0,
+      deadZoneNetCredits: 0,
+      deadZoneBids: 0,
+    });
+  });
+});
+
+describe('T-224 · dareCells measure the bounded-band dead zone', () => {
+  it.each(GAMBLER_SEEDS)(
+    'gambler seed %i: the dead-zone subcut is a subset of the settled-cell rollup',
+    (seed) => {
+      const { hangoutPlay } = runCampaign(seed, DAYS, 'gambler');
+      let deadZoneHands = 0;
+      let deadZoneWon = 0;
+      let deadZoneBids = 0;
+      for (const [key, cell] of Object.entries(hangoutPlay.dareCells) as [
+        DareCellKey,
+        DareCellStats,
+      ][]) {
+        expect(cell.deadZoneHands, key).toBeLessThanOrEqual(cell.hands);
+        expect(cell.deadZonePlayerWon, key).toBeLessThanOrEqual(cell.playerWon);
+        expect(cell.deadZoneBids, key).toBeLessThanOrEqual(cell.bids);
+        if (cell.deadZoneHands === 0) {
+          expect(cell.deadZonePlayerWon, key).toBe(0);
+          expect(cell.deadZoneNetCredits, key).toBe(0);
+          expect(cell.deadZoneBids, key).toBe(0);
+        } else {
+          expect(cell.deadZoneBids, key).toBeGreaterThanOrEqual(cell.deadZoneHands);
+        }
+        deadZoneHands += cell.deadZoneHands;
+        deadZoneWon += cell.deadZonePlayerWon;
+        deadZoneBids += cell.deadZoneBids;
+      }
+
+      expect(deadZoneHands).toBeLessThanOrEqual(hangoutPlay.dares);
+      expect(deadZoneWon).toBeLessThanOrEqual(hangoutPlay.daresWon);
+      expect(deadZoneBids).toBeGreaterThanOrEqual(deadZoneHands);
+    },
+    120_000,
+  );
+
+  it('the shipped gambler arm reaches the zone often enough to measure, not just bound', () => {
+    let hands = 0;
+    let deadZoneHands = 0;
+    let deadZoneWon = 0;
+    let deadZoneNet = 0;
+    let deadZoneBids = 0;
+    const populatedCells = new Set<DareCellKey>();
+    for (const seed of WIDE_GAMBLER_SEEDS) {
+      const { dareCells } = runCampaign(seed, DAYS, 'gambler').hangoutPlay;
+      for (const [key, cell] of Object.entries(dareCells) as [DareCellKey, DareCellStats][]) {
+        hands += cell.hands;
+        deadZoneHands += cell.deadZoneHands;
+        deadZoneWon += cell.deadZonePlayerWon;
+        deadZoneNet += cell.deadZoneNetCredits;
+        deadZoneBids += cell.deadZoneBids;
+        if (cell.deadZoneHands > 0) populatedCells.add(key);
+      }
+    }
+
+    expect(hands).toBeGreaterThan(2_000);
+    expect(
+      deadZoneHands,
+      `dead-zone hands ${deadZoneHands}/${hands}; populated cells ${[...populatedCells].join(', ')}`,
+    ).toBeGreaterThan(0);
+    expect(deadZoneWon).toBeGreaterThan(0);
+    expect(deadZoneBids).toBeGreaterThanOrEqual(deadZoneHands);
+    expect(Number.isFinite(deadZoneNet / deadZoneHands)).toBe(true);
+  }, 480_000);
+});
+
+describe('T-225 · tier-5 stake cells measure the uncapped gate', () => {
+  it('every authored Liar’s Dice port is present and zero-filled on a career that never dares', () => {
+    const { hangoutPlay } = runCampaign(1, 40, 'explorer');
+    expect(hangoutPlay.dares).toBe(0);
+    const keys = Object.keys(hangoutPlay.dareTier5StakeCells);
+    expect(keys).toHaveLength(Object.keys(LIARS_DICE_OPPONENTS).length);
+    expect(new Set(keys)).toEqual(new Set(Object.keys(zeroDareTier5StakeCells())));
+    for (const cell of Object.values(hangoutPlay.dareTier5StakeCells)) {
+      expect(cell).toEqual({
+        hands: 0,
+        playerWon: 0,
+        netCredits: 0,
+        sumSeedWager: 0,
+        maxSeedWager: 0,
+        k4Hands: 0,
+        pastK4Hands: 0,
+        pastK4NetCredits: 0,
+        pastK4SumSeedWager: 0,
+        pastK4MaxSeedWager: 0,
+        dissolvedHands: 0,
+      });
+    }
+  });
+
+  it('the opening-gate helper agrees with the derived boundary at every authored port', () => {
+    const tier = 5;
+    const dicePerSide = dicePerSideForTier(tier);
+    for (const systemId of Object.keys(LIARS_DICE_OPPONENTS).map(Number)) {
+      const ante = anteFor(systemId, tier);
+      const k4 = dareMinSeedForOpeningGate(4, ante, dicePerSide);
+      const k5 = dareMinSeedForOpeningGate(5, ante, dicePerSide);
+      const context = `system ${systemId} ante ${ante}`;
+      expect(dareOpeningGate(k4, ante, dicePerSide), context).toBeGreaterThanOrEqual(4);
+      expect(dareOpeningGate(k4 - 1, ante, dicePerSide), context).toBeLessThan(4);
+      expect(dareOpeningGate(k5, ante, dicePerSide), context).toBeGreaterThanOrEqual(5);
+      expect(dareOpeningGate(k5 - 1, ante, dicePerSide), context).toBeLessThan(5);
+      expect(k5, context).toBeGreaterThan(effectiveWagerBand(systemId, 4).max!);
+    }
+  });
+
+  it('the shipped gambler arm reaches tier 5 and reports the past-k4 port cut with n', () => {
+    let tier5Hands = 0;
+    let tier5Won = 0;
+    let k4Hands = 0;
+    let pastK4Hands = 0;
+    let pastK4Net = 0;
+    let dissolvedHands = 0;
+    const populatedPorts = new Set<DareTier5StakeCellKey>();
+    const pastK4Ports = new Set<DareTier5StakeCellKey>();
+    for (const seed of WIDE_GAMBLER_SEEDS) {
+      const { dareTier5StakeCells } = runCampaign(seed, DAYS, 'gambler').hangoutPlay;
+      for (const [key, cell] of Object.entries(dareTier5StakeCells) as [
+        DareTier5StakeCellKey,
+        DareTier5StakeStats,
+      ][]) {
+        expect(cell.playerWon, key).toBeLessThanOrEqual(cell.hands);
+        expect(cell.k4Hands, key).toBeLessThanOrEqual(cell.hands);
+        expect(cell.pastK4Hands, key).toBeLessThanOrEqual(cell.k4Hands);
+        expect(cell.dissolvedHands, key).toBeLessThanOrEqual(cell.pastK4Hands);
+        if (cell.hands === 0) {
+          expect(cell).toEqual(zeroDareTier5StakeCells()[key]);
+        } else {
+          populatedPorts.add(key);
+          expect(cell.maxSeedWager, key).toBeGreaterThan(0);
+          expect(cell.sumSeedWager, key).toBeGreaterThan(0);
+        }
+        if (cell.pastK4Hands > 0) {
+          pastK4Ports.add(key);
+          expect(cell.pastK4MaxSeedWager, key).toBeGreaterThan(0);
+          expect(cell.pastK4SumSeedWager, key).toBeGreaterThan(0);
+        }
+        tier5Hands += cell.hands;
+        tier5Won += cell.playerWon;
+        k4Hands += cell.k4Hands;
+        pastK4Hands += cell.pastK4Hands;
+        pastK4Net += cell.pastK4NetCredits;
+        dissolvedHands += cell.dissolvedHands;
+      }
+    }
+
+    expect(tier5Hands).toBeGreaterThan(1_000);
+    expect(tier5Won).toBeGreaterThan(0);
+    expect(k4Hands).toBeGreaterThan(0);
+    expect(
+      pastK4Hands,
+      `past-k4 hands ${pastK4Hands}/${tier5Hands}; populated ports ${[...populatedPorts].join(
+        ', ',
+      )}; past-k4 ports ${[...pastK4Ports].join(', ')}`,
+    ).toBeGreaterThan(0);
+    expect(dissolvedHands).toBe(0);
+    expect(Number.isFinite(pastK4Net / pastK4Hands)).toBe(true);
+  }, 480_000);
+
+  it('dareTier5StakeCellKey is the only spelling, and the zero-fill uses it', () => {
+    expect(dareTier5StakeCellKey(1)).toBe('system1');
+    const cells = zeroDareTier5StakeCells();
+    expect(cells[dareTier5StakeCellKey(1)]).toEqual({
+      hands: 0,
+      playerWon: 0,
+      netCredits: 0,
+      sumSeedWager: 0,
+      maxSeedWager: 0,
+      k4Hands: 0,
+      pastK4Hands: 0,
+      pastK4NetCredits: 0,
+      pastK4SumSeedWager: 0,
+      pastK4MaxSeedWager: 0,
+      dissolvedHands: 0,
     });
   });
 });

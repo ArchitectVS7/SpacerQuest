@@ -13,6 +13,7 @@ import {
   Stat,
   FIGHT_FUEL_COST,
   RUN_FUEL_COST,
+  TALK_DC_PER_DISPOSITION,
   EXPLORATION_NAV_DC,
   EXPLORATION_FUEL_COST,
   LOAN_DAILY_RATE,
@@ -38,6 +39,7 @@ import {
   DEMO_END_CARD,
   DEMO_FINAL_DAY,
   DEMO_TEASE,
+  coordinates3D,
   type DemoLockedFeature,
   type FactionId,
   type StoryletTrigger,
@@ -73,7 +75,10 @@ import {
   tributeForRound,
   nextRankFor,
   quoteStoryletChoice,
+  check,
   travelPreview,
+  navDieFuelDiscount,
+  navDieEvasionFactor,
   quoteFuelPurchase,
   hangoutRumors,
   loanBandFor,
@@ -322,8 +327,30 @@ export type RoutePreview = TravelPreview;
 /** T-1402 · A thin pass-through to the engine's `travelPreview` — the UI no longer
  *  reimplements the jumpFuelCost / travelDc / calculateRouteDanger stack (nor the
  *  fabricated `jumpsBetween` round) it used to; it consumes the engine truth. */
-export function routePreview(game: GameState, dest: number): RoutePreview {
-  return travelPreview(game, dest);
+export function routePreview(game: GameState, dest: number, die?: number): RoutePreview {
+  return travelPreview(game, dest, die);
+}
+
+export interface RouteDieReadout {
+  die: number;
+  fuelDiscountPercent: number;
+  evasionPercent: number;
+  label: string;
+}
+
+/** T-193 · Ordinary jumps no longer roll PILOT, so the route pane must not show
+ *  their dead DC. Once a die is armed, show the two live travel effects it
+ *  really buys, both read from the engine's own monotonic helpers. */
+export function routeDieReadout(die: number | null | undefined): RouteDieReadout | null {
+  if (die === null || die === undefined) return null;
+  const fuelDiscountPercent = Math.round(navDieFuelDiscount(die) * 100);
+  const evasionPercent = Math.round((1 - navDieEvasionFactor(die)) * 100);
+  return {
+    die,
+    fuelDiscountPercent,
+    evasionPercent,
+    label: `die ${die} · fuel -${fuelDiscountPercent}% · encounter odds -${evasionPercent}%`,
+  };
 }
 
 // ---- T-1403 off-lane exploration (display-only) --------------------------
@@ -354,6 +381,127 @@ export function explorationPreview(game: GameState): ExplorationPreview {
     effectiveModifier: game.player.stats[Stat.PILOT] + navBonus(ship),
     canAfford: ship.fuel >= EXPLORATION_FUEL_COST,
   };
+}
+
+export type ActionCheckTone = 'armed' | 'unarmed';
+
+export interface ActionCheckPreview {
+  stat: Stat;
+  dc: number;
+  die: number | null;
+  modifier: number;
+  total: number | null;
+  margin: number | null;
+  success: boolean | null;
+  tone: ActionCheckTone;
+  label: string;
+}
+
+function actionCheckPreview(
+  stat: Stat,
+  modifier: number,
+  dc: number,
+  die: number | null | undefined,
+): ActionCheckPreview {
+  if (die === null || die === undefined) {
+    return {
+      stat,
+      dc,
+      die: null,
+      modifier,
+      total: null,
+      margin: null,
+      success: null,
+      tone: 'unarmed',
+      label: `${statName(stat)} DC ${dc} · arm a die`,
+    };
+  }
+  const result = check(die, modifier, dc);
+  return {
+    stat,
+    dc,
+    die,
+    modifier: result.modifier,
+    total: result.total,
+    margin: result.margin,
+    success: result.success,
+    tone: 'armed',
+    label: `[${die}] ${signedMargin(result.modifier)} vs DC ${dc} · ${
+      result.success ? 'clears it' : 'misses'
+    }`,
+  };
+}
+
+export function explorationCheckPreview(
+  game: GameState,
+  die: number | null | undefined,
+): ActionCheckPreview {
+  return actionCheckPreview(
+    Stat.PILOT,
+    game.player.stats[Stat.PILOT] + navBonus(game.player.ship),
+    EXPLORATION_NAV_DC,
+    die,
+  );
+}
+
+export function haggleCheckPreview(
+  game: GameState,
+  die: number | null | undefined,
+): ActionCheckPreview {
+  return actionCheckPreview(Stat.TRADE, game.player.stats[Stat.TRADE], 12, die);
+}
+
+export function darePeekCheckPreview(
+  game: GameState,
+  die: number | null | undefined,
+): ActionCheckPreview | null {
+  if (!game.dareHand) return null;
+  return actionCheckPreview(
+    Stat.GUILE,
+    game.player.stats[Stat.GUILE],
+    venueParamsFor(game.dareHand.systemId, 'dare').dc,
+    die,
+  );
+}
+
+export type CombatStanceId = 'fight' | 'talk' | 'run';
+
+export function combatStanceCheckPreview(
+  game: GameState,
+  stance: CombatStanceId,
+  die: number | null | undefined,
+): ActionCheckPreview | null {
+  const encounter = game.encounter;
+  if (!encounter) return null;
+  const baseDc = 10 + encounter.interceptor.tier;
+  if (stance === 'fight') {
+    return actionCheckPreview(Stat.GUNS, game.player.stats[Stat.GUNS], baseDc, die);
+  }
+  if (stance === 'run') {
+    return actionCheckPreview(Stat.PILOT, game.player.stats[Stat.PILOT], baseDc, die);
+  }
+
+  // Display-only mirror of combat.ts's talk DC until the engine grows a public
+  // pre-commit quote for combat stances.
+  const disposition =
+    encounter.interceptor.source === 'named'
+      ? (game.npcs.find((npc) => npc.id === encounter.interceptor.id)?.disposition ?? 0)
+      : 0;
+  const dc = baseDc - TALK_DC_PER_DISPOSITION * disposition;
+  return actionCheckPreview(Stat.TRADE, game.player.stats[Stat.TRADE], dc, die);
+}
+
+export function crossingCheckPreview(
+  game: GameState,
+  dc: number,
+  die: number | null | undefined,
+): ActionCheckPreview {
+  return actionCheckPreview(
+    Stat.PILOT,
+    game.player.stats[Stat.PILOT] + navBonus(game.player.ship),
+    dc,
+    die,
+  );
 }
 
 /**
@@ -1558,40 +1706,28 @@ export function contrabandHold(game: GameState): ContrabandHold {
   return { carrying: isCarryingIllicit(game), source };
 }
 
-/** A system placed on the SVG plane: raw coordinates plus projected (viewBox)
- *  screen coordinates. */
-export interface ProjectedNode {
+export interface StarmapGlobeNode {
   id: number;
   name: string;
   isRim: boolean;
   x: number;
   y: number;
-  sx: number;
-  sy: number;
+  z: number;
 }
 
-export interface StarmapProjection {
-  /** SVG viewBox string sized to the displayed band. */
-  viewBox: string;
-  width: number;
-  height: number;
-  /** Distance-units → viewBox-units (uniform, so a distance circle stays round). */
-  scale: number;
-  nodes: ProjectedNode[];
-  here: ProjectedNode | null;
+export interface StarmapGlobeProjection {
+  nodes: StarmapGlobeNode[];
+  here: StarmapGlobeNode | null;
   /** Fuel-range ring radius in distance units (from maxJumpDistance) … */
   ringUnits: number;
-  /** … and in projected viewBox units. */
-  ringRadius: number;
 }
 
 /**
- * Project the relevant band of systems onto an SVG plane. We do NOT fit all 28
- * systems: the Andromeda cluster sits at x up to 99 and would crush the core
- * lane into an unreadable sliver. Instead we render the core+rim lane (ids
- * 1–20) plus the current system and any charted system, then bound the box to
- * exactly that set. The scale is uniform so the fuel-range ring — a true
- * distance circle — is drawn round rather than sheared.
+ * The live globe starmap's data model. We do NOT fit all 28 systems by default:
+ * the Andromeda cluster sits far beyond the charted core/rim lane and would make
+ * the opening map read as spoilers rather than navigation. The visible set
+ * remains the core+rim lane (ids 1–20) plus the current system, charted systems
+ * and the unlocked Nemesis crossing, matching the pre-T-215 destination contract.
  *
  * T-1505b · ONE DELIBERATE EXCEPTION: NEMESIS (id 28) joins the band once
  * `nemesis.crossing.unlocked` is set. The band stretches only for the endgame,
@@ -1603,7 +1739,7 @@ export interface StarmapProjection {
  * READER of the crossing flag; the other two are the engine gate (day.ts) and the
  * sim protocol's legalActions.
  */
-export function starmapProjection(game: GameState): StarmapProjection {
+export function starmapGlobeProjection(game: GameState): StarmapGlobeProjection {
   const here = game.player.currentSystemId;
   const visited = new Set(game.player.charts.visitedSystemIds);
   const crossingOpen = game.flags['nemesis.crossing.unlocked'] === true;
@@ -1619,33 +1755,11 @@ export function starmapProjection(game: GameState): StarmapProjection {
     }
   }
   const systems = [...shown.values()];
-  const xs = systems.map((s) => s.coordinates.x);
-  const ys = systems.map((s) => s.coordinates.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const spanX = maxX - minX;
-  const spanY = maxY - minY;
-
-  const pad = 8; // viewBox units of margin around the band
-  const targetSpan = 220; // desired long-axis size in viewBox units
-  const scale = targetSpan / Math.max(spanX, spanY, 1);
-
-  const width = spanX * scale + pad * 2;
-  // A pure lane (spanY 0) still needs vertical room for the node + label.
-  const laneHeight = 64;
-  const height = Math.max(spanY * scale, laneHeight) + pad * 2;
-  const yOffset = spanY === 0 ? height / 2 : pad;
-
-  const project = (sys: (typeof STAR_SYSTEMS)[number]): ProjectedNode => ({
+  const project = (sys: (typeof STAR_SYSTEMS)[number]): StarmapGlobeNode => ({
     id: sys.id,
     name: sys.name,
     isRim: sys.isRim,
-    x: sys.coordinates.x,
-    y: sys.coordinates.y,
-    sx: pad + (sys.coordinates.x - minX) * scale,
-    sy: spanY === 0 ? yOffset : pad + (sys.coordinates.y - minY) * scale,
+    ...coordinates3D(sys.id),
   });
 
   const nodes = systems.map(project);
@@ -1654,19 +1768,10 @@ export function starmapProjection(game: GameState): StarmapProjection {
   const ringUnits = maxJumpDistance(ship.drives, ship.fuel, ship.hasTransWarpDrive ?? false);
 
   return {
-    viewBox: `0 0 ${round(width)} ${round(height)}`,
-    width,
-    height,
-    scale,
     nodes,
     here: hereSys ? project(hereSys) : null,
     ringUnits,
-    ringRadius: ringUnits * scale,
   };
-}
-
-function round(n: number): number {
-  return Math.round(n * 100) / 100;
 }
 
 /**
@@ -2389,7 +2494,7 @@ export function shipComponents(game: GameState): ShipComponentRow[] {
 //     picture's coordinates in content would stale every balance fixture for a
 //     drawing. Nothing here is a rule; nothing here is persisted.
 //
-// The projection follows `starmapProjection`'s precedent — SVG geometry and the
+// The projection follows `starmapGlobeProjection`'s precedent — view geometry and the
 // derived readouts are computed in this file and `App.tsx` only renders them —
 // which is what makes the whole surface unit-testable without a DOM.
 // ===========================================================================
@@ -3433,13 +3538,10 @@ export interface OnboardingPrompt {
  * existing engine surface (`encounter`, `day`, `dawnHand`, `activeContract`,
  * `market.manifestBoard`).
  *
- * T-196c · STALE COPY BELOW, LEFT DELIBERATELY AND OWNED BY T-194. `first-sign`
- * still says "assign a die to a manifest offer", and `dawn-roll` still frames a
- * die as the price of every action. M17 (docs/DAWN-HAND-REDESIGN.md §3) made
- * signing free, so that instruction is now false. T-196c changes UI BEHAVIOUR
- * only; the teaching copy belongs to T-194, which is gated behind T-198 for the
- * express reason that the new economy must settle before the tutorial bakes it
- * in. Marked here rather than silently half-fixed.
+ * T-194 · Post-M17 teaching: dice are no longer generic action points. Main
+ * Actions spend one and read its face; Free Actions cost no die. The first-turn
+ * walkthrough demonstrates the contrast, and these contextual prompts reinforce
+ * it when the scripted walkthrough is not running.
  */
 export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   {
@@ -3454,7 +3556,7 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
     title: 'The Dawn Hand',
     // T-1405 · Hand-size-neutral copy: crew (a First Officer) can grow the dawn
     // hand to 6–7 dice, so the count is no longer a fixed "five".
-    body: 'Your dawn hand — one roll each day. Pick a die, then assign it to an action.',
+    body: 'Your dawn hand — Main Actions spend a die and read its face. Free Actions cost nothing.',
     anchor: 'hand',
     active: (game) => {
       const hand = game.player.dawnHand;
@@ -3464,14 +3566,14 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   {
     id: 'first-sign',
     title: 'Sign a Job',
-    body: 'Your hold is empty — assign a die to a manifest offer to take a job.',
+    body: 'Your hold is empty — click a manifest offer to take a job for free; HAGGLE is the die-spending roll.',
     anchor: 'manifest',
     active: (game) => game.player.activeContract == null && game.market.manifestBoard.length > 0,
   },
   {
     id: 'first-jump',
     title: 'Plot the Jump',
-    body: 'Cargo aboard. Pick a die, plot the destination on the map, then confirm the jump.',
+    body: 'Cargo aboard. Pick a die, plot the destination, and read the fuel discount before you confirm.',
     anchor: 'starmap',
     active: (game) => game.player.activeContract != null,
   },

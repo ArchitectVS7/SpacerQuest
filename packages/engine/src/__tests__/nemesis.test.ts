@@ -1,14 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   ALL_FRAGMENT_IDS,
-  BEACON_FRAGMENT_POOL,
-  DERELICT_FRAGMENT_POOL,
   SIGNAL_FRAGMENTS,
   STORYLETS,
-  defineSignalFragments,
-  validateFragmentPools,
-  validateSignalFragments,
-  type SignalFragmentLore,
   type StoryletDefinition,
 } from '@spacerquest/content';
 import {
@@ -241,104 +235,6 @@ describe('T-1310 · late Wise One visit still opens the arc', () => {
     expect(eligibleStorylets(early).map((o) => o.storyletId)).not.toContain(
       'wise-one.polaris.signal-hook',
     );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// T-1505a · The fragment table LOADS AND VALIDATES.
-//
-// `defineSignalFragments` throws at import, so `@spacerquest/content` importing
-// green anywhere in this file is already half the proof. These tests pin the
-// other half: that each rule actually rejects the malformation it claims to, so
-// the guard cannot rot into a no-op.
-//
-// T-164 · HOSTED HERE, AND IT NO LONGER HAS TO BE. The old reason ("content has
-// no test runner of its own") stopped being true when T-164 stood one up. This
-// block reads only `@spacerquest/content`, so under `docs/TESTING-STRATEGY.md`
-// Part I it QUALIFIES to move beside its rows — it is on that ruling's migration
-// ledger (F-164-1) rather than in T-164's scope, which was chartered to stand up
-// the runner and split the Explore validator, not to relocate every eligible
-// block at once.
-// ---------------------------------------------------------------------------
-describe('T-1505a · Signal Fragment content validation', () => {
-  /** A minimal well-formed table, cloned per test and then broken one way. */
-  function goodTable(): Record<string, SignalFragmentLore> {
-    return {
-      'frag-a': { id: 'frag-a', order: 1, title: 'A', signal: 'raw a', decoded: 'lore a' },
-      'frag-b': { id: 'frag-b', order: 2, title: 'B', signal: 'raw b', decoded: 'lore b' },
-    };
-  }
-
-  it('accepts the SHIPPED twelve-fragment table (it loaded, so it validated)', () => {
-    expect(validateSignalFragments(SIGNAL_FRAGMENTS)).toEqual([]);
-    expect(() => defineSignalFragments(SIGNAL_FRAGMENTS)).not.toThrow();
-    expect(Object.keys(SIGNAL_FRAGMENTS)).toHaveLength(12);
-    // The keys and ids agree, and the orders are exactly 1..12 with no gaps —
-    // which is what makes the lore index a stable, readable arc in the pane.
-    expect(
-      Object.values(SIGNAL_FRAGMENTS)
-        .map((f) => f.order)
-        .sort((a, b) => a - b),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
-  });
-
-  it('rejects a fragment whose id disagrees with its key (the ALL_FRAGMENT_IDS desync)', () => {
-    const table = goodTable();
-    table['frag-a'] = { ...table['frag-a'], id: 'frag-typo' };
-    expect(validateSignalFragments(table).join('\n')).toContain('must equal its key');
-    expect(() => defineSignalFragments(table)).toThrow(/Invalid Signal Fragment content/);
-  });
-
-  it('rejects a duplicate order (nemesisLoreIndex would sort the two non-deterministically)', () => {
-    const table = goodTable();
-    table['frag-b'] = { ...table['frag-b'], order: 1 };
-    expect(validateSignalFragments(table).join('\n')).toContain('duplicates');
-    expect(() => defineSignalFragments(table)).toThrow();
-  });
-
-  it('rejects a non-positive or non-integer order', () => {
-    for (const order of [0, -3, 1.5]) {
-      const table = goodTable();
-      table['frag-a'] = { ...table['frag-a'], order };
-      expect(validateSignalFragments(table).join('\n')).toContain('must be a positive integer');
-    }
-  });
-
-  it('rejects an empty title / signal / decoded (they render as blank pane rows)', () => {
-    for (const field of ['title', 'signal', 'decoded'] as const) {
-      const table = goodTable();
-      table['frag-a'] = { ...table['frag-a'], [field]: '' };
-      expect(validateSignalFragments(table).join('\n')).toContain(
-        `signalFragments.frag-a.${field} must be a non-empty string`,
-      );
-    }
-  });
-
-  it('rejects decoded === signal (decoding would be invisible to the player)', () => {
-    const table = goodTable();
-    table['frag-a'] = { ...table['frag-a'], decoded: table['frag-a'].signal };
-    expect(validateSignalFragments(table).join('\n')).toContain('must differ from');
-  });
-
-  it('accepts the shipped loot pools and rejects an unknown or duplicated pool id', () => {
-    // READER of a pool entry: POI_LOOT → engine resolveLoot's seeded pick, whose
-    // result feeds grantFragment (which returns false — silently — on a bad id).
-    expect(
-      validateFragmentPools(SIGNAL_FRAGMENTS, {
-        DERELICT_FRAGMENT_POOL,
-        BEACON_FRAGMENT_POOL,
-      }),
-    ).toEqual([]);
-    // The T-1505a growth: the new pool entries are actually in the pools.
-    expect(DERELICT_FRAGMENT_POOL).toContain('frag-nemesis-06');
-    expect(DERELICT_FRAGMENT_POOL).toContain('frag-nemesis-07');
-    expect(BEACON_FRAGMENT_POOL).toContain('frag-nemesis-08');
-
-    const bad = validateFragmentPools(SIGNAL_FRAGMENTS, {
-      pool: ['frag-nemesis-02', 'frag-nope', 'frag-nemesis-02'],
-    });
-    expect(bad.join('\n')).toContain("pool[1] ('frag-nope') is not a known Signal Fragment id");
-    expect(bad.join('\n')).toContain('is duplicated in the pool');
   });
 });
 

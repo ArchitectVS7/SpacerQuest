@@ -120,7 +120,8 @@ T-150: after fixing `explorerPolicy`'s unguarded Explore loop (F-116-1), `smuggl
 
 ### L-014 · An extraction is not behaviour-preserving until every consumer reads the accessor
 In T-120 the Hangout wager band and check DCs moved out of `hangout.ts`'s constants into content behind `wagerBandFor` / `venueParamsFor`, but `legalActions` and `packages/ui/src/format.ts`'s `dareWagerBounds` / `hangoutNpcs` still clamped and advertised against the old `DARE_MIN_WAGER` / `DARE_MAX_WAGER` / `BEFRIEND_DC` constants — the UGT harness and the Hangout pane would have offered a band the engine no longer read.
-**Enforced by:** `packages/sim/src/__tests__/protocol.test.ts:1268` (wager domain asserted equal to `wagerBandFor(portId)` with a non-vacuity check that the port band differs from the global one) + `packages/ui/src/__tests__/liars-dice-pane.test.ts:416`
+**T-243:** The same shape recurred when §4.6a's licensed live-tier accessors became a closed list in prose, but no check proved the list stayed closed before raw tier reads could drift back in.
+**Enforced by:** `packages/sim/src/__tests__/protocol.test.ts:1268` (wager domain asserted equal to `wagerBandFor(portId)` with a non-vacuity check that the port band differs from the global one) + `packages/ui/src/__tests__/liars-dice-pane.test.ts:416` + `packages/sim/src/__tests__/liars-dice-process.test.ts`
 **Rule:** When a constant moves into content behind an accessor, move every mirror of it (sim protocol, UI format) in the same change and pin each with a test that reads the accessor, never a restated literal.
 
 ### L-015 · A one-global-winner selector is a latent single-scope assumption
