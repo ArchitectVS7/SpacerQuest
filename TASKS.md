@@ -125,9 +125,15 @@ if one flips to unexpectedly PASSING, halt and escalate — do not flip it to `i
 - **A save-shape change owes a migration and a round-trip test**, and a migration CALLS a
   rule rather than restating one. `CURRENT_SAVE_VERSION` is **12** at the start of this
   track; two tasks below are expected to need it. **That 12 is a frozen anchor, not a live
-  reading** — it moved to **15** at T-145 (`59833a40`, 2026-07-31) and reads 15 today in
-  `packages/engine/src/save.ts:509`. Never copy the 12 into a Delivered note: re-read
-  `save.ts` and pin the file:line, per `LESSONS.md`'s resolvable-pin rule.
+  reading** — it moved to 15 at T-145 (`59833a40`, 2026-07-31) and has moved again since.
+  **No number in this bullet is a live reading, and neither is any number in the version-history
+  JSDoc at the top of `save.ts` — those record past bumps.** The only live reading is the
+  `export const CURRENT_SAVE_VERSION = …` declaration further down `packages/engine/src/save.ts`.
+  Never copy a number out of this bullet, out of that JSDoc, or out of an older Delivered note
+  into a new Delivered note: grep the declaration, quote what it says, and pin its file:line, per
+  `LESSONS.md`'s resolvable-pin rule. (T-255 fix round 1 shipped a note quoting "15,
+  `save.ts:509`" lifted from exactly those two stale sources; the declaration read 17 at
+  `save.ts:627`.)
 - **Sweep invocation, exactly.** Shards are **1-indexed** (`--shard 1/8` … `8/8`), then
   `--merge`; verify the merge reports **8,000 rows**. Both `--milestone-days` and
   `--aggregate` are load-bearing.
@@ -2046,7 +2052,7 @@ owner confirmed the gambler ladder and dropped the random-gambler idea with no f
 **Moved at the 2026-08-06 re-order:** T-256 and T-257 (both owner content-design rulings) now
 sit in the OWNER GATE section below. T-255 is autonomous and stays.
 
-### T-255 · The four captain-voice surfaces have unit coverage only — prove them in real DOM — `status: TODO` · `coder: opus` · `after: —`
+### T-255 · The four captain-voice surfaces have unit coverage only — prove them in real DOM — `status: DONE` · `coder: opus` · `after: —`
 
 T-207's four new player-visible surfaces have UNIT coverage only and no real-DOM proof. T-207's block
 states "No e2e change was needed or made" because `packages/ui/e2e/combat.spec.ts`'s two seeds are both
@@ -2068,6 +2074,57 @@ none is vacuous; the existing anonymous-encounter seeds in `combat.spec.ts` and 
 assertions in `liars-dice-roster.spec.ts` are left intact; the specs declare their first-run walkthrough
 stance per the suite convention; UI/test-only change, no fingerprint moves — state that explicitly;
 gate green.
+
+**Delivered (2026-08-06).** One new file, `packages/ui/e2e/captain-voice.spec.ts`, six tests. **UI/TEST-ONLY:
+no engine, content, save-shape or fingerprint change.** Nothing under `packages/engine`, `packages/content`
+or `packages/ui/src` was touched, so `rulesFingerprint` cannot move, no capstone is owed,
+`CURRENT_SAVE_VERSION` is untouched and no migration is owed — re-read live at delivery: **17**
+(`export const CURRENT_SAVE_VERSION = 17;`, `packages/engine/src/save.ts:627`; last bumped by T-208,
+v16→v17). The `15` / `save.ts:509` this note first quoted was the Standing-constraints anchor and a
+historical JSDoc line (`save.ts:204`, "T-145 bumped … to 15"), not the declaration — corrected here.
+`combat.spec.ts` and `liars-dice-roster.spec.ts` were never opened and are byte-identical.
+
+**The brief's line pins were STALE and are corrected here** (component + testid, per the resolvable-pin
+rule, so the next reader does not re-chase a number): `combat-enemy-bark` `App.tsx:1873` and
+`combat-enemy-battle-bark` `App.tsx:1878`, both in `CombatInstrument` under `readout?.enterLine` /
+`readout?.battleLine`; `combat-aftermath-bark` `App.tsx:2061` in `CombatAftermathPanel` under
+`aftermath.opponentLine`; `dare-dealer-table-talk` `App.tsx:3064` in the Liar's Dice scene under
+`view?.dealerTableTalk`.
+
+**Two fixtures, found by an offline sweep and pinned, not left to chance** — derivation method, sweep range
+and predicate are recorded in the spec header so a future maintainer whose seed goes stale RE-HUNTS rather
+than patches a literal. Seeds 1..400 × jump-die INDEX 0..4 × destination 2..12, replaying
+`startDay(createInitialState(seed))` → `applyPlayerAction` exactly as the store does, kept the first draw
+with `interceptor.source === 'named'`, `enemyHull >= 2` and an authored `catchphrases` pool. **NAMED
+interceptor: seed 30**, die index 0 → Altair-3 draws `npc-zero-risk` (tier 2, hull 2, 215 fuel left — clear
+of the 50-fuel fight cost, so no weapons-offline band); fight index 1 → round 2 (the even round the
+battle-line timing rule fires on), fight index 2 → the killing volley resolves `interceptor-escaped`, which
+`CAPTAIN_OUTCOME` reads from the captain's side as a `loss`. **ROAMING named captain's hand: seed 1,
+`npc-iron-vex`** — the fixture `liars-dice.spec.ts` already documents (seated at Sol-3 on any seed), a
+proven-reachable path that had simply never been asserted for its bark. Dice are addressed BY HAND INDEX,
+never by value: seed 30's hand is `[15,15,15,10,1]`, so a `data-die-value="15"` locator would be ambiguous.
+
+**Non-vacuity discharged twice, and the second layer was RUN, not asserted in prose.** (a) A
+`proveBarkNotVacuous` helper asserts the line is in the DOM and is a member of the captain's authored pool
+(never a hardcoded quote — every string is read from `@spacerquest/content`), then removes that element and
+re-runs the identical assertion, requiring it to go red; it also guards the pool against emptiness, since a
+membership check over an empty pool is the exact vacuity this task exists to rule out. Each probe is the
+LAST act of its test — the barks are conditional children of a still-mounted parent, so a later React
+re-render would `removeChild` a node already detached. (b) The content-level negative controls: the
+anonymous raider (seed 43, re-walked here rather than edited into `combat.spec.ts`) and the roster seat
+`ld-1-1`, where the shipped guards suppress the render genuinely, each proving the surrounding pane really
+mounted so the absence is a claim about the bark. **Verified by mutation:** suppressing all four render
+guards in `App.tsx` turned exactly the four positive tests red and left the two negative controls green;
+`App.tsx` was reverted to pristine (`git checkout`) before the gate.
+
+Suite convention observed: the T-187 walkthrough-stance comment plus `skipFirstTurnWalkthrough` in
+`beforeEach`, and **no `@tag` in any test title** — `flake-rate.spec.ts` gates on a `@tour-one` denominator
+an unrelated task must not move. Gate: `npm test` 2,900 passing / 0 failing across six workspaces;
+`npx tsc -b`, `npm run lint`, `npm run format:check` all clean; full `npm run test:e2e -w @spacerquest/ui`
+**214 passed** (208 + the 6 new), zero flaky. Named-deliverable check: `grep -rn` over `packages/ui/e2e/`
+now returns all four testids in `captain-voice.spec.ts`.
+
+Orchestration: attempts=2/4.
 
 ---
 
