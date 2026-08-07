@@ -50,6 +50,17 @@ test.beforeEach(async ({ page }) => {
   await skipFirstTurnWalkthrough(page);
 });
 
+test('ticker starts after the live cap, including the LOG button', async ({ page }) => {
+  await page.goto('/');
+
+  const capBox = await page.locator('.wire .cap').boundingBox();
+  const firstTickerItemBox = await page.locator('.ticker .it').first().boundingBox();
+  expect(capBox).not.toBeNull();
+  expect(firstTickerItemBox).not.toBeNull();
+
+  expect(firstTickerItemBox!.x).toBeGreaterThanOrEqual(capBox!.x + capBox!.width - 1);
+});
+
 /** Start a fresh, deterministic career on a chosen seed, entirely through the UI. */
 async function newGameSeed(page: Page, seed: number): Promise<void> {
   await page.getByRole('button', { name: 'New game' }).click();

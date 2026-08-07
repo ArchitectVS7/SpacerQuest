@@ -18,6 +18,8 @@
   --amber: #c0781a;
   --amber-dim: #5e3b0e;
   --hair: #3a2408;
+  --line: var(--hair);
+  --accent: var(--ember-hi);
 
   --font-display: 'Chakra Petch', system-ui, sans-serif;
   --font-data: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
@@ -1844,14 +1846,14 @@ body {
 .wire {
   border: 1px solid var(--hair);
   background: #0c0805;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: stretch;
   overflow: hidden;
   position: relative;
 }
 .wire .cap {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1882,7 +1884,8 @@ body {
 }
 .ticker {
   white-space: nowrap;
-  padding: 9px 0 9px 138px;
+  min-width: 0;
+  padding: 9px 0;
   animation: tick 40s linear infinite;
   font-size: 13px;
   color: var(--amber);
@@ -2573,7 +2576,6 @@ body {
   }
   .ticker {
     animation: none;
-    padding-left: 138px;
   }
   .die.bloom {
     animation: none;
@@ -3214,7 +3216,11 @@ body {
   color: var(--amber);
 }
 .as-hostile .as-value {
-  color: #e0562a;
+  padding: 0 5px;
+  border: 1px solid var(--ember);
+  background: var(--ember);
+  color: var(--tube);
+  text-shadow: none;
 }
 
 .registry-empty,
@@ -4900,7 +4906,7 @@ body {
 .ship-honor {
   margin: 0.6rem 0;
   padding: 0.5rem 0.6rem;
-  border: 1px solid var(--line, #2b3a44);
+  border: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.18);
 }
 .ship-honor .honor-head {
@@ -4920,7 +4926,7 @@ body {
 .ship-honor .honor-row.all-around {
   margin-top: 0.35rem;
   padding-top: 0.35rem;
-  border-top: 1px solid var(--line, #2b3a44);
+  border-top: 1px solid var(--line);
   font-weight: 600;
 }
 .ship-honor .honor-holders {
@@ -4938,7 +4944,7 @@ body {
 /* The player is marked, never ranked differently — `playerRank` counts captains
    scoring strictly higher and is blind to this class. */
 .ship-honor .honor-holder.you {
-  color: var(--accent, #4fd1c5);
+  color: var(--accent);
   font-weight: 600;
 }
 .ship-honor .honor-rank {
@@ -4947,7 +4953,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .ship-honor .honor-rank.held {
-  color: var(--accent, #4fd1c5);
+  color: var(--accent);
   opacity: 1;
 }
 /* T-1406 · the component's mechanical effect, shown beside its price. */
@@ -4956,7 +4962,7 @@ body {
   opacity: 0.8;
 }
 .comp-effect-next {
-  color: var(--accent, #4fd1c5);
+  color: var(--accent);
 }
 
 /* =========================================================================

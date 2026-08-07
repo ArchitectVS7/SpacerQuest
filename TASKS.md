@@ -4698,7 +4698,7 @@ this one.
 
 ## M16 — Owner UAT pass 3: the dawn-hand die is illegible (2026-08-04)
 
-### T-193 · BUG: the starmap shows a "PILOT DC" for every jump, but ordinary jumps never roll against it — `status: TODO` · `coder: opus` · `after: T-198`
+### T-193 · BUG: the starmap shows a "PILOT DC" for every jump, but ordinary jumps never roll against it — `status: DONE` · `coder: codex` · `after: T-198`
 
 Found while explaining the dawn-hand mechanic to the owner (they could not tell what assigning a
 die to a jump does — see T-194 for the full finding). Root cause, verified in code:
@@ -4778,6 +4778,15 @@ economy, not numbers the owner may still re-tune.
    this one.
 
 Gate green.
+
+**Delivered (2026-08-07, Codex):** ordinary route previews now render `NAV DIE` instead of the
+dead `PILOT DC`, with no-die copy (`no check · pick a die for jump edge`) until the player arms
+a die; once armed, the same panel shows the engine-owned fuel discount and encounter-evasion
+effect, and passes that die into `travelPreview` so the displayed fuel cost matches the eventual
+charge. The Nemesis crossing keeps its real `PILOT DC` branch. Coverage added in
+`packages/ui/src/__tests__/starmap-route-readout.test.ts`; this repo intentionally has no
+React Testing Library/jsdom harness, so the test stays in the existing pure Vitest UI harness
+rather than adding a browser tier.
 
 ### T-195 · The travel die matters again — fuel discount + encounter evasion, both monotonic — `status: DONE` · `coder: opus` · `after: —`
 
@@ -6990,7 +6999,7 @@ sample of rotations, not just one; the current-system/course-lane brightness beh
 the ruling; the mobile-open failure is root-caused and fixed or explicitly re-scoped with a
 reason recorded; the old flat 2D projection code is deleted; gate green.
 
-### T-216 · BUG: `theme.css`'s "one phosphor colour" law is already broken in two live UI spots — `status: TODO` · `coder: opus` · `after: —`
+### T-216 · BUG: `theme.css`'s "one phosphor colour" law is already broken in two live UI spots — `status: DONE` · `coder: codex` · `after: —`
 
 **Found incidentally** during the T-186 visual-identity bake-off (2026-08-05), by the engineering-feasibility reviewer, while establishing the ground truth that "there is currently no second hue anywhere in the shipped UI" — that premise turned out to be false, and this is filed per the Bug Discovery Policy rather than held for later. Confirmed against source directly, not taken on the reviewer's word:
 
@@ -7014,7 +7023,14 @@ None of this is dead CSS — both class families are confirmed rendered, not jus
 
 **Accept:** `--accent` and `--line` are either defined (as amber-family values, closing the leak) or deliberately promoted to real, documented tokens with `theme.css`'s header comment updated to no longer claim zero second hues; `.as-hostile`'s hardcoded `#e0562a` is resolved the same way — token-ized amber or deliberately kept and documented; a screenshot of `.ship-honor` (Records → ship honors) and an attitude-hostile row confirms the fix; gate green.
 
-### T-217 · BUG: the Galactic Wire ticker scrolls underneath the LOG button — `status: TODO` · `coder: opus` · `after: —`
+**Delivered (2026-08-07, Codex):** `--accent` and `--line` are now real amber-family tokens
+(`--ember-hi` / `--hair`), so the honor board no longer falls through to teal or blue-grey.
+Hostile alliance standing no longer uses the hardcoded orange-red leak; it is rendered as
+amber reverse-video (`--ember` background, `--tube` text), giving a non-hue distinction from
+neutral. Added `packages/ui/src/__tests__/theme-token.test.ts` to pin the token definitions and
+forbid the retired fallback literals.
+
+### T-217 · BUG: the Galactic Wire ticker scrolls underneath the LOG button — `status: DONE` · `coder: codex` · `after: —`
 
 **Found incidentally** during the T-186 visual-identity bake-off (2026-08-05), by the visual-design
 reviewer, and confirmed independently against a screenshot taken earlier the same session (not
@@ -7036,6 +7052,12 @@ absolutely-positioned `.cap` element, after the label. Adding the button widened
 of `position: absolute` + a magic-number sibling offset) rather than a hardcoded pixel value that
 can drift again the next time something is added to `.cap`; a screenshot of the Galactic Wire band
 confirms `GALACTIC WIRE [LOG]` and the ticker text no longer overlap; gate green.
+
+**Delivered (2026-08-07, Codex):** `.wire` now lays out the cap and ticker in a two-column grid,
+with `.cap` in normal flow and `.ticker` starting in the second column instead of relying on a
+hardcoded `138px` left pad. Reduced-motion mode no longer reintroduces that magic offset. Added
+an existing-wire Playwright assertion that the first ticker item starts after the live cap box,
+including the LOG button.
 
 ### T-218 · Build: ship the "one phosphor, two materials" visual identity — `status: TODO` · `coder: opus` · `after: T-186`
 

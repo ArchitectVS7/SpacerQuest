@@ -74,6 +74,8 @@ import {
   nextRankFor,
   quoteStoryletChoice,
   travelPreview,
+  navDieFuelDiscount,
+  navDieEvasionFactor,
   quoteFuelPurchase,
   hangoutRumors,
   loanBandFor,
@@ -322,8 +324,30 @@ export type RoutePreview = TravelPreview;
 /** T-1402 · A thin pass-through to the engine's `travelPreview` — the UI no longer
  *  reimplements the jumpFuelCost / travelDc / calculateRouteDanger stack (nor the
  *  fabricated `jumpsBetween` round) it used to; it consumes the engine truth. */
-export function routePreview(game: GameState, dest: number): RoutePreview {
-  return travelPreview(game, dest);
+export function routePreview(game: GameState, dest: number, die?: number): RoutePreview {
+  return travelPreview(game, dest, die);
+}
+
+export interface RouteDieReadout {
+  die: number;
+  fuelDiscountPercent: number;
+  evasionPercent: number;
+  label: string;
+}
+
+/** T-193 · Ordinary jumps no longer roll PILOT, so the route pane must not show
+ *  their dead DC. Once a die is armed, show the two live travel effects it
+ *  really buys, both read from the engine's own monotonic helpers. */
+export function routeDieReadout(die: number | null | undefined): RouteDieReadout | null {
+  if (die === null || die === undefined) return null;
+  const fuelDiscountPercent = Math.round(navDieFuelDiscount(die) * 100);
+  const evasionPercent = Math.round((1 - navDieEvasionFactor(die)) * 100);
+  return {
+    die,
+    fuelDiscountPercent,
+    evasionPercent,
+    label: `die ${die} · fuel -${fuelDiscountPercent}% · encounter odds -${evasionPercent}%`,
+  };
 }
 
 // ---- T-1403 off-lane exploration (display-only) --------------------------

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { signOpeningMarker, skipFirstTurnWalkthrough } from './support/career';
-import { jumpFuelCost, travelDc, maxJumpDistance } from '@spacerquest/engine';
+import { jumpFuelCost, maxJumpDistance, navDieFuelDiscount } from '@spacerquest/engine';
 import { distance, STAR_SYSTEMS } from '@spacerquest/content';
 
 // T-304 acceptance: plan and execute a jump entirely via the starmap; the
@@ -58,10 +58,14 @@ test('plan and execute a jump entirely via the map', async ({ page }) => {
   const d = distance(1, dest);
   await expect(page.getByTestId('route-preview')).toBeVisible();
   await expect(page.getByTestId('route-distance')).toHaveText(String(d));
+  const baseFuel = jumpFuelCost(STARTER_DRIVES, d, false);
   await expect(page.getByTestId('route-fuel')).toHaveText(
-    String(jumpFuelCost(STARTER_DRIVES, d, false)),
+    String(Math.max(1, Math.round(baseFuel * (1 - navDieFuelDiscount(17))))),
   );
-  await expect(page.getByTestId('route-dc')).toHaveText(String(travelDc(d)));
+  await expect(page.getByTestId('route-dc')).toHaveCount(0);
+  await expect(page.getByTestId('route-die-effect')).toHaveText(
+    'die 17 · fuel -13% · encounter odds -17%',
+  );
 
   // 3) Commit the jump.
   await page.getByTestId('confirm-jump').click();
@@ -103,7 +107,10 @@ test('fuel ring and route preview match engine math', async ({ page }) => {
   await expect(page.getByTestId('route-fuel')).toHaveText(
     String(jumpFuelCost(STARTER_DRIVES, d, false)),
   );
-  await expect(page.getByTestId('route-dc')).toHaveText(String(travelDc(d)));
+  await expect(page.getByTestId('route-dc')).toHaveCount(0);
+  await expect(page.getByTestId('route-die-effect')).toHaveText(
+    'no check · pick a die for jump edge',
+  );
 
   // The fuel-range ring is drawn at exactly maxJumpDistance for the starter ship.
   const units = await page.getByTestId('fuel-ring').getAttribute('data-radius-units');

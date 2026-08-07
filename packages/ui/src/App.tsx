@@ -102,6 +102,7 @@ import {
   cargoName,
   starmapProjection,
   routePreview,
+  routeDieReadout,
   explorationPreview,
   recoveryReadout,
   hangoutOpen,
@@ -3700,6 +3701,8 @@ function Starmap({ state }: { state: CockpitState }) {
   const npcCounts = knownNpcCounts(game);
   const eraSystems = new Set(game.eraEvent?.affectedSystemIds ?? []);
   const dieArmed = state.selectedDie !== null;
+  const armedDieValue =
+    state.selectedDie !== null ? game.player.dawnHand?.dice[state.selectedDie] : undefined;
 
   // T-1403 · off-lane sweep affordances. The button gates on an armed die AND the
   // engine's own fuel affordability; the label mirrors the confirm-jump pattern,
@@ -3728,7 +3731,9 @@ function Starmap({ state }: { state: CockpitState }) {
   const hitW = Math.max(proj.scale * 0.85, 10);
   const targetNode = target !== null ? (proj.nodes.find((n) => n.id === target) ?? null) : null;
   // The target is only ever set to a reachable node, but recompute honestly.
-  const preview = target !== null ? routePreview(game, target) : null;
+  const preview = target !== null ? routePreview(game, target, armedDieValue) : null;
+  const routeIsCrossing = target === NEMESIS_SYSTEM_ID;
+  const routeNavReadout = routeDieReadout(armedDieValue);
   // A stale target (e.g. after a jump moved us) simply resolves to no preview.
   const showPreview = preview !== null && targetNode !== null && target !== here;
 
@@ -3876,10 +3881,21 @@ function Starmap({ state }: { state: CockpitState }) {
                 <span className="rp-v" data-testid="route-fuel">
                   {preview.fuelCost}
                 </span>
-                <span className="rp-k">PILOT DC</span>
-                <span className="rp-v" data-testid="route-dc">
-                  {preview.dc}
-                </span>
+                {routeIsCrossing ? (
+                  <>
+                    <span className="rp-k">PILOT DC</span>
+                    <span className="rp-v" data-testid="route-dc">
+                      {preview.dc}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="rp-k">NAV DIE</span>
+                    <span className="rp-v" data-testid="route-die-effect">
+                      {routeNavReadout?.label ?? 'no check · pick a die for jump edge'}
+                    </span>
+                  </>
+                )}
                 <span className="rp-k">DANGER</span>
                 <span className="rp-v" data-testid="route-danger">
                   {preview.dangerLevel}
