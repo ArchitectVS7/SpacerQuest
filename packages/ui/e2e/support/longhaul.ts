@@ -202,10 +202,9 @@ async function snapshot(page: Page): Promise<CockpitSnapshot> {
         (el instanceof HTMLButtonElement && el.disabled) ||
         (el instanceof HTMLInputElement && el.disabled);
       // "A disabled BUTTON must say why" — a STRUCTURAL rule, not an allowlist:
-      // button-like controls are what a player expects to press. SVG map nodes
-      // (`<g data-testid="starmap-system" aria-disabled>`) communicate
-      // cartographically and are excluded by the same structural rule, so no
-      // hand-maintained exception list can drift.
+      // button-like controls are what a player expects to press. Starmap nodes
+      // also carry title reasons when disabled, so they satisfy the same
+      // structural rule as ordinary controls instead of escaping it.
       const buttonLike = (el: Element): boolean =>
         el instanceof HTMLButtonElement ||
         el instanceof HTMLInputElement ||
@@ -1039,7 +1038,7 @@ async function dailyChecks(
   run.dailyTrialSweeps += 1;
   for (const testid of CONTROLS) {
     if (enabledCount(snap, testid) === 0) continue;
-    if (testid === 'starmap-system') continue; // an SVG `<g>`, not a button
+    if (testid === 'starmap-system') continue; // sample one below by route intent, not random sweep
     // One element per testid keeps the sweep affordable (a 14-node starmap would
     // otherwise dominate it) while still covering every KIND of control.
     const control = page.locator(`[data-testid="${testid}"]:not([disabled])`).first();

@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
+import * as THREE from 'three';
 // T-136 · THE ANIMATION DEPENDENCY, NEW TO THIS REPO (GSAP 3.15.0, GreenSock
 // Standard "No Charge" License — credited in `credits.ts` / `docs/CREDITS.md` and
 // named in the commit body). It earns its place on exactly one job: the Liar's
@@ -100,7 +101,7 @@ import * as sound from './sound';
 import {
   systemName,
   cargoName,
-  starmapProjection,
+  starmapGlobeProjection,
   routePreview,
   routeDieReadout,
   explorationCheckPreview,
@@ -202,6 +203,7 @@ import {
   type SuccessionSummary,
   type WireLogEntry,
   type StoryletChoice,
+  type StarmapGlobeNode,
 } from './format';
 // T-187 · The first-turn walkthrough's pure rules — the script, the rails
 // predicate and the card copy. All presentation; see the module header for why it
@@ -3710,15 +3712,222 @@ function Bezel({ game, seed, children }: { game: GameState; seed: number; childr
   );
 }
 
-// The coordinate-accurate starmap (T-304). Plan a jump entirely here: pick a die
-// from the hand, click a reachable system to preview the engine's own fuel cost /
-// DC / danger, then commit. Every rule number is read from the engine (via
-// format.ts helpers) — the UI only projects coordinates and gates clicks.
+interface GlobeRotation {
+  yaw: number;
+  pitch: number;
+  zoom: number;
+}
+
+interface GlobePoint {
+  id: number;
+  name: string;
+  isRim: boolean;
+  x: number;
+  y: number;
+  z: number;
+  depth: number;
+  visible: boolean;
+}
+
+const GLOBE_SCREEN_RADIUS = 38;
+
+function rotateGlobePoint(node: StarmapGlobeNode, rotation: GlobeRotation): GlobePoint {
+  const length = Math.hypot(node.x, node.y, node.z) || 1;
+  const x0 = node.x / length;
+  const y0 = node.y / length;
+  const z0 = node.z / length;
+  const cy = Math.cos(rotation.yaw);
+  const sy = Math.sin(rotation.yaw);
+  const cp = Math.cos(rotation.pitch);
+  const sp = Math.sin(rotation.pitch);
+  const x1 = x0 * cy + z0 * sy;
+  const z1 = -x0 * sy + z0 * cy;
+  const y1 = y0 * cp - z1 * sp;
+  const z2 = y0 * sp + z1 * cp;
+  return {
+    id: node.id,
+    name: node.name,
+    isRim: node.isRim,
+    x: 50 + x1 * GLOBE_SCREEN_RADIUS * rotation.zoom,
+    y: 50 - y1 * GLOBE_SCREEN_RADIUS * rotation.zoom,
+    z: z2,
+    depth: z2,
+    visible: z2 >= -0.18,
+  };
+}
+
+function visibleGlobeLabels(
+  points: readonly GlobePoint[],
+  here: number,
+  target: number | null,
+  labelMetrics: ReadonlyMap<number, { width: number; height: number }>,
+): Set<number> {
+  const ordered = [...points]
+    .filter((point) => point.visible)
+    .sort((a, b) => {
+      const pa = a.id === here ? 0 : a.id === target ? 1 : 2;
+      const pb = b.id === here ? 0 : b.id === target ? 1 : 2;
+      if (pa !== pb) return pa - pb;
+      return b.depth - a.depth;
+    });
+  const boxes: Array<{ minX: number; maxX: number; minY: number; maxY: number }> = [];
+  const visible = new Set<number>();
+  for (const point of ordered) {
+    const metrics = labelMetrics.get(point.id);
+    const halfWidth = Math.max(3.2, (metrics?.width ?? point.name.length * 1.2) / 2);
+    const labelHeight = Math.max(4.8, metrics?.height ?? 5);
+    const box = {
+      minX: point.x - halfWidth,
+      maxX: point.x + halfWidth,
+      minY: point.y + 2.5,
+      maxY: point.y + 2.5 + labelHeight,
+    };
+    if (
+      boxes.every(
+        (other) =>
+          box.minX >= other.maxX ||
+          box.maxX <= other.minX ||
+          box.minY >= other.maxY ||
+          box.maxY <= other.minY,
+      )
+    ) {
+      boxes.push(box);
+      visible.add(point.id);
+    }
+  }
+  return visible;
+}
+
+function GlobeCanvas({
+  points,
+  rotation,
+  currentSystemId,
+}: {
+  points: readonly StarmapGlobeNode[];
+  rotation: GlobeRotation;
+  currentSystemId: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      alpha: true,
+      antialias: true,
+      preserveDrawingBuffer: true,
+    });
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 10);
+    camera.position.set(0, 0, 3.2);
+
+    const globe = new THREE.Group();
+    globe.rotation.y = rotation.yaw;
+    globe.rotation.x = rotation.pitch;
+    scene.add(globe);
+
+    globe.add(
+      new THREE.Mesh(
+        new THREE.SphereGeometry(1, 40, 24),
+        new THREE.MeshBasicMaterial({
+          color: 0x11150f,
+          transparent: true,
+          opacity: 0.48,
+          wireframe: true,
+        }),
+      ),
+    );
+    const graticuleMaterial = new THREE.LineDashedMaterial({
+      color: 0xffb000,
+      transparent: true,
+      opacity: 0.22,
+      dashSize: 0.055,
+      gapSize: 0.045,
+    });
+    const circlePoints = 96;
+    for (const latitude of [-60, -30, 0, 30, 60]) {
+      const radius = Math.cos(THREE.MathUtils.degToRad(latitude));
+      const y = Math.sin(THREE.MathUtils.degToRad(latitude));
+      const curve = new THREE.EllipseCurve(0, 0, radius, radius, 0, Math.PI * 2);
+      const geometry = new THREE.BufferGeometry().setFromPoints(
+        curve.getPoints(circlePoints).map((point) => new THREE.Vector3(point.x, y, point.y)),
+      );
+      const line = new THREE.Line(geometry, graticuleMaterial);
+      line.computeLineDistances();
+      globe.add(line);
+    }
+    for (let longitude = 0; longitude < 180; longitude += 30) {
+      const geometry = new THREE.BufferGeometry().setFromPoints(
+        Array.from({ length: circlePoints + 1 }, (_, index) => {
+          const t = (index / circlePoints) * Math.PI * 2;
+          return new THREE.Vector3(Math.sin(t), Math.cos(t), 0);
+        }),
+      );
+      const line = new THREE.Line(geometry, graticuleMaterial);
+      line.rotation.y = THREE.MathUtils.degToRad(longitude);
+      line.computeLineDistances();
+      globe.add(line);
+    }
+    for (const point of points) {
+      const vector = new THREE.Vector3(point.x, point.y, point.z).normalize().multiplyScalar(1.025);
+      const dot = new THREE.Mesh(
+        new THREE.SphereGeometry(point.id === currentSystemId ? 0.028 : 0.02, 10, 8),
+        new THREE.MeshBasicMaterial({
+          color: point.id === currentSystemId ? 0xfff0a3 : point.isRim ? 0xffb000 : 0x9a6b1d,
+        }),
+      );
+      dot.position.copy(vector);
+      globe.add(dot);
+    }
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      const size = Math.max(1, Math.floor(Math.min(rect.width, rect.height)));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(size, size, false);
+      renderer.render(scene, camera);
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    return () => {
+      window.removeEventListener('resize', resize);
+      renderer.dispose();
+      const isDrawable = (
+        object: THREE.Object3D,
+      ): object is
+        | THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]>
+        | THREE.Line<THREE.BufferGeometry, THREE.Material | THREE.Material[]> =>
+        object instanceof THREE.Mesh || object instanceof THREE.Line;
+      scene.traverse((object) => {
+        if (isDrawable(object)) {
+          object.geometry.dispose();
+          const material = object.material;
+          if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
+          else material.dispose();
+        }
+      });
+    };
+  }, [currentSystemId, points, rotation.pitch, rotation.yaw]);
+
+  return <canvas ref={canvasRef} className="smglobe-canvas" aria-hidden="true" />;
+}
+
+// The coordinate-accurate 3D globe starmap (T-215). Plan a jump entirely here:
+// pick a die, click a reachable system to preview the engine's own fuel cost / DC /
+// danger, then commit. Every rule number is read from the engine; the UI only
+// projects 3D coordinates, suppresses colliding labels and gates clicks.
 function Starmap({ state }: { state: CockpitState }) {
   const game = state.game;
   const [target, setTarget] = useState<number | null>(null);
+  const [rotation, setRotation] = useState<GlobeRotation>({ yaw: -0.52, pitch: -0.22, zoom: 1 });
+  const dragRef = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
+  const plotRef = useRef<HTMLDivElement | null>(null);
+  const [labelMetrics, setLabelMetrics] = useState<Map<number, { width: number; height: number }>>(
+    () => new Map(),
+  );
 
-  const proj = starmapProjection(game);
+  const proj = starmapGlobeProjection(game);
   const here = game.player.currentSystemId;
   const visited = new Set(game.player.charts.visitedSystemIds);
   const npcCounts = knownNpcCounts(game);
@@ -3748,12 +3957,20 @@ function Starmap({ state }: { state: CockpitState }) {
           ? `Need ${sweep.fuelCost} fuel`
           : 'Off-lane sweep';
 
-  const hereNode = proj.here;
-  // A transparent per-node hit target, narrower than the node spacing so
-  // neighbours never intercept, tall enough that the node's centre (used by
-  // click) lands on it. Decorative marks are pointer-events:none in CSS.
-  const hitW = Math.max(proj.scale * 0.85, 10);
+  const globePoints = useMemo(
+    () => proj.nodes.map((node) => rotateGlobePoint(node, rotation)),
+    [proj.nodes, rotation],
+  );
+  const hereNode = globePoints.find((node) => node.id === here) ?? null;
   const targetNode = target !== null ? (proj.nodes.find((n) => n.id === target) ?? null) : null;
+  const targetPoint = target !== null ? (globePoints.find((n) => n.id === target) ?? null) : null;
+  const visibleLabels = useMemo(
+    () => visibleGlobeLabels(globePoints, here, target, labelMetrics),
+    [globePoints, here, target, labelMetrics],
+  );
+  const reachableLines = globePoints.filter(
+    (node) => node.id !== here && routePreview(game, node.id).reachable,
+  );
   // The target is only ever set to a reachable node, but recompute honestly.
   const preview = target !== null ? routePreview(game, target, armedDieValue) : null;
   const routeIsCrossing = target === NEMESIS_SYSTEM_ID;
@@ -3763,7 +3980,44 @@ function Starmap({ state }: { state: CockpitState }) {
       ? crossingCheckPreview(game, preview.dc, armedDieValue)
       : null;
   // A stale target (e.g. after a jump moved us) simply resolves to no preview.
-  const showPreview = preview !== null && targetNode !== null && target !== here;
+  const showPreview =
+    preview !== null && targetNode !== null && targetPoint !== null && target !== here;
+
+  useLayoutEffect(() => {
+    const root = plotRef.current;
+    if (!root) return;
+    const rootBox = root.getBoundingClientRect();
+    if (rootBox.width <= 0 || rootBox.height <= 0) return;
+    const next = new Map<number, { width: number; height: number }>();
+    root.querySelectorAll<HTMLElement>('.smlabel-measure').forEach((label) => {
+      const id = Number(label.dataset.systemId);
+      const labelBox = label.getBoundingClientRect();
+      if (Number.isFinite(id)) {
+        next.set(id, {
+          width: (labelBox.width / rootBox.width) * 100,
+          height: (labelBox.height / rootBox.height) * 100,
+        });
+      }
+    });
+    setLabelMetrics((prev) => {
+      if (prev.size === next.size) {
+        let same = true;
+        for (const [id, metrics] of next) {
+          const old = prev.get(id);
+          if (
+            !old ||
+            Math.abs(old.width - metrics.width) > 0.05 ||
+            Math.abs(old.height - metrics.height) > 0.05
+          ) {
+            same = false;
+            break;
+          }
+        }
+        if (same) return prev;
+      }
+      return next;
+    });
+  }, [proj.nodes]);
 
   const commit = () => {
     if (target === null) return;
@@ -3790,110 +4044,164 @@ function Starmap({ state }: { state: CockpitState }) {
             a region of its own (step 6), and an `inert` ancestor could never be
             un-inerted by it. */}
         <div className="sm-plot" {...railsProps(state, 'starmap')}>
-          <svg
-            className="smsvg"
-            viewBox={proj.viewBox}
+          <div
+            className="smglobe"
+            ref={plotRef}
             role="img"
             aria-label="Starmap"
-            preserveAspectRatio="xMidYMid meet"
-          >
-            {hereNode && proj.ringUnits > 0 && (
-              <circle
-                className="fuel-ring"
-                data-testid="fuel-ring"
-                data-radius-units={proj.ringUnits}
-                cx={hereNode.sx}
-                cy={hereNode.sy}
-                r={proj.ringRadius}
-              />
-            )}
-            {/* Ring collapses to nothing at zero fuel — still expose the radius. */}
-            {hereNode && proj.ringUnits === 0 && (
-              <circle
-                className="fuel-ring empty"
-                data-testid="fuel-ring"
-                data-radius-units={0}
-                cx={hereNode.sx}
-                cy={hereNode.sy}
-                r={0}
-              />
-            )}
-            {hereNode && targetNode && showPreview && (
-              <line
-                className={preview.reachable ? 'route-line' : 'route-line blocked'}
-                x1={hereNode.sx}
-                y1={hereNode.sy}
-                x2={targetNode.sx}
-                y2={targetNode.sy}
-              />
-            )}
-            {proj.nodes.map((n) => {
-              const isHere = n.id === here;
-              const reachable = isHere ? true : routePreview(game, n.id).reachable;
-              const clickable = !isHere && reachable;
-              // T-1505b · The event horizon reads differently from a port. The node
-              // is only ever in `proj.nodes` at all once the crossing stake is paid
-              // (format.ts `starmapProjection`), so the tag doubles as the visible
-              // proof the gate lifted; everything else about it (reachability, the
-              // route preview, Confirm jump) is the ordinary travel path, reused.
-              const isCrossing = n.id === NEMESIS_SYSTEM_ID;
-              // T-187 · With a rails target pinned (step 4), every OTHER node is a
-              // dead click and says so in the DOM — the scripted jump is the
-              // contract's own destination or nothing.
-              const railsLocked = railsTarget !== null && n.id !== railsTarget;
-              const cls = [
-                'smsys',
-                isHere ? 'here' : visited.has(n.id) ? 'visited' : 'unvisited',
-                n.isRim ? 'rim' : '',
-                isCrossing ? 'crossing' : '',
-                !isHere && !reachable ? 'unreachable' : '',
-                target === n.id ? 'sel' : '',
-              ]
-                .filter(Boolean)
-                .join(' ');
-              const pipCount = npcCounts.get(n.id) ?? 0;
-              return (
-                <g
-                  key={n.id}
-                  className={cls}
-                  data-testid="starmap-system"
-                  data-system-id={n.id}
-                  data-crossing={isCrossing ? '1' : undefined}
-                  data-reachable={reachable ? '1' : '0'}
-                  data-visited={visited.has(n.id) ? '1' : '0'}
-                  data-here={isHere ? '1' : '0'}
-                  data-rails-locked={railsLocked ? '1' : undefined}
-                  data-rails-target={railsTarget === n.id ? '1' : undefined}
-                  aria-label={n.name}
-                  aria-disabled={clickable && !railsLocked ? undefined : 'true'}
-                  onClick={clickable && !railsLocked ? () => setTarget(n.id) : undefined}
-                  transform={`translate(${n.sx} ${n.sy})`}
-                >
-                  <circle className="smdot" r={5} />
-                  {eraSystems.has(n.id) && (
-                    <g className="era-badge" data-testid="era-badge" transform="translate(6 -6)">
-                      <title>{game.eraEvent?.defId ?? 'Era event'}</title>
-                      <rect x={-3} y={-3} width={6} height={6} rx={1} />
-                    </g>
-                  )}
-                  {Array.from({ length: pipCount }).map((_, i) => (
-                    <circle
-                      key={i}
-                      className="npc-pip"
-                      data-testid="npc-pip"
-                      cx={-6 + i * 4}
-                      cy={-9}
-                      r={1.6}
-                    />
-                  ))}
-                  <text className="smlabel" x={0} y={16}>
-                    {n.name}
-                  </text>
-                  <rect className="smhit" x={-hitW / 2} y={-12} width={hitW} height={32} />
-                </g>
+            onPointerDown={(event) => {
+              dragRef.current = {
+                x: event.clientX,
+                y: event.clientY,
+                yaw: rotation.yaw,
+                pitch: rotation.pitch,
+              };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              const drag = dragRef.current;
+              if (!drag) return;
+              const nextPitch = Math.max(
+                -1.1,
+                Math.min(1.1, drag.pitch + (event.clientY - drag.y) / 180),
               );
-            })}
-          </svg>
+              setRotation({
+                ...rotation,
+                yaw: drag.yaw + (event.clientX - drag.x) / 160,
+                pitch: nextPitch,
+              });
+            }}
+            onPointerUp={(event) => {
+              dragRef.current = null;
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+            }}
+            onWheel={(event) => {
+              event.preventDefault();
+              const zoom = Math.max(0.78, Math.min(1.18, rotation.zoom - event.deltaY / 900));
+              setRotation({ ...rotation, zoom });
+            }}
+          >
+            <GlobeCanvas points={proj.nodes} rotation={rotation} currentSystemId={here} />
+            <svg className="smglobe-lanes" viewBox="0 0 100 100" aria-hidden="true">
+              {hereNode &&
+                reachableLines.map((node) => (
+                  <line
+                    key={node.id}
+                    className="route-line dim"
+                    x1={hereNode.x}
+                    y1={hereNode.y}
+                    x2={node.x}
+                    y2={node.y}
+                  />
+                ))}
+              {hereNode && targetPoint && showPreview && (
+                <line
+                  className={preview.reachable ? 'route-line' : 'route-line blocked'}
+                  x1={hereNode.x}
+                  y1={hereNode.y}
+                  x2={targetPoint.x}
+                  y2={targetPoint.y}
+                />
+              )}
+              {hereNode && (
+                <circle
+                  className="fuel-ring"
+                  data-testid="fuel-ring"
+                  data-radius-units={proj.ringUnits}
+                  cx={hereNode.x}
+                  cy={hereNode.y}
+                  r={Math.min(45, Math.max(0, proj.ringUnits * 1.2))}
+                />
+              )}
+            </svg>
+            <div className="smglobe-overlay">
+              <div className="smlabel-measure-bin" aria-hidden="true">
+                {proj.nodes.map((n) => (
+                  <span key={n.id} className="smlabel smlabel-measure" data-system-id={n.id}>
+                    {n.name}
+                  </span>
+                ))}
+              </div>
+              {globePoints.map((n) => {
+                const isHere = n.id === here;
+                const reachable = isHere ? true : routePreview(game, n.id).reachable;
+                const clickable = !isHere && reachable;
+                // T-1505b · The event horizon reads differently from a port. The node
+                // is only ever in `proj.nodes` at all once the crossing stake is paid
+                // (format.ts `starmapGlobeProjection`), so the tag doubles as the visible
+                // proof the gate lifted; everything else about it (reachability, the
+                // route preview, Confirm jump) is the ordinary travel path, reused.
+                const isCrossing = n.id === NEMESIS_SYSTEM_ID;
+                // T-187 · With a rails target pinned (step 4), every OTHER node is a
+                // dead click and says so in the DOM — the scripted jump is the
+                // contract's own destination or nothing.
+                const railsLocked = railsTarget !== null && n.id !== railsTarget;
+                const disabledReason = isHere
+                  ? 'Current system'
+                  : railsLocked
+                    ? 'Walkthrough route locked'
+                    : !reachable
+                      ? 'Out of fuel range'
+                      : undefined;
+                const cls = [
+                  'smsys',
+                  isHere ? 'here' : visited.has(n.id) ? 'visited' : 'unvisited',
+                  n.isRim ? 'rim' : '',
+                  isCrossing ? 'crossing' : '',
+                  !isHere && !reachable ? 'unreachable' : '',
+                  target === n.id ? 'sel' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ');
+                const pipCount = npcCounts.get(n.id) ?? 0;
+                const showLabel = visibleLabels.has(n.id);
+                return (
+                  <button
+                    key={n.id}
+                    type="button"
+                    className={cls}
+                    data-testid="starmap-system"
+                    data-system-id={n.id}
+                    data-crossing={isCrossing ? '1' : undefined}
+                    data-reachable={reachable ? '1' : '0'}
+                    data-visited={visited.has(n.id) ? '1' : '0'}
+                    data-here={isHere ? '1' : '0'}
+                    data-rails-locked={railsLocked ? '1' : undefined}
+                    data-rails-target={railsTarget === n.id ? '1' : undefined}
+                    aria-label={n.name}
+                    aria-disabled={clickable && !railsLocked ? undefined : 'true'}
+                    disabled={!clickable || railsLocked}
+                    title={disabledReason}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={clickable && !railsLocked ? () => setTarget(n.id) : undefined}
+                    style={{
+                      left: `${n.x}%`,
+                      top: `${n.y}%`,
+                      zIndex: Math.round(20 + n.depth * 10),
+                    }}
+                  >
+                    <span className="smdot" />
+                    {eraSystems.has(n.id) && (
+                      <span className="era-badge" data-testid="era-badge">
+                        <title>{game.eraEvent?.defId ?? 'Era event'}</title>
+                      </span>
+                    )}
+                    {Array.from({ length: pipCount }).map((_, i) => (
+                      <span
+                        key={i}
+                        className="npc-pip"
+                        data-testid="npc-pip"
+                        style={{ left: `${-8 + i * 4}px` }}
+                      />
+                    ))}
+                    {showLabel && <span className="smlabel">{n.name}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {showPreview && (
             <div className="route-preview" data-testid="route-preview">

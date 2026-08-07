@@ -275,7 +275,7 @@ body {
   /* Starmap sizes to its content when the column has room; the taller ship & yard
      pane takes the flexible remainder and scrolls internally (minmax(0,…) lets it
      shrink below content height so it never overflows the column and paints over the
-     starmap SVG, which draws with overflow:visible). T-1403: the starmap row is
+     starmap globe). T-1403: the starmap row is
      minmax(0,auto) — NOT bare `auto` — so on a short viewport (the persistent
      off-lane sweep control added height to the pane) the starmap can itself shrink
      and scroll internally rather than overflow the column into the wire ticker and
@@ -328,11 +328,14 @@ body {
   background: var(--amber-dim);
 }
 
-/* ---- starmap (T-304 coordinate map, fuel ring, route preview) ---- */
+/* ---- starmap (T-215 3D globe, fuel ring, route preview) ---- */
 .starmap .body {
   display: grid;
   gap: 10px;
   align-content: start;
+}
+.pane.starmap {
+  display: block;
 }
 /* T-187 · The plot group (chart + route preview + Confirm jump) is one rails
    region; the off-lane sweep beneath it is another. The wrapper repeats the
@@ -342,12 +345,42 @@ body {
   gap: 10px;
   align-content: start;
 }
-.smsvg {
+.smglobe {
+  position: relative;
+  width: min(100%, 360px);
+  aspect-ratio: 1 / 1;
+  margin-inline: auto;
+  overflow: hidden;
+  border: 1px solid var(--hair);
+  background: radial-gradient(circle at 50% 48%, rgba(255, 176, 0, 0.1), rgba(5, 7, 5, 0.08) 52%);
+  cursor: grab;
+  touch-action: none;
+}
+.smglobe:active {
+  cursor: grabbing;
+}
+.smglobe-canvas,
+.smglobe-lanes,
+.smglobe-overlay {
+  position: absolute;
+  inset: 0;
+}
+.smglobe-canvas {
   width: 100%;
-  height: auto;
-  max-height: 240px;
-  overflow: visible;
+  height: 100%;
   display: block;
+}
+.smglobe-lanes,
+.smglobe-overlay {
+  pointer-events: none;
+}
+.smlabel-measure-bin {
+  position: absolute;
+  left: -10000px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* fuel-range ring — a true distance circle centred on the ship */
@@ -380,13 +413,27 @@ body {
   stroke-dasharray: 3 2;
   pointer-events: none;
 }
+.route-line.dim {
+  stroke: var(--amber-dim);
+  stroke-width: 0.35;
+  opacity: 0.28;
+}
 .route-line.blocked {
   stroke: var(--amber-dim);
 }
 
 /* system nodes */
 .smsys {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  transform: translate(-50%, -50%);
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--amber);
   cursor: pointer;
+  pointer-events: auto;
 }
 /* Only the invisible hit-rect is interactive; every visible mark is inert so a
    neighbour's label can never intercept a node's click (dense lane of 20). */
@@ -400,55 +447,65 @@ body {
   pointer-events: none;
 }
 .smsys .smdot {
-  fill: #7a4e14;
-  stroke: var(--hair);
-  stroke-width: 0.6;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--hair);
+  border-radius: 50%;
+  background: #7a4e14;
 }
 .smsys .smlabel {
-  fill: var(--amber);
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 12px);
+  transform: translateX(-50%);
+  color: var(--amber);
   font-size: 8px;
-  text-anchor: middle;
-  paint-order: stroke;
-  stroke: var(--tube);
-  stroke-width: 1.6;
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow:
+    0 0 2px var(--tube),
+    0 0 4px var(--tube);
 }
 .smsys.rim .smdot {
-  fill: var(--amber);
+  background: var(--amber);
 }
 .smsys.visited .smdot {
-  fill: var(--ember);
+  background: var(--ember);
   filter: drop-shadow(0 0 2px rgba(255, 176, 0, 0.6));
 }
 .smsys.visited .smlabel {
-  fill: var(--ember);
+  color: var(--ember);
 }
 .smsys.here .smdot {
-  fill: var(--ember-hi);
-  stroke: var(--ember);
-  stroke-width: 1.2;
+  background: var(--ember-hi);
+  border-color: var(--ember);
+  box-shadow: 0 0 0 2px rgba(255, 176, 0, 0.16);
   filter: drop-shadow(0 0 3px rgba(255, 176, 0, 0.8));
 }
 .smsys.here .smlabel {
-  fill: var(--ember-hi);
+  color: var(--ember-hi);
   font-weight: 600;
 }
 .smsys.sel .smdot {
-  stroke: var(--ember-hi);
-  stroke-width: 1.4;
+  border-color: var(--ember-hi);
+  box-shadow: 0 0 0 3px rgba(255, 176, 0, 0.18);
 }
 .smsys.sel .smlabel {
-  fill: var(--ember-hi);
+  color: var(--ember-hi);
 }
 /* T-1505b · the event horizon. Only ever drawn once the crossing stake is paid
-   (format.ts starmapProjection), so it reads as a door that just opened rather
+   (format.ts starmapGlobeProjection), so it reads as a door that just opened rather
    than a port on the lane: hollow dot, ember rim, ember label. */
 .smsys.crossing .smdot {
-  fill: none;
-  stroke: var(--ember-hi);
-  stroke-width: 1.2;
+  background: transparent;
+  border-color: var(--ember-hi);
 }
 .smsys.crossing .smlabel {
-  fill: var(--ember-hi);
+  color: var(--ember-hi);
   letter-spacing: 0.14em;
 }
 /* unreachable systems are visibly gated AND not clickable */
@@ -457,23 +514,31 @@ body {
   opacity: 0.32;
 }
 .smsys.unreachable .smdot {
-  fill: transparent;
-  stroke: var(--amber-dim);
-  stroke-dasharray: 1.5 1.5;
+  background: transparent;
+  border-color: var(--amber-dim);
+  border-style: dashed;
 }
 .smsys.unreachable .smlabel {
-  fill: var(--amber-dim);
+  color: var(--amber-dim);
 }
 
 /* era-event region badge */
-.era-badge rect {
-  fill: none;
-  stroke: var(--ember);
-  stroke-width: 0.8;
+.era-badge {
+  position: absolute;
+  left: calc(50% + 5px);
+  top: calc(50% - 10px);
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--ember);
 }
 /* known-NPC presence pips */
 .npc-pip {
-  fill: var(--ember-hi);
+  position: absolute;
+  top: 2px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--ember-hi);
 }
 
 /* route-preview panel — the plan-before-commit readout */
@@ -2646,6 +2711,12 @@ body {
   zoom: 1.15;
 }
 @media (max-width: 900px) {
+  .screen {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: auto;
+  }
   .bezel {
     grid-template-columns: 1fr;
     padding-right: 0;
@@ -2656,9 +2727,17 @@ body {
   }
   .main {
     grid-template-columns: 1fr;
+    grid-auto-rows: max-content;
+    align-content: start;
+    align-items: start;
+    min-height: max-content;
+    overflow: visible;
   }
   .col.left {
-    grid-template-rows: 200px auto;
+    grid-template-rows: auto auto;
+  }
+  .pane.starmap {
+    min-height: calc(34px + min(360px, calc(100vw - 46px)) + 170px);
   }
   .dock {
     grid-template-columns: 1fr;
@@ -3401,7 +3480,7 @@ body {
 /* ---- contextual onboarding coach ---- */
 .onboarding {
   position: absolute;
-  z-index: 82; /* above the storylet panel (78); inside co-frame it rides local */
+  z-index: 180; /* above storylet panels and depth-sorted starmap nodes */
   width: min(340px, 80vw);
   border: 1px solid var(--amber);
   background: linear-gradient(180deg, #1c1208, #0e0a05);

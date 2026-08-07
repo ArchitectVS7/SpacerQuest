@@ -103,6 +103,16 @@ export const CREDITS: readonly Credit[] = Object.freeze([
     note: 'Bundled into the cockpit on every build, web and desktop.',
   },
   {
+    // T-215 · Runtime 3D renderer for the globe starmap. It ships in the same
+    // browser bundle as React, so it gets the same player-facing notice.
+    id: 'three',
+    name: 'Three.js',
+    holder: 'three.js authors',
+    license: 'MIT',
+    licenseUrl: 'https://opensource.org/license/mit',
+    note: 'Bundled into the cockpit on every build, web and desktop for the 3D starmap.',
+  },
+  {
     // T-136 · A RUNTIME DEPENDENCY NEW TO THIS REPO, added for the Liar's Dice
     // reveal timeline. It is bundled into the cockpit on every build, so it owes
     // a notice here exactly as React does.

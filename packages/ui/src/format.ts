@@ -39,6 +39,7 @@ import {
   DEMO_END_CARD,
   DEMO_FINAL_DAY,
   DEMO_TEASE,
+  coordinates3D,
   type DemoLockedFeature,
   type FactionId,
   type StoryletTrigger,
@@ -1705,40 +1706,28 @@ export function contrabandHold(game: GameState): ContrabandHold {
   return { carrying: isCarryingIllicit(game), source };
 }
 
-/** A system placed on the SVG plane: raw coordinates plus projected (viewBox)
- *  screen coordinates. */
-export interface ProjectedNode {
+export interface StarmapGlobeNode {
   id: number;
   name: string;
   isRim: boolean;
   x: number;
   y: number;
-  sx: number;
-  sy: number;
+  z: number;
 }
 
-export interface StarmapProjection {
-  /** SVG viewBox string sized to the displayed band. */
-  viewBox: string;
-  width: number;
-  height: number;
-  /** Distance-units → viewBox-units (uniform, so a distance circle stays round). */
-  scale: number;
-  nodes: ProjectedNode[];
-  here: ProjectedNode | null;
+export interface StarmapGlobeProjection {
+  nodes: StarmapGlobeNode[];
+  here: StarmapGlobeNode | null;
   /** Fuel-range ring radius in distance units (from maxJumpDistance) … */
   ringUnits: number;
-  /** … and in projected viewBox units. */
-  ringRadius: number;
 }
 
 /**
- * Project the relevant band of systems onto an SVG plane. We do NOT fit all 28
- * systems: the Andromeda cluster sits at x up to 99 and would crush the core
- * lane into an unreadable sliver. Instead we render the core+rim lane (ids
- * 1–20) plus the current system and any charted system, then bound the box to
- * exactly that set. The scale is uniform so the fuel-range ring — a true
- * distance circle — is drawn round rather than sheared.
+ * The live globe starmap's data model. We do NOT fit all 28 systems by default:
+ * the Andromeda cluster sits far beyond the charted core/rim lane and would make
+ * the opening map read as spoilers rather than navigation. The visible set
+ * remains the core+rim lane (ids 1–20) plus the current system, charted systems
+ * and the unlocked Nemesis crossing, matching the pre-T-215 destination contract.
  *
  * T-1505b · ONE DELIBERATE EXCEPTION: NEMESIS (id 28) joins the band once
  * `nemesis.crossing.unlocked` is set. The band stretches only for the endgame,
@@ -1750,7 +1739,7 @@ export interface StarmapProjection {
  * READER of the crossing flag; the other two are the engine gate (day.ts) and the
  * sim protocol's legalActions.
  */
-export function starmapProjection(game: GameState): StarmapProjection {
+export function starmapGlobeProjection(game: GameState): StarmapGlobeProjection {
   const here = game.player.currentSystemId;
   const visited = new Set(game.player.charts.visitedSystemIds);
   const crossingOpen = game.flags['nemesis.crossing.unlocked'] === true;
@@ -1766,33 +1755,11 @@ export function starmapProjection(game: GameState): StarmapProjection {
     }
   }
   const systems = [...shown.values()];
-  const xs = systems.map((s) => s.coordinates.x);
-  const ys = systems.map((s) => s.coordinates.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const spanX = maxX - minX;
-  const spanY = maxY - minY;
-
-  const pad = 8; // viewBox units of margin around the band
-  const targetSpan = 220; // desired long-axis size in viewBox units
-  const scale = targetSpan / Math.max(spanX, spanY, 1);
-
-  const width = spanX * scale + pad * 2;
-  // A pure lane (spanY 0) still needs vertical room for the node + label.
-  const laneHeight = 64;
-  const height = Math.max(spanY * scale, laneHeight) + pad * 2;
-  const yOffset = spanY === 0 ? height / 2 : pad;
-
-  const project = (sys: (typeof STAR_SYSTEMS)[number]): ProjectedNode => ({
+  const project = (sys: (typeof STAR_SYSTEMS)[number]): StarmapGlobeNode => ({
     id: sys.id,
     name: sys.name,
     isRim: sys.isRim,
-    x: sys.coordinates.x,
-    y: sys.coordinates.y,
-    sx: pad + (sys.coordinates.x - minX) * scale,
-    sy: spanY === 0 ? yOffset : pad + (sys.coordinates.y - minY) * scale,
+    ...coordinates3D(sys.id),
   });
 
   const nodes = systems.map(project);
@@ -1801,19 +1768,10 @@ export function starmapProjection(game: GameState): StarmapProjection {
   const ringUnits = maxJumpDistance(ship.drives, ship.fuel, ship.hasTransWarpDrive ?? false);
 
   return {
-    viewBox: `0 0 ${round(width)} ${round(height)}`,
-    width,
-    height,
-    scale,
     nodes,
     here: hereSys ? project(hereSys) : null,
     ringUnits,
-    ringRadius: ringUnits * scale,
   };
-}
-
-function round(n: number): number {
-  return Math.round(n * 100) / 100;
 }
 
 /**
@@ -2536,7 +2494,7 @@ export function shipComponents(game: GameState): ShipComponentRow[] {
 //     picture's coordinates in content would stale every balance fixture for a
 //     drawing. Nothing here is a rule; nothing here is persisted.
 //
-// The projection follows `starmapProjection`'s precedent — SVG geometry and the
+// The projection follows `starmapGlobeProjection`'s precedent — view geometry and the
 // derived readouts are computed in this file and `App.tsx` only renders them —
 // which is what makes the whole surface unit-testable without a DOM.
 // ===========================================================================

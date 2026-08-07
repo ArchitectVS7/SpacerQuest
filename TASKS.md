@@ -7052,7 +7052,7 @@ rewards — eventually most of `packages/content`), run against a **cloned** con
 overwrites the committed source, click a test button that runs the real balance sweep, and see
 results — ideally visualized — before deciding whether to actually make the change for real.
 
-### T-215 · Build: the 3D lat/long globe Starmap, replacing the flat 2D projection — `status: TODO` · `coder: opus` · `after: T-188`
+### T-215 · Build: the 3D lat/long globe Starmap, replacing the flat 2D projection — `status: DONE` · `coder: codex` · `after: T-188`
 
 T-188's ruling (2026-08-05): build candidate 4B, the rotatable 3D globe, as the live Starmap in
 `App.tsx` — not a prototype, not a toggle-able alternative to the existing flat SVG projection,
@@ -7085,6 +7085,26 @@ ring), and the lane/label behaviour the ruling specified:
 sample of rotations, not just one; the current-system/course-lane brightness behaviour matches
 the ruling; the mobile-open failure is root-caused and fixed or explicitly re-scoped with a
 reason recorded; the old flat 2D projection code is deleted; gate green.
+
+**Delivered (2026-08-07, Codex):** the flat `starmapProjection`/SVG plot path is gone. The
+cockpit now renders `starmapGlobeProjection` from the committed `coordinates3D` geometry through a
+Three.js WebGL globe with dotted latitude/longitude graticule rings, depth-sorted system dots,
+drag rotation and wheel zoom. Route lanes are recomputed from the current docked system: reachable
+lanes render dim by default and the selected course renders as the single bright lane.
+
+Label collision suppression now uses browser-measured `.smlabel` dimensions from an off-screen
+measurement bin, with the priority order current system → selected target → nearest-to-camera;
+unselected losers keep their dot and drop only the label. The fast
+`starmap-label-overlap.test.ts` successor samples globe rotations, and `e2e/starmap.spec.ts`
+adds rendered-DOM overlap checks plus canvas-pixel checks.
+
+Mobile root cause: the old narrow layout forced `.col.left` to a 200px starmap row and kept the
+whole `.screen` in a desktop-style fixed grid, so the taller 3D globe opened under later cockpit
+rows; the depth-sorted system buttons also sat above onboarding's dismiss button. Fixed by making
+the mobile screen a vertical scrolling stack, sizing mobile main rows to content, giving the
+globe pane a mobile opening height, and raising onboarding above starmap node depth. Verified by
+Playwright canvas-pixel checks and screenshots at `1280x900` and `390x700`
+(`test-results/t215-starmap-desktop.png`, `test-results/t215-starmap-mobile.png`).
 
 ### T-216 · BUG: `theme.css`'s "one phosphor colour" law is already broken in two live UI spots — `status: DONE` · `coder: codex` · `after: —`
 
