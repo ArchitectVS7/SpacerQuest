@@ -928,7 +928,11 @@ gambler-only-arm artefact §19.9 and §20.0 record, not a regression.)*
    `k = 4` is admitted from **1,026 cr** (5–200 port) and **5,127** (default band), both inside the
    **32,510** maximum stake measured over 1,600 careers. **T-222 predicted this would not happen and
    was wrong** (§21.6, prediction 3); the ruling above is scoped to bounded tiers in consequence
-   rather than being restated to match.
+   rather than being restated to match. T-225's shipped-instrument cut now measures the live tier-5
+   stake distribution over 48 gambler careers × 120 days: **4,612** tier-5 hands, `k ≤ 4` on
+   **1,725 / 4,612 = 37.40%**, `k ≥ 5` on **8 / 4,612 = 0.17%** (Denebola-5 5 hands, Mira-9 3
+   hands), and **0** fully dissolved hands. T-225 is blocked on the owner's intended-vs-defect
+   ruling for the uncapped veteran ratio.
 4. **FILED, NOT ABSORBED — F-222-3 (`TASKS.md` T-226): the archetype ordering is stake-conditional.**
    `bad − optimal` runs **−21.15 pp** at band floors to **+20.61 pp** mid-band to **0.00** in the dead
    zone. `bad` reads no pot at all, so the whole dependence is `optimal`'s. LD-25 states the ordering

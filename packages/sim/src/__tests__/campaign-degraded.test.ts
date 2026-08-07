@@ -1539,6 +1539,32 @@ const UNCHANGED_POLICIES = [
 // not a lever. `instrumentFingerprint` moves (`sim/index.ts`); `rulesFingerprint`
 // does NOT.
 //
+// ENTRY 40 (T-225 — THE TIER-5 STAKE-DISTRIBUTION INSTRUMENT, F-222-2). ALL SEVEN
+// ROWS MOVE, AND ALL SEVEN MOVE FOR A REPORT-SHAPE REASON ONLY — the same
+// shape-only proof pattern as entry 39.
+//
+// THE CAUSE, STATED BEFORE THE NUMBERS. T-225 needs the tier-5 stake distribution
+// with `n` on every port: how often the shipped game reaches `k <= 4`, how often it
+// reaches PAST `k <= 4`, and whether the fully dissolved `k = u` gate ever appears.
+// `HangoutPlayStats` gains `dareTier5StakeCells`, a zero-filled port table folded
+// from the same `DareHandStarted` and `DareHandResolved` events the instrument
+// already consumes. No engine, content or policy source moved.
+//
+// THE STRIP PROOF, RUN LOCALLY over these exact 35 careers rather than claimed.
+// Deleting `hangoutPlay.dareTier5StakeCells` reproduces the entry-39 pin BYTE FOR
+// BYTE on ALL SEVEN:
+//   trader   8c76952ed7c82fa6 -> stripped 8c76952ed7c82fa6 (= entry 39)
+//   fighter  5c965a1bfdbd2a21 -> stripped 5c965a1bfdbd2a21 (= entry 39)
+//   explorer 3952dd7db75e4a7d -> stripped 3952dd7db75e4a7d (= entry 39)
+//   veteran  1347dcd80b841eff -> stripped 1347dcd80b841eff (= entry 39)
+//   smuggler 692839a1c388bca2 -> stripped 692839a1c388bca2 (= entry 39)
+//   gambler  8ca64a2e89bfc271 -> stripped 8ca64a2e89bfc271 (= entry 39)
+//   greedy   955fad1f7dce22ff -> stripped 955fad1f7dce22ff (= entry 39)
+//
+// Zero careers changed. The new table reports the opening-gate consequence of
+// stakes that already seated; it cannot feed back into any planner or resolver.
+// `instrumentFingerprint` moves (`sim/index.ts`); `rulesFingerprint` does NOT.
+//
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
   // so the trader borrows and repays on the day it needs to rather than on the day
@@ -1567,7 +1593,7 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // the header's entry 38 for the strip proof against the value above).
   // ENTRY 39 (T-224): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 39 for the strip proof against the value above).
-  trader: '8c76952ed7c82fa6',
+  trader: '0fb72ea43697417b',
   // Entry 27 (T-159): re-derived — and the ONLY row that moves, which is the
   // cross-check that this was a fighter change and nothing else: `trader`,
   // `explorer`, `veteran`, `smuggler`, `gambler` and `greedy` all came back byte
@@ -1618,7 +1644,7 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // the header's entry 36 for the strip proof against the value above).
   // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 38 for the strip proof against the value above).
-  fighter: '5c965a1bfdbd2a21',
+  fighter: '4b26343444aa57b8',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
   // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4
@@ -1674,7 +1700,7 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // the header's entry 36 for the strip proof against the value above).
   // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 38 for the strip proof against the value above).
-  explorer: '3952dd7db75e4a7d',
+  explorer: '9b6a0808650ddc38',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   //
   // Entry 29 (T-161): re-derived, and the ONLY row that moves — which is the
@@ -1724,7 +1750,7 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // the header's entry 36 for the strip proof against the value above).
   // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 38 for the strip proof against the value above).
-  veteran: '1347dcd80b841eff',
+  veteran: 'f76319af5dfa2ec2',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
   // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
   // through the shorter hand on a band-3/4 board rather than through the payout.
@@ -1768,7 +1794,7 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // the header's entry 36 for the strip proof against the value above).
   // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 38 for the strip proof against the value above).
-  smuggler: '692839a1c388bca2',
+  smuggler: 'c688e3bfe233858f',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sol-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
@@ -1883,7 +1909,7 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // different game (see the header's entry 37 for the six-figure before/after).
   // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 38 for the strip proof against the value above).
-  gambler: '8ca64a2e89bfc271',
+  gambler: 'e840f8e26945ebc2',
   // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
   // Entry 30 (T-173): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 30 for the strip proof against the value above).
@@ -1902,7 +1928,7 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // the header's entry 36 for the strip proof against the value above).
   // ENTRY 38 (T-176): re-derived — REPORT SHAPE ONLY, no career changed (see
   // the header's entry 38 for the strip proof against the value above).
-  greedy: '955fad1f7dce22ff',
+  greedy: 'c986ffbfee89b86f',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

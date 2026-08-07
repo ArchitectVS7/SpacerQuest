@@ -2,8 +2,8 @@
   "productVersion": "0.5.3",
   "saveSchemaVersion": 17,
   "rulesFingerprint": "fb81de4fa8120bbb",
-  "instrumentFingerprint": "88605dc54450424d",
-  "docsFingerprint": "cb0025dd5ba0db4a",
+  "instrumentFingerprint": "d33a46ac930e8c2b",
+  "docsFingerprint": "ff82d149644b941d",
   "provenance": {
     "sweepLabel": "t175-archetype-ordering",
     "seeds": 1000,
@@ -20,7 +20,7 @@
       "veteran"
     ],
     "extractedOn": "2026-08-07",
-    "gitCommit": "72f7ec32ab7f66b3385bcc02c763f84a83539fdb",
+    "gitCommit": "cc6fe880058c1ef9329f68fff5f67b89dcc34e4a",
     "spreadSource": "harvested",
     "note": "Tier spreads are milestone samples harvested from the named sweep. They are still SYNTHESIZED starting states and are never balance verdicts — see docs/balance/smoke/README.md."
   },

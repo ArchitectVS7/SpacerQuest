@@ -2960,6 +2960,8 @@ file touched anywhere is a test.**
   or §4.3's exposure ceiling (that is T-224's), does not touch `effectiveWagerBand` or §4.8 (T-225's),
   and does not add the `dareCells` stake dimension that would name the exact dead-zone share —
   §21.4c bounds it at ≤ 49.6% from `bids/hand = 1.504` and hands the exact figure to T-224.
+  Later correction: T-224 delivered that exact share (**623 / 8,452 = 7.37%**) and T-225 delivered
+  the tier-5 port cut; the scope boundary here remains true.
 - **Gate green**: `npm run format`, `npm test`, `npx tsc -b`, `npm run lint`, `npm run
   format:check`.
 
@@ -3186,7 +3188,7 @@ hands, **66.74%** player wins and **+464.8 cr/hand**. §21.4c and LD-29 now carr
 rule moved and no fix was chosen; the remaining Accept branch is the owner's ruling: intended
 whole-hand exposure feature, or defect to bake off.
 
-### T-225 · F-222-2: at tier 5 nothing caps the pot/ante ratio, and past `k ≤ 3` the house's own gate misprices — `status: TODO` · `coder: opus` · `after: T-222`
+### T-225 · F-222-2: at tier 5 nothing caps the pot/ante ratio, and past `k ≤ 3` the house's own gate misprices — `status: BLOCKED(Owner ruling: uncapped tier-5 ratio intended vs defect)` · `coder: codex` · `after: T-222`
 
 **Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4 / §21.7,
 `docs/LIARS-DICE-DECISIONS.md` LD-29, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.3d.** Every **bounded**
@@ -3228,6 +3230,27 @@ rather than argued**, since it moves the table against the player at every measu
 (+15.79 pp, z = 35.93) is re-scored and must not re-invert, and LD-28's two standing invariants are
 re-scored alongside; §21.4 and §21.7 gain the outcome; if any rule moves the task takes its own
 capstone with the moved rows predicted first; gate green.
+
+**Instrument/measurement delivered (2026-08-07, Codex); task now blocks on the owner ruling.**
+`HangoutPlayStats.dareTier5StakeCells` now carries a zero-filled port cut over every authored
+Liar's Dice table: tier-5 `hands`, `playerWon`, `netCredits`, seated-stake sum/max, `k4Hands`,
+`pastK4Hands`, `pastK4NetCredits`, `pastK4SumSeedWager`, `pastK4MaxSeedWager` and
+`dissolvedHands`. The fold parks the frozen `DareHandStarted` system/stake/opening-gate facts by
+`handId` and joins them at `DareHandResolved`; the gate is computed from `probAtLeast`,
+`dicePerSideForTier`, the frozen `seedWager` and the frozen `ante`, not from copied stake literals.
+Coverage in `packages/sim/src/__tests__/campaign-dare-cells.test.ts` pins the zero-filled port
+shape, the derived boundary helper, subset identities and a live gambler sample that reaches the
+past-`k <= 4` population.
+
+Measured on HEAD over the same widened gambler detector window (48 seeds × 120 days): tier 5
+accounts for **4,612** settled hands, **53.69%** player wins and **+295.7 cr/hand**, with mean
+seated stake **4,381.5 cr** and max **28,045 cr**. The opening gate reaches `k <= 4` on **1,725 /
+4,612 = 37.40%** of tier-5 hands. It reaches **past** `k <= 4` (`k >= 5`) on only **8 / 4,612 =
+0.17%** of tier-5 hands, all at the two cheapest effective-ante ports: **Denebola-5** (5 / 338,
+max stake 28,045, EV **-4,103.4 cr/hand**) and **Mira-9** (3 / 425, max stake 16,687, EV
+**+4,324.3 cr/hand**). Full dissolution remains **0** hands. §21.4, §21.7, LD-29 and §3.3d now
+carry these numbers. No rule moved and no fix was chosen; the remaining Accept branch is the
+owner's ruling: intended uncapped veteran-table ratio, or defect to bake off.
 
 ### T-226 · F-222-3: the archetype ordering is STAKE-CONDITIONAL, and no test covers it off the stakes the sweep happens to play — `status: TODO` · `coder: opus` · `after: T-222`
 

@@ -569,8 +569,11 @@ being priced correctly: past `k ≤ 3` the house's stake-normalised return **rev
 `k ≤ 3` → **+0.223** at `k ≤ 4` → **−0.139** deeper) and the archetype ordering **re-inverts**
 (`bad − optimal` −4.95 pp). `k = 4` is admitted from **1,026 credits** at the 5–200 port and
 **5,127** at the default band, both inside the **32,510** largest stake measured over 1,600 careers.
-Full dissolution (`k = u`) needs **≥ 419,896** and is **not** reached. **F-222-2 / `TASKS.md` T-225**
-— a §4.8 ruling, not an ante one.
+T-225's shipped-instrument cut measures the live tier-5 port distribution over 48 gambler careers ×
+120 days: **4,612** tier-5 hands, `k ≤ 4` on **1,725 / 4,612 = 37.40%**, `k ≥ 5` on **8 / 4,612 =
+0.17%** (Denebola-5 and Mira-9 only), and **0** fully dissolved hands. Full dissolution (`k = u`)
+needs **≥ 419,896** and is **not** reached. **F-222-2 / `TASKS.md` T-225** — a §4.8 ruling, not an
+ante one, blocked on the owner's uncapped-ratio ruling.
 
 **(2) THE LOOSEST GATE IN EVERY BOUNDED BAND IS UNREACHABLE.** `headroomFor` is
 `max(0, bandMax − pot)` and the **seed counts against it** (§4.3), so a seed within one ante of the

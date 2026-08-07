@@ -195,15 +195,21 @@ describe('T-1601b smuggler & gambler policies', () => {
       for (const value of Object.values(report.smuggling)) {
         expect(typeof value).toBe('number');
       }
-      // T-175 / T-176 · `dareCells`, `dareChallengeCells` and `dareChallengeSplit`
-      // are the NON-scalar members of `hangoutPlay` (the pool × archetype × tier
-      // split, F-160-1; the challenger split at matched evidence, F-160-2), so they
-      // are destructured out and checked on their own shape rather than weakening
-      // the scalar sweep over the rest. Named explicitly — a blanket
+      // T-175 / T-176 / T-225 · `dareCells`, `dareTier5StakeCells`,
+      // `dareChallengeCells` and `dareChallengeSplit` are the NON-scalar members
+      // of `hangoutPlay` (the pool × archetype × tier split, F-160-1; the tier-5
+      // stake distribution, F-222-2; the challenger split at matched evidence,
+      // F-160-2), so they are destructured out and checked on their own shape
+      // rather than weakening the scalar sweep over the rest. Named explicitly — a blanket
       // `typeof value === 'object' && continue` would let a future non-scalar in
       // unnoticed.
-      const { dareCells, dareChallengeCells, dareChallengeSplit, ...hangoutScalars } =
-        report.hangoutPlay;
+      const {
+        dareCells,
+        dareTier5StakeCells,
+        dareChallengeCells,
+        dareChallengeSplit,
+        ...hangoutScalars
+      } = report.hangoutPlay;
       for (const value of Object.values(hangoutScalars)) {
         expect(typeof value).toBe('number');
       }
@@ -215,6 +221,14 @@ describe('T-1601b smuggler & gambler policies', () => {
         expect(typeof cell.playerWon).toBe('number');
         expect(typeof cell.netCredits).toBe('number');
         expect(typeof cell.bids).toBe('number');
+      }
+      // T-225 · one cell per authored Liar's Dice port, also zero-filled.
+      expect(Object.keys(dareTier5StakeCells)).toHaveLength(14);
+      for (const cell of Object.values(dareTier5StakeCells)) {
+        expect(typeof cell.hands).toBe('number');
+        expect(typeof cell.k4Hands).toBe('number');
+        expect(typeof cell.pastK4Hands).toBe('number');
+        expect(typeof cell.dissolvedHands).toBe('number');
       }
       // T-176 · 2 pools × 2 challengers × 3 arities × 9 k-buckets, and 2 pools ×
       // 4 archetype slots × 2 challengers. Same zero-fill property.

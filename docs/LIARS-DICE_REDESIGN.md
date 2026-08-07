@@ -4157,6 +4157,36 @@ stake seated in 1,600 careers is **32,510**. **`k = 4` is reached** (from 1,026 
 measured max of 32,510). So the gate does not dissolve in the shipped game — but it goes **two steps
 past** the `k ≤ 3` every bounded tier stops at, which is F-222-2.
 
+**T-225 MEASUREMENT (2026-08-07, 48 gambler careers × 120 days, HEAD): tier 5 is common, but the
+past-`k ≤ 4` tail is tiny.** `HangoutPlayStats.dareTier5StakeCells` now carries a zero-filled port
+cut over every authored table. In this window tier 5 accounts for **4,612** settled hands, **53.69%**
+player wins and **+295.7 cr/hand**, with mean seated stake **4,381.5 cr** and max **28,045 cr**.
+The opening gate reaches `k ≤ 4` on **1,725 / 4,612 = 37.40%** of tier-5 hands. It reaches **past**
+`k ≤ 4` (`k ≥ 5`) on only **8 / 4,612 = 0.17%**, all at the two cheapest effective-ante ports. Full
+dissolution remains **0** hands.
+
+| port | tier-5 hands | max stake | `k ≤ 4` hands | `k ≥ 5` hands | `k ≥ 5` EV/hand |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sol-3 | 342 | 20,238 | 108 | 0 | — |
+| Aldebaran-1 | 371 | 23,437 | 161 | 0 | — |
+| Altair-3 | 390 | 19,380 | 99 | 0 | — |
+| Arcturus-6 | 346 | 16,519 | 254 | 0 | — |
+| Deneb-4 | 371 | 14,135 | 9 | 0 | — |
+| **Denebola-5** | 338 | **28,045** | 283 | **5** | **−4,103.4 cr** |
+| Fomalhaut-2 | 365 | 16,012 | 85 | 0 | — |
+| **Mira-9** | 425 | 16,687 | 396 | **3** | **+4,324.3 cr** |
+| Pollux-7 | 349 | 19,234 | 112 | 0 | — |
+| Procyon-5 | 294 | 18,224 | 184 | 0 | — |
+| Regulus-6 | 305 | 16,771 | 1 | 0 | — |
+| Rigel-8 | 274 | 17,484 | 3 | 0 | — |
+| Spica-3 | 243 | 25,504 | 12 | 0 | — |
+| Vega-6 | 199 | 24,061 | 18 | 0 | — |
+
+The measurement narrows F-222-2's shape: `k ≤ 4` is ordinary veteran play, but the empirically
+negative deeper regime is a rare cheap-port tail in this detector window, not a broad tier-5 state.
+It does **not** rule whether the uncapped ratio is intended; it supplies the owner-facing port
+counts for T-225's intended-vs-defect call.
+
 ### 21.5 THE RULING, AND WHAT WAS NOT EDITED
 
 **Binding text: LD-29** in `docs/LIARS-DICE-DECISIONS.md`. In summary:
@@ -4243,10 +4273,10 @@ raise; the Dare collapses to a single opening claim resolved at `probAtLeast(1, 
 the player's favour at every width**. Measured: house net/seed **−0.045** (4 dice) and **−0.321**
 (6 dice) against **+0.445 / +0.373** at 75% of the same band — **+962 cr/hand to the player at the
 default band at tier 4, against −842 one quarter-band lower.** §16.5 already measured the shipped
-gambler's median stake-to-band ratio at **100.00%**, so this is not hypothetical play. The lever is
-§4.3's whole-hand exposure ruling, not the ante, and §21.4a proves the ante's reference cannot reach
-it. **The exact share of hands seated in the zone needs the `dareCells` stake cut this task refuses
-to add (§21.0 item 4); §21.4c bounds it at ≤ 49.6% from `bids/hand`.**
+gambler's median stake-to-band ratio at **100.00%**, so this is not hypothetical play. T-224's
+shipped-instrument cut measures the actual dead-zone share at **623 / 8,452 = 7.37%**, with
+**66.29%** player wins and **+351.4 cr/hand** to the player. The lever is §4.3's whole-hand exposure
+ruling, not the ante, and §21.4a proves the ante's reference cannot reach it.
 
 **F-222-2 · AT TIER 5 NOTHING CAPS THE POT/ANTE RATIO, AND PAST `k ≤ 3` THE GATE MISPRICES.** Filed
 as `TASKS.md` **T-225**. §21.4's deep ladder: the house's stake-normalised return **reverses**
@@ -4258,7 +4288,10 @@ careers, so this is reachable rather than theoretical. Every bounded tier stops 
 (`effectiveWagerBand → {min: 0, max: null}`, T-146 §4.8) and freezes the ante at the tier-4
 reference, so the ratio → 0 as the stake grows. **This is a §4.8 ruling, not an ante ruling**, and
 §21.4a records the shape a fix should start from (a stake-referenced ante caps the ratio without
-capping the stake).
+capping the stake). T-225's shipped-instrument cut measures tier 5 at **4,612** hands: `k ≤ 4`
+reaches **1,725 / 4,612 = 37.40%**, but `k ≥ 5` reaches only **8 / 4,612 = 0.17%** in this window
+(Denebola-5 and Mira-9 only), with **0** fully dissolved hands. T-225 is blocked on the owner's
+uncapped-ratio ruling.
 
 **F-222-3 · THE ARCHETYPE ORDERING IS STAKE-CONDITIONAL, AND NOTHING TESTS IT OFF THE STAKES THE
 SWEEP HAPPENS TO PLAY.** Filed as `TASKS.md` **T-226**. LD-25 publishes `bad − optimal > 0` as a

@@ -5,6 +5,7 @@ import {
   FLAWS,
   // T-175 · The five unlock thresholds, IMPORTED rather than restated, so the
   // sim's derived tier moves with content (see `derivedDareTier`).
+  LIARS_DICE_OPPONENTS,
   LIARS_DICE_UNLOCK_GAMES,
   NPC_PROFILES,
   SPECIAL_EQUIPMENT,
@@ -68,6 +69,7 @@ import {
   // combined with either policy's own relaxations — see
   // `isEvidenceBackedChallenge`.
   DARE_AI_CHALLENGE_MARGIN,
+  probAtLeast,
   legalDareMoves,
   minOpeningQuantity,
   applyPlayerAction,
@@ -344,6 +346,14 @@ export interface HangoutPlayStats {
    *  reading that the two counters above give as frequencies. */
   maxSeedWager: number;
   /**
+   * T-225 · Tier-5 hands cut by port and opening gate, so F-222-2 can measure the
+   * shipped stake distribution with an `n` on every port instead of carrying only
+   * the scalar `handsAboveRaisedCeiling`. Tier 5's effective band is unbounded, so
+   * the cells are zero-filled from the authored Liar's Dice ports and the gate is
+   * derived from the frozen `seedWager`/`ante` pair at open.
+   */
+  dareTier5StakeCells: Record<DareTier5StakeCellKey, DareTier5StakeStats>;
+  /**
    * T-175 · **THE ARCHETYPE-ORDERING SPLIT** (F-160-1) — settled Liar's Dice hands
    * cut by `pool × archetype × unlock tier`, keyed by {@link DareCellKey}.
    *
@@ -467,12 +477,45 @@ export interface DareCellStats {
   deadZoneBids: number;
 }
 
+/** T-225 · One authored Liar's Dice port in the tier-5 stake distribution table. */
+export type DareTier5StakeCellKey = `system${number}`;
+
+/** T-225 · Tier-5 stakes by port. Raw counters only; every rate and threshold in
+ * the write-up is arithmetic over these fields plus the engine gate helper below. */
+export interface DareTier5StakeStats {
+  /** Tier-5 settled hands opened at this port. */
+  hands: number;
+  /** ...of which the PLAYER took. */
+  playerWon: number;
+  /** Sum of player-view `DareHandResolved.creditsDelta`. */
+  netCredits: number;
+  /** Sum of seated `DareHandStarted.seedWager`. */
+  sumSeedWager: number;
+  /** Largest seated tier-5 stake observed at this port. */
+  maxSeedWager: number;
+  /** Tier-5 hands whose opening gate reached `k <= 4`. */
+  k4Hands: number;
+  /** Tier-5 hands whose opening gate reached PAST `k <= 4`, i.e. `k >= 5`. */
+  pastK4Hands: number;
+  /** Sum of player-view `creditsDelta` for the past-`k <= 4` subset. */
+  pastK4NetCredits: number;
+  /** Sum of seated `seedWager` for the past-`k <= 4` subset. */
+  pastK4SumSeedWager: number;
+  /** Largest seated stake in the past-`k <= 4` subset. */
+  pastK4MaxSeedWager: number;
+  /** Tier-5 hands whose opening gate reached `k = u`, fully dissolving the gate. */
+  dissolvedHands: number;
+}
+
 /** T-175 · The three concrete arms plus `'none'`, in the FIXED order the write-up
  *  reports them. Not `resolveMixedArchetype`'s contract order (that one is a rules
  *  contract and lives in the engine); this is a presentation order and says so. */
 const DARE_ARCHETYPE_SLOTS: readonly DareArchetypeSlot[] = ['optimal', 'bad', 'random', 'none'];
 const DARE_POOLS: readonly DarePool[] = ['roaming', 'roster'];
 const DARE_TIERS: readonly (0 | 1 | 2 | 3 | 4 | 5)[] = [0, 1, 2, 3, 4, 5];
+const DARE_PORT_SYSTEM_IDS: readonly number[] = Object.keys(LIARS_DICE_OPPONENTS)
+  .map(Number)
+  .sort((a, b) => a - b);
 
 /** T-175 · The one place a cell key is spelled. Every reader and the zero-fill
  *  below go through it, so the key format cannot drift between them. */
@@ -504,6 +547,48 @@ export function zeroDareCells(): Record<DareCellKey, DareCellStats> {
     }
   }
   return cells;
+}
+
+/** T-225 · The one place a tier-5 stake-cell key is spelled. */
+export function dareTier5StakeCellKey(systemId: number): DareTier5StakeCellKey {
+  return `system${systemId}`;
+}
+
+/** T-225 · All authored Liar's Dice ports, zero-filled. */
+export function zeroDareTier5StakeCells(): Record<DareTier5StakeCellKey, DareTier5StakeStats> {
+  const cells = {} as Record<DareTier5StakeCellKey, DareTier5StakeStats>;
+  for (const systemId of DARE_PORT_SYSTEM_IDS) {
+    cells[dareTier5StakeCellKey(systemId)] = {
+      hands: 0,
+      playerWon: 0,
+      netCredits: 0,
+      sumSeedWager: 0,
+      maxSeedWager: 0,
+      k4Hands: 0,
+      pastK4Hands: 0,
+      pastK4NetCredits: 0,
+      pastK4SumSeedWager: 0,
+      pastK4MaxSeedWager: 0,
+      dissolvedHands: 0,
+    };
+  }
+  return cells;
+}
+
+/** T-225 · The opening gate implied by a frozen stake/ante pair. */
+export function dareOpeningGate(seedWager: number, ante: number, dicePerSide: number): number {
+  let best = -1;
+  for (let k = 0; k <= dicePerSide; k += 1) {
+    if (probAtLeast(k, dicePerSide) * (seedWager + seedWager + ante) > ante) best = k;
+  }
+  return best;
+}
+
+/** T-225 · Smallest seated stake whose opening gate admits evidence `k`. */
+export function dareMinSeedForOpeningGate(k: number, ante: number, dicePerSide: number): number {
+  const p = probAtLeast(k, dicePerSide);
+  if (p <= 0) return Number.POSITIVE_INFINITY;
+  return Math.floor((ante * (1 - p)) / (2 * p)) + 1;
 }
 
 /**
@@ -1724,6 +1809,15 @@ interface CampaignMetricAccumulator {
    */
   openDareDeadZone: Map<string, boolean>;
   /**
+   * T-225 · Open tier-5 hands, `handId` → the frozen port/stake/opening-gate facts.
+   * Joined at settlement because the start event carries stake/system and the
+   * settlement event carries the result.
+   */
+  openDareTier5Stake: Map<
+    string,
+    { systemId: number; seedWager: number; openingGate: number; dicePerSide: number }
+  >;
+  /**
    * T-176 · Open hands, `handId` → the actor of the LAST `DareBidPlaced` seen.
    * Parked the same way `openDareBids` is and for the same reason — a hand spans
    * event batches — and read once at settlement, where the CHALLENGER is by
@@ -1933,6 +2027,15 @@ function accumulateMetricEvents(
         event.handId,
         seatedBandMax !== null && event.seedWager > seatedBandMax - event.ante,
       );
+      if (tier === 5) {
+        const dicePerSide = dicePerSideForTier(tier);
+        metrics.openDareTier5Stake.set(event.handId, {
+          systemId: event.systemId,
+          seedWager: event.seedWager,
+          openingGate: dareOpeningGate(event.seedWager, event.ante, dicePerSide),
+          dicePerSide,
+        });
+      }
     } else if (event.type === 'DareBidPlaced') {
       // T-175 · One beat of the hand, either side. Attributed to a CELL only at
       // settlement, because the cell key needs the pool/archetype/tier that only
@@ -1981,6 +2084,30 @@ function accumulateMetricEvents(
         cell.deadZoneBids += bids;
       }
       metrics.openDareDeadZone.delete(event.handId);
+      const tier5Stake = metrics.openDareTier5Stake.get(event.handId);
+      if (tier5Stake !== undefined) {
+        const stakeCell =
+          hangoutPlay.dareTier5StakeCells[dareTier5StakeCellKey(tier5Stake.systemId)];
+        if (stakeCell !== undefined) {
+          stakeCell.hands += 1;
+          if (playerWon) stakeCell.playerWon += 1;
+          stakeCell.netCredits += event.creditsDelta;
+          stakeCell.sumSeedWager += tier5Stake.seedWager;
+          stakeCell.maxSeedWager = Math.max(stakeCell.maxSeedWager, tier5Stake.seedWager);
+          if (tier5Stake.openingGate >= 4) stakeCell.k4Hands += 1;
+          if (tier5Stake.openingGate >= 5) {
+            stakeCell.pastK4Hands += 1;
+            stakeCell.pastK4NetCredits += event.creditsDelta;
+            stakeCell.pastK4SumSeedWager += tier5Stake.seedWager;
+            stakeCell.pastK4MaxSeedWager = Math.max(
+              stakeCell.pastK4MaxSeedWager,
+              tier5Stake.seedWager,
+            );
+          }
+          if (tier5Stake.openingGate >= tier5Stake.dicePerSide) stakeCell.dissolvedHands += 1;
+        }
+      }
+      metrics.openDareTier5Stake.delete(event.handId);
 
       // T-176 · THE CHALLENGER-WON SPLIT AT MATCHED EVIDENCE (F-160-2, §18). Only
       // the two CHALLENGE outcomes reach the body below, and they are the only ones
@@ -6673,6 +6800,7 @@ export function runCampaign(
     handsAboveBaseCeiling: 0,
     handsAboveRaisedCeiling: 0,
     maxSeedWager: 0,
+    dareTier5StakeCells: zeroDareTier5StakeCells(),
     // T-175 · all 48 cells present and zero-filled (F-160-1's split).
     dareCells: zeroDareCells(),
     dareTierDisagreements: 0,
@@ -6713,6 +6841,7 @@ export function runCampaign(
     settledDareHands: 0,
     openDareBids: new Map<string, number>(),
     openDareDeadZone: new Map<string, boolean>(),
+    openDareTier5Stake: new Map(),
     openDareLastBidder: new Map<string, DareChallenger>(),
   };
   const balance = newBalanceRecordTracker();
