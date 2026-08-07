@@ -936,7 +936,12 @@ gambler-only-arm artefact §19.9 and §20.0 record, not a regression.)*
 4. **FILED, NOT ABSORBED — F-222-3 (`TASKS.md` T-226): the archetype ordering is stake-conditional.**
    `bad − optimal` runs **−21.15 pp** at band floors to **+20.61 pp** mid-band to **0.00** in the dead
    zone. `bad` reads no pot at all, so the whole dependence is `optimal`'s. LD-25 states the ordering
-   without a stake range and no test covers it off the stakes the sweep happens to play.
+   without a stake range and no test covers it off the stakes the sweep happens to play. T-226 now
+   pins that range in `liarsDiceArchetypes.test.ts` at n = 12,000 per cell: floor inversions at four
+   and six dice (**−15.64 pp**, **−10.64 pp**), positive mid-band rows (**+2.08 pp**, **+20.36 pp**),
+   positive tier-5 `k ≤ 4` (**+13.82 pp**) and a re-inverted cheap-port `k ≥ 5` tail (**−2.92 pp**).
+   T-226 is blocked on the owner's ruling whether LD-25 should be restated as a mid-band property or
+   the inversion zones are defects to bake off.
 
 **WHAT THIS RULING DOES NOT DO.** It does not move `DARE_ANTE_BAND_FRACTION`, the ante's reference,
 any wager band, `headroomFor`, `effectiveWagerBand`, `anteFor`, `probClaimTrue`, `BAD_CREDULITY`,

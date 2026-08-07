@@ -4302,6 +4302,13 @@ dead zone, and **−4.95 pp** again deep at tier 5. `bad` reads no pot at all, s
 stake-dependence is `optimal`'s. The floor end is currently unexercised (§21.4c), which is why the
 sweep has never seen it — but "unexercised by today's gambler policy" is not the same as
 "unreachable by a player", and the bar has never been stated with the stake range it holds over.
+T-226's regression now states that range in code: at n = 12,000 per cell, `bad − optimal` is
+**−15.64 pp** at the four-dice floor, **+2.08 pp** at four-dice mid-band (`k ≥ 2`), **−10.64 pp** at
+the six-dice floor, **+20.36 pp** at six-dice mid-band (`k ≥ 3`), **+13.82 pp** at tier-5 `k ≤ 4`,
+and **−2.92 pp** in the cheap-port tier-5 `k ≥ 5` tail. The stakes are derived from `probAtLeast`,
+`anteFor`, `wagerBandFor`, `effectiveWagerBand` and `dicePerSideForTier`, so a range movement goes
+red instead of being hidden behind a literal. T-226 is blocked on the owner's mid-band-property vs
+defect ruling.
 
 ### 21.8 The scorecard
 

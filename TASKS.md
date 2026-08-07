@@ -3252,7 +3252,7 @@ max stake 28,045, EV **-4,103.4 cr/hand**) and **Mira-9** (3 / 425, max stake 16
 carry these numbers. No rule moved and no fix was chosen; the remaining Accept branch is the
 owner's ruling: intended uncapped veteran-table ratio, or defect to bake off.
 
-### T-226 · F-222-3: the archetype ordering is STAKE-CONDITIONAL, and no test covers it off the stakes the sweep happens to play — `status: TODO` · `coder: opus` · `after: T-222`
+### T-226 · F-222-3: the archetype ordering is STAKE-CONDITIONAL, and no test covers it off the stakes the sweep happens to play — `status: BLOCKED(Owner ruling: mid-band property vs defect)` · `coder: codex` · `after: T-222`
 
 **Filed at T-222 (2026-08-06), `docs/LIARS-DICE_REDESIGN.md` §21.4 / §21.7,
 `docs/LIARS-DICE-DECISIONS.md` LD-29.** LD-25 publishes `bad − optimal > 0` as a property of the
@@ -3285,6 +3285,28 @@ least one named alternative on identical seeds and LD-28's invariants are re-sco
 either way `packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` gains an assertion that goes
 RED if the range moves; §21.7 gains the outcome; if any rule moves the task takes its own capstone
 with the moved rows predicted first; gate green.
+
+**Measurement/regression delivered (2026-08-07, Codex); task now blocks on the owner ruling.**
+`packages/engine/src/__tests__/liarsDiceArchetypes.test.ts` now pins the ordering over a stake-axis
+fixture computed from `probAtLeast`, `anteFor`, `wagerBandFor`, `effectiveWagerBand` and
+`dicePerSideForTier`, with no copied stake literal from the write-up. The shipped terminating-hand
+simulator was parameterized by seated stake/ante/headroom, then the regression measured six cells at
+**n = 12,000** per cell:
+
+| cell | seated stake / ante | `bad` player win | `optimal` player win | `bad - optimal` |
+| --- | ---: | ---: | ---: | ---: |
+| four-dice floor | 25 / 30 | 30.50% | 46.14% | **-15.64 pp** |
+| four-dice mid-band (`k >= 2`) | 99 / 30 | 30.27% | 28.18% | **+2.08 pp** |
+| six-dice floor | 25 / 30 | 51.89% | 62.53% | **-10.64 pp** |
+| six-dice mid-band (`k >= 3`) | 226 / 30 | 52.30% | 31.94% | **+20.36 pp** |
+| tier-5 `k <= 4` | 5,127 / 90 | 52.56% | 38.73% | **+13.82 pp** |
+| tier-5 `k >= 5` cheap-port tail | 13,537 / 18 | 53.77% | 56.70% | **-2.92 pp** |
+
+This closes the test gap without moving any production rule: the ordering is now enforced where it
+is actually claimed to hold (bounded mid-band and tier-5 `k <= 4`) and intentionally goes red if
+the inversion zones move without a ruling. No rule, save shape, sim instrument or smoke fixture
+moved. The remaining Accept branch is the owner's ruling: record LD-25 as a mid-band property with
+this range, or rule the floor/deep-tail inversions defects to bake off.
 
 ### T-227 · F-223-1: the player is never told which of the house's three seats is the hard one — `status: TODO` · `coder: opus` · `after: T-223`
 
